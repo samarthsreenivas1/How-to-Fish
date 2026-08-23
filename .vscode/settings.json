@@ -1,0 +1,53 @@
+{
+	// ---------------------------------------------------------------- Luau
+	// The language server needs a sourcemap to know that a file at
+	// src/Shared/Data/Rods.luau is ReplicatedStorage.Shared.Data.Rods, which
+	// is what makes require() resolve and types flow between files. Let the
+	// extension generate and watch it from the Rojo project (it runs
+	// `rojo sourcemap` for you - sourcemap.json is gitignored on purpose).
+	"luau-lsp.sourcemap.enabled": true,
+	"luau-lsp.sourcemap.autogenerate": true,
+	"luau-lsp.sourcemap.rojoProjectFile": "default.project.json",
+	"luau-lsp.sourcemap.includeNonScripts": true,
+
+	// Roblox API types, kept current by the extension.
+	"luau-lsp.types.roblox": true,
+	"luau-lsp.platform.type": "roblox",
+
+	// Every file here is Luau, including the ones without a shebang comment.
+	"files.associations": {
+		"*.luau": "luau"
+	},
+
+	// ---------------------------------------------------------------- format
+	// Format on save with StyLua, so what you commit already matches
+	// `stylua src`. searchBinaryInPATH uses the aftman-installed 2.5.2 (from
+	// ~/.aftman/bin on macOS) rather than a version the extension downloads -
+	// two different StyLua versions would fight over the same files.
+	"stylua.searchBinaryInPATH": true,
+	"editor.formatOnSave": true,
+	"[luau]": {
+		"editor.defaultFormatter": "JohnnyMorganz.StyLua",
+		"editor.insertSpaces": false,
+		"editor.tabSize": 4
+	},
+
+	// ---------------------------------------------------------------- files
+	// Generated or irrelevant; hiding them keeps the tree readable.
+	"files.exclude": {
+		"**/.git": true,
+		"sourcemap.json": true,
+		"build": true
+	},
+	"search.exclude": {
+		"build": true,
+		"assets/*.glb": true,
+		"assets/Assets.rbxm": true
+	},
+
+	// The repo is LF everywhere (.gitattributes); keep new files that way on
+	// Windows too.
+	"files.eol": "\n",
+	"files.trimTrailingWhitespace": true,
+	"files.insertFinalNewline": true
+}

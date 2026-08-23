@@ -107,6 +107,38 @@ library.
 
 ---
 
+## 5b. VS Code
+
+Install VS Code from <https://code.visualstudio.com>, then open the repo
+folder (`File -> Open Folder...`, pick `How-to-Fish`).
+
+VS Code will show **"This workspace has extension recommendations"** -
+click **Install All**. That is the whole setup; `.vscode/extensions.json`
+and `.vscode/settings.json` are committed, so the editor configures itself:
+
+| Extension | What it does here |
+|---|---|
+| **Luau LSP** | types, autocomplete, go-to-definition, inline errors |
+| **StyLua** | formats on save, using the project's pinned 2.5.2 |
+| **Selene** | the project's linter, inline as you type |
+| **Rojo** | start/stop `rojo serve` from the command palette |
+| **Claude Code** | Claude in the editor |
+
+Two things worth knowing:
+
+- **Let it generate `sourcemap.json`.** The Luau server needs it to know
+  that `src/Shared/Data/Rods.luau` is `ReplicatedStorage.Shared.Data.Rods`;
+  without it every `require` looks unresolved and you lose autocomplete. The
+  settings turn on autogeneration, so it just happens - the file is
+  gitignored deliberately.
+- **StyLua must come from PATH**, which the settings already specify. If VS
+  Code downloads its own copy instead, it will be a different version from
+  `aftman.toml`'s and the two will reformat each other's files forever. This
+  only works if `~/.aftman/bin` is on your PATH (step 3).
+
+If the Rojo extension is easier than a terminal: `Cmd+Shift+P` ->
+**Rojo: Start Server**. It is the same `rojo serve`, so either is fine.
+
 ## 6. Every session: play the game
 
 Two things run at once - a server in Terminal, and Studio.
