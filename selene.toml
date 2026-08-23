@@ -1,0 +1,10 @@
+std = "roblox"
+
+[rules]
+unused_variable = "warn"
+shadowing = "allow"
+
+# Purely stylistic. UDim2.new(0, x, 0, y) is kept deliberately in the UI files
+# because neighbouring lines mix scale and offset, and switching forms mid-block
+# makes the layout harder to read, not easier.
+roblox_manual_fromscale_or_fromoffset = "allow"

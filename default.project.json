@@ -1,0 +1,34 @@
+{
+  "name": "Roblox Game",
+  "tree": {
+    "$className": "DataModel",
+
+    "ReplicatedStorage": {
+      "Shared": {
+        "$path": "src/Shared"
+      },
+      "Assets": {
+        "$path": "assets/Assets.rbxm"
+      }
+    },
+
+    "ServerScriptService": {
+      "Server": {
+        "$path": "src/Server"
+      }
+    },
+
+    "StarterPlayer": {
+      "$properties": {
+        "CameraMode": "LockFirstPerson",
+        "CameraMinZoomDistance": 0.5,
+        "CameraMaxZoomDistance": 0.5
+      },
+      "StarterPlayerScripts": {
+        "Client": {
+          "$path": "src/Client"
+        }
+      }
+    }
+  }
+}
