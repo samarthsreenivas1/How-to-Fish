@@ -75,6 +75,16 @@ FRAME = {
     "Riftcleaver": {"length": 3.6, "grip": 0.68},
     "SootveilBlade": {"length": 3.4, "grip": 0.66},
     "SlagheartWarhammer": {"length": 3.9, "grip": 0.8},
+    # Ranged (revamp S2): swamp tier-1 fantasy pieces + volcano gunpowder-tech.
+    # Same frame rule as everything above - butt at z = 0, muzzle / upper limb
+    # tip at z = LENGTH, _Grip centred on the hand point. The Weapons.luau
+    # ranged rows must copy these numbers (source of truth until they land).
+    "BogwoodBow": {"length": 3.4, "grip": 1.7},
+    "GatorjawCrossbow": {"length": 3.0, "grip": 0.8},
+    "MireFlintlock": {"length": 2.3, "grip": 0.5},
+    "CinderlockCarbine": {"length": 3.2, "grip": 0.9},
+    "BasaltScattergun": {"length": 3.0, "grip": 0.85},
+    "VulkanRepeater": {"length": 3.6, "grip": 0.95},
 }
 
 # Preview-only colours, per part object (r,g,b 0..1), mirroring the game rows.
@@ -195,6 +205,51 @@ COLORS = {
     "SlagheartWarhammer_Head": (0.19, 0.17, 0.24),  # obsidian head
     "SlagheartWarhammer_Spike": (0.19, 0.17, 0.24),
     "SlagheartWarhammer_Glow": (0.96, 0.38, 0.16),  # the molten core
+    # Ranged - swamp (bogwood / bog iron / gator scute fantasy tier).
+    "BogwoodBow_Haft": (0.4, 0.31, 0.2),  # dark bogwood stave + arrow shaft
+    "BogwoodBow_Grip": (0.3, 0.36, 0.28),  # gator-hide binding
+    "BogwoodBow_Edge": (0.8, 0.76, 0.6),  # sinew string
+    "BogwoodBow_Spike": (0.72, 0.68, 0.55),  # bone tips, arrowhead, fletching
+    "GatorjawCrossbow_Haft": (0.42, 0.32, 0.21),  # bogwood stock
+    "GatorjawCrossbow_Grip": (0.27, 0.31, 0.26),  # dark hide binding
+    "GatorjawCrossbow_Pommel": (0.42, 0.32, 0.21),
+    "GatorjawCrossbow_Guard": (0.35, 0.33, 0.29),  # bog-iron trigger work
+    "GatorjawCrossbow_Head": (0.35, 0.33, 0.29),  # bog-iron lock
+    "GatorjawCrossbow_Edge": (0.44, 0.51, 0.36),  # gator-scute prod + string
+    "GatorjawCrossbow_Spike": (0.85, 0.82, 0.69),  # gator teeth + the bolt
+    "GatorjawCrossbow_Glow": (0.55, 0.85, 0.73),  # wisp-light sight
+    "MireFlintlock_Haft": (0.36, 0.26, 0.18),  # swamp-walnut stock
+    "MireFlintlock_Grip": (0.27, 0.2, 0.15),  # oiled leather wrap
+    "MireFlintlock_Pommel": (0.7, 0.56, 0.29),  # brass butt cap
+    "MireFlintlock_Guard": (0.7, 0.56, 0.29),  # brass trigger guard
+    "MireFlintlock_Head": (0.7, 0.56, 0.29),  # brass lock plate + hammer
+    "MireFlintlock_Edge": (0.44, 0.45, 0.47),  # iron barrel
+    "MireFlintlock_Spike": (0.36, 0.26, 0.18),  # wooden ramrod
+    "MireFlintlock_Glow": (0.62, 0.88, 0.34),  # fen-venom etching
+    # Ranged - volcano (obsidian / brass gunpowder-tech tier).
+    "CinderlockCarbine_Haft": (0.45, 0.35, 0.24),  # ash-scorched stock
+    "CinderlockCarbine_Grip": (0.24, 0.2, 0.17),  # charred binding
+    "CinderlockCarbine_Pommel": (0.7, 0.55, 0.28),  # brass butt plate
+    "CinderlockCarbine_Guard": (0.7, 0.55, 0.28),  # brass guard + magazine
+    "CinderlockCarbine_Head": (0.19, 0.17, 0.24),  # obsidian receiver
+    "CinderlockCarbine_Edge": (0.35, 0.34, 0.38),  # gunmetal barrel
+    "CinderlockCarbine_Spike": (0.35, 0.34, 0.38),  # sights + muzzle ring
+    "BasaltScattergun_Haft": (0.4, 0.3, 0.22),  # dark wood stock + forend
+    "BasaltScattergun_Grip": (0.59, 0.73, 0.82),  # fish-scale binding
+    "BasaltScattergun_Pommel": (0.7, 0.55, 0.28),  # brass butt plate
+    "BasaltScattergun_Guard": (0.7, 0.55, 0.28),  # brass trigger guard
+    "BasaltScattergun_Head": (0.19, 0.17, 0.24),  # obsidian breech + lever
+    "BasaltScattergun_Edge": (0.25, 0.24, 0.27),  # basalt twin barrels
+    "BasaltScattergun_Spike": (0.25, 0.24, 0.27),  # muzzle rims + barrel band
+    "BasaltScattergun_Glow": (0.94, 0.52, 0.2),  # ember vents
+    "VulkanRepeater_Haft": (0.27, 0.23, 0.22),  # dark vent-metal frame
+    "VulkanRepeater_Grip": (0.24, 0.2, 0.18),  # dark binding
+    "VulkanRepeater_Pommel": (0.19, 0.17, 0.24),  # obsidian butt pad
+    "VulkanRepeater_Guard": (0.19, 0.17, 0.24),  # obsidian guard + foregrip
+    "VulkanRepeater_Head": (0.19, 0.17, 0.24),  # obsidian drum magazine
+    "VulkanRepeater_Edge": (0.33, 0.32, 0.36),  # gunmetal shroud + barrel
+    "VulkanRepeater_Spike": (0.33, 0.32, 0.36),  # muzzle brake + vents
+    "VulkanRepeater_Glow": (0.96, 0.38, 0.16),  # incendiary core + veins
 }
 
 GLOW_PARTS = {  # emissive in the preview only
@@ -211,6 +266,10 @@ GLOW_PARTS = {  # emissive in the preview only
     "Riftcleaver_Glow",
     "SootveilBlade_Glow",
     "SlagheartWarhammer_Glow",
+    "GatorjawCrossbow_Glow",
+    "MireFlintlock_Glow",
+    "BasaltScattergun_Glow",
+    "VulkanRepeater_Glow",
 }
 
 
@@ -1251,6 +1310,341 @@ def build_slagheartwarhammer():
     ]
 
 
+# ---------------------------------------------------------------- Bogwood Bow (swamp ranged, uncommon)
+# Tier-1 ranged: a braced bogwood recurve. The stave is a parabola with the
+# grip at its centre and both tips swept forward (+x); the sinew string runs
+# tip to tip, and a nocked bone-headed arrow lies across the grip so the
+# silhouette reads "bow" from any angle. Uncommon tier: no glow.
+
+
+def build_bogwoodbow():
+    f = FRAME["BogwoodBow"]
+    length, grip = f["length"], f["grip"]
+    haft = bmesh.new()
+    grip_bm = bmesh.new()
+    edge = bmesh.new()
+    spike = bmesh.new()
+
+    # The stave: tips forward at x ~0.62, flat at the grip, fattest mid-limb.
+    segs = 10
+    pts = []
+    for i in range(segs + 1):
+        t = i / segs
+        x = 0.62 * (2 * t - 1) ** 2
+        r = 0.055 + 0.075 * (1 - abs(2 * t - 1))
+        pts.append((Vector((x, 0, t * length)), r))
+    for (p0, r0), (p1, r1) in zip(pts, pts[1:]):
+        limb(haft, p0, p1, r0, r1, 5)
+
+    # Recurve flicks capping both tips.
+    cone(spike, pts[-1][0], pts[-1][0] + Vector((0.2, 0, 0.14)), 0.055, sides=4)
+    cone(spike, pts[0][0], pts[0][0] + Vector((0.2, 0, -0.14)), 0.055, sides=4)
+
+    # The string, tip to tip.
+    limb(edge, (0.62, 0, 0.03), (0.62, 0, length - 0.03), 0.022, 0.022, 4)
+
+    # A nocked arrow across the grip: shaft to just past the stave, bone head,
+    # two fletching vanes back at the string.
+    arrow_z = grip + 0.25
+    limb(haft, (0.62, 0, arrow_z), (-0.5, 0, arrow_z), 0.032, 0.032, 4)
+    cone(spike, (-0.5, 0, arrow_z), (-0.8, 0, arrow_z), 0.065, sides=4)
+    box(spike, (0.44, 0, arrow_z + 0.06), (0.2, 0.02, 0.1), Matrix.Rotation(math.radians(-18), 4, "Y"))
+    box(spike, (0.44, 0, arrow_z - 0.06), (0.2, 0.02, 0.1), Matrix.Rotation(math.radians(18), 4, "Y"))
+
+    # Gator-hide grip riser at the stave's centre, own object on the hand point.
+    limb(grip_bm, (0, 0, grip - 0.45), (0, 0, grip + 0.45), 0.15, 0.14, 7)
+
+    return [
+        finish("BogwoodBow_Haft", haft),
+        finish("BogwoodBow_Grip", grip_bm),
+        finish("BogwoodBow_Edge", edge),
+        finish("BogwoodBow_Spike", spike),
+    ]
+
+
+# ---------------------------------------------------------------- Gatorjaw Crossbow (swamp ranged, rare)
+# A bogwood stock with a gator-scute prod across the top, drawn string, a
+# loaded bolt, and gator teeth studding the fore-stock. Rare tier: a wisp
+# glow for a sight.
+
+
+def build_gatorjawcrossbow():
+    f = FRAME["GatorjawCrossbow"]
+    length, grip = f["length"], f["grip"]
+    haft = bmesh.new()
+    grip_bm = bmesh.new()
+    pommel = bmesh.new()
+    guard = bmesh.new()
+    head = bmesh.new()
+    edge = bmesh.new()
+    spike = bmesh.new()
+    glow = bmesh.new()
+
+    # Stock: butt at z=0 up to just under the prod.
+    box(haft, (0, 0, 1.2), (0.24, 0.2, 2.4))
+    box(pommel, (0.06, 0, 0.16), (0.34, 0.24, 0.32))
+    limb(grip_bm, (0, 0, grip - 0.4), (0, 0, grip + 0.4), 0.16, 0.15, 7)
+
+    # The prod: two swept gator-scute arms, and the string drawn to the nut.
+    for side in (-1, 1):
+        limb(edge, (0, 0, 2.45), (side * 0.5, 0, 2.42), 0.07, 0.055, 5)
+        limb(edge, (side * 0.5, 0, 2.42), (side * 0.88, 0, 2.28), 0.055, 0.035, 5)
+        limb(edge, (side * 0.88, 0, 2.28), (0, 0, 1.95), 0.02, 0.02, 4)
+
+    # Bog-iron nut/lock where the string catches.
+    box(head, (0, 0, 1.95), (0.14, 0.26, 0.18))
+
+    # The bolt, riding the top of the stock to the frame tip.
+    limb(spike, (0, 0.14, 2.0), (0, 0.14, length - 0.18), 0.035, 0.03, 4)
+    cone(spike, (0, 0.14, length - 0.18), (0, 0.14, length), 0.055, sides=4)
+
+    # Gator teeth studding the fore-stock sides.
+    for side in (-1, 1):
+        for z in (2.12, 2.3):
+            cone(spike, (side * 0.12, 0, z), (side * 0.3, 0, z + 0.08), 0.045, sides=4)
+
+    # Bog-iron trigger work under the grip.
+    box(guard, (-0.17, 0, 0.95), (0.08, 0.12, 0.34))
+    box(guard, (-0.24, 0, 0.82), (0.14, 0.12, 0.06))
+
+    # Wisp-light sight above the lock.
+    ellipsoid(glow, (0, 0.16, 2.55), (0.05, 0.05, 0.05), subdiv=0)
+
+    return [
+        finish("GatorjawCrossbow_Haft", haft),
+        finish("GatorjawCrossbow_Grip", grip_bm),
+        finish("GatorjawCrossbow_Pommel", pommel),
+        finish("GatorjawCrossbow_Guard", guard),
+        finish("GatorjawCrossbow_Head", head),
+        finish("GatorjawCrossbow_Edge", edge),
+        finish("GatorjawCrossbow_Spike", spike),
+        finish("GatorjawCrossbow_Glow", glow),
+    ]
+
+
+# ---------------------------------------------------------------- Mire Flintlock (swamp ranged, epic)
+# A long-barrelled flintlock pistol: curved walnut grip swelling from the
+# butt, brass lock plate with hammer and frizzen, octagonal iron barrel,
+# ramrod underneath. Epic tier: fen-venom etching glows on the stock and up
+# the barrel.
+
+
+def build_mireflintlock():
+    f = FRAME["MireFlintlock"]
+    length, grip = f["length"], f["grip"]
+    haft = bmesh.new()
+    grip_bm = bmesh.new()
+    pommel = bmesh.new()
+    guard = bmesh.new()
+    head = bmesh.new()
+    edge = bmesh.new()
+    spike = bmesh.new()
+    glow = bmesh.new()
+
+    # Curved wooden grip into the body.
+    limb(haft, (0.22, 0, 0.04), (0.06, 0, 0.62), 0.16, 0.13, 6)
+    limb(haft, (0.06, 0, 0.62), (0, 0, 1.0), 0.13, 0.12, 6)
+    box(haft, (0, 0, 1.18), (0.28, 0.22, 0.46))
+    limb(grip_bm, (0, 0, grip - 0.32), (0, 0, grip + 0.32), 0.19, 0.17, 7)
+    ellipsoid(pommel, (0.25, 0, 0.05), (0.13, 0.12, 0.11), subdiv=1)
+
+    # Brass lock plate, hammer and frizzen on the +y face.
+    box(head, (0, 0.14, 1.15), (0.3, 0.06, 0.34))
+    box(head, (-0.08, 0.17, 1.32), (0.08, 0.06, 0.2), Matrix.Rotation(math.radians(25), 4, "Y"))
+    box(head, (0.1, 0.17, 1.3), (0.08, 0.06, 0.14))
+
+    # Octagonal iron barrel to the muzzle, with a band near the end.
+    limb(edge, (0, 0, 1.38), (0, 0, length), 0.11, 0.085, 8)
+    limb(edge, (0, 0, 2.16), (0, 0, 2.24), 0.105, 0.105, 8)
+
+    # Trigger guard (brass) and the wooden ramrod along the barrel.
+    box(guard, (-0.15, 0, 1.0), (0.06, 0.1, 0.3))
+    box(guard, (-0.2, 0, 0.87), (0.12, 0.1, 0.06))
+    limb(spike, (0.14, 0, 1.4), (0.14, 0, 2.1), 0.03, 0.03, 4)
+
+    # Fen-venom etching: strokes on both stock faces, a vein up the barrel.
+    for side in (-1, 1):
+        stroke(glow, (0.02, side * 0.12, 1.08), 0.3, 42)
+        stroke(glow, (0.1, side * 0.12, 0.85), 0.22, -30)
+    box(glow, (0, 0.1, 1.8), (0.02, 0.03, 0.55))
+
+    return [
+        finish("MireFlintlock_Haft", haft),
+        finish("MireFlintlock_Grip", grip_bm),
+        finish("MireFlintlock_Pommel", pommel),
+        finish("MireFlintlock_Guard", guard),
+        finish("MireFlintlock_Head", head),
+        finish("MireFlintlock_Edge", edge),
+        finish("MireFlintlock_Spike", spike),
+        finish("MireFlintlock_Glow", glow),
+    ]
+
+
+# ---------------------------------------------------------------- Cinderlock Carbine (volcano ranged, uncommon)
+# The first full-auto: an ash-scorched wooden stock and handguard around an
+# obsidian receiver, gunmetal barrel, brass canted magazine and trigger
+# guard. Uncommon tier: no glow.
+
+
+def build_cinderlockcarbine():
+    f = FRAME["CinderlockCarbine"]
+    length, grip = f["length"], f["grip"]
+    haft = bmesh.new()
+    grip_bm = bmesh.new()
+    pommel = bmesh.new()
+    guard = bmesh.new()
+    head = bmesh.new()
+    edge = bmesh.new()
+    spike = bmesh.new()
+
+    # Stock: butt block into a tapering wrist, then the wooden handguard
+    # further up the barrel.
+    box(haft, (0.1, 0, 0.18), (0.32, 0.22, 0.36))
+    limb(haft, (0.12, 0, 0.34), (0, 0, 1.3), 0.17, 0.12, 6)
+    box(haft, (0.09, 0, 2.05), (0.13, 0.15, 0.7))
+    box(pommel, (0.13, 0, 0.03), (0.28, 0.22, 0.08))
+    limb(grip_bm, (0, 0, grip - 0.38), (0, 0, grip + 0.38), 0.16, 0.15, 7)
+
+    # Obsidian receiver with a charging handle on the +y face.
+    box(head, (0, 0, 1.5), (0.28, 0.24, 0.44))
+    box(head, (0, 0.16, 1.56), (0.1, 0.1, 0.08))
+
+    # Gunmetal barrel to the muzzle.
+    limb(edge, (0, 0, 1.72), (0, 0, length), 0.1, 0.075, 8)
+
+    # Brass trigger guard and a canted box magazine.
+    box(guard, (-0.16, 0, 1.1), (0.06, 0.1, 0.3))
+    box(guard, (-0.24, 0, 1.42), (0.14, 0.13, 0.38), Matrix.Rotation(math.radians(20), 4, "Y"))
+
+    # Front sight post and muzzle ring.
+    box(spike, (0, 0.1, 3.02), (0.04, 0.08, 0.12))
+    limb(spike, (0, 0, length - 0.1), (0, 0, length), 0.085, 0.09, 8)
+
+    return [
+        finish("CinderlockCarbine_Haft", haft),
+        finish("CinderlockCarbine_Grip", grip_bm),
+        finish("CinderlockCarbine_Pommel", pommel),
+        finish("CinderlockCarbine_Guard", guard),
+        finish("CinderlockCarbine_Head", head),
+        finish("CinderlockCarbine_Edge", edge),
+        finish("CinderlockCarbine_Spike", spike),
+    ]
+
+
+# ---------------------------------------------------------------- Basalt Scattergun (volcano ranged, rare)
+# A break-action double-barrel: obsidian breech, two side-by-side basalt
+# barrels through a wide wooden forend. Rare tier: ember vents glow on the
+# breech and up the seam between the barrels.
+
+
+def build_basaltscattergun():
+    f = FRAME["BasaltScattergun"]
+    length, grip = f["length"], f["grip"]
+    haft = bmesh.new()
+    grip_bm = bmesh.new()
+    pommel = bmesh.new()
+    guard = bmesh.new()
+    head = bmesh.new()
+    edge = bmesh.new()
+    spike = bmesh.new()
+    glow = bmesh.new()
+
+    # Stock into the breech, then the forend wrapping both barrels.
+    box(haft, (0.11, 0, 0.2), (0.34, 0.24, 0.4))
+    limb(haft, (0.12, 0, 0.38), (0, 0, 1.25), 0.19, 0.14, 6)
+    box(haft, (0, 0, 1.8), (0.42, 0.22, 0.5))
+    box(pommel, (0.14, 0, 0.04), (0.3, 0.24, 0.1))
+    limb(grip_bm, (0, 0, grip - 0.38), (0, 0, grip + 0.38), 0.18, 0.16, 7)
+
+    # Obsidian breech block with the top opening lever.
+    box(head, (0, 0, 1.45), (0.4, 0.26, 0.4))
+    box(head, (0, 0.15, 1.45), (0.08, 0.06, 0.26))
+
+    # Twin basalt barrels, muzzle rims, and a barrel band.
+    for side in (-1, 1):
+        limb(edge, (side * 0.11, 0, 1.6), (side * 0.11, 0, length), 0.1, 0.095, 8)
+        limb(spike, (side * 0.11, 0, length - 0.06), (side * 0.11, 0, length), 0.107, 0.107, 8)
+    box(spike, (0, 0, 2.35), (0.46, 0.24, 0.12))
+
+    # Brass trigger guard.
+    box(guard, (-0.18, 0, 1.05), (0.06, 0.1, 0.32))
+
+    # Ember vents: strokes on the breech faces, a line up the barrel seam.
+    for side in (-1, 1):
+        stroke(glow, (0, side * 0.14, 1.5), 0.26, 0)
+    box(glow, (0, 0.08, 2.2), (0.03, 0.03, 0.7))
+
+    return [
+        finish("BasaltScattergun_Haft", haft),
+        finish("BasaltScattergun_Grip", grip_bm),
+        finish("BasaltScattergun_Pommel", pommel),
+        finish("BasaltScattergun_Guard", guard),
+        finish("BasaltScattergun_Head", head),
+        finish("BasaltScattergun_Edge", edge),
+        finish("BasaltScattergun_Spike", spike),
+        finish("BasaltScattergun_Glow", glow),
+    ]
+
+
+# ---------------------------------------------------------------- Vulkan Repeater (volcano ranged, legendary)
+# The capstone gun: a heavy full-auto repeater with an obsidian drum
+# magazine, a vented gunmetal shroud over the barrel, and a muzzle brake.
+# Legendary tier: molten cores glow in both drum faces, magma veins run the
+# shroud, and the muzzle smoulders - the Slagheart Warhammer's role, ranged.
+
+
+def build_vulkanrepeater():
+    f = FRAME["VulkanRepeater"]
+    length, grip = f["length"], f["grip"]
+    haft = bmesh.new()
+    grip_bm = bmesh.new()
+    pommel = bmesh.new()
+    guard = bmesh.new()
+    head = bmesh.new()
+    edge = bmesh.new()
+    spike = bmesh.new()
+    glow = bmesh.new()
+
+    # Vent-metal frame: shoulder stock into the receiver spine.
+    box(haft, (0.1, 0, 0.17), (0.32, 0.24, 0.36))
+    limb(haft, (0.1, 0, 0.32), (0, 0, 1.5), 0.16, 0.12, 6)
+    box(pommel, (0.13, 0, 0.02), (0.3, 0.24, 0.1))
+    limb(grip_bm, (0, 0, grip - 0.4), (0, 0, grip + 0.4), 0.17, 0.16, 7)
+
+    # The obsidian drum magazine, axis across the weapon.
+    limb(head, (0, -0.17, 1.68), (0, 0.17, 1.68), 0.3, 0.3, 10)
+
+    # Vented shroud and the barrel out of it, ending in the brake.
+    limb(edge, (0, 0, 1.85), (0, 0, 2.95), 0.15, 0.13, 8)
+    limb(edge, (0, 0, 2.95), (0, 0, length - 0.15), 0.095, 0.085, 8)
+    box(spike, (0, 0, length - 0.12), (0.26, 0.26, 0.22))
+    limb(spike, (0, 0, length - 0.04), (0, 0, length), 0.09, 0.09, 6)
+    for side in (-1, 1):
+        for z in (2.1, 2.45, 2.8):
+            box(spike, (side * 0.15, 0, z), (0.05, 0.08, 0.16))
+
+    # Obsidian trigger guard and foregrip.
+    box(guard, (-0.16, 0, 1.18), (0.06, 0.1, 0.3))
+    box(guard, (-0.21, 0, 2.35), (0.12, 0.12, 0.32))
+
+    # The incendiary core: drum faces, veins along the shroud, muzzle glow.
+    for side in (-1, 1):
+        ellipsoid(glow, (0, side * 0.19, 1.68), (0.12, 0.025, 0.12), subdiv=1)
+        box(glow, (side * 0.16, 0, 2.45), (0.02, 0.04, 0.7))
+    ellipsoid(glow, (0, 0, length - 0.01), (0.055, 0.055, 0.04), subdiv=0)
+
+    return [
+        finish("VulkanRepeater_Haft", haft),
+        finish("VulkanRepeater_Grip", grip_bm),
+        finish("VulkanRepeater_Pommel", pommel),
+        finish("VulkanRepeater_Guard", guard),
+        finish("VulkanRepeater_Head", head),
+        finish("VulkanRepeater_Edge", edge),
+        finish("VulkanRepeater_Spike", spike),
+        finish("VulkanRepeater_Glow", glow),
+    ]
+
+
 # ---------------------------------------------------------------- preview
 
 
@@ -1340,6 +1734,12 @@ def main():
         build_riftcleaver(),
         build_sootveilblade(),
         build_slagheartwarhammer(),
+        build_bogwoodbow(),
+        build_gatorjawcrossbow(),
+        build_mireflintlock(),
+        build_cinderlockcarbine(),
+        build_basaltscattergun(),
+        build_vulkanrepeater(),
     ]
 
     bpy.ops.object.select_all(action="SELECT")
