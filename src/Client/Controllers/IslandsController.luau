@@ -44,7 +44,12 @@ local TOGGLE_ACTION = "IslandsMenuToggle"
 -- island id; anything unlisted gets the sea.
 local ART = {
 	tropical = { top = Color3.fromRGB(92, 214, 226), bottom = Color3.fromRGB(236, 217, 166), token = "COVE" },
+	swamp = { top = Color3.fromRGB(83, 115, 62), bottom = Color3.fromRGB(40, 48, 34), token = "FEN" },
+	ice = { top = Color3.fromRGB(150, 191, 224), bottom = Color3.fromRGB(60, 82, 110), token = "ICE" },
 	volcano = { top = Color3.fromRGB(255, 140, 60), bottom = Color3.fromRGB(48, 30, 36), token = "ASH" },
+	gloom = { top = Color3.fromRGB(74, 60, 110), bottom = Color3.fromRGB(10, 10, 20), token = "DEEP" },
+	wreck = { top = Color3.fromRGB(140, 205, 160), bottom = Color3.fromRGB(40, 50, 46), token = "FLEET" },
+	maelstrom = { top = Color3.fromRGB(90, 130, 255), bottom = Color3.fromRGB(20, 24, 44), token = "MAW" },
 }
 local ART_DEFAULT = { top = C.accent, bottom = C.accentDark, token = "ISLE" }
 
@@ -52,6 +57,7 @@ local modal
 local list: ScrollingFrame
 local status: TextLabel
 local cards: { [string]: { travel: TextButton, here: TextLabel, level: Frame } } = {}
+local veils: { [string]: TextButton } = {}
 
 -- ============================================================ helpers
 
@@ -79,6 +85,33 @@ end
 
 local function level(): number
 	return player:GetAttribute(Progression.ATTR.level) or Progression.START_LEVEL
+end
+
+-- Site entries (site = true, deliberately outside Islands.order - the
+-- Maelstrom) are listed after the ordered islands, veiled until the player
+-- carries every island boss's heart.
+local function siteIds(): { string }
+	local ids = {}
+	for id, entry in Islands.items do
+		if entry.site and not table.find(Islands.order, id) then
+			table.insert(ids, id)
+		end
+	end
+	table.sort(ids)
+	return ids
+end
+
+-- Every island boss's Heart_<bossId> attribute - the site gate.
+local function hasAllHearts(): boolean
+	for _, id in Islands.order do
+		local entry = Islands.items[id]
+		if entry and entry.boss then
+			if player:GetAttribute("Heart_" .. entry.boss) ~= true then
+				return false
+			end
+		end
+	end
+	return true
 end
 
 -- The boss that guards the way TO this island: the previous island's.
@@ -109,6 +142,16 @@ local function render()
 		local label = refs.level:FindFirstChild("Label")
 		if label then
 			label.TextColor3 = if ok then C.green else C.red
+		end
+	end
+	-- Site cards stay veiled (and untravel-able) until every island boss's
+	-- heart is in hand.
+	local heartsDone = hasAllHearts()
+	for id, veil in veils do
+		veil.Visible = not heartsDone
+		local refs = cards[id]
+		if refs and not heartsDone then
+			refs.travel.Visible = false
 		end
 	end
 end
@@ -282,6 +325,45 @@ local function buildUi()
 			buildCard(id, i)
 		end
 	end
+	-- Site entries after the ordered islands, each under a veil that only
+	-- lifts once every island heart is claimed (render()).
+	for n, id in siteIds() do
+		local card = buildCard(id, #Islands.order + n)
+		local veil = Instance.new("TextButton")
+		veil.Name = "Veil"
+		veil.AutoButtonColor = false
+		veil.Text = ""
+		veil.BorderSizePixel = 0
+		veil.BackgroundColor3 = C.background
+		veil.BackgroundTransparency = 0.06
+		veil.Size = UDim2.new(1, 0, 1, 0)
+		veil.ZIndex = 5
+		Kit.corner(veil, 14)
+		Kit.label(veil, {
+			Name = "Mystery",
+			Font = F.header,
+			TextSize = 18,
+			TextColor3 = C.textDim,
+			TextXAlignment = Enum.TextXAlignment.Center,
+			Text = "A storm past the last chart...",
+			Position = UDim2.new(0, 0, 0, 22),
+			Size = UDim2.new(1, 0, 0, 24),
+			ZIndex = 6,
+		})
+		Kit.label(veil, {
+			Name = "Gate",
+			Font = F.bodyBold,
+			TextSize = 13,
+			TextColor3 = C.textDim,
+			TextXAlignment = Enum.TextXAlignment.Center,
+			Text = "Claim every island boss's heart to raise it from the charts.",
+			Position = UDim2.new(0, 0, 0, 52),
+			Size = UDim2.new(1, 0, 0, 18),
+			ZIndex = 6,
+		})
+		veil.Parent = card
+		veils[id] = veil
+	end
 
 	status = Kit.label(body, {
 		Name = "Status",
@@ -341,6 +423,12 @@ function IslandsController.init()
 	end)
 	player:GetAttributeChangedSignal(Progression.ATTR.level):Connect(function()
 		if modal.backdrop.Visible then
+			render()
+		end
+	end)
+	-- The site veil lifts the moment the last heart lands.
+	player.AttributeChanged:Connect(function(attribute: string)
+		if string.sub(attribute, 1, 6) == "Heart_" and modal.backdrop.Visible then
 			render()
 		end
 	end)
