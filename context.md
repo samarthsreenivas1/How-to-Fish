@@ -22,8 +22,9 @@ nine-slice plan live at:
 The plan's slice order was island → rod → fishing → everything the catch
 leads to. Slices 1–5 are built and most of 6–8 is in place in reduced form
 (see "Where things stand"); the plan has been amended in place for the
-design pivots listed under "Design decisions". Persistence (Slice 9) is not
-started.
+design pivots listed under "Design decisions". Persistence (Slice 9) landed
+2026-08-25 as `DataService`; the game is now mid-way through the 7-island
+progression revamp (`docs/revamp-plan.md` — the master design, four sessions).
 
 ## Working style — read this before starting any slice
 
@@ -76,14 +77,15 @@ between sessions.
 | Hostile non-fish creatures + drops | built, **unreviewed** | crab (rusher) + 2 upright zombie `shambler`s; per-creature drops, rare item drop; procedural models |
 | **Enemies slice 1: 8 new hostiles** | built, **unreviewed** | charger / spitter / bloater / drifter / burrower / mimic / thief / pulser archetypes, rows + procedural stand-ins, `CreatureEvent` client moments |
 | **Enemies slice 2: CreaturePack art for the 8** | built, **unreviewed / re-import pending** | `creatures_gen.py` now builds 11 species; `creatures.glb` must be re-imported as `CreaturePack` + `Assets.rbxm` re-exported |
-| **Volcano: fishable lava, rim bounds + walls** (2026-08-23) | built, **unreviewed / re-import pending** | `World.FISHABLE_NAMES` + CastAim surface-Y landings; `Islands.volcano.castRangeMult` 3×; `WorldService` samples the rim, walls it (pier gap + railings when the pier part exists), `clampToBounds` for creatures |
+| **Volcano: fishable lava, rim bounds + walls** (2026-08-23) | **SUPERSEDED 2026-08-24** | rim-top design replaced by the tall-volcano redesign below; the rim sampler/walls machinery survives in WorldService but is dormant (no `Islands.volcano.rim` block any more) |
+| **Volcano redesign: ~940-stud jagged stratovolcano, bottom dock over a lava delta** (2026-08-24) | built, **unreviewed / re-import pending** | see "Volcano" section; new `island_volcano.glb` + `island_pack.glb` generated; playable area = ash apron at sea level, ocean-bounded like the starter; `castRangeMult` 1.5; spawn moved to the apron by the dock |
 | **Island boss: Brinejaw** (2026-08-22; bait-summoned 08-23) | built, **unreviewed / re-import pending** | `Bosses.luau` + `BossService` + "boss" archetype (8 attacks, 3 phases, enrage) + `BossHudController`; gates travel to the next island; Blender `Leviathan` species in `creatures.glb` (stand-in until re-import) |
 | Coins / XP / levels | built, **unreviewed** | in-memory, gates nothing |
 | Crafting materials (earn side) | built, **unreviewed** | basic on cast, rare on kill; shown in inventory |
 | Rod crafting + multi-rod equip | built, **unreviewed** | `C` menu; 3 new rods, mats+coins+level recipes |
 | Weapon crafting + multi-weapon equip | built, **unreviewed** | `C` menu Weapons tab; club (Lv 3), blade (Lv 7), Shellcrusher (Rare, Lv 9), Drowncleaver (Epic, Lv 13) — all four are WeaponPack meshes (procedural club/blade kept as pre-import fallback; import pending), Blender swing clips |
 | **UI overhaul** (2026-08-23) | built, **unreviewed** | one kit (`Client/UI/Kit`, `Describe`, `ItemDetail`, new `Theme`); every menu + HUD rebuilt on it; no icons uploaded yet — tiles show monograms until rows get `icon` ids |
-| Persistence | not started | Slice 9 |
+| Persistence | **built 2026-08-25**, unreviewed | `DataService` (first in ORDER): UpdateAsync session locking, 60s autosave, BindToClose; slices from Progression/Inventory/Material/Bait services + `Cleared_*`/`Heart_*` attributes |
 | More archetypes (charger/spitter), style/juggle, arena | not started | see Known gaps |
 
 ### Manual Studio steps — check these first
@@ -176,7 +178,102 @@ re-import + re-export the rbxm.
   fishing pivot the dock's end square may be enough of a stage. Constants
   (`ARENA_*`) remain in `World.luau` unused. Ask before building it.
 
-### Volcano: fishable lava, the rim as the playable area (2026-08-23)
+### Volcano REDESIGN: tall stratovolcano, dock at the bottom (2026-08-24)
+
+**Supersedes the rim-top design below** (user: "new volcano map… dramatic and
+tall jagged volcano with lava flowing everywhere and then the user fishes off
+of a dock on the bottom… really really really tall"). Built on macOS —
+Blender 5.2 at `/Applications/Blender.app/Contents/MacOS/Blender` (installed
+via `brew install --cask blender`; the Windows path in the pipeline notes is
+stale on this machine).
+
+- **The shape** (`island_gen.py` `ISLANDS.volcano` overrides): ~935-stud
+  concave stratovolcano, radius still 640 (Roblox 2048 import cap; the
+  generator flags anything over the limit). **Asymmetric broken ridgeline**
+  (2026-08-24 spec pass): new `PEAK_JAG`/`PEAK_TERMS` generator globals
+  modulate the upper cone per angle (lip ranges ~885–999, zeroed across
+  each notch window so no gash seals), wide ragged crater mouth (~150-stud
+  lava lake at 838, lip u 0.155) with a crown of tall obsidian spires;
+  near-vertical craggy flanks (CRAG 56); flat walkable **ash apron at sea
+  level** (u 0.70–1.0, crag suppressed there via RIM_FLAT). Shore slope
+  matches the starter (~0.5 studs rise per 10 at the waterline) so the
+  tide reads. `print_volcano_handoff()` prints the Luau wiring numbers on
+  every build (dock start/end + plank top, spawn ground Y, rim
+  height/radius, apron shelf height).
+- **Lava**: 5 NOTCHES gash the summit lip; one full-flank WIDE flow pours
+  from each (`_lava_flow`, 40 steps, width 4→15) and spreads across the
+  base as a **cascade of 2–3 broad pools** (17–28 radius) stepping outward
+  and downhill, joined by wide spill strips — molten sheets threading the
+  apron between the rocks and dead trees (avoidance pads are ~1 stud so
+  props crowd the edges). The dock and the sea around it stay plain ocean
+  (user, 2026-08-24: no notch faces the dock angle; pool centres cap at
+  u 0.955 so lava grazes the far beaches but the chain can't enter the
+  sea). Every pool is fishable lava (`waters="volcano"` roster, reached on
+  foot); `LAVA_PONDS` records them so the apron scatter keeps clear. All
+  lava is ONE `Volcano_Lava` object — the fishing system hit-tests by
+  exact name, so never split it. **Flows raycast the base mesh's BVH**
+  (centre + both edges, 2.2 clearance): the analytic height disagrees with
+  the real mesh by tens of studs (CRAG_RADIAL jitter), which fragmented
+  earlier attempts.
+- **Dock**: a plain shore jetty into the SEA at the BOTTOM (the tropical
+  `build_dock` machinery via DOCK_* overrides — the old rim-pier builder is
+  gone), Roblox +Z, starting at r≈527 and running 92 studs past the
+  shoreline over open water; deck y 2.6, posts collared by the surf foam
+  like the starter's. You fish OCEAN water off it. Object names still
+  `Volcano_Dock_Planks/_Posts`.
+- **Apron props** (user: "more details of random stuff", then "the base is
+  barren… make it enjoyable to walk around" — densified + CLUSTERED into
+  landmarks, not a uniform sprinkle) — five single-material objects, all
+  raycast-seated, all skipping the dock corridor and the ponds:
+  `Volcano_DeadTrees` (RENAMED from Volcano_Snags 2026-08-24, spec-required
+  name; 13 burnt GROVES + loners, ~100 trees, trunks **35–75 studs** —
+  user asked for 5× after 8–18 read "way too small" against the mountain;
+  `add_cone` trunks + limbs, M_Charred), `Volcano_Basalt` (24 hex column
+  clusters, M_Basalt), `Volcano_Vents` (13 fumarole cones, most with a
+  smaller companion, M_Cinder), `Volcano_Scree` (~340 small half-buried
+  box chunks — the ground clutter, M_Obsidian), `Volcano_Dunes` (26 soft
+  ash drifts to roll the flat ground, M_VolAsh); plus ~230 boulders and 50
+  obsidian shard fangs in `Volcano_Rocks`. New `add_cone`/`cone_axis`
+  helpers. **WorldService.MESH_COLOR gained entries for all five new
+  names** — a new prop object is invisible-grey without one. A 4th preview
+  shot `_apron.png` stands on the apron looking along the base. ~16.5k
+  pre-triangulation polys for the island (was 6k).
+- **The ocean already covers the volcano** — `WorldService.oceanSpan` sizes
+  the one shared plane past the farthest PLACED island (+500 margin), and
+  `init` places islands BEFORE building the ocean (verified 2026-08-24,
+  comment at the init call), so the sea surrounds the volcano the moment
+  its mesh import exists. "No ocean / no dock / barren base" seen in-game
+  before that is the OLD imported mesh, not a code gap — the user has hit
+  this three times running; the re-import is the unblocking step. The raw
+  .glb never contains water (neither does the starter's).
+- **Scatter density after the "still barren" round (2026-08-24):** ~300
+  apron boulders (up to 11 studs), 70 obsidian shards, 460 scree chunks,
+  32 dunes, dock upsized to 110 × 14 (end 20 × 30). Whole island ~20k
+  pre-triangulation polys / ~26.5k with the tropical island in the pack —
+  each object stays under Roblox's per-mesh triangle limit; the count is
+  printed per pack build.
+- **Wiring** (`Islands.luau`): `rim`/`pier` blocks DELETED — the playable
+  apron is ocean-bounded exactly like the starter, so WorldService's rim
+  sampler/walls/`clampToBounds` are dormant (the machinery survives for a
+  future island). `castRangeMult` removed entirely (sea fishing off the
+  dock; ponds fished standing beside them). Spawn on the apron right in
+  front of the dock (3000, 12, 505). `Tuning.Cast` comment updated.
+  stylua/selene/rojo all green.
+- **NEW `NOTCH_BAND` generator global**: where NOTCHES carve, decoupled from
+  RIM_FLAT (which now marks the apron); volcano sets it to the summit lip.
+  `_drop_to_ground` now casts from y 1500 (was 500 — under the new peak).
+- **Previews**: `island_volcano_preview.png` (overview), `_dock.png`
+  (standing at sea past the dock: planks over open water, prop-littered
+  apron and the volcano behind), `_tower.png` (full spire from the sea).
+  Preview's second camera is now the dock vantage (the rim shot is gone).
+- **Manual steps owed (user, in Studio)**: re-import `island_pack.glb` (or
+  `island_volcano.glb`) so `Assets/Volcano` is the new mesh, set
+  PreciseConvexDecomposition on the Volcano parts, delete the old Volcano
+  model, re-export `Assets.rbxm`, restart `rojo serve`.
+- **Unreviewed in Studio.** Likely tuning asks: flow width/count, delta
+  size, crag amplitude, dock length, spawn spot, castRangeMult.
+
+### Volcano: fishable lava, the rim as the playable area (2026-08-23, SUPERSEDED — kept for the machinery notes)
 
 User: "don't allow the fish and creatures to leave the rim of the volcano…
 allow users to fish from the rim itself so increase the casting range…
@@ -857,8 +954,10 @@ make sure users can't leave the rim and the lava itself."
     nil, "Neutral")`) for the first player on the island (radius + 160) who
     passes the gate and hasn't cleared it. On Killed: every participant gets
     the row's rewards (killer already paid via Progression) and the
-    replicated **`Cleared_<islandId>`** Player attribute; fires `bossDown`
-    with what it unlocked. In-memory (persistence is Slice 9).
+    replicated **`Cleared_<islandId>`** Player attribute plus the permanent
+    **`Heart_<bossId>`** trophy attribute (gates the island's Legendary
+    crafts via `Recipe.requiresHearts` — owned, never spent); fires
+    `bossDown` with what it unlocked. Both persist through `DataService`.
   - **Travel gate:** `WorldService.handleTeleport` refuses island N+1 with
     "Defeat <shortName> first" unless `Cleared_<islandN>`; `Islands.items
     .<id>.boss` names the guard.
@@ -1371,11 +1470,14 @@ power-up does." Every menu and HUD is now built from one kit:
   attack its own voice). The only water sounds left are the bobber plop /
   reel tug and the boss's rise and fall (`impact_water`, pitched right
   down) — if those are the next complaint, they're one `id` each.
-- **No guns or ranged weapons, ever.** Melee only. Same weight as "no
-  Humanoid on creatures". The plan's `flyer` archetype ("only ranged weapons
-  reach it") is therefore an **open question** — don't invent a
-  melee-reaches-flyers mechanic unprompted; ask. (`spitter` — a creature
-  that spits — is still fine; that's enemy behaviour.)
+- **OVERTURNED 2026-08-24 (user): ranged weapons are coming.** This bullet
+  used to read "no guns or ranged weapons, ever"; the user explicitly
+  reversed it for the 7-island progression revamp (`docs/revamp-plan.md`) —
+  fantasy-flavored ranged early (bow / crossbow / flintlock), modern
+  firearms from the volcano island on. The ranged engine and the first
+  ranged rows land in revamp Session 2; until then every Weapons row is
+  still melee. The `flyer` archetype ships alongside ranged (its grounded
+  recovery window is the melee counterplay).
 - **Every catch is fought and killed.** No auto-collect tier.
 - **A landed catch is thrown at the player by physics** and lands inland
   behind them. A scoped exception to "no physics on creatures".
@@ -1787,10 +1889,13 @@ machine (not installed); changes live on disk. The pre-reset build is at
   section). Rods have distinct RodPack meshes; the crafted weapons now have
   WeaponPack meshes too (Shellcrusher/Drowncleaver, import pending). Remaining
   follow-up: none — equip-from-inventory is done (2026-08-22).
-- **Persistence (Slice 9):** inventory, loadout, coins/XP/level, materials
-  all reset on leave. `ProgressionService`'s `states`, `InventoryService`'s
-  tables and `MaterialService`'s counts are what a `DataService` would
-  load/save; the plan wants session locking.
+- **Persistence (Slice 9) — now BUILT (2026-08-25):** `DataService`
+  (first in the boot ORDER) loads/saves a per-player profile with
+  UpdateAsync session locking (stale after 90s; retry ×3 then kick),
+  autosave every 60s + PlayerRemoving + BindToClose. Progression /
+  Inventory / Material / Bait services each register a load/serialize
+  slice; `Cleared_*` and `Heart_*` attributes ride along. Studio without
+  API access falls back to in-memory with a loud warning and never saves.
 - **Archetypes:** ten run (`rusher`, `shambler` + the eight enemies-slice
   ones); the real fish are `flopper` by user decision. **Enemies slice 2
   (art)** is next: CreaturePack species for the eight (the rows already

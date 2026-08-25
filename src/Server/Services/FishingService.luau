@@ -485,7 +485,7 @@ local function onRequestCast(player: Player, claimedLanding)
 			Remotes.CastRejected:FireClient(player, "You have none of that bait.")
 			return
 		end
-		local ok, why = BossService.summonFor(player)
+		local ok, why = BossService.summonFor(player, summons)
 		if not ok then
 			Remotes.CastRejected:FireClient(player, why or "Nothing answers the call.")
 			return

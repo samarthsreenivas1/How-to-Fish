@@ -15,6 +15,7 @@
 local Services = script.Services
 
 local ORDER = {
+	"DataService", -- first: owns persistence; later services register their slices in init()
 	"WorldService",
 	"InventoryService",
 	"PlayerService", -- before CreatureService: the rusher's contact damage routes through it

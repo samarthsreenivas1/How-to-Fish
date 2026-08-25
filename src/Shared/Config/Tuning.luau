@@ -50,8 +50,8 @@ Tuning.Cast = {
 	-- How far from the character the bobber can land, BASE reach. The player
 	-- aims along the camera and the cast goes where that ray meets open
 	-- water/lava (see CastAim); further out than this is "get closer". A rod's
-	-- castRange perk and the island's castRangeMult multiply this - the volcano
-	-- rim is 3x, for casting out across the lava lake.
+	-- castRange perk and the island's castRangeMult multiply this (no island
+	-- currently overrides it; the knob stays for future islands).
 	MAX_DISTANCE = 80,
 
 	-- The client reports where it aimed; the server accepts the claim only if
@@ -72,6 +72,10 @@ Tuning.Rarity = {
 		Uncommon = 30,
 		Rare = 8,
 		Epic = 2,
+		-- Armed 2026-08-25 (revamp): every island now carries one Legendary
+		-- chase creature, so the tier finally rolls. Rare enough that landing
+		-- one is an event; high-luck rods and minRarity perks push it up.
+		Legendary = 0.4,
 	},
 }
 

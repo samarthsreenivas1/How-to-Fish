@@ -13,13 +13,15 @@
 -- WHERE, and what a win means:
 --
 --   - every player who damaged it (Killed's `participants`) gets the row's
---     rewards (the killer already gets them through ProgressionService) and
---     the replicated `Cleared_<islandId>` attribute, which WorldService's
---     travel gate reads and the client can show;
+--     rewards (the killer already gets them through ProgressionService), the
+--     replicated `Cleared_<islandId>` attribute (WorldService's travel gate
+--     reads it), and the `Heart_<bossId>` attribute - the boss's heart, a
+--     permanent trophy that recipes gate on (Recipe.requiresHearts) and that
+--     the final summon will one day count. Hearts are owned, never spent.
 --   - a "bossDown" CreatureEvent names what just opened up.
 --
--- In-memory like everything else (persistence is Slice 9): a player who
--- rejoins has to beat it again.
+-- Cleared_* and Heart_* persist through DataService, which scans and restores
+-- these attribute prefixes as part of the profile.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -45,6 +47,16 @@ local ISLAND_MARGIN = 160
 -- Attribute name for a beaten island boss.
 local function clearedAttribute(islandId: string): string
 	return "Cleared_" .. islandId
+end
+
+-- Attribute name for an owned boss heart. Public so CraftingService (recipe
+-- gates) and the trophy UI build the same name.
+function BossService.heartAttribute(bossId: string): string
+	return "Heart_" .. bossId
+end
+
+function BossService.hasHeart(player: Player, bossId: string): boolean
+	return player:GetAttribute(BossService.heartAttribute(bossId)) == true
 end
 
 -- islandId -> the live boss Model, while one is up.
@@ -122,13 +134,19 @@ end
 -- user, 2026-08-23: "the boss should be fished up"). The bait is the ONLY
 -- way it appears - there is no automatic raise - and it REPLACES the old
 -- best-rod + best-weapon rule: the only gate left is the boss's level (the
--- bait's own recipe is level-locked too). Returns ok and, when not, a
--- player-facing reason so the cast can say why (the caller should only
--- consume the bait on ok).
-function BossService.summonFor(player: Player): (boolean, string?)
+-- bait's own recipe is level-locked too). `bossId` is the boss the bait
+-- names (effect.summonsBoss): with more than one boss in the world, each
+-- island's Call only works in that boss's own waters. Returns ok and, when
+-- not, a player-facing reason so the cast can say why (the caller should
+-- only consume the bait on ok).
+function BossService.summonFor(player: Player, bossId: string?): (boolean, string?)
 	local boss = bossHere(player)
 	if not boss then
 		return false, "Nothing answers the call here"
+	end
+	if bossId and boss.id ~= bossId then
+		local wanted = Bosses.items[bossId]
+		return false, string.format("%s does not dwell in these waters", if wanted then wanted.shortName else "That")
 	end
 	if BossService.isCleared(player, boss.islandId) then
 		return false, string.format("%s is already defeated", boss.shortName)
@@ -179,6 +197,7 @@ local function onKilled(row, _grade: string, killer: Player?, extra)
 			ProgressionService.addXp(player, rewards.xp)
 		end
 		player:SetAttribute(clearedAttribute(boss.islandId), true)
+		player:SetAttribute(BossService.heartAttribute(boss.id), true)
 	end
 
 	-- What just opened up, for the banner.

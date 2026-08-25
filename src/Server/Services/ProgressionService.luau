@@ -4,9 +4,9 @@
 -- creature dies, and publishes the totals as replicated attributes on the
 -- Player so the HUD (and anything else) reads them without a remote.
 --
--- In-memory only: a player's coins and level live in `states` and vanish
--- when they leave. Real persistence is Slice 9's job; when it lands it
--- loads into / saves from this one table and nothing else here changes.
+-- State lives in `states` and persists through DataService: this service
+-- registers a load/serialize pair for its slice, so a rejoining player
+-- resumes their coins, XP and level.
 --
 -- Payout is data, not code: Tuning.Rewards.BY_RARITY (or a row's own
 -- `rewards`) times the reel grade's rewardMult. The only thing this service
@@ -22,6 +22,7 @@ local Remotes = require(Shared.Net.Remotes)
 local Tuning = require(Shared.Config.Tuning)
 
 local CreatureService = require(script.Parent.CreatureService)
+local DataService = require(script.Parent.DataService)
 
 local ProgressionService = {}
 
@@ -152,10 +153,30 @@ local function onKilled(row, grade: string, killer: Player?, extra)
 	})
 end
 
+-- ============================================================ persistence
+
+-- DataService slice: the whole state table, restored over the join defaults.
+local function loadSlice(player: Player, slice)
+	if type(slice) ~= "table" then
+		return -- fresh profile: keep the ensure() defaults
+	end
+	local state = ensure(player)
+	state.coins = math.max(0, math.floor(tonumber(slice.coins) or state.coins))
+	state.xp = math.max(0, math.floor(tonumber(slice.xp) or state.xp))
+	state.level = math.clamp(math.floor(tonumber(slice.level) or state.level), P.START_LEVEL, Progression.MAX_LEVEL)
+	publish(player, state)
+end
+
+local function serializeSlice(player: Player)
+	local state = ensure(player)
+	return { coins = state.coins, xp = state.xp, level = state.level }
+end
+
 -- ============================================================ lifecycle
 
 function ProgressionService.init()
 	CreatureService.Killed.Event:Connect(onKilled)
+	DataService.register("progression", { load = loadSlice, serialize = serializeSlice })
 end
 
 function ProgressionService.start()

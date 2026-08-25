@@ -74,11 +74,13 @@ Bosses.items.brinejaw = {
 	shortName = "Brinejaw",
 	creature = "brinejaw",
 	islandId = "tropical",
-	-- Summoned by casting the Leviathan's Call bait (Bait.luau, itself Lv 15
-	-- and crafted from every creature's signature drop), so the bait IS the
-	-- gear gate: no rod/weapon requirement (user, 2026-08-23 - it replaced
-	-- the original "best rod + best weapon" rule).
-	gate = { level = 15 },
+	-- Summoned by casting the Leviathan's Call bait (Bait.luau, itself Lv 7
+	-- and crafted from the cove's signature drops), so the bait IS the gear
+	-- gate: no rod/weapon requirement (user, 2026-08-23 - it replaced the
+	-- original "best rod + best weapon" rule). Re-gated 15 -> 7 in the
+	-- revamp's level-band pass (docs/revamp-plan.md): Starter Cove is L1-7
+	-- and Brinejaw is its band-end capstone.
+	gate = { level = 7 },
 	-- The open water just past the round arena deck at the dock's end (the
 	-- deck spans z 122..198 - World.ARENA_CENTER / ARENA_RADIUS): it rises
 	-- off the deck's far rim and can haul itself a few studs onto it, so
@@ -188,6 +190,128 @@ Bosses.items.brinejaw = {
 			flight = 0.8,
 			radius = 6,
 			damage = { 28, 40 },
+		},
+	},
+}
+
+-- ============================================================ Ashfall Caldera
+-- Pyrelisk, the Caldera Wyrm: an obsidian-scaled magma serpent that rises
+-- out of the boiling shallows off the shore jetty (the ponds move with every
+-- mesh regen, so the arena sits in the sea off the dock - the one spot the
+-- generator keeps stable; Session 4 can move it into the largest pond).
+-- Summoned by casting Caldera's Call (Bait.luau). Three phases: bites and
+-- broadsides, then it dives the shallows and coughs up oozes - splitters, so
+-- the adds multiply - then it enrages and rains embers. Interim numbers for
+-- the volcano's slot-2 band; re-tuned when the island slides to slot 4
+-- (docs/revamp-plan.md).
+Bosses.items.pyrelisk = {
+	id = "pyrelisk",
+	name = "Pyrelisk, the Caldera Wyrm",
+	shortName = "Pyrelisk",
+	creature = "pyrelisk",
+	islandId = "volcano",
+	-- The bait is the gate, as with Brinejaw: level only, matching Caldera's
+	-- Call's own recipe level (the volcano band's end).
+	gate = { level = 14 },
+	-- Off the end of the shore jetty (the dock runs out past r~527 on +Z):
+	-- it rises from the sea and can haul itself toward the planks, so players
+	-- fight it from the jetty and the apron's edge.
+	arena = { offset = Vector3.new(0, 0, 590), radius = 30 },
+	aggro = 90,
+	standoff = 14,
+	hitRadius = 6, -- at scale 1, pivot to the jaw; x1.5 = 9, matching Brinejaw's frame
+	submerge = 2.4,
+	riseDepth = 18,
+	riseTime = 3.8,
+	speed = 8,
+	turnRate = math.rad(80),
+	attackGapMin = 0.7,
+	attackGapMax = 1.3,
+	enrageBelow = 0.3,
+	enrageCooldownMult = 0.55,
+	enrageDamageMult = 1.4,
+	phases = {
+		{ below = 1.0, attacks = { "snap", "volley", "slam" } },
+		{ below = 0.6, attacks = { "snap", "volley", "slam", "dive", "brood", "pull" } },
+		{ below = 0.3, attacks = { "snap", "slam", "dive", "brood", "pull", "tail", "spines", "spines" } },
+	},
+	attacks = {
+		snap = {
+			windup = 0.7,
+			duration = 0.35,
+			recover = 0.55,
+			cooldown = 1.8,
+			lunge = 14,
+			radius = 17,
+			cone = math.rad(65),
+			damage = { 60, 85 },
+		},
+		-- The magma-glob broadside: its opening ranged pressure, so phase 1
+		-- already teaches "keep moving" the way Brinejaw's volley does later.
+		volley = {
+			windup = 0.7,
+			duration = 0.9,
+			recover = 0.5,
+			cooldown = 3.0,
+			count = 6,
+			spread = 12,
+			flight = 1.0,
+			stagger = 0.13,
+			radius = 8,
+			damage = { 24, 34 },
+		},
+		slam = { windup = 1.6, duration = 0.3, recover = 0.85, cooldown = 4.2, radius = 26, damage = { 60, 85 } },
+		-- Swims the boiling shallows under the jetty after the player's live
+		-- position, then locks and bursts - Brinejaw's dive with a lava wake.
+		dive = {
+			windup = 0.7,
+			duration = 2.6,
+			lock = 0.9,
+			recover = 0.9,
+			cooldown = 7.5,
+			speed = 32,
+			radius = 13,
+			damage = { 60, 85 },
+		},
+		-- Coughs up magma oozes: splitters, so every add the players ignore
+		-- becomes two. The swarm pressure IS this boss's signature.
+		brood = {
+			windup = 0.8,
+			duration = 0.4,
+			recover = 0.6,
+			cooldown = 10.0,
+			count = 3,
+			rows = { "magma_ooze", "ember_swarm", "fumarole" },
+		},
+		pull = {
+			windup = 0.5,
+			duration = 2.4,
+			recover = 0.2,
+			cooldown = 6.5,
+			radius = 65,
+			strength = 36,
+			follow = "snap",
+		},
+		tail = {
+			windup = 0.9,
+			duration = 0.45,
+			recover = 0.65,
+			cooldown = 2.4,
+			radius = 21,
+			damage = { 50, 70 },
+		},
+		-- The summit answers: embers rain down around the player. Skinned as
+		-- an eruption by the client; numbers are Brinejaw's spines.
+		spines = {
+			windup = 0.8,
+			duration = 1.6,
+			recover = 0.5,
+			cooldown = 5.0,
+			count = 10,
+			spread = 14,
+			flight = 0.8,
+			radius = 6,
+			damage = { 30, 42 },
 		},
 	},
 }

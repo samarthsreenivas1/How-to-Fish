@@ -96,69 +96,14 @@ Materials.items.cursed_bone = {
 	color = Color3.fromRGB(120, 116, 96),
 }
 
--- Signature drops off the newer hostile creatures (Creatures.luau `drops`), one
--- per enemy, for the rods/weapons/bait that will consume them. All rare-tier
--- (earned by killing the catch, not pulled up on a plain cast).
-
-Materials.items.skitterfin = {
-	id = "skitterfin",
-	name = "Skitterfin",
-	description = "A springy stilt-fin off a Tideline Skipper. Light, quick, and always twitching.",
-	tier = "rare",
-	rarity = "Uncommon",
-	icon = "",
-	color = Color3.fromRGB(128, 140, 92),
-}
-
-Materials.items.brine_gland = {
-	id = "brine_gland",
-	name = "Brine Gland",
-	description = "A Gullet Cod's caustic sac, still sloshing with venom. Handle at arm's length.",
-	tier = "rare",
-	rarity = "Uncommon",
-	icon = "",
-	color = Color3.fromRGB(86, 150, 96),
-}
-
-Materials.items.gild_shell = {
-	id = "gild_shell",
-	name = "Gilded Shell",
-	description = "A coin-crusted shard of a Pickpocket Hermit's pot. Half shell, half treasure.",
-	tier = "rare",
-	rarity = "Uncommon",
-	icon = "",
-	color = Color3.fromRGB(230, 190, 110),
-}
-
-Materials.items.moonjelly = {
-	id = "moonjelly",
-	name = "Moonjelly",
-	description = "Cold bioluminescent jelly from a Moonbell. It glows faintly in the dark.",
-	tier = "rare",
-	rarity = "Uncommon",
-	icon = "",
-	color = Color3.fromRGB(200, 214, 236),
-}
-
-Materials.items.tidebomb_spine = {
-	id = "tidebomb_spine",
-	name = "Tidebomb Spine",
-	description = "A volatile urchin spine that never quite stops humming. Best kept apart.",
-	tier = "rare",
-	rarity = "Rare",
-	icon = "",
-	color = Color3.fromRGB(150, 90, 146),
-}
-
-Materials.items.lurker_hide = {
-	id = "lurker_hide",
-	name = "Lurker Hide",
-	description = "The sand-mottled hide of a Sand Lurker. It takes any colour you dye it.",
-	tier = "rare",
-	rarity = "Rare",
-	icon = "",
-	color = Color3.fromRGB(196, 176, 130),
-}
+-- Signature drops off the hostile creatures (Creatures.luau `drops`), for the
+-- rods/weapons/bait that consume them. All rare-tier (earned by killing the
+-- catch, not pulled up on a plain cast). THINNED 2026-08-25
+-- (docs/revamp-plan.md): each island keeps ~4 signature materials; the six
+-- one-off per-enemy drops (skitterfin, brine_gland, gild_shell, moonjelly,
+-- tidebomb_spine, lurker_hide) were cut and their creatures' drops remapped
+-- onto the survivors. Boss hearts are no longer materials either - a heart is
+-- the Heart_<bossId> attribute BossService sets, owned forever, never spent.
 
 Materials.items.nacre = {
 	id = "nacre",
@@ -180,20 +125,9 @@ Materials.items.volt_gland = {
 	color = Color3.fromRGB(120, 220, 255),
 }
 
-Materials.items.brineheart = {
-	id = "brineheart",
-	name = "Brineheart",
-	description = "The cold, still-beating heart of Brinejaw. The stuff of legends.",
-	tier = "rare",
-	rarity = "Legendary",
-	icon = "",
-	color = Color3.fromRGB(120, 255, 214),
-}
-
 -- Volcano drops (2026-08-23). The lava island's own material chain, dropped by
 -- the volcano fish and hostiles (Creatures.luau `waters = "volcano"` rows). All
--- rare-tier; they feed the volcano rods/weapons/bait recipes to come. See
--- docs/volcano-content-spec.md.
+-- rare-tier; they feed the volcano rods/weapons/bait recipes.
 
 Materials.items.ember = {
 	id = "ember",
@@ -235,28 +169,8 @@ Materials.items.magma_core = {
 	color = Color3.fromRGB(244, 96, 40),
 }
 
-Materials.items.lodestone = {
-	id = "lodestone",
-	name = "Lodestone",
-	description = "A magnetised ore from a Lodestone Eel. It tugs at anything metal nearby.",
-	tier = "rare",
-	rarity = "Epic",
-	icon = "",
-	color = Color3.fromRGB(96, 108, 132),
-}
-
-Materials.items.phoenix_ash = {
-	id = "phoenix_ash",
-	name = "Phoenix Ash",
-	description = "The ash of something that refused to stay dead. It smoulders back to warmth in your hand.",
-	tier = "rare",
-	rarity = "Legendary",
-	icon = "",
-	color = Color3.fromRGB(255, 168, 96),
-}
-
 -- Stable display order for the HUD / crafting list (table iteration order
--- isn't guaranteed). Basic first, then rare, then the newer creature drops.
+-- isn't guaranteed). Basic first, then rare, then the creature drops by island.
 Materials.order = {
 	"driftwood",
 	"kelp_fiber",
@@ -264,21 +178,12 @@ Materials.order = {
 	"pearl",
 	"barnacle_chitin",
 	"cursed_bone",
-	"skitterfin",
-	"brine_gland",
-	"gild_shell",
-	"moonjelly",
-	"tidebomb_spine",
-	"lurker_hide",
 	"nacre",
 	"volt_gland",
-	"brineheart",
 	"ember",
 	"sulfur",
 	"obsidian_shard",
 	"magma_core",
-	"lodestone",
-	"phoenix_ash",
 }
 
 return Materials

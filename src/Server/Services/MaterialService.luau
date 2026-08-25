@@ -1,8 +1,9 @@
 --!nonstrict
 -- MaterialService.luau
--- Owns each player's crafting materials. In-memory only for now (real
--- persistence is Slice 9), keyed by Player and thrown away on leave - the
--- same shape as InventoryService and ProgressionService.
+-- Owns each player's crafting materials, keyed by Player - the same shape as
+-- InventoryService and ProgressionService. Counts persist through DataService
+-- (a "materials" slice); ids that no longer exist in Materials.luau are
+-- dropped on load, so cutting a material retires it from old profiles.
 --
 -- Two earn paths, both wired here so nothing else needs to know the rules:
 --   - grantCast: called from FishingService the moment a cast resolves,
@@ -26,6 +27,7 @@ local Remotes = require(Shared.Net.Remotes)
 local Tuning = require(Shared.Config.Tuning)
 
 local CreatureService = require(script.Parent.CreatureService)
+local DataService = require(script.Parent.DataService)
 
 local MaterialService = {}
 
@@ -180,6 +182,29 @@ function MaterialService.spend(player: Player, cost: { [string]: number }): bool
 	return true
 end
 
+-- ============================================================ persistence
+
+local function loadSlice(player: Player, slice)
+	if type(slice) ~= "table" then
+		return
+	end
+	local owned = counts[player]
+	if not owned then
+		return
+	end
+	for matId, amount in slice do
+		amount = math.floor(tonumber(amount) or 0)
+		if amount > 0 and Materials.items[matId] then
+			owned[matId] = amount
+		end
+	end
+	pushCounts(player)
+end
+
+local function serializeSlice(player: Player)
+	return table.clone(counts[player] or {})
+end
+
 -- ============================================================ lifecycle
 
 local function onPlayerAdded(player: Player)
@@ -192,6 +217,7 @@ local function onPlayerRemoving(player: Player)
 end
 
 function MaterialService.init()
+	DataService.register("materials", { load = loadSlice, serialize = serializeSlice })
 	Remotes.GetMaterials.OnServerInvoke = function(player: Player)
 		return counts[player] or {}
 	end

@@ -2,9 +2,9 @@
 -- BaitService.luau
 -- Owns each player's bait: a stackable, consumable count (exactly the storage
 -- model MaterialService uses) plus a single "selected bait" choice (exactly the
--- selection model InventoryService uses for the equipped rod). In-memory only
--- for now, keyed by Player and dropped on leave, like the other per-player
--- services (real persistence is a later slice).
+-- selection model InventoryService uses for the equipped rod). Counts persist
+-- through DataService (a "bait" slice); the selection is intent, not property,
+-- and deliberately starts empty each session.
 --
 -- Two halves:
 --   - Counts: grant (from CraftingService when a bait recipe is crafted) and
@@ -22,6 +22,8 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Bait = require(Shared.Data.Bait)
 local Equipment = require(Shared.Config.Equipment)
 local Remotes = require(Shared.Net.Remotes)
+
+local DataService = require(script.Parent.DataService)
 
 local BaitService = {}
 
@@ -120,6 +122,29 @@ function BaitService.setSelected(player: Player, baitId: string?): boolean
 	return true
 end
 
+-- ============================================================ persistence
+
+local function loadSlice(player: Player, slice)
+	if type(slice) ~= "table" then
+		return
+	end
+	local owned = counts[player]
+	if not owned then
+		return
+	end
+	for baitId, amount in slice do
+		amount = math.floor(tonumber(amount) or 0)
+		if amount > 0 and Bait.items[baitId] then
+			owned[baitId] = amount
+		end
+	end
+	pushCounts(player)
+end
+
+local function serializeSlice(player: Player)
+	return table.clone(counts[player] or {})
+end
+
 -- ============================================================ lifecycle
 
 local function onPlayerAdded(player: Player)
@@ -135,6 +160,7 @@ local function onPlayerRemoving(player: Player)
 end
 
 function BaitService.init()
+	DataService.register("bait", { load = loadSlice, serialize = serializeSlice })
 	Remotes.GetBait.OnServerInvoke = function(player: Player)
 		return counts[player] or {}
 	end

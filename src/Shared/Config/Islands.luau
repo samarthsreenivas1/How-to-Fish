@@ -60,53 +60,34 @@ Islands.items = {
 	-- ReplicatedStorage/Assets as "Volcano" (assets/README.md). Until the mesh
 	-- exists the menu shows it as "coming soon" and travel is refused, so it is
 	-- safe to leave listed. Placed far from the origin so it doesn't overlap the
-	-- starter on the shared ocean; the spawn is a point on the crater rim
-	-- (rim top ~= y 200 in the generator) - tune it after importing.
+	-- starter on the shared ocean.
+	--
+	-- REDESIGNED 2026-08-24 (user): a ~940-stud jagged stratovolcano you never
+	-- climb. The playable area is the flat ash APRON around the foot at sea
+	-- level - ocean-bounded exactly like the starter, so there is deliberately
+	-- no `rim`/`pier` bounds block any more (WorldService's rim sampler is
+	-- dormant without one). The fishing dock is a plain shore jetty into the
+	-- SEA (Roblox +Z side, same convention as the starter's dock; you fish
+	-- ocean water off it). Lava pours from the summit crater down every flank
+	-- and dies in molten PONDS on the apron - those ponds are the island's
+	-- fishable lava (the `waters = "volcano"` roster), reached on foot, and
+	-- the apron is littered with burnt snags / basalt columns / cinder vents.
 	volcano = {
 		name = "Ashfall Caldera",
-		blurb = "A towering volcano - fish the lava from the crater rim.",
+		blurb = "A towering volcano - fish its shore, brave the lava ponds.",
 		model = "Volcano",
 		worldPosition = Vector3.new(3000, 0, 0),
 		radius = 640, -- capped so the base mesh imports (Roblox's 2048-stud limit)
-		spawn = Vector3.new(3124, 205, 215), -- X/Z: on the rim right in front of the pier mouth, facing inward onto it; Y (~200) is the probe's reference + fallback only
-		unlockLevel = 5,
-		-- Casts from the rim reach further than on the beach: the lake is a
-		-- cliff-drop below and ~385 studs across (radius ~192, LAKE_U 0.30 x
-		-- 640; the rim's inner edge is ~205 out). With Tuning.Cast.MAX_DISTANCE
-		-- 80 this gives 160 studs - past the lake's centre - and 256 with the
-		-- Abyssal Rod's 1.6x; 3.0 reached the far shore once the base rose to
-		-- 80 (2026-08-23).
-		castRangeMult = 2.0,
-		-- The playable area is the crater rim - a flat ring at ~y 200 whose
-		-- outline wobbles with the generator's COAST_TERMS - plus the fishing
-		-- pier that runs inward from it over the lava. WorldService SAMPLES the
-		-- placed mesh to find the ring's inner/outer edge per angle (no fixed
-		-- circle could follow the jagged outline), walls it invisibly so
-		-- players can't leave it or fall into the lake, and clamps every
-		-- creature to it (user, 2026-08-23).
-		rim = {
-			height = 200, -- the flat rim's height (island_gen PROFILE); ground within `tolerance` of it counts as rim
-			tolerance = 4,
-			minRadius = 120, -- where the radial search starts / ends, studs from worldPosition
-			maxRadius = 480,
-			step = 3, -- radial sample spacing
-			samples = 180, -- angular samples round the ring (2 degrees each)
-			cliff = 12, -- lava shore -> cliff top (PROFILE u 0.30 -> 0.32 x 640); the inner wall sits here at least
-
-			wallHeight = 80,
-			margin = 2, -- creatures are kept this far inside the edges
-		},
-		-- The rim pier (island_gen build_volcano_dock): found at runtime from
-		-- the Volcano_Dock_Planks part (it's radial, so its centre gives the
-		-- direction); these are its authored dimensions.
-		pier = {
-			partName = "Volcano_Dock_Planks",
-			length = 130,
-			width = 16,
-			endLength = 24,
-			endWidth = 30,
-			deckY = 198,
-		},
+		spawn = Vector3.new(3000, 12, 505), -- X/Z: on the ash apron right in front of the dock (dock starts at r~527 on +Z); Y is the probe's reference + fallback only
+		-- Interim gate (docs/revamp-plan.md): the volcano is island 2 until the
+		-- swamp and ice islands ship, so it opens right after Brinejaw's L1-7
+		-- band. When it slides to slot 4 this becomes 22 (and the position moves).
+		unlockLevel = 8,
+		-- Pyrelisk guards it (summoned by Caldera's Call, exactly the Brinejaw
+		-- ritual) - the progression chain no longer dead-ends here.
+		boss = "pyrelisk",
+		-- No castRangeMult: the dock fishes open sea and the lava ponds are
+		-- fished standing beside them, so the base reach is right.
 	},
 }
 

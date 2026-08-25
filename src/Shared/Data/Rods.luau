@@ -5,6 +5,13 @@
 -- `Rods.items`, keyed by id. Adding a rod is a new entry here, never a new
 -- code path.
 --
+-- THINNED 2026-08-25 (docs/revamp-plan.md): every island carries exactly five
+-- craftable rods (U / R / R / E / Legendary), the starter apart, and each
+-- island's Legendary is gated on that island's boss heart (recipe
+-- `requiresHearts` - the Heart_<bossId> attribute BossService sets; owned,
+-- never spent). Eleven stat-shuffle rods were cut; their perk effects all
+-- survive on the keepers or on later islands' rods.
+--
 -- Stats stay to three, each centred on 1.0, so a rod's power is legible at a
 -- glance and comparing two rods is just comparing three numbers:
 --   luck    - multiplies the odds of a rare catch (the rarity roll, once the
@@ -59,12 +66,16 @@ export type ReelConfig = {
 -- What it costs to craft this rod (CraftingService). A rod with no `recipe`
 -- is not craftable - the starter, and any future shop-only rod. `materials`
 -- is keyed by Materials id; `coins` is spent from ProgressionService;
--- `requiresLevel` gates it behind the player's level. Same shape will
--- describe weapon recipes later - crafting is item-agnostic.
+-- `requiresLevel` gates it behind the player's level. `requiresHearts` lists
+-- Bosses ids whose Heart_<bossId> attribute the player must carry (set by
+-- BossService on the kill) - checked, never spent, so a heart-gated craft
+-- stays craftable forever after the boss falls. Same shape describes weapon
+-- and bait recipes - crafting is item-agnostic.
 export type Recipe = {
 	requiresLevel: number,
 	coins: number,
 	materials: { [string]: number },
+	requiresHearts: { string }?,
 }
 
 -- A special fishing power-up, on the rarer rods only. `name`/`description` are
@@ -152,13 +163,11 @@ Rods.items.twig_rod = {
 	},
 }
 
--- ============================================================ Craftable
-
--- Each is its own variant in the RodPack (rod_gen.py), sharing the twig's
--- grip/length frame. Each leans into one stat; the base `reel` stays the
--- twig's and the stats do the differentiating (FishingService.reelConfigFor
--- scales barSpeed by power and the zone widths by control). Recipes escalate
--- in level, mats and coins.
+-- ============================================================ Starter Cove (L2-7)
+-- Five craftable rods, one per gate step of the first island's band. Each is
+-- its own variant in the RodPack (rod_gen.py), sharing the twig's grip/length
+-- frame; the base `reel` stays the twig's and the stats differentiate
+-- (FishingService.reelConfigFor scales barSpeed by power and widths by control).
 
 Rods.items.bamboo_rod = {
 	id = "bamboo_rod",
@@ -239,7 +248,7 @@ Rods.items.anglers_rod = {
 		greenWidth = 0.16,
 	},
 	recipe = {
-		requiresLevel = 5,
+		requiresLevel = 3,
 		coins = 150,
 		materials = { driftwood = 12, kelp_fiber = 10, fish_scale = 6 },
 	},
@@ -251,60 +260,6 @@ Rods.items.anglers_rod = {
 		streakMax = 0.5,
 	},
 }
-
-Rods.items.abyssal_rod = {
-	id = "abyssal_rod",
-	name = "Abyssal Rod",
-	description = "Forged for the deep. Fast and unforgiving, but it lands legends.",
-	rarity = "Rare",
-	icon = "rbxassetid://127315429765321", -- assets/icons/abyssal_rod.png
-	model = {
-		model = "RodPack",
-		variant = "Abyssal",
-		grip = 0.95,
-		length = 7.0,
-		-- Black iron with glowing teal rings, a dark line, and an anglerfish
-		-- lantern for a float: glowing orb over an iron cage.
-		colors = {
-			twig = Color3.fromRGB(40, 44, 60),
-			grip = Color3.fromRGB(31, 33, 46),
-			trim = Color3.fromRGB(64, 224, 208),
-			line = Color3.fromRGB(60, 68, 88),
-			bobberTop = Color3.fromRGB(90, 240, 220),
-			bobberBottom = Color3.fromRGB(28, 30, 40),
-		},
-		neon = { "Rod_Trim", "Rod_BobberTop" },
-	},
-	stats = {
-		luck = 1.15,
-		power = 1.3,
-		control = 1.1,
-	},
-	reel = {
-		clicksRequired = 3,
-		barSpeed = 0.6,
-		redWidth = 0.05,
-		greenWidth = 0.16,
-	},
-	recipe = {
-		requiresLevel = 10,
-		coins = 400,
-		materials = { fish_scale = 15, pearl = 3 },
-	},
-	perk = {
-		id = "abyssal_pull",
-		name = "Abyssal Pull",
-		description = "Built for water no other line reaches: it casts far past the shallows, and the deep never surrenders commons.",
-		minRarity = "Uncommon",
-		castRange = 1.6,
-	},
-}
-
--- ============================================================ Rare / Epic (creature mats)
--- Two rods built from the mats the hostile creatures drop (Creatures.luau
--- drops): barnacle chitin off the Snapjaw Crab, cursed bone off the drowned.
--- They share the twig frame (grip 0.95 / length 7.0) like the others; each is
--- its own RodPack variant in rod_gen.py.
 
 Rods.items.reefmaw_rod = {
 	id = "reefmaw_rod",
@@ -339,7 +294,7 @@ Rods.items.reefmaw_rod = {
 		greenWidth = 0.16,
 	},
 	recipe = {
-		requiresLevel = 8,
+		requiresLevel = 4,
 		coins = 300,
 		materials = { driftwood = 10, barnacle_chitin = 8, fish_scale = 6 },
 	},
@@ -384,10 +339,14 @@ Rods.items.bonecaster_rod = {
 		redWidth = 0.05,
 		greenWidth = 0.16,
 	},
+	-- Deliberately costs NO cursed_bone: shamblers (the only cursed_bone
+	-- droppers) are locked behind this rod's callsArchetype, so this recipe
+	-- is the key to that whole chain - pricing it in cursed_bone was a
+	-- catch-22 (found in the 2026-08-25 thinning pass).
 	recipe = {
-		requiresLevel = 14,
+		requiresLevel = 5,
 		coins = 600,
-		materials = { cursed_bone = 10, pearl = 4, barnacle_chitin = 5 },
+		materials = { barnacle_chitin = 8, pearl = 4, fish_scale = 10 },
 	},
 	perk = {
 		id = "drowned_tide",
@@ -398,62 +357,10 @@ Rods.items.bonecaster_rod = {
 	},
 }
 
--- ============================================================ Epic / Legendary (new creature mats)
--- Built from what the later hostiles drop: a Voltray's electric organ and a
--- Pearl Mimic's nacre, and - once Brinejaw is dead - its heart. Same RodPack
--- frame (grip 0.95 / length 7.0); each is its own variant in rod_gen.py.
-
-Rods.items.voltline_rod = {
-	id = "voltline_rod",
-	name = "Voltline Rod",
-	description = "A Voltray's organ wound into the blank. The line hums, and nothing small comes near it.",
-	rarity = "Epic",
-	icon = "",
-	model = {
-		model = "RodPack",
-		variant = "Voltline",
-		grip = 0.95,
-		length = 7.0,
-		-- Dark blank, pale nacre hardware, a crackling blue float.
-		colors = {
-			twig = Color3.fromRGB(58, 64, 82),
-			grip = Color3.fromRGB(38, 42, 54),
-			trim = Color3.fromRGB(206, 222, 236),
-			line = Color3.fromRGB(178, 220, 246),
-			bobberTop = Color3.fromRGB(126, 214, 255),
-			bobberBottom = Color3.fromRGB(236, 246, 252),
-		},
-		neon = { "Rod_Trim", "Rod_BobberTop" },
-	},
-	stats = {
-		luck = 1.5,
-		power = 1.5, -- the fastest bar of any rod
-		control = 1.15,
-	},
-	reel = {
-		clicksRequired = 3,
-		barSpeed = 0.6,
-		redWidth = 0.05,
-		greenWidth = 0.16,
-	},
-	recipe = {
-		requiresLevel = 16,
-		coins = 700,
-		materials = { volt_gland = 8, nacre = 6, pearl = 3 },
-	},
-	perk = {
-		id = "live_wire",
-		name = "Live Wire",
-		description = "The charge scares off the small fry and reaches water a shorter line can't - nothing under Rare, and a longer cast besides.",
-		minRarity = "Rare",
-		castRange = 1.3,
-	},
-}
-
 Rods.items.brineheart_rod = {
 	id = "brineheart_rod",
 	name = "Brineheart Rod",
-	description = "Strung on a thread of Brinejaw's heart. The sea answers it, and it does not fray.",
+	description = "Strung in the presence of Brinejaw's still-beating heart. The sea answers it, and it does not fray.",
 	rarity = "Legendary",
 	icon = "",
 	model = {
@@ -483,10 +390,13 @@ Rods.items.brineheart_rod = {
 		redWidth = 0.05,
 		greenWidth = 0.16,
 	},
+	-- The island's capstone: gated on the heart itself (owned, never spent),
+	-- not on a heart material - beat Brinejaw and it's yours to build.
 	recipe = {
-		requiresLevel = 20,
+		requiresLevel = 7,
 		coins = 1500,
-		materials = { brineheart = 1, volt_gland = 6, cursed_bone = 8 },
+		materials = { volt_gland = 6, cursed_bone = 8, nacre = 5 },
+		requiresHearts = { "brinejaw" },
 	},
 	perk = {
 		id = "the_sea_answers",
@@ -498,7 +408,272 @@ Rods.items.brineheart_rod = {
 	},
 }
 
+-- ============================================================ Ashfall Caldera (interim L8-14)
+-- The volcano's five, built from its material chain (ember / sulfur /
+-- obsidian shard / magma core). INTERIM GATES: the volcano is still island 2
+-- while the swamp and ice islands are built, so this band sits at L8-14 with
+-- island-2-scale costs; when it slides to slot 4 (Session 4,
+-- docs/revamp-plan.md) these re-gate to L22-28 and re-cost. Same twig frame;
+-- each is its own RodPack variant in rod_gen.py.
+
+Rods.items.cinderline_rod = {
+	id = "cinderline_rod",
+	name = "Cinderline Rod",
+	description = "A driftwood shaft laced with cooling cinders. The line catches quick, and forgives the first slip.",
+	rarity = "Uncommon",
+	icon = "",
+	model = {
+		model = "RodPack",
+		variant = "Cinderline",
+		grip = 0.95,
+		length = 7.0,
+		-- Driftwood scorched dark, ember-bright trim, a soot-pale line, an
+		-- ember-orange float.
+		colors = {
+			twig = Color3.fromRGB(94, 72, 54),
+			grip = Color3.fromRGB(61, 49, 39),
+			trim = Color3.fromRGB(240, 132, 52),
+			line = Color3.fromRGB(196, 181, 163),
+			bobberTop = Color3.fromRGB(240, 132, 52),
+			bobberBottom = Color3.fromRGB(60, 54, 46),
+		},
+	},
+	stats = {
+		luck = 1.05,
+		power = 1.30,
+		control = 1.05,
+	},
+	reel = {
+		clicksRequired = 3,
+		barSpeed = 0.6,
+		redWidth = 0.05,
+		greenWidth = 0.16,
+	},
+	recipe = {
+		requiresLevel = 8,
+		coins = 250,
+		materials = { ember = 10, sulfur = 6, driftwood = 8 },
+	},
+	perk = {
+		id = "cinder_catch",
+		name = "Cinder Catch",
+		description = "A spark catches before the line ever slips - your first miss each cast costs you nothing.",
+		freeMisses = 1,
+	},
+}
+
+Rods.items.obsidian_rod = {
+	id = "obsidian_rod",
+	name = "Obsidian Rod",
+	description = "A blade of volcanic glass lashed to a shaft. Reaches the far pools, and won't waste the trip on anything common.",
+	rarity = "Rare",
+	icon = "",
+	model = {
+		model = "RodPack",
+		variant = "Obsidian",
+		grip = 0.95,
+		length = 7.0,
+		-- Glassy black-obsidian shaft, glowing ember hardware, an
+		-- ember-lit float.
+		colors = {
+			twig = Color3.fromRGB(48, 44, 60),
+			grip = Color3.fromRGB(34, 31, 42),
+			trim = Color3.fromRGB(240, 132, 52),
+			line = Color3.fromRGB(90, 84, 100),
+			bobberTop = Color3.fromRGB(240, 132, 52),
+			bobberBottom = Color3.fromRGB(40, 37, 50),
+		},
+		neon = { "Rod_Trim", "Rod_BobberTop" },
+	},
+	stats = {
+		luck = 1.20,
+		power = 1.25,
+		control = 1.15,
+	},
+	reel = {
+		clicksRequired = 3,
+		barSpeed = 0.6,
+		redWidth = 0.05,
+		greenWidth = 0.16,
+	},
+	recipe = {
+		requiresLevel = 9,
+		coins = 400,
+		materials = { obsidian_shard = 10, fish_scale = 8 },
+	},
+	perk = {
+		id = "obsidian_edge",
+		name = "Obsidian Edge",
+		description = "Ground to a glassy edge that reaches the far pools and won't settle for anything less than Uncommon.",
+		minRarity = "Uncommon",
+		castRange = 1.5,
+	},
+}
+
+Rods.items.cinderglass_rod = {
+	id = "cinderglass_rod",
+	name = "Cinderglass Rod",
+	description = "Obsidian fused with hot cinder. It glows a little brighter the longer your streak holds.",
+	rarity = "Rare",
+	icon = "",
+	model = {
+		model = "RodPack",
+		variant = "Cinderglass",
+		grip = 0.95,
+		length = 7.0,
+		-- Obsidian fused with hot cinder, glowing magma-orange hardware
+		-- and float.
+		colors = {
+			twig = Color3.fromRGB(48, 44, 60),
+			grip = Color3.fromRGB(34, 31, 42),
+			trim = Color3.fromRGB(244, 96, 40),
+			line = Color3.fromRGB(100, 90, 100),
+			bobberTop = Color3.fromRGB(244, 96, 40),
+			bobberBottom = Color3.fromRGB(48, 44, 60),
+		},
+		neon = { "Rod_Trim", "Rod_BobberTop" },
+	},
+	stats = {
+		luck = 1.25,
+		power = 1.30,
+		control = 1.10,
+	},
+	reel = {
+		clicksRequired = 3,
+		barSpeed = 0.6,
+		redWidth = 0.05,
+		greenWidth = 0.16,
+	},
+	recipe = {
+		requiresLevel = 11,
+		coins = 500,
+		materials = { obsidian_shard = 10, ember = 10, fish_scale = 4 },
+	},
+	perk = {
+		id = "glass_streak",
+		name = "Glass Streak",
+		description = "Each landed cast anneals the glass a little brighter - your luck builds while the streak holds, and cools the moment you walk away.",
+		streakLuck = 0.15,
+		streakMax = 0.75,
+	},
+}
+
+Rods.items.magma_core_rod = {
+	id = "magma_core_rod",
+	name = "Magma Core Rod",
+	description = "A shard of the volcano's own heart, still warm. Casts far past the shallows, and won't hook anything under Rare.",
+	rarity = "Epic",
+	icon = "",
+	model = {
+		model = "RodPack",
+		variant = "MagmaCore",
+		grip = 0.95,
+		length = 7.0,
+		-- A living coal bound into the blank, glowing magma-orange
+		-- hardware and float.
+		colors = {
+			twig = Color3.fromRGB(60, 40, 34),
+			grip = Color3.fromRGB(38, 26, 22),
+			trim = Color3.fromRGB(244, 96, 40),
+			line = Color3.fromRGB(150, 90, 80),
+			bobberTop = Color3.fromRGB(244, 96, 40),
+			bobberBottom = Color3.fromRGB(48, 32, 28),
+		},
+		neon = { "Rod_Trim", "Rod_BobberTop" },
+	},
+	stats = {
+		luck = 1.45,
+		power = 1.40,
+		control = 1.20,
+	},
+	reel = {
+		clicksRequired = 3,
+		barSpeed = 0.6,
+		redWidth = 0.05,
+		greenWidth = 0.16,
+	},
+	recipe = {
+		requiresLevel = 12,
+		coins = 700,
+		materials = { magma_core = 6, sulfur = 10, fish_scale = 8 },
+	},
+	perk = {
+		id = "molten_reach",
+		name = "Molten Reach",
+		description = "A living coal at its heart casts past the shallows and won't hook anything under Rare.",
+		minRarity = "Rare",
+		castRange = 1.4,
+	},
+}
+
+Rods.items.phoenix_ash_rod = {
+	id = "phoenix_ash_rod",
+	name = "Phoenix Ash Rod",
+	description = "Bound in the heat of the Caldera Wyrm's heart, dusted with ash of something that rose from its own fire. The line reaches water nothing else touches.",
+	rarity = "Legendary",
+	icon = "",
+	model = {
+		model = "RodPack",
+		variant = "PhoenixAsh",
+		grip = 0.95,
+		length = 7.0,
+		-- Ash the colour of a dying ember, glowing phoenix-bright
+		-- hardware and float.
+		colors = {
+			twig = Color3.fromRGB(255, 168, 96),
+			grip = Color3.fromRGB(120, 70, 50),
+			trim = Color3.fromRGB(255, 168, 96),
+			line = Color3.fromRGB(255, 220, 190),
+			bobberTop = Color3.fromRGB(255, 168, 96),
+			bobberBottom = Color3.fromRGB(244, 96, 40),
+		},
+		neon = { "Rod_Trim", "Rod_BobberTop" },
+	},
+	stats = {
+		luck = 2.20,
+		power = 1.60,
+		control = 1.45,
+	},
+	reel = {
+		clicksRequired = 3,
+		barSpeed = 0.6,
+		redWidth = 0.05,
+		greenWidth = 0.16,
+	},
+	-- The volcano's capstone: gated on Pyrelisk's heart (owned, never spent).
+	recipe = {
+		requiresLevel = 14,
+		coins = 1600,
+		materials = { magma_core = 10, obsidian_shard = 12, ember = 15 },
+		requiresHearts = { "pyrelisk" },
+	},
+	perk = {
+		id = "rebirth_cast",
+		name = "Rebirth Cast",
+		description = "Ash of something that refused to stay dead - it reaches water no other line touches, never gives on a missed pull, and won't hook anything less than Epic.",
+		minRarity = "Epic",
+		castRange = 2.0,
+		noShrink = true,
+	},
+}
+
 -- Every new player starts holding this one. See InventoryService.
 Rods.STARTER_ROD_ID = "twig_rod"
+
+-- Stable display order for the inventory / crafting menus (table iteration
+-- order isn't guaranteed). Starter first, then by island and level gate.
+Rods.order = {
+	"twig_rod",
+	"bamboo_rod",
+	"anglers_rod",
+	"reefmaw_rod",
+	"bonecaster_rod",
+	"brineheart_rod",
+	"cinderline_rod",
+	"obsidian_rod",
+	"cinderglass_rod",
+	"magma_core_rod",
+	"phoenix_ash_rod",
+}
 
 return Rods

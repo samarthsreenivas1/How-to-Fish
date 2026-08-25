@@ -1,8 +1,17 @@
 --!nonstrict
 -- Weapons.luau
--- Melee weapons, as rows - the same id-keyed shape as Rods / Creatures /
--- Materials. Melee only, by design decision (see context.md): there will
--- never be a ranged row here.
+-- Weapons, as rows - the same id-keyed shape as Rods / Creatures / Materials.
+-- All rows are melee TODAY, but the old "never a ranged row here" rule was
+-- overturned by the user on 2026-08-24 (docs/revamp-plan.md): ranged weapons
+-- (bows -> flintlocks -> firearms) arrive with the ranged engine in Session 2,
+-- as an optional `ranged` block on this same row shape.
+--
+-- THINNED 2026-08-25 (docs/revamp-plan.md): every island carries exactly five
+-- craftable weapons, the fists apart, and each island's Legendary is gated on
+-- that island's boss heart (recipe `requiresHearts` - owned, never spent).
+-- Fourteen stat-shuffle weapons were cut; every perk effect survives on the
+-- keepers or on later islands' weapons. The volcano currently fields only its
+-- two kept melee weapons - its three guns land with the ranged engine.
 --
 -- The fists are the starter weapon every player owns and can't lose. Their
 -- numbers are the ones CombatService always punched with (Tuning.Combat),
@@ -28,10 +37,13 @@ local Weapons = {}
 
 -- What it costs to craft (CraftingService). Identical to Rods.Recipe;
 -- duplicated rather than imported so this file stays a plain data row.
+-- `requiresHearts` lists Bosses ids whose Heart_<bossId> attribute the player
+-- must carry - checked, never spent.
 export type Recipe = {
 	requiresLevel: number,
 	coins: number,
 	materials: { [string]: number },
+	requiresHearts: { string }?,
 }
 
 -- How the weapon is built in the hand (WeaponModel). Like the rod, a weapon
@@ -111,14 +123,13 @@ Weapons.items.fists = {
 	knockback = Tuning.Combat.KNOCKBACK_SPEED,
 }
 
--- ============================================================ Craftable
+-- ============================================================ Starter Cove (L2-7)
 
 -- Balance, as damage per second against a 150 HP pufferfish: fists land
 -- ~57 dps (8 avg / 0.14 s), so a crafted weapon has to beat that or it's a
 -- downgrade. The club is slow and heavy - big numbers, a long knockback -
 -- the blade is quick and vicious. Recipes escalate in level, mats and coins
--- the way the rods do, and lean on the materials the fiction suggests (a
--- kelp-wrapped driftwood club; scales ground to an edge).
+-- the way the rods do, and lean on the materials the fiction suggests.
 
 Weapons.items.driftwood_club = {
 	id = "driftwood_club",
@@ -142,7 +153,7 @@ Weapons.items.driftwood_club = {
 		wrap = Color3.fromRGB(86, 140, 84),
 	},
 	recipe = {
-		requiresLevel = 3,
+		requiresLevel = 2,
 		coins = 80,
 		materials = { driftwood = 10, kelp_fiber = 4 },
 	},
@@ -170,7 +181,7 @@ Weapons.items.scale_blade = {
 		wrap = Color3.fromRGB(96, 70, 46), -- bound wooden handle
 	},
 	recipe = {
-		requiresLevel = 7,
+		requiresLevel = 3,
 		coins = 260,
 		materials = { driftwood = 6, fish_scale = 12, pearl = 1 },
 	},
@@ -181,12 +192,6 @@ Weapons.items.scale_blade = {
 		frenzy = true,
 	},
 }
-
--- ============================================================ Rare / Epic (creature mats)
--- Two weapons from the mats the hostile creatures drop (Creatures.luau drops):
--- barnacle chitin off the Snapjaw Crab, cursed bone off the drowned. These are
--- the first MESH weapons - each is a variant in the Blender WeaponPack
--- (assets/weapon_gen.py); their `shape` is the pre-import procedural fallback.
 
 Weapons.items.shellcrusher = {
 	id = "shellcrusher",
@@ -210,7 +215,7 @@ Weapons.items.shellcrusher = {
 		wrap = Color3.fromRGB(74, 86, 78), -- bound grip
 	},
 	recipe = {
-		requiresLevel = 9,
+		requiresLevel = 4,
 		coins = 340,
 		materials = { barnacle_chitin = 10, driftwood = 8 },
 	},
@@ -246,7 +251,7 @@ Weapons.items.drowncleaver = {
 		neon = { "Weapon_Glow" },
 	},
 	recipe = {
-		requiresLevel = 13,
+		requiresLevel = 5,
 		coins = 520,
 		materials = { cursed_bone = 12, fish_scale = 8, pearl = 2 },
 	},
@@ -258,88 +263,10 @@ Weapons.items.drowncleaver = {
 	},
 }
 
--- ============================================================ Rare / Epic / Legendary (new creature mats)
--- Built from what the hostile creatures added later drop: urchin spines, a
--- Voltray's electric organ and nacre off a Pearl Mimic, and - once Brinejaw
--- is dead - its heart. Each is a WeaponPack variant with a procedural
--- `shape` fallback like the two above.
-
-Weapons.items.tidebomb_maul = {
-	id = "tidebomb_maul",
-	name = "Tidebomb Maul",
-	description = "Urchin spines bound to a chitin head, still humming. Swing it and everything nearby feels the blast.",
-	rarity = "Rare",
-	icon = "",
-	damage = { 34, 50 }, -- ~84 dps single-target, far more into a crowd
-	cooldown = 0.5,
-	reach = 17,
-	knockback = 30,
-	swing = "chop",
-	model = {
-		shape = "club",
-		model = "WeaponPack",
-		variant = "TidebombMaul",
-		length = 3.7,
-		grip = 0.7,
-		color = Color3.fromRGB(120, 108, 96), -- driftwood haft
-		accent = Color3.fromRGB(86, 74, 110), -- urchin-shell head
-		wrap = Color3.fromRGB(58, 52, 64),
-		glow = Color3.fromRGB(255, 148, 92), -- the spines that never stop humming
-		neon = { "Weapon_Glow" },
-	},
-	recipe = {
-		requiresLevel = 11,
-		coins = 380,
-		materials = { tidebomb_spine = 8, barnacle_chitin = 6, driftwood = 8 },
-	},
-	perk = {
-		id = "blast_radius",
-		name = "Blast Radius",
-		description = "The spines go off on impact - every creature in reach takes the shock, not just the one you swung at.",
-		cleave = true,
-	},
-}
-
-Weapons.items.voltfang = {
-	id = "voltfang",
-	name = "Voltfang",
-	description = "A Voltray's organ set behind a nacre edge. It saves its charge for prey that is already failing.",
-	rarity = "Epic",
-	icon = "",
-	damage = { 24, 34 }, -- ~116 dps, and double that into a wounded target
-	cooldown = 0.25,
-	reach = 15,
-	knockback = 14,
-	swing = "slash",
-	model = {
-		shape = "blade",
-		model = "WeaponPack",
-		variant = "Voltfang",
-		length = 3.5,
-		grip = 0.7,
-		color = Color3.fromRGB(64, 70, 88), -- dark handle
-		accent = Color3.fromRGB(214, 226, 238), -- nacre blade
-		wrap = Color3.fromRGB(44, 48, 60),
-		glow = Color3.fromRGB(126, 214, 255), -- the crackle
-		neon = { "Weapon_Glow" },
-	},
-	recipe = {
-		requiresLevel = 15,
-		coins = 600,
-		materials = { volt_gland = 10, nacre = 8, fish_scale = 10 },
-	},
-	perk = {
-		id = "overload",
-		name = "Overload",
-		description = "It dumps its whole charge into anything already badly hurt - wounded prey takes double.",
-		execute = true,
-	},
-}
-
 Weapons.items.heartrender = {
 	id = "heartrender",
 	name = "Heartrender",
-	description = "Cut from Brinejaw's own heart, which never stopped beating. It drinks what it kills.",
+	description = "Forged in the presence of Brinejaw's heart, which never stopped beating. It drinks what it kills.",
 	rarity = "Legendary",
 	icon = "",
 	damage = { 30, 44 }, -- ~132 dps, and it feeds you while you fight
@@ -359,10 +286,12 @@ Weapons.items.heartrender = {
 		glow = Color3.fromRGB(255, 96, 104), -- the beat
 		neon = { "Weapon_Glow" },
 	},
+	-- The island's capstone: gated on the heart itself (owned, never spent).
 	recipe = {
-		requiresLevel = 20,
+		requiresLevel = 7,
 		coins = 1200,
-		materials = { brineheart = 1, cursed_bone = 10, volt_gland = 4 },
+		materials = { cursed_bone = 12, volt_gland = 6, nacre = 4 },
+		requiresHearts = { "brinejaw" },
 	},
 	perk = {
 		id = "devour",
@@ -372,17 +301,96 @@ Weapons.items.heartrender = {
 	},
 }
 
+-- ============================================================ Ashfall Caldera (interim L8-14)
+-- The volcano's two kept melee weapons, buffed for their slot; its three guns
+-- (Cinderlock Carbine, Basalt Scattergun, Vulkan Repeater) arrive with the
+-- ranged engine (Session 2, docs/revamp-plan.md). INTERIM GATES: L8-14 with
+-- island-2-scale costs while the volcano is still island 2; they re-gate to
+-- L22-28 when it slides to slot 4 in Session 4.
+
+Weapons.items.obsidian_piercer = {
+	id = "obsidian_piercer",
+	name = "Obsidian Piercer",
+	description = "A driftwood haft tipped in a shard of glass-black obsidian, honed to a wicked point. It finishes what it starts.",
+	rarity = "Rare",
+	icon = "",
+	damage = { 38, 54 }, -- ~115 dps, and double into a wounded target
+	cooldown = 0.4,
+	reach = 15,
+	knockback = 24,
+	swing = "slash",
+	model = {
+		shape = "blade", -- pre-import fallback; the WeaponPack's ObsidianPiercer_* is preferred
+		model = "WeaponPack",
+		variant = "ObsidianPiercer",
+		length = 3.5,
+		grip = 0.64,
+		color = Color3.fromRGB(140, 107, 68), -- driftwood haft
+		accent = Color3.fromRGB(48, 44, 60), -- glass-black obsidian
+		wrap = Color3.fromRGB(60, 52, 46), -- dark binding
+		glow = Color3.fromRGB(240, 132, 52), -- the hairline crack of heat inside the glass
+		neon = { "Weapon_Glow" },
+	},
+	recipe = {
+		requiresLevel = 9,
+		coins = 400,
+		materials = { obsidian_shard = 10, driftwood = 8 },
+	},
+	perk = {
+		id = "glass_edge",
+		name = "Glass Edge",
+		description = "Cracked obsidian punches clean through anything already wounded - the weaker the target, the deeper it goes.",
+		execute = true,
+	},
+}
+
+Weapons.items.magma_gauntlets = {
+	id = "magma_gauntlets",
+	name = "Magma Gauntlets",
+	description = "Magma-core knuckles wrapped in sulfur-cured fish scale, still warm from the vent. Every hit in a row lands harder.",
+	rarity = "Epic",
+	icon = "",
+	damage = { 34, 46 }, -- ~182 dps
+	cooldown = 0.22,
+	reach = 15,
+	knockback = 16,
+	swing = "slash",
+	model = {
+		shape = "blade", -- pre-import fallback; the WeaponPack's MagmaGauntlets_* is preferred
+		model = "WeaponPack",
+		variant = "MagmaGauntlets",
+		length = 3.2,
+		grip = 0.62,
+		color = Color3.fromRGB(70, 58, 56), -- dark vent-metal haft
+		accent = Color3.fromRGB(226, 206, 88), -- sulfur-cured claws
+		wrap = Color3.fromRGB(150, 186, 210), -- fish-scale binding
+		glow = Color3.fromRGB(244, 96, 40), -- the magma vein
+		neon = { "Weapon_Glow" },
+	},
+	recipe = {
+		requiresLevel = 12,
+		coins = 700,
+		materials = { magma_core = 8, sulfur = 10, fish_scale = 8 },
+	},
+	perk = {
+		id = "magma_flurry",
+		name = "Magma Flurry",
+		description = "The heat builds with every hit - land them in an unbroken chain and each one lands harder than the last.",
+		frenzy = true,
+	},
+}
+
 -- Stable display order for the inventory / crafting menus (table iteration
--- order isn't guaranteed). Starter first, then by level gate.
+-- order isn't guaranteed). Starter first, then by island and level gate.
 Weapons.order = {
 	"fists",
 	"driftwood_club",
 	"scale_blade",
 	"shellcrusher",
-	"tidebomb_maul",
 	"drowncleaver",
-	"voltfang",
 	"heartrender",
+	"obsidian_piercer",
+	"magma_gauntlets",
 }
 
 -- Every player starts with (and can't lose) this one.

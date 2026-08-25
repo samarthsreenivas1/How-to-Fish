@@ -1,10 +1,11 @@
 --!nonstrict
 -- InventoryService.luau
--- Owns what each player carries and what's in their hands. In-memory only
--- for now - real persistence is Slice 9's job - so this is deliberately
--- just tables keyed by Player that are thrown away on PlayerRemoving. Every
--- player gets the starter rod and the starter weapon (fists) the moment
--- they join, and starts holding the rod.
+-- Owns what each player carries and what's in their hands. Ownership and the
+-- equipped rod/weapon choices persist through DataService (this service
+-- registers an "inventory" slice); an id that no longer exists in the data
+-- tables is silently dropped on load, so cutting an item from Rods/Weapons
+-- retires it from old profiles too. Every player gets the starter rod and
+-- the starter weapon (fists) the moment they join, and starts holding the rod.
 --
 -- Items are ids from two namespaces - Rods.luau and Weapons.luau - kept in
 -- ONE list per player. This service doesn't care what an id points at, only
@@ -29,6 +30,8 @@ local Equipment = require(Shared.Config.Equipment)
 local Rods = require(Shared.Data.Rods)
 local Weapons = require(Shared.Data.Weapons)
 local Remotes = require(Shared.Net.Remotes)
+
+local DataService = require(script.Parent.DataService)
 
 local InventoryService = {}
 
@@ -185,6 +188,61 @@ local function grantStarters(player: Player)
 	player:SetAttribute(Equipment.WEAPON_ATTRIBUTE, equippedWeapon[player])
 end
 
+-- ============================================================ persistence
+
+-- DataService slice. Ids are re-validated against the live data tables so a
+-- cut item vanishes from old profiles instead of resurfacing as a ghost.
+local function loadSlice(player: Player, slice)
+	if type(slice) ~= "table" then
+		return -- fresh profile: starters already granted
+	end
+	local owned = inventories[player]
+	if not owned then
+		return
+	end
+	if type(slice.items) == "table" then
+		for _, itemId in slice.items do
+			if
+				type(itemId) == "string"
+				and (Rods.items[itemId] or Weapons.items[itemId])
+				and not table.find(owned, itemId)
+			then
+				table.insert(owned, itemId)
+			end
+		end
+	end
+	-- Restore the picks only if still owned and still real; otherwise the
+	-- starter defaults from grantStarters stand.
+	if
+		type(slice.equippedRod) == "string"
+		and Rods.items[slice.equippedRod]
+		and table.find(owned, slice.equippedRod)
+	then
+		equippedRod[player] = slice.equippedRod
+	end
+	if
+		type(slice.equippedWeapon) == "string"
+		and Weapons.items[slice.equippedWeapon]
+		and table.find(owned, slice.equippedWeapon)
+	then
+		equippedWeapon[player] = slice.equippedWeapon
+	end
+	player:SetAttribute(Equipment.ROD_ATTRIBUTE, equippedRod[player])
+	player:SetAttribute(Equipment.WEAPON_ATTRIBUTE, equippedWeapon[player])
+	pushInventory(player)
+	if equippedKind[player] then
+		fireEquipChanged(player, equippedKind[player])
+	end
+end
+
+local function serializeSlice(player: Player)
+	return {
+		items = table.clone(inventories[player] or {}),
+		equippedRod = equippedRod[player],
+		equippedWeapon = equippedWeapon[player],
+	}
+end
+
 -- ============================================================ lifecycle
 
 local function onPlayerAdded(player: Player)
@@ -208,6 +266,8 @@ local function onPlayerRemoving(player: Player)
 end
 
 function InventoryService.init()
+	DataService.register("inventory", { load = loadSlice, serialize = serializeSlice })
+
 	Remotes.GetInventory.OnServerInvoke = function(player: Player)
 		return inventories[player] or {}
 	end

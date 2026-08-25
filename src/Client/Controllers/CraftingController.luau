@@ -27,6 +27,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Equipment = require(Shared.Config.Equipment)
 local Bait = require(Shared.Data.Bait)
+local Bosses = require(Shared.Data.Bosses)
 local Materials = require(Shared.Data.Materials)
 local Rods = require(Shared.Data.Rods)
 local Weapons = require(Shared.Data.Weapons)
@@ -168,6 +169,30 @@ local function recipeSection(item, scroll: Instance, order: number): (number, bo
 		need = recipe.coins,
 	})
 
+	-- Heart-gated recipes (the island Legendaries): the requirement is beating
+	-- the boss, shown as owned-or-not rather than a count - the heart is the
+	-- permanent Heart_<bossId> attribute, never a spendable material.
+	local heartsOk = true
+	if recipe.requiresHearts then
+		for _, bossId in recipe.requiresHearts do
+			local boss = Bosses.items[bossId]
+			local hasHeart = player:GetAttribute("Heart_" .. bossId) == true
+			if not hasHeart then
+				heartsOk = false
+			end
+			order += 1
+			Kit.requirement(scroll, {
+				order = order,
+				label = "Heart of " .. (if boss then boss.shortName else bossId),
+				token = "HRT",
+				color = Color3.fromRGB(255, 96, 104),
+				have = if hasHeart then 1 else 0,
+				need = 1,
+				text = if hasHeart then "OWNED" else "UNDEFEATED",
+			})
+		end
+	end
+
 	local matsOk = true
 	for _, matId in Materials.order do
 		local need = recipe.materials[matId]
@@ -189,7 +214,7 @@ local function recipeSection(item, scroll: Instance, order: number): (number, bo
 		end
 	end
 
-	return order, levelOk and coinsOk and matsOk
+	return order, levelOk and coinsOk and matsOk and heartsOk
 end
 
 -- ============================================================ detail
@@ -558,6 +583,12 @@ function CraftingController.init()
 		}
 	do
 		player:GetAttributeChangedSignal(attr):Connect(refresh)
+	end
+
+	-- Heart attributes flip once per boss, ever - but the flip should light up
+	-- the Legendary recipes the moment the kill lands, without reopening.
+	for bossId in Bosses.items do
+		player:GetAttributeChangedSignal("Heart_" .. bossId):Connect(refresh)
 	end
 end
 

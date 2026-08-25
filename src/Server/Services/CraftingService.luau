@@ -2,8 +2,8 @@
 -- CraftingService.luau
 -- Turns materials + coins into rods and weapons. The recipe lives on the
 -- item's row (Rods.items.<id>.recipe / Weapons.items.<id>.recipe =
--- { requiresLevel, coins, materials }); this service just validates and
--- spends. Item-agnostic on purpose: an id is looked up in every content
+-- { requiresLevel, coins, materials, requiresHearts? }); this service just
+-- validates and spends. Item-agnostic on purpose: an id is looked up in every content
 -- table that can carry a recipe, and InventoryService.grantItem takes either.
 --
 -- Validation order matters for atomicity. Coins are checked (peeked) before
@@ -16,6 +16,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Bait = require(Shared.Data.Bait)
+local Bosses = require(Shared.Data.Bosses)
 local Rods = require(Shared.Data.Rods)
 local Weapons = require(Shared.Data.Weapons)
 local Remotes = require(Shared.Net.Remotes)
@@ -60,6 +61,19 @@ local function onRequestCraft(player: Player, itemId)
 	if state.level < recipe.requiresLevel then
 		fail(player, itemId, string.format("Requires level %d.", recipe.requiresLevel))
 		return
+	end
+
+	-- A heart-gated recipe needs the boss beaten, not a material spent: the
+	-- Heart_<bossId> attribute BossService sets is permanent proof, so the
+	-- trophy is never consumed and the item stays craftable forever after.
+	if recipe.requiresHearts then
+		for _, bossId in recipe.requiresHearts do
+			if player:GetAttribute("Heart_" .. bossId) ~= true then
+				local boss = Bosses.items[bossId]
+				fail(player, itemId, string.format("Requires the heart of %s.", boss and boss.shortName or bossId))
+				return
+			end
+		end
 	end
 	if state.coins < recipe.coins then
 		fail(player, itemId, "Not enough coins.")

@@ -340,7 +340,7 @@ Creatures.items.tideline_skipper = {
 	archetype = "charger",
 	health = 170,
 	drops = {
-		materials = { skitterfin = { 1, 2 }, fish_scale = { 1, 1 } },
+		materials = { fish_scale = { 1, 2 } },
 	},
 	body = {
 		model = "CreaturePack",
@@ -362,7 +362,7 @@ Creatures.items.gullet_cod = {
 	archetype = "spitter",
 	health = 200,
 	drops = {
-		materials = { brine_gland = { 1, 2 }, fish_scale = { 1, 1 } },
+		materials = { fish_scale = { 1, 2 } },
 	},
 	body = {
 		model = "CreaturePack",
@@ -384,7 +384,7 @@ Creatures.items.tidebomb_urchin = {
 	archetype = "bloater",
 	health = 160,
 	drops = {
-		materials = { tidebomb_spine = { 1, 2 }, fish_scale = { 2, 3 }, barnacle_chitin = { 1, 1 } },
+		materials = { barnacle_chitin = { 1, 2 }, fish_scale = { 2, 3 } },
 	},
 	body = {
 		model = "CreaturePack",
@@ -405,7 +405,7 @@ Creatures.items.moonbell_jelly = {
 	archetype = "drifter",
 	health = 140,
 	drops = {
-		materials = { moonjelly = { 1, 2 }, kelp_fiber = { 1, 2 } },
+		materials = { kelp_fiber = { 1, 2 }, pearl = { 1, 1 } },
 	},
 	body = {
 		model = "CreaturePack",
@@ -428,7 +428,7 @@ Creatures.items.sand_lurker = {
 	archetype = "burrower",
 	health = 260,
 	drops = {
-		materials = { lurker_hide = { 1, 2 }, fish_scale = { 1, 2 } },
+		materials = { barnacle_chitin = { 1, 2 }, fish_scale = { 1, 2 } },
 	},
 	body = {
 		model = "CreaturePack",
@@ -473,7 +473,7 @@ Creatures.items.pickpocket_hermit = {
 	archetype = "thief",
 	health = 150,
 	drops = {
-		materials = { gild_shell = { 1, 2 }, kelp_fiber = { 1, 1 } },
+		materials = { pearl = { 1, 1 }, kelp_fiber = { 1, 2 } },
 	},
 	body = {
 		model = "CreaturePack",
@@ -508,6 +508,34 @@ Creatures.items.voltray = {
 	},
 }
 
+-- ============================================================ Legendary chase
+-- One per island (docs/revamp-plan.md): a giant passive trophy fish at the
+-- Legendary tier, so the tier finally rolls (Tuning.Rarity.WEIGHTS.Legendary)
+-- and high-luck rods / minRarity perks have a real payoff. Big rewards, and it
+-- drops the island's best materials generously.
+
+Creatures.items.sunking_coelacanth = {
+	id = "sunking_coelacanth",
+	name = "Sunking Coelacanth",
+	rarity = "Legendary",
+	archetype = "flopper",
+	health = 900,
+	rewards = { coins = { 250, 400 }, xp = 600 },
+	drops = {
+		materials = { volt_gland = { 2, 3 }, pearl = { 2, 3 } },
+	},
+	body = {
+		-- No Coelacanth species in the FishPack yet: rides the Tuna frame
+		-- recoloured to burnished gold until fish_gen.py grows one.
+		model = "FishPack",
+		species = "Tuna",
+		scale = 2.0,
+		color = Color3.fromRGB(196, 158, 72), -- burnished gold flanks
+		finColor = Color3.fromRGB(140, 104, 48), -- ancient bronze lobed fins
+		markColor = Color3.fromRGB(240, 226, 170), -- pale royal speckling
+	},
+}
+
 -- ============================================================ Bosses
 -- Brinejaw, the Drowned Leviathan - Starter Cove's boss (Bosses.luau). A
 -- colossal anglerfish-leviathan: armoured head, a maw of fangs, a glowing
@@ -524,9 +552,11 @@ Creatures.items.brinejaw = {
 	-- with roblox-game-83 against the boss fight loop's uptime.
 	health = 9000,
 	rewards = { coins = { 900, 1300 }, xp = 2600 },
+	-- Its heart is NOT a material drop: BossService sets the permanent
+	-- Heart_brinejaw attribute on every participant instead (the trophy that
+	-- gates the island's Legendary crafts and, one day, the final summon).
 	drops = {
 		materials = {
-			brineheart = { 1, 2 },
 			pearl = { 4, 6 },
 			cursed_bone = { 4, 6 },
 			barnacle_chitin = { 3, 5 },
@@ -579,6 +609,11 @@ Creatures.items.hatchling = {
 -- ocean rows, having no `waters`, never roll there and these never roll in the
 -- ocean). They drop the volcano material chain (Materials.luau).
 --
+-- REBALANCED 2026-08-25 (docs/revamp-plan.md): health x2.2 and explicit
+-- `rewards` at x2 the Tuning.Rewards.BY_RARITY baseline - the volcano is the
+-- second island now and pays like it. The rewards blocks re-scale to x6 when
+-- the island slides to slot 4 (Session 4).
+--
 -- Meshes are a later pass (83's *_gen.py): the fish reuse a recolored FishPack
 -- species and the hostiles a procedural `shape` stand-in, so all are testable
 -- now. The hostiles ship on the closest existing archetype (they fight
@@ -592,8 +627,9 @@ Creatures.items.emberfin_perch = {
 	name = "Emberfin Perch",
 	rarity = "Common",
 	archetype = "flopper",
-	health = 70,
+	health = 155,
 	waters = "volcano",
+	rewards = { coins = { 8, 16 }, xp = 24 },
 	drops = { materials = { ember = { 1, 2 } } },
 	body = {
 		model = "FishPack",
@@ -610,8 +646,9 @@ Creatures.items.ashgill_minnow = {
 	name = "Ashgill Minnow",
 	rarity = "Common",
 	archetype = "flopper",
-	health = 65,
+	health = 145,
 	waters = "volcano",
+	rewards = { coins = { 8, 16 }, xp = 24 },
 	drops = { materials = { ember = { 1, 1 }, sulfur = { 1, 1 } } },
 	body = {
 		model = "FishPack",
@@ -628,8 +665,9 @@ Creatures.items.magma_guppy = {
 	name = "Magma Guppy",
 	rarity = "Common",
 	archetype = "flopper",
-	health = 80,
+	health = 175,
 	waters = "volcano",
+	rewards = { coins = { 8, 16 }, xp = 24 },
 	drops = { materials = { ember = { 1, 2 } } },
 	body = {
 		model = "FishPack",
@@ -646,8 +684,9 @@ Creatures.items.obsidian_bass = {
 	name = "Obsidian Bass",
 	rarity = "Uncommon",
 	archetype = "flopper",
-	health = 210,
+	health = 460,
 	waters = "volcano",
+	rewards = { coins = { 24, 40 }, xp = 70 },
 	drops = { materials = { obsidian_shard = { 1, 2 } } },
 	body = {
 		model = "FishPack",
@@ -664,8 +703,9 @@ Creatures.items.basalt_cod = {
 	name = "Basalt Cod",
 	rarity = "Uncommon",
 	archetype = "flopper",
-	health = 250,
+	health = 550,
 	waters = "volcano",
+	rewards = { coins = { 24, 40 }, xp = 70 },
 	drops = { materials = { obsidian_shard = { 1, 2 }, sulfur = { 1, 1 } } },
 	body = {
 		model = "FishPack",
@@ -682,8 +722,9 @@ Creatures.items.pyre_salmon = {
 	name = "Pyre Salmon",
 	rarity = "Rare",
 	archetype = "flopper",
-	health = 360,
+	health = 790,
 	waters = "volcano",
+	rewards = { coins = { 70, 110 }, xp = 180 },
 	drops = { materials = { magma_core = { 1, 1 }, obsidian_shard = { 1, 2 } } },
 	body = {
 		model = "FishPack",
@@ -700,8 +741,9 @@ Creatures.items.magmafin_tuna = {
 	name = "Magmafin Tuna",
 	rarity = "Epic",
 	archetype = "flopper",
-	health = 660,
+	health = 1450,
 	waters = "volcano",
+	rewards = { coins = { 180, 280 }, xp = 440 },
 	drops = { materials = { magma_core = { 1, 2 }, obsidian_shard = { 2, 3 } } },
 	body = {
 		model = "FishPack",
@@ -725,8 +767,9 @@ Creatures.items.fumarole = {
 	name = "Fumarole",
 	rarity = "Uncommon",
 	archetype = "spitter",
-	health = 190,
+	health = 420,
 	waters = "volcano",
+	rewards = { coins = { 24, 40 }, xp = 70 },
 	drops = { materials = { sulfur = { 1, 2 }, ember = { 1, 2 } } },
 	body = {
 		model = "CreaturePack",
@@ -746,8 +789,9 @@ Creatures.items.ember_swarm = {
 	name = "Ember Swarm",
 	rarity = "Uncommon",
 	archetype = "drifter",
-	health = 150,
+	health = 330,
 	waters = "volcano",
+	rewards = { coins = { 24, 40 }, xp = 70 },
 	drops = { materials = { ember = { 2, 3 } } },
 	body = {
 		model = "CreaturePack",
@@ -768,8 +812,9 @@ Creatures.items.magma_ooze = {
 	name = "Magma Ooze",
 	rarity = "Rare",
 	archetype = "splitter",
-	health = 240,
+	health = 530,
 	waters = "volcano",
+	rewards = { coins = { 70, 110 }, xp = 180 },
 	drops = { materials = { magma_core = { 1, 1 }, sulfur = { 1, 2 } } },
 	body = {
 		model = "CreaturePack",
@@ -792,8 +837,9 @@ Creatures.items.obsidian_shardback = {
 	name = "Obsidian Shardback",
 	rarity = "Rare",
 	archetype = "thornback",
-	health = 320,
+	health = 700,
 	waters = "volcano",
+	rewards = { coins = { 70, 110 }, xp = 180 },
 	drops = { materials = { obsidian_shard = { 2, 3 } } },
 	body = {
 		model = "CreaturePack",
@@ -813,8 +859,9 @@ Creatures.items.cinder_djinn = {
 	name = "Cinder Djinn",
 	rarity = "Rare",
 	archetype = "gascloud",
-	health = 260,
+	health = 570,
 	waters = "volcano",
+	rewards = { coins = { 70, 110 }, xp = 180 },
 	drops = { materials = { sulfur = { 1, 2 }, ember = { 2, 3 } } },
 	body = {
 		model = "CreaturePack",
@@ -835,9 +882,10 @@ Creatures.items.lodestone_eel = {
 	name = "Lodestone Eel",
 	rarity = "Epic",
 	archetype = "magnetize",
-	health = 480,
+	health = 1050,
 	waters = "volcano",
-	drops = { materials = { lodestone = { 1, 2 }, magma_core = { 1, 1 } } },
+	rewards = { coins = { 180, 280 }, xp = 440 },
+	drops = { materials = { magma_core = { 1, 1 }, obsidian_shard = { 1, 2 } } },
 	body = {
 		model = "CreaturePack",
 		species = "LodestoneEel",
@@ -857,8 +905,9 @@ Creatures.items.slagheart_golem = {
 	name = "Slagheart Golem",
 	rarity = "Epic",
 	archetype = "crust",
-	health = 460,
+	health = 1010,
 	waters = "volcano",
+	rewards = { coins = { 180, 280 }, xp = 440 },
 	drops = { materials = { magma_core = { 1, 2 }, obsidian_shard = { 2, 3 } } },
 	body = {
 		model = "CreaturePack",
@@ -874,14 +923,17 @@ Creatures.items.slagheart_golem = {
 
 -- A bird of fire and ash. Dives at you like a charger, and its first death
 -- isn't one: it drops, then rises at ~40% health and has to be put down again.
+-- Promoted to Legendary 2026-08-25: the volcano's chase creature, now that the
+-- tier rolls (Tuning.Rarity.WEIGHTS.Legendary).
 Creatures.items.ashfeather_phoenix = {
 	id = "ashfeather_phoenix",
 	name = "Ashfeather Phoenix",
-	rarity = "Epic",
+	rarity = "Legendary",
 	archetype = "reborn",
-	health = 500,
+	health = 1100,
 	waters = "volcano",
-	drops = { materials = { phoenix_ash = { 1, 1 }, magma_core = { 1, 1 } } },
+	rewards = { coins = { 500, 800 }, xp = 1200 },
+	drops = { materials = { magma_core = { 2, 3 }, obsidian_shard = { 2, 3 } } },
 	body = {
 		model = "CreaturePack",
 		species = "Phoenix",
@@ -892,6 +944,43 @@ Creatures.items.ashfeather_phoenix = {
 		color = Color3.fromRGB(184, 56, 23), -- body, under the wings
 		finColor = Color3.fromRGB(242, 107, 26), -- wing and tail feathers
 		markColor = Color3.fromRGB(255, 158, 30), -- the fire itself
+	},
+}
+
+-- Pyrelisk, the Caldera Wyrm - Ashfall Caldera's boss (Bosses.luau). A
+-- colossal obsidian-scaled magma serpent that rises out of the boiling
+-- shallows off the shore jetty. Rarity "Boss" keeps it out of every cast
+-- roll; it is summoned by casting Caldera's Call (Bait.luau), exactly the
+-- Brinejaw ritual. Its heart is the Heart_pyrelisk attribute, not a drop.
+Creatures.items.pyrelisk = {
+	id = "pyrelisk",
+	name = "Pyrelisk, the Caldera Wyrm",
+	rarity = "Boss",
+	archetype = "boss",
+	boss = "pyrelisk",
+	waters = "volcano",
+	-- Interim tuning for the volcano's slot-2 band (L8-14): a wall the way
+	-- Brinejaw is for L7, against island-2 gear (~130-180 dps). Re-tunes to
+	-- ~40,000 when the island slides to slot 4 (docs/revamp-plan.md).
+	health = 16000,
+	rewards = { coins = { 2000, 2800 }, xp = 5000 },
+	drops = {
+		materials = {
+			magma_core = { 2, 3 },
+			obsidian_shard = { 4, 6 },
+			ember = { 6, 10 },
+			sulfur = { 4, 6 },
+		},
+	},
+	body = {
+		model = "CreaturePack",
+		species = "Pyrelisk",
+		shape = "leviathan", -- pre-import stand-in: the boss silhouette recoloured molten
+		stance = "upright",
+		scale = 1.5,
+		color = Color3.fromRGB(38, 32, 40), -- cooled obsidian hide
+		finColor = Color3.fromRGB(80, 44, 34), -- basalt fin plates
+		markColor = Color3.fromRGB(255, 96, 16), -- the melt in every seam (neon)
 	},
 }
 
