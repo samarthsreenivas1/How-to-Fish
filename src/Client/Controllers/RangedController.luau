@@ -25,6 +25,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -52,10 +53,22 @@ local ZOOM_TWEEN = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirecti
 local bound = false
 local firing = false -- the button is down (matters for auto)
 local zoomed = false
-local lastShotAt = 0
-local shotsInMag = 0
-local reloadUntil = 0
-local stateWeaponId: string? = nil -- which weapon the mirror above describes
+
+-- Per-WEAPON mirrors of the server's persistent gun state (CombatService
+-- keeps its magazine / reload clock / bucket per (player, weaponId) across
+-- swaps, so swapping guns and back must show the old partial magazine, not
+-- a fresh one - the server would silently refuse the shots the fresh-looking
+-- HUD promised). Same lifetime as the server's: reset only on a new session.
+local mirrors: { [string]: { shotsInMag: number, reloadUntil: number, lastShotAt: number } } = {}
+
+local function mirrorFor(weapon)
+	local mirror = mirrors[weapon.id]
+	if not mirror then
+		mirror = { shotsInMag = weapon.ranged.magazine, reloadUntil = 0, lastShotAt = 0 }
+		mirrors[weapon.id] = mirror
+	end
+	return mirror
+end
 
 -- ---------------------------------------------------------------- ammo HUD
 
@@ -89,18 +102,19 @@ local function ensureHud(): TextLabel
 	return label
 end
 
-local function updateHud(ranged)
+local function updateHud(weapon)
 	local label = ensureHud()
-	if not ranged then
+	if not weapon then
 		label.Text = ""
 		return
 	end
-	if os.clock() < reloadUntil then
+	local mirror = mirrorFor(weapon)
+	if os.clock() < mirror.reloadUntil then
 		label.TextColor3 = Theme.Color.gold or Color3.fromRGB(240, 196, 84)
 		label.Text = "RELOADING..."
 	else
 		label.TextColor3 = Theme.Color.text
-		label.Text = string.format("%d / %d", shotsInMag, ranged.magazine)
+		label.Text = string.format("%d / %d", mirror.shotsInMag, weapon.ranged.magazine)
 	end
 end
 
@@ -142,28 +156,22 @@ local function tryFire()
 	end
 	local ranged = weapon.ranged
 	local now = os.clock()
+	local mirror = mirrorFor(weapon)
 
-	if stateWeaponId ~= weapon.id then
-		-- Fresh gun in hand: full magazine, no reload (mirrors the server).
-		stateWeaponId = weapon.id
-		shotsInMag = ranged.magazine
-		reloadUntil = 0
-	end
-
-	if now < reloadUntil then
+	if now < mirror.reloadUntil then
 		return
 	end
-	if shotsInMag <= 0 then
-		shotsInMag = ranged.magazine -- reload finished on the server too
+	if mirror.shotsInMag <= 0 then
+		mirror.shotsInMag = ranged.magazine -- reload finished on the server too
 	end
-	if now - lastShotAt < weapon.cooldown then
+	if now - mirror.lastShotAt < weapon.cooldown then
 		return
 	end
-	lastShotAt = now
+	mirror.lastShotAt = now
 
-	shotsInMag -= 1
-	if shotsInMag <= 0 and ranged.reloadTime > 0 then
-		reloadUntil = now + ranged.reloadTime
+	mirror.shotsInMag -= 1
+	if mirror.shotsInMag <= 0 and ranged.reloadTime > 0 then
+		mirror.reloadUntil = now + ranged.reloadTime
 		Sfx.play("gunReload")
 	end
 
@@ -178,7 +186,7 @@ local function tryFire()
 	WeaponViewmodelController.kick(if ranged.pellets then 1.6 elseif ranged.fireMode == "auto" then 0.55 else 1)
 	Sfx.play(if ranged.arc then "bowFire" else "gunFire")
 	Remotes.RequestShoot:FireServer(origin, look)
-	updateHud(ranged)
+	updateHud(weapon)
 end
 
 -- ---------------------------------------------------------------- binding
@@ -245,13 +253,8 @@ end
 local function refresh()
 	local weapon = currentRangedWeapon()
 	if weapon then
-		if stateWeaponId ~= weapon.id then
-			stateWeaponId = weapon.id
-			shotsInMag = weapon.ranged.magazine
-			reloadUntil = 0
-		end
 		bindFire()
-		updateHud(weapon.ranged)
+		updateHud(weapon)
 	else
 		unbindFire()
 		updateHud(nil)
@@ -269,6 +272,15 @@ function RangedController.start()
 	player:GetAttributeChangedSignal(Equipment.WEAPON_ATTRIBUTE):Connect(refresh)
 	refresh()
 
+	-- A respawn tears down the zoom and the trigger state (the camera is
+	-- fresh, the button state stale); the mirrors deliberately survive - the
+	-- server's per-weapon magazines do too.
+	player.CharacterAdded:Connect(function()
+		firing = false
+		setZoom(false, nil)
+		refresh()
+	end)
+
 	-- The auto loop and the reload countdown: while the trigger is held on an
 	-- auto weapon, keep firing at its cooldown; and tick the HUD through a
 	-- reload so the amber line flips back to numbers on time.
@@ -277,13 +289,26 @@ function RangedController.start()
 		if not weapon then
 			return
 		end
+		-- A release that lands on a GUI (a menu opened mid-burst) is
+		-- game-processed and never reaches the action handler, which would
+		-- leave `firing` latched and the gun emptying itself into a menu. On
+		-- desktop the physical button is the truth; touch keeps the latch
+		-- (there's no equivalent poll).
+		if
+			firing
+			and UserInputService.MouseEnabled
+			and not UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
+		then
+			firing = false
+		end
 		if firing and weapon.ranged.fireMode == "auto" then
 			tryFire()
 		end
-		if reloadUntil > 0 and os.clock() >= reloadUntil then
-			reloadUntil = 0
-			shotsInMag = weapon.ranged.magazine
-			updateHud(weapon.ranged)
+		local mirror = mirrorFor(weapon)
+		if mirror.reloadUntil > 0 and os.clock() >= mirror.reloadUntil then
+			mirror.reloadUntil = 0
+			mirror.shotsInMag = weapon.ranged.magazine
+			updateHud(weapon)
 		end
 	end)
 end
