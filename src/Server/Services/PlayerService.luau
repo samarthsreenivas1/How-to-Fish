@@ -29,6 +29,12 @@ local P = Tuning.Player
 -- (no two hits closer than IFRAME) and the regen delay (no healing until
 -- REGEN_DELAY after the last hit).
 local lastDamaged: { [Player]: number } = {}
+-- When the last BYPASSING burst landed, tracked separately from lastDamaged:
+-- a burst must ignore the ordinary contact window (that's what bypass is
+-- for) but bursts still have to gate EACH OTHER, or three overlapping AoEs
+-- on the volcano apron land their full sum in one beat (review find,
+-- 2026-08-25 - the function's own contract always promised they couldn't).
+local lastBurst: { [Player]: number } = {}
 
 local function humanoidOf(player: Player): Humanoid?
 	local character = player.Character
@@ -57,7 +63,15 @@ function PlayerService.damage(player: Player, amount: number, _source: any?, opt
 
 	local now = os.clock()
 	local bypass = opts ~= nil and opts.bypassIframe == true
-	if not bypass and now - (lastDamaged[player] or -math.huge) < P.IFRAME then
+	if bypass then
+		-- A burst ignores the contact window but not the previous BURST's:
+		-- overlapping telegraphed AoEs (eruption bomb + fumarole splash +
+		-- djinn puff) land once per window, exactly like contact hits do.
+		if now - (lastBurst[player] or -math.huge) < P.IFRAME then
+			return false
+		end
+		lastBurst[player] = now
+	elseif now - (lastDamaged[player] or -math.huge) < P.IFRAME then
 		return false
 	end
 	lastDamaged[player] = now
@@ -117,6 +131,7 @@ function PlayerService.start()
 	Players.PlayerAdded:Connect(onPlayerAdded)
 	Players.PlayerRemoving:Connect(function(player)
 		lastDamaged[player] = nil
+		lastBurst[player] = nil
 	end)
 	for _, player in Players:GetPlayers() do
 		onPlayerAdded(player)
