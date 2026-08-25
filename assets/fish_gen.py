@@ -282,6 +282,260 @@ SPECIES = {
         eye=(0.88, 0.05),
         colors=dict(body=(0.30, 0.14, 0.12), fins=(0.88, 0.34, 0.12), marks=(1.00, 0.70, 0.22)),
     ),
+    # ---- Frostmaw Reach fish (island 3) ----
+    # Cold silvers and glacier blues; the marlin is the Legendary chase.
+    # Common - a slender melt-water smelt, faint silver line.
+    "IcemeltSmelt": dict(
+        profile=[(0.00, 0.04), (0.24, 0.09), (0.55, 0.14), (0.86, 0.09), (1.00, 0.02)],
+        width=0.52,
+        sides=6,
+        tail=dict(kind="forked", reach=0.38, spread=0.26, notch=0.14),
+        dorsals=[dict(t0=0.44, t1=0.60, height=0.13, kind="soft"), dict(t0=0.22, t1=0.28, height=0.06, kind="adipose")],
+        anals=[dict(t0=0.26, t1=0.40, height=0.09, kind="soft")],
+        pectoral=0.22,
+        marks=dict(kind="stripe", t0=0.12, t1=0.90, height=0.20),
+        eye=(0.88, 0.045),
+        colors=dict(body=(0.72, 0.76, 0.80), fins=(0.55, 0.60, 0.68), marks=(0.90, 0.93, 0.96)),
+    ),
+    # Common - an arctic char: square tail, adipose, the pink char stripe.
+    "FrostfinChar": dict(
+        profile=[(0.00, 0.05), (0.20, 0.14), (0.52, 0.25), (0.86, 0.15), (1.00, 0.03)],
+        width=0.55,
+        sides=6,
+        tail=dict(kind="square", reach=0.34, spread=0.30),
+        dorsals=[dict(t0=0.44, t1=0.62, height=0.19, kind="soft"), dict(t0=0.20, t1=0.28, height=0.07, kind="adipose")],
+        anals=[dict(t0=0.26, t1=0.40, height=0.13, kind="soft")],
+        pectoral=0.28,
+        marks=dict(kind="stripe", t0=0.10, t1=0.90, height=0.28),
+        eye=(0.87, 0.05),
+        colors=dict(body=(0.50, 0.60, 0.68), fins=(0.75, 0.85, 0.90), marks=(0.90, 0.55, 0.45)),
+    ),
+    # Common - a squat sculpin: flat wide head, fan pectorals, dark saddles.
+    "SnowdriftSculpin": dict(
+        profile=[(0.00, 0.04), (0.24, 0.13), (0.58, 0.20), (0.84, 0.19), (1.00, 0.06)],
+        width_profile=[(0.00, 0.02), (0.24, 0.08), (0.58, 0.13), (0.82, 0.17), (1.00, 0.08)],
+        sides=6,
+        tail=dict(kind="rounded", reach=0.30, spread=0.24),
+        dorsals=[dict(t0=0.48, t1=0.72, height=0.22, kind="spiny", spines=6), dict(t0=0.20, t1=0.44, height=0.15, kind="soft")],
+        anals=[dict(t0=0.22, t1=0.44, height=0.11, kind="soft")],
+        pectoral=0.40,
+        marks=dict(kind="bars", count=4, t0=0.24, t1=0.78, width=0.06, height=0.85),
+        eye=(0.86, 0.045),
+        colors=dict(body=(0.62, 0.65, 0.70), fins=(0.50, 0.55, 0.62), marks=(0.35, 0.40, 0.48)),
+    ),
+    # Uncommon - a bright herring, deeply forked, mirror-striped.
+    "RimeHerring": dict(
+        profile=[(0.00, 0.04), (0.20, 0.12), (0.52, 0.20), (0.86, 0.12), (1.00, 0.02)],
+        width=0.48,
+        sides=6,
+        tail=dict(kind="forked", reach=0.46, spread=0.32, notch=0.18),
+        dorsals=[dict(t0=0.42, t1=0.58, height=0.16, kind="soft")],
+        anals=[dict(t0=0.22, t1=0.40, height=0.11, kind="soft")],
+        pectoral=0.24,
+        marks=dict(kind="stripe", t0=0.10, t1=0.92, height=0.16),
+        eye=(0.88, 0.05),
+        colors=dict(body=(0.70, 0.75, 0.82), fins=(0.55, 0.62, 0.72), marks=(0.95, 0.97, 1.00)),
+    ),
+    # LEGENDARY chase - the Aurorafin Marlin (rows scale it 1.9): a bill, a
+    # tall aurora sickle dorsal, a deep lunate tail.
+    "AurorafinMarlin": dict(
+        profile=[(0.00, 0.03), (0.16, 0.10), (0.48, 0.28), (0.80, 0.20), (1.00, 0.04)],
+        width=0.62,
+        sides=7,
+        tail=dict(kind="lunate", reach=0.52, spread=0.48),
+        dorsals=[dict(t0=0.42, t1=0.74, height=0.46, kind="sickle"), dict(t0=0.22, t1=0.34, height=0.14, kind="sickle")],
+        anals=[dict(t0=0.28, t1=0.42, height=0.16, kind="sickle")],
+        pectoral=0.40,
+        jaw="bill",
+        marks=dict(kind="stripe", t0=0.12, t1=0.88, height=0.22),
+        eye=(0.86, 0.05),
+        colors=dict(body=(0.25, 0.35, 0.50), fins=(0.45, 0.80, 0.85), marks=(0.50, 0.95, 0.85)),
+    ),
+    # ---- Gloomtrench fish (island 5) ----
+    # Pale things that never saw the sun; the oarfish is the Legendary.
+    # Common - a washed-out dace.
+    "PaleDace": dict(
+        profile=[(0.00, 0.04), (0.22, 0.11), (0.54, 0.17), (0.86, 0.11), (1.00, 0.02)],
+        width=0.52,
+        sides=6,
+        tail=dict(kind="rounded", reach=0.34, spread=0.26),
+        dorsals=[dict(t0=0.42, t1=0.60, height=0.15, kind="soft")],
+        anals=[dict(t0=0.26, t1=0.42, height=0.10, kind="soft")],
+        pectoral=0.24,
+        marks=dict(kind="stripe", t0=0.12, t1=0.88, height=0.18),
+        eye=(0.87, 0.05),
+        colors=dict(body=(0.75, 0.75, 0.72), fins=(0.60, 0.60, 0.58), marks=(0.86, 0.86, 0.81)),
+    ),
+    # Common - a blindcave sardine: pin-prick eyes, translucent pink-white.
+    "BlindcaveSardine": dict(
+        profile=[(0.00, 0.04), (0.22, 0.10), (0.54, 0.16), (0.86, 0.10), (1.00, 0.02)],
+        width=0.5,
+        sides=6,
+        tail=dict(kind="forked", reach=0.40, spread=0.28, notch=0.14),
+        dorsals=[dict(t0=0.44, t1=0.58, height=0.13, kind="soft")],
+        anals=[dict(t0=0.26, t1=0.40, height=0.09, kind="soft")],
+        pectoral=0.22,
+        marks=dict(kind="stripe", t0=0.14, t1=0.86, height=0.14),
+        eye=(0.88, 0.02),
+        colors=dict(body=(0.80, 0.72, 0.70), fins=(0.68, 0.60, 0.60), marks=(0.90, 0.83, 0.81)),
+    ),
+    # Common - a soot-gilled hagfish: an eel of a thing, whiskered, its gill
+    # row barred black.
+    "SootgillHagfish": dict(
+        profile=[(0.00, 0.05), (0.25, 0.09), (0.60, 0.11), (0.88, 0.10), (1.00, 0.04)],
+        width_profile=[(0.00, 0.03), (0.30, 0.06), (0.65, 0.08), (1.00, 0.05)],
+        sides=6,
+        tail=dict(kind="rounded", reach=0.26, spread=0.16),
+        dorsals=[dict(t0=0.08, t1=0.55, height=0.08, kind="soft")],
+        anals=[dict(t0=0.10, t1=0.42, height=0.06, kind="soft")],
+        pectoral=0.10,
+        barbel="whiskers",
+        marks=dict(kind="bars", count=4, t0=0.70, t1=0.88, width=0.025, height=0.55),
+        eye=(0.90, 0.025),
+        colors=dict(body=(0.30, 0.28, 0.30), fins=(0.22, 0.20, 0.22), marks=(0.12, 0.11, 0.12)),
+    ),
+    # LEGENDARY chase - the Ghostlight Oarfish (rows scale it 2.2): a silver
+    # ribbon under a full-length spectral dorsal with a crest at the head.
+    "GhostlightOarfish": dict(
+        profile=[(0.00, 0.04), (0.15, 0.11), (0.45, 0.13), (0.75, 0.12), (0.94, 0.09), (1.00, 0.03)],
+        width=0.30,
+        sides=6,
+        tail=dict(kind="rounded", reach=0.22, spread=0.14),
+        dorsals=[dict(t0=0.10, t1=0.78, height=0.22, kind="soft"), dict(t0=0.80, t1=0.94, height=0.48, kind="spiny", spines=3)],
+        anals=[],
+        pectoral=0.16,
+        marks=dict(kind="stripe", t0=0.08, t1=0.92, height=0.14),
+        eye=(0.88, 0.05),
+        colors=dict(body=(0.80, 0.85, 0.90), fins=(0.55, 0.90, 0.80), marks=(0.60, 0.95, 0.85)),
+    ),
+    # ---- Wreckwater fish (island 6) ----
+    # Rust, barnacle and grave-light; the sailfish is the Legendary.
+    # Common - a dull wreck herring, finlets like rivet stubs.
+    "WreckHerring": dict(
+        profile=[(0.00, 0.04), (0.20, 0.12), (0.52, 0.19), (0.86, 0.12), (1.00, 0.02)],
+        width=0.5,
+        sides=6,
+        tail=dict(kind="forked", reach=0.42, spread=0.30, notch=0.16),
+        dorsals=[dict(t0=0.44, t1=0.60, height=0.15, kind="soft")],
+        anals=[dict(t0=0.24, t1=0.40, height=0.10, kind="soft")],
+        pectoral=0.24,
+        finlets=(0.12, 0.26, 4),
+        marks=dict(kind="bars", count=6, t0=0.24, t1=0.80, width=0.03, height=0.50, top=True),
+        eye=(0.88, 0.05),
+        colors=dict(body=(0.60, 0.65, 0.60), fins=(0.48, 0.52, 0.48), marks=(0.30, 0.35, 0.30)),
+    ),
+    # Common - a rust-scaled snapper: deep-bodied, spiny-crested, oxide red.
+    "RustscaleSnapper": dict(
+        profile=[(0.00, 0.06), (0.18, 0.18), (0.48, 0.34), (0.78, 0.24), (0.94, 0.13), (1.00, 0.04)],
+        width=0.5,
+        sides=6,
+        tail=dict(kind="forked", reach=0.36, spread=0.32, notch=0.10),
+        dorsals=[dict(t0=0.40, t1=0.70, height=0.28, kind="spiny", spines=8), dict(t0=0.22, t1=0.38, height=0.16, kind="soft")],
+        anals=[dict(t0=0.24, t1=0.40, height=0.14, kind="soft")],
+        pectoral=0.28,
+        marks=dict(kind="bars", count=5, t0=0.22, t1=0.80, width=0.045, height=0.80),
+        eye=(0.86, 0.055),
+        colors=dict(body=(0.65, 0.40, 0.30), fins=(0.50, 0.30, 0.24), marks=(0.35, 0.20, 0.15)),
+    ),
+    # Common - a barnacle blenny: blunt-headed, one long dorsal, mottled.
+    "BarnacleBlenny": dict(
+        profile=[(0.00, 0.04), (0.24, 0.12), (0.60, 0.17), (0.86, 0.16), (1.00, 0.06)],
+        width_profile=[(0.00, 0.02), (0.25, 0.07), (0.60, 0.10), (0.85, 0.13), (1.00, 0.07)],
+        sides=6,
+        tail=dict(kind="rounded", reach=0.28, spread=0.22),
+        dorsals=[dict(t0=0.14, t1=0.86, height=0.18, kind="soft")],
+        anals=[dict(t0=0.14, t1=0.50, height=0.10, kind="soft")],
+        pectoral=0.30,
+        marks=dict(kind="bars", count=5, t0=0.22, t1=0.78, width=0.05, height=0.70),
+        eye=(0.86, 0.05),
+        colors=dict(body=(0.50, 0.48, 0.40), fins=(0.42, 0.40, 0.34), marks=(0.72, 0.70, 0.62)),
+    ),
+    # Uncommon - a ghost carp: deep, whiskered, pale as fog.
+    "GhostCarp": dict(
+        profile=[(0.00, 0.05), (0.20, 0.16), (0.50, 0.30), (0.80, 0.22), (1.00, 0.05)],
+        width=0.58,
+        sides=6,
+        tail=dict(kind="forked", reach=0.38, spread=0.32, notch=0.10),
+        dorsals=[dict(t0=0.30, t1=0.62, height=0.24, kind="soft")],
+        anals=[dict(t0=0.22, t1=0.36, height=0.12, kind="soft")],
+        pectoral=0.28,
+        barbel="whiskers",
+        marks=dict(kind="stripe", t0=0.10, t1=0.90, height=0.20),
+        eye=(0.87, 0.05),
+        colors=dict(body=(0.72, 0.78, 0.75), fins=(0.60, 0.68, 0.66), marks=(0.86, 0.92, 0.88)),
+    ),
+    # LEGENDARY chase - the Spectral Sailfish (rows scale it 2.1): the bill
+    # and THE SAIL, grave-teal and glowing.
+    "SpectralSailfish": dict(
+        profile=[(0.00, 0.03), (0.16, 0.10), (0.48, 0.26), (0.80, 0.19), (1.00, 0.04)],
+        width=0.55,
+        sides=7,
+        tail=dict(kind="lunate", reach=0.50, spread=0.46),
+        dorsals=[dict(t0=0.28, t1=0.78, height=0.55, kind="soft"), dict(t0=0.16, t1=0.24, height=0.10, kind="soft")],
+        anals=[dict(t0=0.26, t1=0.40, height=0.14, kind="sickle")],
+        pectoral=0.38,
+        jaw="bill",
+        marks=dict(kind="bars", count=6, t0=0.24, t1=0.76, width=0.03, height=0.70),
+        eye=(0.86, 0.05),
+        colors=dict(body=(0.45, 0.60, 0.62), fins=(0.50, 0.85, 0.80), marks=(0.60, 0.95, 0.88)),
+    ),
+    # ---- Maelstrom fish (island 7) ----
+    # Storm silver and thunderhead blue; the tuna is the Legendary.
+    # Common - a squall sprat, barely more than a fleck of storm-light.
+    "SquallSprat": dict(
+        profile=[(0.00, 0.03), (0.24, 0.09), (0.55, 0.14), (0.86, 0.09), (1.00, 0.02)],
+        width=0.48,
+        sides=6,
+        tail=dict(kind="forked", reach=0.40, spread=0.26, notch=0.16),
+        dorsals=[dict(t0=0.44, t1=0.58, height=0.12, kind="soft")],
+        anals=[dict(t0=0.26, t1=0.40, height=0.08, kind="soft")],
+        pectoral=0.20,
+        marks=dict(kind="stripe", t0=0.14, t1=0.88, height=0.14),
+        eye=(0.88, 0.045),
+        colors=dict(body=(0.65, 0.70, 0.78), fins=(0.50, 0.56, 0.66), marks=(0.82, 0.87, 0.95)),
+    ),
+    # Common - a rainfin mackerel: storm bars, wet-sky sheen.
+    "RainfinMackerel": dict(
+        profile=[(0.00, 0.04), (0.20, 0.11), (0.52, 0.19), (0.86, 0.12), (1.00, 0.02)],
+        width=0.62,
+        sides=6,
+        tail=dict(kind="forked", reach=0.42, spread=0.30, notch=0.14),
+        dorsals=[dict(t0=0.52, t1=0.70, height=0.14, kind="spiny", spines=5), dict(t0=0.30, t1=0.42, height=0.10, kind="soft")],
+        anals=[dict(t0=0.30, t1=0.42, height=0.10, kind="soft")],
+        pectoral=0.24,
+        finlets=(0.12, 0.28, 5),
+        marks=dict(kind="bars", count=8, t0=0.24, t1=0.80, width=0.028, height=0.50, top=True),
+        eye=(0.88, 0.045),
+        colors=dict(body=(0.35, 0.45, 0.55), fins=(0.28, 0.36, 0.46), marks=(0.12, 0.20, 0.30)),
+    ),
+    # Common - a foam-chaser mullet: blunt, twin short dorsals, spray-pale.
+    "FoamchaserMullet": dict(
+        profile=[(0.00, 0.05), (0.22, 0.14), (0.55, 0.22), (0.84, 0.16), (1.00, 0.04)],
+        width=0.60,
+        sides=6,
+        tail=dict(kind="square", reach=0.32, spread=0.28),
+        dorsals=[dict(t0=0.56, t1=0.68, height=0.16, kind="spiny", spines=4), dict(t0=0.30, t1=0.42, height=0.13, kind="soft")],
+        anals=[dict(t0=0.28, t1=0.42, height=0.11, kind="soft")],
+        pectoral=0.26,
+        marks=dict(kind="stripe", t0=0.12, t1=0.88, height=0.16),
+        eye=(0.87, 0.05),
+        colors=dict(body=(0.55, 0.60, 0.62), fins=(0.44, 0.50, 0.54), marks=(0.80, 0.84, 0.86)),
+    ),
+    # LEGENDARY chase - the Stormking Tuna (rows scale it 2.3): the biggest
+    # torpedo in the game, thunder-dark with a lightning-gold stripe.
+    "StormkingTuna": dict(
+        profile=[(0.00, 0.03), (0.16, 0.10), (0.50, 0.32), (0.80, 0.25), (1.00, 0.03)],
+        width=0.88,
+        sides=8,
+        tail=dict(kind="lunate", reach=0.56, spread=0.52),
+        dorsals=[dict(t0=0.50, t1=0.70, height=0.42, kind="sickle"), dict(t0=0.32, t1=0.46, height=0.18, kind="sickle")],
+        anals=[dict(t0=0.32, t1=0.46, height=0.18, kind="sickle")],
+        pectoral=0.50,
+        finlets=(0.10, 0.36, 9),
+        marks=dict(kind="stripe", t0=0.10, t1=0.90, height=0.24),
+        eye=(0.88, 0.05),
+        colors=dict(body=(0.16, 0.22, 0.36), fins=(0.30, 0.38, 0.50), marks=(0.95, 0.85, 0.40)),
+    ),
     # Epic - the trophy: a molten-cored tuna, lunate tail, a long run of ember finlets.
     "MagmafinTuna": dict(
         profile=[(0.00, 0.03), (0.16, 0.10), (0.50, 0.31), (0.80, 0.24), (1.00, 0.03)],
@@ -303,6 +557,14 @@ ORDER = [
     "Perch", "Mackerel", "Trout", "Puffer", "Bass", "Cod", "Catfish", "Salmon", "Tuna",
     # Volcano fish, smallest to largest.
     "Ashgill", "MagmaGuppy", "Emberfin", "ObsidianBass", "BasaltCod", "PyreSalmon", "MagmafinTuna",
+    # Frostmaw Reach, smallest to largest.
+    "IcemeltSmelt", "SnowdriftSculpin", "FrostfinChar", "RimeHerring", "AurorafinMarlin",
+    # Gloomtrench.
+    "PaleDace", "BlindcaveSardine", "SootgillHagfish", "GhostlightOarfish",
+    # Wreckwater.
+    "BarnacleBlenny", "WreckHerring", "RustscaleSnapper", "GhostCarp", "SpectralSailfish",
+    # The Maelstrom.
+    "SquallSprat", "RainfinMackerel", "FoamchaserMullet", "StormkingTuna",
 ]
 
 
@@ -437,7 +699,21 @@ def build_body(shape, bm):
 
 
 def build_jaw(shape, bm, kind):
-    """Salmon kype: the hooked lower jaw, a wedge under the nose curling up."""
+    """Salmon kype: the hooked lower jaw, a wedge under the nose curling up.
+    Bill: a marlin/sailfish spear off the nose, a long thin wedge along +Y."""
+    if kind == "bill":
+        y1 = y_at(1.0)
+        prism(
+            bm,
+            [
+                Vector((0, y1 - 0.06, shape.hh(0.96) * 0.4)),
+                Vector((0, y1 + 0.6, 0.05)),
+                Vector((0, y1 - 0.06, -shape.hh(0.96) * 0.05)),
+            ],
+            SIDE,
+            0.045,
+        )
+        return
     if kind != "kype":
         return
     prism(
