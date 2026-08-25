@@ -1,0 +1,280 @@
+--!nonstrict
+-- WeatherController.luau
+-- Island ambience, entirely client-side. Two jobs:
+--
+--   Blizzard (ice island) - the server opens windows on the WorldEvent
+--   remote (WeatherService); while one is open AND the local player is
+--   standing on that island, the screen whites out: fog closes in, snow
+--   streams past the camera. Someone fishing the tropics sees nothing.
+--
+--   Perpetual dark (gloom island) - no remote at all: standing on the gloom
+--   island IS the event. Midnight, black fog closed to a lantern's reach,
+--   and a personal lamp on the character. Holding one of the trench's own
+--   lantern rods (Lanternline / Gloomheart) doubles what you can see - the
+--   island's light-management mechanic in its simplest playable form.
+--
+-- Lighting is GLOBAL state, so this controller is the only thing in the
+-- client that writes it: it snapshots the defaults at init and every frame
+-- of ambience is a tween back toward either the snapshot or the preset.
+-- Anything else that wants to touch Lighting should go through here.
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local Lighting = game:GetService("Lighting")
+
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Islands = require(Shared.Config.Islands)
+local Equipment = require(Shared.Config.Equipment)
+local World = require(Shared.Config.World)
+local Remotes = require(Shared.Net.Remotes)
+
+local player = Players.LocalPlayer
+
+local WeatherController = {}
+
+-- How often the "which island am I on" probe runs. Cheap (pure math), but
+-- nothing about ambience needs frame precision.
+local PROBE_INTERVAL = 1.0
+local TWEEN_TIME = 1.6
+
+-- The gloom island's personal lamp, and how far the dark lets you see.
+local GLOOM_FOG_END = 160
+local GLOOM_FOG_END_LANTERN = 320
+local LAMP_RANGE = 18
+local LAMP_RANGE_LANTERN = 34
+-- Rods whose light the trench respects (brighter lamp, further fog).
+local LANTERN_RODS: { [string]: boolean } = {
+	lanternline_rod = true,
+	gloomheart_rod = true,
+}
+
+local BLIZZARD_FOG_END = 190
+
+local defaults = nil -- Lighting snapshot, taken at init
+local blizzards: { [string]: boolean } = {} -- islandId -> a window is open
+local currentMode = "clear" -- "clear" | "blizzard" | "gloom"
+local lamp: PointLight? = nil
+local snow: ParticleEmitter? = nil
+local lastProbe = 0
+
+-- ============================================================ helpers
+
+-- The island the character is standing on (nearest centre within 1.5x its
+-- footprint), or nil on the open sea. IslandsController keeps its own copy
+-- of this; both are three lines over Islands.items.
+local function currentIslandId(): string?
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if not (root and root:IsA("BasePart")) then
+		return nil
+	end
+	local here: string? = nil
+	local bestDist = math.huge
+	for id, entry in Islands.items do
+		local p = entry.worldPosition
+		local dist = (Vector2.new(root.Position.X, root.Position.Z) - Vector2.new(p.X, p.Z)).Magnitude
+		if dist < (entry.radius or World.ISLAND_RADIUS) * 1.5 and dist < bestDist then
+			bestDist = dist
+			here = id
+		end
+	end
+	return here
+end
+
+local function holdingLanternRod(): boolean
+	local rodId = player:GetAttribute(Equipment.ROD_ATTRIBUTE)
+	return rodId ~= nil and LANTERN_RODS[rodId] == true
+end
+
+local function tweenLighting(props: { [string]: any })
+	TweenService:Create(Lighting, TweenInfo.new(TWEEN_TIME, Enum.EasingStyle.Sine), props):Play()
+end
+
+-- ============================================================ the lamp
+
+local function setLamp(on: boolean, range: number)
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if not on then
+		if lamp then
+			lamp:Destroy()
+			lamp = nil
+		end
+		return
+	end
+	if not (root and root:IsA("BasePart")) then
+		return
+	end
+	if not lamp or lamp.Parent ~= root then
+		if lamp then
+			lamp:Destroy()
+		end
+		lamp = Instance.new("PointLight")
+		lamp.Name = "GloomLamp"
+		lamp.Color = Color3.fromRGB(255, 226, 160)
+		lamp.Shadows = false
+		lamp.Parent = root
+	end
+	lamp.Range = range
+	lamp.Brightness = 1.4
+end
+
+-- ============================================================ the snow
+
+local function setSnow(on: boolean)
+	local camera = workspace.CurrentCamera
+	if not on then
+		if snow then
+			snow.Enabled = false
+		end
+		return
+	end
+	if not camera then
+		return
+	end
+	if not snow or not snow.Parent then
+		local holder = camera:FindFirstChild("SnowHolder")
+		if not holder then
+			holder = Instance.new("Part")
+			holder.Name = "SnowHolder"
+			holder.Size = Vector3.new(1, 1, 1)
+			holder.Transparency = 1
+			holder.CanCollide = false
+			holder.CanQuery = false
+			holder.CanTouch = false
+			holder.Anchored = true
+			holder.Parent = camera
+		end
+		snow = Instance.new("ParticleEmitter")
+		snow.Name = "Snow"
+		snow.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+		snow.Color = ColorSequence.new(Color3.fromRGB(240, 248, 255))
+		snow.Size = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0.12),
+			NumberSequenceKeypoint.new(1, 0.05),
+		})
+		snow.Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0.25),
+			NumberSequenceKeypoint.new(1, 1),
+		})
+		snow.Rate = 160
+		snow.Lifetime = NumberRange.new(1.2, 2.0)
+		snow.Speed = NumberRange.new(16, 26)
+		snow.SpreadAngle = Vector2.new(35, 35)
+		snow.EmissionDirection = Enum.NormalId.Bottom
+		snow.LockedToPart = true
+		snow.Parent = camera.SnowHolder
+	end
+	snow.Enabled = true
+	-- Ride ~14 studs above the camera so flakes stream down past the view.
+	local holder = camera:FindFirstChild("SnowHolder")
+	if holder then
+		holder.CFrame = camera.CFrame * CFrame.new(0, 14, 0)
+	end
+end
+
+-- ============================================================ modes
+
+local function applyClear()
+	tweenLighting({
+		FogEnd = defaults.FogEnd,
+		FogStart = defaults.FogStart,
+		FogColor = defaults.FogColor,
+		Ambient = defaults.Ambient,
+		OutdoorAmbient = defaults.OutdoorAmbient,
+		ClockTime = defaults.ClockTime,
+		Brightness = defaults.Brightness,
+	})
+	setLamp(false, 0)
+	setSnow(false)
+end
+
+local function applyBlizzard()
+	tweenLighting({
+		FogEnd = BLIZZARD_FOG_END,
+		FogStart = 12,
+		FogColor = Color3.fromRGB(226, 236, 244),
+		OutdoorAmbient = Color3.fromRGB(190, 200, 212),
+		Brightness = defaults.Brightness,
+		ClockTime = defaults.ClockTime,
+		Ambient = defaults.Ambient,
+	})
+	setLamp(false, 0)
+	setSnow(true)
+end
+
+local function applyGloom(lanternHeld: boolean)
+	tweenLighting({
+		FogEnd = if lanternHeld then GLOOM_FOG_END_LANTERN else GLOOM_FOG_END,
+		FogStart = 6,
+		FogColor = Color3.fromRGB(8, 8, 14),
+		Ambient = Color3.fromRGB(14, 12, 22),
+		OutdoorAmbient = Color3.fromRGB(22, 20, 34),
+		ClockTime = 0,
+		Brightness = 0.6,
+	})
+	setLamp(true, if lanternHeld then LAMP_RANGE_LANTERN else LAMP_RANGE)
+	setSnow(false)
+end
+
+local function refresh()
+	local here = currentIslandId()
+	local mode = "clear"
+	if here == "gloom" then
+		mode = "gloom"
+	elseif here and blizzards[here] then
+		mode = "blizzard"
+	end
+	-- Gloom re-applies even in-mode: the lantern rod can change in hand.
+	if mode == "gloom" then
+		applyGloom(holdingLanternRod())
+	elseif mode ~= currentMode then
+		if mode == "blizzard" then
+			applyBlizzard()
+		else
+			applyClear()
+		end
+	end
+	currentMode = mode
+end
+
+-- ============================================================ lifecycle
+
+function WeatherController.init()
+	defaults = {
+		FogEnd = Lighting.FogEnd,
+		FogStart = Lighting.FogStart,
+		FogColor = Lighting.FogColor,
+		Ambient = Lighting.Ambient,
+		OutdoorAmbient = Lighting.OutdoorAmbient,
+		ClockTime = Lighting.ClockTime,
+		Brightness = Lighting.Brightness,
+	}
+
+	Remotes.WorldEvent.OnClientEvent:Connect(function(event)
+		if type(event) ~= "table" or event.kind ~= "blizzard" then
+			return
+		end
+		blizzards[event.islandId] = if event.active then true else nil
+		refresh()
+	end)
+end
+
+function WeatherController.start()
+	RunService.Heartbeat:Connect(function()
+		local now = os.clock()
+		if now - lastProbe < PROBE_INTERVAL then
+			-- Keep the snow holder glued to the camera between probes.
+			if currentMode == "blizzard" then
+				setSnow(true)
+			end
+			return
+		end
+		lastProbe = now
+		refresh()
+	end)
+end
+
+return WeatherController
