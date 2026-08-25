@@ -27,6 +27,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Equipment = require(Shared.Config.Equipment)
 local Bait = require(Shared.Data.Bait)
+local Boats = require(Shared.Data.Boats)
 local Bosses = require(Shared.Data.Bosses)
 local Materials = require(Shared.Data.Materials)
 local Rods = require(Shared.Data.Rods)
@@ -82,6 +83,17 @@ local TABS = {
 		noun = "bait",
 		items = Bait.items,
 		attribute = Equipment.BAIT_ATTRIBUTE,
+	},
+	-- The boat ladder (Session 3). "Owning" is the BoatTier attribute, not an
+	-- inventory id: each hull is built onto the previous one, so exactly one
+	-- row is ever craftable - the next tier up.
+	{
+		kind = "boat",
+		label = "Boat",
+		token = "BOAT",
+		noun = "hull",
+		items = Boats.items,
+		attribute = "BoatTier",
 	},
 }
 
@@ -243,12 +255,67 @@ local function showDetail(itemId: string?)
 		spec.pips = Describe.rodPips(item)
 	elseif activeTab.kind == "weapon" then
 		spec.pips = Describe.weaponPips(item)
+	elseif activeTab.kind == "boat" then
+		spec.description = string.format(
+			"%s\n\nSpeed %d  ·  Hull %d  ·  Open sea %d studs",
+			item.blurb,
+			item.speed,
+			item.hullHealth,
+			item.seaworthiness
+		)
 	else
 		spec.effects = Describe.baitEffects(item.effect)
 	end
 
 	local canCraft = false
-	if activeTab.kind == "bait" then
+	if activeTab.kind == "boat" then
+		local tier = player:GetAttribute("BoatTier") or 0
+		if tier >= item.tier then
+			spec.state = if tier == item.tier then "YOUR BOAT" else "OUTGROWN"
+			spec.stateColor = if tier == item.tier then C.green else C.panelLight
+			if tier == item.tier then
+				spec.actions = {
+					{
+						text = "Summon (R)",
+						style = "primary",
+						enabled = true,
+						onClick = function()
+							Remotes.RequestBoat:FireServer("summon")
+							CraftingController.setOpen(false)
+						end,
+					},
+				}
+			end
+		elseif item.recipe then
+			local isNext = item.tier == tier + 1
+			spec.state = if not isNext
+				then "NEEDS PREVIOUS HULL"
+				elseif level() >= item.recipe.requiresLevel then "CRAFTABLE"
+				else ("LEVEL " .. item.recipe.requiresLevel)
+			spec.stateColor = if isNext and level() >= item.recipe.requiresLevel then C.green else C.red
+			spec.extra = function(scroll, order)
+				local nextOrder, ok = recipeSection(item, scroll, order)
+				canCraft = ok and isNext
+				return nextOrder
+			end
+			spec.actions = {
+				{
+					text = "Craft",
+					style = "success",
+					enabled = true, -- re-gated below once the recipe has run
+					onClick = function()
+						if canCraft then
+							Remotes.RequestCraft:FireServer(item.id)
+						end
+					end,
+				},
+			}
+		else
+			-- Tier 1: Brinejaw's bounty, never crafted.
+			spec.state = "DEFEAT BRINEJAW"
+			spec.stateColor = C.red
+		end
+	elseif activeTab.kind == "bait" then
 		local count = baitCounts[itemId] or 0
 		spec.count = count
 		spec.state = if equipped then "SELECTED" else nil
@@ -358,7 +425,23 @@ local function refreshCard(itemId: string)
 	if not handle or not item then
 		return
 	end
-	if activeTab.kind == "bait" then
+	if activeTab.kind == "boat" then
+		local tier = player:GetAttribute("BoatTier") or 0
+		handle.setEquipped(tier == item.tier)
+		if tier >= item.tier then
+			handle.setTag(
+				if tier == item.tier then "YOURS" else "OUTGROWN",
+				if tier == item.tier then C.green else C.textDim
+			)
+		elseif not item.recipe then
+			handle.setTag("BOSS", C.red)
+		elseif item.tier == tier + 1 then
+			local ok = level() >= item.recipe.requiresLevel
+			handle.setTag("LV " .. item.recipe.requiresLevel, if ok then C.accent else C.red)
+		else
+			handle.setTag("LOCKED", C.textDim)
+		end
+	elseif activeTab.kind == "bait" then
 		local count = baitCounts[itemId] or 0
 		handle.setCount(count)
 		handle.setEquipped(equippedId() == itemId)
@@ -395,7 +478,15 @@ local function renderTab()
 	local ids = orderFor(activeTab)
 	for i, itemId in ids do
 		local item = activeTab.items[itemId]
-		local locked = activeTab.kind ~= "bait" and not ownedSet[itemId]
+		local locked
+		if activeTab.kind == "bait" then
+			locked = false
+		elseif activeTab.kind == "boat" then
+			-- The current hull and the next rung show; the rest stay veiled.
+			locked = item.tier > (player:GetAttribute("BoatTier") or 0) + 1
+		else
+			locked = not ownedSet[itemId]
+		end
 		cards[itemId] = Kit.card(grid, {
 			name = itemId,
 			order = i,
@@ -590,6 +681,16 @@ function CraftingController.init()
 	for bossId in Bosses.items do
 		player:GetAttributeChangedSignal("Heart_" .. bossId):Connect(refresh)
 	end
+
+	-- A new boat tier unveils the next rung's card, so the open tab re-renders
+	-- rather than just re-tagging.
+	player:GetAttributeChangedSignal("BoatTier"):Connect(function()
+		if modal.backdrop.Visible and activeTab.kind == "boat" then
+			renderTab()
+		else
+			refresh()
+		end
+	end)
 end
 
 function CraftingController.start()

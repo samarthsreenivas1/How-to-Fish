@@ -16,12 +16,14 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Bait = require(Shared.Data.Bait)
+local Boats = require(Shared.Data.Boats)
 local Bosses = require(Shared.Data.Bosses)
 local Rods = require(Shared.Data.Rods)
 local Weapons = require(Shared.Data.Weapons)
 local Remotes = require(Shared.Net.Remotes)
 
 local BaitService = require(script.Parent.BaitService)
+local BoatService = require(script.Parent.BoatService)
 local InventoryService = require(script.Parent.InventoryService)
 local MaterialService = require(script.Parent.MaterialService)
 local ProgressionService = require(script.Parent.ProgressionService)
@@ -37,7 +39,7 @@ local function onRequestCraft(player: Player, itemId)
 		return
 	end
 
-	local item = Rods.items[itemId] or Weapons.items[itemId] or Bait.items[itemId]
+	local item = Rods.items[itemId] or Weapons.items[itemId] or Bait.items[itemId] or Boats.items[itemId]
 	local recipe = item and item.recipe
 	if not recipe then
 		fail(player, itemId, "That can't be crafted.")
@@ -46,9 +48,23 @@ local function onRequestCraft(player: Player, itemId)
 
 	-- Bait is a stackable consumable, so the "already own it" guard (which stops
 	-- re-crafting a rod/weapon you already hold) must not apply to it - you
-	-- always want to make more bait.
+	-- always want to make more bait. A boat is a LADDER: owning is a tier
+	-- number, not an inventory id, and each hull is built onto the previous
+	-- one - so crafting demands exactly the next tier up.
 	local isBait = Bait.items[itemId] ~= nil
-	if not isBait and InventoryService.ownsItem(player, itemId) then
+	local isBoat = Boats.items[itemId] ~= nil
+	if isBoat then
+		local tier = BoatService.tierOf(player)
+		if tier >= item.tier then
+			fail(player, itemId, "You already own that.")
+			return
+		end
+		if item.tier ~= tier + 1 then
+			local needed = Boats.byTier[item.tier - 1]
+			fail(player, itemId, string.format("Build the %s first.", needed and needed.name or "previous hull"))
+			return
+		end
+	elseif not isBait and InventoryService.ownsItem(player, itemId) then
 		fail(player, itemId, "You already own that.")
 		return
 	end
@@ -88,10 +104,13 @@ local function onRequestCraft(player: Player, itemId)
 	end
 	ProgressionService.spendCoins(player, recipe.coins)
 
-	-- Bait bumps a stackable count (by the recipe's yield); rods/weapons add an
-	-- owned id. Same recipe/spend path up to here.
+	-- Bait bumps a stackable count (by the recipe's yield); a boat raises the
+	-- BoatTier attribute; rods/weapons add an owned id. Same recipe/spend path
+	-- up to here.
 	if isBait then
 		BaitService.grant(player, itemId, recipe.yield)
+	elseif isBoat then
+		BoatService.grantTier(player, item.tier)
 	else
 		InventoryService.grantItem(player, itemId)
 	end

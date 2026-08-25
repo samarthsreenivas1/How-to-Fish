@@ -15,6 +15,7 @@ local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Islands = require(Shared.Config.Islands)
+local Boats = require(Shared.Data.Boats)
 local Bosses = require(Shared.Data.Bosses)
 local Ocean = require(Shared.Config.Ocean)
 local World = require(Shared.Config.World)
@@ -37,6 +38,11 @@ local safeSpawn: Vector3?
 local placed: { [string]: boolean } = {}
 -- islandId -> the placed island Model (for the bounds sampler).
 local placedModels: { [string]: Instance } = {}
+
+-- Collision groups (registered in registerCollisionGroups, used from
+-- buildOcean up so declared here with the other state).
+local BOAT_GROUP = World.BOAT_COLLISION_GROUP
+local WATER_GROUP = World.WATER_COLLISION_GROUP
 
 -- Flat-shaded palette. SmoothPlastic (not the Sand material) on purpose: the
 -- reference look is clean low-poly faces, and Sand's grain texture fights it.
@@ -186,6 +192,12 @@ local function buildOcean(parent: Instance)
 		Reflectance = Ocean.REFLECTANCE,
 		Parent = parent,
 	})
+	-- In its own group so the boat (BOAT group) passes through the slab and
+	-- floats on code-held Y instead; players still stand on the surface.
+	-- Assigning an unregistered group throws, and init must not die on it.
+	pcall(function()
+		ocean.CollisionGroup = WATER_GROUP
+	end)
 
 	addWaterLayers(ocean)
 
@@ -227,7 +239,7 @@ local BARRIER_GROUP = World.BARRIER_COLLISION_GROUP
 local CREATURE_GROUP = World.CREATURE_COLLISION_GROUP
 
 local function registerCollisionGroups()
-	for _, name in { BARRIER_GROUP, CREATURE_GROUP } do
+	for _, name in { BARRIER_GROUP, CREATURE_GROUP, BOAT_GROUP, WATER_GROUP } do
 		-- Registering an existing group throws; a re-run of init must not die.
 		pcall(function()
 			PhysicsService:RegisterCollisionGroup(name)
@@ -235,6 +247,12 @@ local function registerCollisionGroups()
 	end
 	local ok = pcall(function()
 		PhysicsService:CollisionGroupSetCollidable(BARRIER_GROUP, CREATURE_GROUP, false)
+		-- The boat holds its own waterline (BoatController) instead of resting
+		-- on the solid ocean slab, and a thrown catch must not smack a parked
+		-- hull. Water<->Creature stays COLLIDABLE - thrown fish have always
+		-- been able to skip off the sea surface, and that look is approved.
+		PhysicsService:CollisionGroupSetCollidable(WATER_GROUP, BOAT_GROUP, false)
+		PhysicsService:CollisionGroupSetCollidable(CREATURE_GROUP, BOAT_GROUP, false)
 	end)
 	if not ok then
 		warn("[WorldService] Could not make barriers pass-through for creatures; they may bounce off invisible walls.")
@@ -1650,49 +1668,133 @@ function WorldService.teleportToIsland(player: Player, islandId: any): (boolean,
 	return true
 end
 
--- Move a player to an island, server-authoritatively. Re-checks everything the
--- menu shows (island exists, its mesh is placed, the player's level clears the
--- unlock) so a hacked client can't reach an island it shouldn't. Replies on
--- TeleportResult either way so the menu can show why it was refused.
-local function handleTeleport(player: Player, islandId: any)
-	local function refuse(reason: string)
-		Remotes.TeleportResult:FireClient(player, { ok = false, islandId = islandId, reason = reason })
+-- The island whose footprint contains `position` (XZ distance inside its
+-- radius plus `margin`, default 0), or nil for open sea. Islands sit 3000
+-- studs apart with radii under 700, so footprints never overlap.
+function WorldService.islandAt(position: Vector3, margin: number?): (string?, any)
+	for id, entry in Islands.items do
+		local d = Vector3.new(position.X - entry.worldPosition.X, 0, position.Z - entry.worldPosition.Z).Magnitude
+		if d <= entry.radius + (margin or 0) then
+			return id, entry
+		end
 	end
+	return nil, nil
+end
 
+-- EVERY way onto an island funnels through this one gate: the teleport menu,
+-- and (via the containment sweep below) simply arriving - by boat, or walking
+-- the solid ocean slab. Checks the island exists, its mesh is placed, the
+-- player's level clears the unlock, the PREVIOUS island's boss is beaten
+-- (`Cleared_<prevId>`, set by BossService), and - Session 3 - the player's
+-- boat is seaworthy enough for the crossing: island N+1 in Islands.order
+-- needs BoatTier >= N (the plan's "boat tier N unlocks crossing to N+1").
+-- Returns ok plus a player-facing reason when not.
+function WorldService.mayEnter(player: Player, islandId: any): (boolean, string?)
 	if type(islandId) ~= "string" then
-		return refuse("Unknown island")
+		return false, "Unknown island"
 	end
 	local entry = Islands.items[islandId]
 	if not entry then
-		return refuse("Unknown island")
+		return false, "Unknown island"
 	end
 	if not placed[islandId] then
-		return refuse("Not open yet")
+		return false, "Not open yet"
 	end
 
 	local level = player:GetAttribute(Progression.ATTR.level) or Progression.START_LEVEL
 	if level < entry.unlockLevel then
-		return refuse(string.format("Reach level %d", entry.unlockLevel))
+		return false, string.format("Reach level %d", entry.unlockLevel)
 	end
 
-	-- Every island past the first is guarded by the PREVIOUS island's boss
-	-- (Islands.items[prev].boss): BossService marks `Cleared_<islandId>` on
-	-- the player when they've beaten it.
 	local index = table.find(Islands.order, islandId)
 	if index and index > 1 then
 		local prevId = Islands.order[index - 1]
 		local prevEntry = Islands.items[prevId]
 		local boss = prevEntry and prevEntry.boss and Bosses.items[prevEntry.boss]
 		if boss and player:GetAttribute("Cleared_" .. prevId) ~= true then
-			return refuse(string.format("Defeat %s first", boss.shortName))
+			return false, string.format("Defeat %s first", boss.shortName)
 		end
+
+		local neededTier = index - 1
+		local tier = player:GetAttribute("BoatTier") or 0
+		if tier < neededTier then
+			local wanted = Boats.byTier[neededTier]
+			return false,
+				if wanted and wanted.recipe
+					then string.format("Craft the %s first", wanted.name)
+					else string.format("You need a boat for that crossing (tier %d)", neededTier)
+		end
+	end
+
+	return true
+end
+
+-- XZ distance from `position` to the shoreline of the nearest island this
+-- player may enter (negative inside the shoreline). The boat's seaworthiness
+-- check (BoatService): open water only starts counting past the coast of
+-- somewhere you're allowed to be, so a legal crossing measures at most half
+-- the island spacing while a locked destination gives you no shelter.
+function WorldService.openSeaDistance(player: Player, position: Vector3): number
+	local best = math.huge
+	for id, entry in Islands.items do
+		if placed[id] and WorldService.mayEnter(player, id) then
+			local d = Vector3.new(position.X - entry.worldPosition.X, 0, position.Z - entry.worldPosition.Z).Magnitude
+				- entry.radius
+			best = math.min(best, d)
+		end
+	end
+	return best
+end
+
+-- Where a summoned boat surfaces: just off the coast the player is nearest,
+-- bow out to sea. On an island that's a push from the centre out past the
+-- shoreline; on open water (walking the slab, or re-summoning after a sink)
+-- it's simply a few studs ahead of the character.
+function WorldService.boatLaunchCFrame(player: Player): CFrame?
+	local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+	if not (root and root:IsA("BasePart")) then
+		return nil
+	end
+	local position = root.Position
+	local id, entry = WorldService.islandAt(position, 160)
+	local outward
+	local at
+	if id then
+		local centre = Vector3.new(entry.worldPosition.X, 0, entry.worldPosition.Z)
+		local flat = Vector3.new(position.X, 0, position.Z)
+		outward = flat - centre
+		outward = if outward.Magnitude > 1 then outward.Unit else Vector3.zAxis
+		-- Past the coastline wobble and any dock: the shoreline radius plus a
+		-- clear margin, but never behind where the player already stands.
+		local r = math.max(entry.radius + 30, (flat - centre).Magnitude + 12)
+		at = centre + outward * r
+	else
+		outward = Vector3.new(root.CFrame.LookVector.X, 0, root.CFrame.LookVector.Z)
+		outward = if outward.Magnitude > 0.05 then outward.Unit else Vector3.zAxis
+		at = Vector3.new(position.X, 0, position.Z) + outward * 14
+	end
+	return CFrame.lookAt(Vector3.new(at.X, World.WATER_Y, at.Z), Vector3.new(at.X, World.WATER_Y, at.Z) + outward)
+end
+
+-- Move a player to an island, server-authoritatively. Re-checks everything the
+-- menu shows (mayEnter, above) so a hacked client can't reach an island it
+-- shouldn't. Replies on TeleportResult either way so the menu can show why it
+-- was refused.
+local function handleTeleport(player: Player, islandId: any)
+	local allowed, why = WorldService.mayEnter(player, islandId)
+	if not allowed then
+		Remotes.TeleportResult:FireClient(player, { ok = false, islandId = islandId, reason = why })
+		return
 	end
 
 	local ok, reason = WorldService.teleportToIsland(player, islandId)
 	if ok then
 		Remotes.TeleportResult:FireClient(player, { ok = true, islandId = islandId })
 	else
-		refuse(reason or "Can't travel there")
+		Remotes.TeleportResult:FireClient(
+			player,
+			{ ok = false, islandId = islandId, reason = reason or "Can't travel there" }
+		)
 	end
 end
 
@@ -1777,22 +1879,69 @@ local function recoveryPoint(position: Vector3): CFrame?
 	return if safeSpawn then CFrame.new(safeSpawn) else nil
 end
 
+-- Where the containment sweep sends a trespasser: the spawn of the nearest
+-- island they're actually allowed on, falling back to the starter spawn.
+local function bounceTarget(player: Player, position: Vector3): CFrame?
+	local bestEntry, bestId, bestDist = nil, nil, math.huge
+	for id, entry in Islands.items do
+		if placed[id] and WorldService.mayEnter(player, id) then
+			local d = (Vector3.new(position.X, 0, position.Z) - Vector3.new(
+				entry.worldPosition.X,
+				0,
+				entry.worldPosition.Z
+			)).Magnitude
+			if d < bestDist then
+				bestEntry, bestId, bestDist = entry, id, d
+			end
+		end
+	end
+	if bestEntry then
+		local cframe, grounded = islandSpawnPoint(bestEntry, bestId)
+		if grounded then
+			return cframe
+		end
+	end
+	return if safeSpawn then CFrame.new(safeSpawn) else nil
+end
+
 function WorldService.start()
-	-- Safety net for the "walked under the island and got stuck" bug: if a
-	-- character ends up beneath the landform (island overhead, only ocean
-	-- below), lift them back onto that island's spawn so they're never
-	-- trapped. Cheap: a ray per player, twice a second.
+	-- Two safety sweeps in one loop, a ray or two per player, twice a second:
+	--   - the under-map net ("walked under the island and got stuck"): lift a
+	--     character beneath the landform back onto that island's spawn;
+	--   - the containment sweep (Session 3): a player inside an island's
+	--     footprint who fails mayEnter is bounced to the nearest island they
+	--     ARE allowed on. This closes the walk-on-the-solid-ocean hole and
+	--     makes sailing and teleporting one rule - the boat doesn't need its
+	--     own gate checks. Admins are exempt (AdminTeleport skips gates by
+	--     design, and the sweep must not fight it).
 	task.spawn(function()
 		while true do
 			task.wait(0.5)
 			for _, player in Players:GetPlayers() do
 				local character = player.Character
 				local root = character and character:FindFirstChild("HumanoidRootPart")
-				if root and root:IsA("BasePart") and isUnderMap(root.Position) then
-					local target = recoveryPoint(root.Position)
-					if target then
-						root.AssemblyLinearVelocity = Vector3.zero
-						character:PivotTo(target)
+				if root and root:IsA("BasePart") then
+					if isUnderMap(root.Position) then
+						local target = recoveryPoint(root.Position)
+						if target then
+							root.AssemblyLinearVelocity = Vector3.zero
+							character:PivotTo(target)
+						end
+					elseif player:GetAttribute("IsAdmin") ~= true then
+						local islandId = WorldService.islandAt(root.Position)
+						if islandId and not WorldService.mayEnter(player, islandId) then
+							local target = bounceTarget(player, root.Position)
+							if target then
+								-- A seated character is welded to the seat; break
+								-- the weld first or the PivotTo drags the boat too.
+								local humanoid = character:FindFirstChildOfClass("Humanoid")
+								if humanoid and humanoid.SeatPart then
+									humanoid.Sit = false
+								end
+								root.AssemblyLinearVelocity = Vector3.zero
+								character:PivotTo(target)
+							end
+						end
 					end
 				end
 			end

@@ -112,6 +112,14 @@ local DEFS = {
 	-- skipping the level/boss unlock gates - admin-gated server-side like the
 	-- other Admin* remotes, so it existing for everyone is safe.
 	{ name = "AdminTeleport", class = "RemoteEvent" }, -- client -> server: islandId
+
+	-- The boat (BoatController -> BoatService). One remote: "summon" builds or
+	-- recalls the player's boat to the nearest shoreline, "dismiss" parks it
+	-- away. Boat state itself replicates as attributes on the boat Model
+	-- (BoatTier on the Player; HullHealth/OwnerUserId on the boat), so the only
+	-- other traffic is the moment banner.
+	{ name = "RequestBoat", class = "RemoteEvent" }, -- client -> server: action ("summon" | "dismiss")
+	{ name = "BoatMessage", class = "RemoteEvent" }, -- server -> client: text (hull warnings, refusals, sinkings)
 }
 
 local Remotes = {}

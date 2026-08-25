@@ -52,6 +52,14 @@ World.WATERS_BY_PART = {
 World.BARRIER_COLLISION_GROUP = "Barrier"
 World.CREATURE_COLLISION_GROUP = "Creature"
 
+-- The boat (Session 3) floats by holding its own Y at WATER_Y, so it must NOT
+-- rest on the solid ocean slab: the ocean part sits in WATER and every boat
+-- part in BOAT, and the pair is non-collidable (players still stand on both).
+-- BOAT is also non-collidable with CREATURE so a thrown catch can't beach on
+-- a parked hull mid-arc.
+World.BOAT_COLLISION_GROUP = "Boat"
+World.WATER_COLLISION_GROUP = "Water"
+
 -- Parts a cast's aim ray passes straight through (CastAim). The barriers are
 -- built non-query-able, which should already keep them out of every raycast;
 -- naming them keeps casting working even if one is ever made query-able.

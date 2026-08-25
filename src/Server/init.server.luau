@@ -27,7 +27,8 @@ local ORDER = {
 	"FishingService", -- after InventoryService: reads the equipped rod's reel config
 	"CombatService", -- after CreatureService + InventoryService: swings route through both (reads the equipped weapon row)
 	"ProgressionService", -- after CreatureService: pays coins + XP off its Killed event
-	"CraftingService", -- after Inventory + Material + Progression: spends mats/coins, grants rods + weapons
+	"BoatService", -- after WorldService (launch points, open-sea distance); grants tiers, summons/parks/sinks the boat
+	"CraftingService", -- after Inventory + Material + Progression + Boat: spends mats/coins, grants rods + weapons + boat tiers
 	"BossService", -- after Creature + Inventory + Progression: raises island bosses when a player qualifies, records the win
 	"AdminService", -- after Progression + Material: dev cheat grants (coins/xp/materials), gated to admins
 	"DropService", -- after Creature + Inventory: rare finished-item drops off the Killed event

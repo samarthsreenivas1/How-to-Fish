@@ -748,4 +748,36 @@ Tuning.Materials = {
 	},
 }
 
+-- ============================================================ Boat
+
+-- The drivable boat (Boats.luau rows, BoatService/BoatController). Per-tier
+-- numbers (speed, turn, hull, seaworthiness) live on the rows; this section
+-- is how EVERY boat feels and how the open-sea attrition behaves.
+Tuning.Boat = {
+	-- Feel (the driver's client holds these).
+	ACCELERATION = 24, -- studs/s^2 toward the throttle's target speed
+	REVERSE_FACTOR = 0.4, -- reverse top speed, as a fraction of forward
+	Y_GAIN = 4, -- P-gain pulling the hull to the waterline (per second)
+	BOB_HEIGHT = 0.25, -- gentle idle bob, studs (visual only; matches the tide's scale)
+	BOB_PERIOD = 3.2, -- seconds per bob
+	SIDE_DAMPING = 3, -- how hard lateral drift is bled off (per second)
+
+	-- Open-sea attrition (BoatService's 1s loop). Past the row's
+	-- `seaworthiness` distance the hull takes DOT_BASE damage per second,
+	-- ramping the further out you push: +100% per RAMP_DISTANCE studs beyond
+	-- the line. The warning fires once when the DoT starts.
+	DOT_BASE = 6,
+	RAMP_DISTANCE = 300,
+	WARNING = "The hull groans - this is more sea than she can take!",
+
+	-- Sinking: at 0 hull the occupants are dumped in the drink (the under-map
+	-- net and the solid sea rescue them) and the wreck despawns after a beat.
+	SINK_LINGER = 2.5, -- seconds the dead hull lingers before despawning
+
+	-- Housekeeping.
+	PARK_SNAP_DELAY = 1.2, -- seconds after the seat empties before the server re-anchors
+	SUMMON_COOLDOWN = 3, -- seconds between RequestBoat uses (anti-spam)
+	REPAIR_ON_SUMMON = true, -- a fresh summon at shore is a free patch-up
+}
+
 return Tuning
