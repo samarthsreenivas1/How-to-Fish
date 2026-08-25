@@ -18,7 +18,7 @@ commit the .rbxm).
 |---|---|---|---|
 | 1 | `assets/island_pack.glb` | `IslandPack` (or per-island models) | Now bundles ALL SIX islands: Island, Volcano, **Swamp, Frostmaw, Gloomtrench, Wreckwater**. One import covers every island. WorldService clones each child group by model name. |
 | 2 | `assets/weapon.glb` | `WeaponPack` | Regenerated with the six ranged variants: BogwoodBow, GatorjawCrossbow, MireFlintlock, CinderlockCarbine, BasaltScattergun, VulkanRepeater. |
-| 3 | `assets/boat.glb` | `BoatPack` (new) | Six tier hulls + trophy-shelf mount (see boat_gen.py header for variant names). |
+| 3 | `assets/boat.glb` | `BoatPack` (new) | Six tier hulls + Helm seat markers + trophy-shelf sterns (variant names in boat_gen.py). On first import, sanity-check the bow orientation in Studio (authored bow = Blender -y, same convention gotcha as the rod pack). |
 | 4 | `assets/creatures.glb` | `CreaturePack` | Regenerated with the new boss/flyer species (Gnashroot, Pyrelisk, Rimefang, Noctyss, AdmiralWrack, Kraken + tentacle, flyers...). |
 | 5 | `assets/fish.glb` | `FishPack` | Only if the fish-species pass landed (check git log for fish_gen.py commits). |
 
