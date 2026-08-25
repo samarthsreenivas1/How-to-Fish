@@ -14,13 +14,18 @@
 --     restored straight onto Player attributes (Cleared_* / Heart_* / BoatTier).
 --
 -- Contract with the owning services (registered in their init()):
---   DataService.register(key, { load = fn(player, slice?), serialize = fn(player) })
+--   DataService.register(key, { load = fn(player, slice?), serialize = fn(player), release = fn(player) })
 -- Services seed their normal defaults on PlayerAdded as before; when the
 -- profile arrives (async - DataStores yield), `load` overwrites those defaults
 -- and re-pushes its own remotes/attributes. `serialize` must return a plain,
--- JSON-safe table and must not yield: it is called synchronously on
--- PlayerRemoving, before the services' own cleanup runs (this service's
--- connection is first because it boots first).
+-- JSON-safe table and must not yield. `release` wipes the service's
+-- per-player tables, and it is called HERE, after the final serialize -
+-- registered services must NOT connect their own PlayerRemoving wipe.
+-- (Roblox fires a signal's connections in reverse connection order, so
+-- "connect first to run first" is exactly backwards - trusting it had every
+-- disconnect serialize already-wiped tables and save a default profile over
+-- the real one. The 2026-08-25 review caught it; ordering now lives in this
+-- one function instead of in signal-connection trivia.)
 --
 -- The ONLY sanctioned way to play without persistence is Studio with no
 -- DataStore API access, and it warns loudly. Everywhere else a failed load
@@ -74,7 +79,12 @@ function DataService.register(key: string, handlers)
 		type(handlers.load) == "function" and type(handlers.serialize) == "function",
 		string.format("[DataService] %q must register load + serialize", key)
 	)
-	table.insert(registered, { key = key, load = handlers.load, serialize = handlers.serialize })
+	table.insert(registered, {
+		key = key,
+		load = handlers.load,
+		serialize = handlers.serialize,
+		release = handlers.release,
+	})
 end
 
 function DataService.isLoaded(player: Player): boolean
@@ -100,14 +110,17 @@ local function applyProfile(player: Player, data)
 		for _, entry in registered do
 			entry.load(player, data[entry.key])
 		end
+		-- BoatTier BEFORE the hearts: BoatService's Heart_brinejaw watcher
+		-- fires synchronously inside the hearts loop, and it must see the
+		-- restored tier (not nil) or every returning owner is re-granted tier 1.
+		if type(data.boatTier) == "number" and data.boatTier > 0 then
+			player:SetAttribute(BOAT_ATTR, data.boatTier)
+		end
 		for islandId in (data.cleared or {}) do
 			player:SetAttribute(CLEARED_PREFIX .. islandId, true)
 		end
 		for bossId in (data.hearts or {}) do
 			player:SetAttribute(HEART_PREFIX .. bossId, true)
-		end
-		if type(data.boatTier) == "number" and data.boatTier > 0 then
-			player:SetAttribute(BOAT_ATTR, data.boatTier)
 		end
 	else
 		-- Fresh profile: the services' PlayerAdded defaults already stand.
@@ -263,14 +276,21 @@ local function savePlayer(player: Player, release: boolean): boolean
 end
 
 local function onPlayerRemoving(player: Player)
-	-- Capture state before the other services' PlayerRemoving wipe it: this
-	-- connection fires first (DataService boots first), and serialize doesn't
-	-- yield. The write itself can yield, so it moves to its own thread.
+	-- Serialize FIRST, then release: the registered services do not connect
+	-- their own PlayerRemoving wipes (signal connections fire in reverse
+	-- connection order, so no connection-order trick is trustworthy) - their
+	-- `release` handlers run here, strictly after the final serialize.
+	-- Serialize doesn't yield; the write can, so it moves to its own thread.
 	local profile = profiles[player]
 	if profile and profile.loaded and not profile.saveDisabled then
 		local data = serializeProfile(player)
 		local key = keyFor(player)
 		task.spawn(writeProfile, key, data, true)
+	end
+	for _, entry in registered do
+		if entry.release then
+			entry.release(player)
+		end
 	end
 	profiles[player] = nil
 end

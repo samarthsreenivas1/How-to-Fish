@@ -258,7 +258,9 @@ local function onPlayerAdded(player: Player)
 	end
 end
 
-local function onPlayerRemoving(player: Player)
+-- Called by DataService after the final serialize on leave - never from our
+-- own PlayerRemoving connection (that raced the save; DataService's header).
+local function releasePlayer(player: Player)
 	inventories[player] = nil
 	equippedRod[player] = nil
 	equippedWeapon[player] = nil
@@ -266,7 +268,7 @@ local function onPlayerRemoving(player: Player)
 end
 
 function InventoryService.init()
-	DataService.register("inventory", { load = loadSlice, serialize = serializeSlice })
+	DataService.register("inventory", { load = loadSlice, serialize = serializeSlice, release = releasePlayer })
 
 	Remotes.GetInventory.OnServerInvoke = function(player: Player)
 		return inventories[player] or {}
@@ -296,7 +298,6 @@ end
 
 function InventoryService.start()
 	Players.PlayerAdded:Connect(onPlayerAdded)
-	Players.PlayerRemoving:Connect(onPlayerRemoving)
 
 	-- Catch players already in the server (Studio's "Run" without a fresh
 	-- join, or this service starting after PlayerAdded already fired).

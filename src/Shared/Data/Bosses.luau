@@ -212,10 +212,13 @@ Bosses.items.pyrelisk = {
 	-- The bait is the gate, as with Brinejaw: level only, matching Caldera's
 	-- Call's own recipe level (the volcano band's end).
 	gate = { level = 28 },
-	-- Off the end of the shore jetty (the dock runs out past r~527 on +Z):
-	-- it rises from the sea and can haul itself toward the planks, so players
-	-- fight it from the jetty and the apron's edge.
-	arena = { offset = Vector3.new(0, 0, 590), radius = 30 },
+	-- Off the END of the shore jetty: the dock STARTS at r~527 on +Z and its
+	-- planks run 110 studs seaward to r~637 (island_gen.py volcano overrides),
+	-- so the arena centre sits at 680 - the whole roam disc (Z 650-710) is
+	-- open sea past the last plank, and it hauls itself TOWARD the deck the
+	-- way Brinejaw does. (The 2026-08-25 review caught the original 590, which
+	-- put the fight underneath the jetty's mid-span.)
+	arena = { offset = Vector3.new(0, 0, 680), radius = 30 },
 	aggro = 90,
 	standoff = 14,
 	hitRadius = 6, -- at scale 1, pivot to the jaw; x1.5 = 9, matching Brinejaw's frame

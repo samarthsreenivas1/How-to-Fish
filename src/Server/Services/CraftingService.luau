@@ -24,6 +24,7 @@ local Remotes = require(Shared.Net.Remotes)
 
 local BaitService = require(script.Parent.BaitService)
 local BoatService = require(script.Parent.BoatService)
+local DataService = require(script.Parent.DataService)
 local InventoryService = require(script.Parent.InventoryService)
 local MaterialService = require(script.Parent.MaterialService)
 local ProgressionService = require(script.Parent.ProgressionService)
@@ -36,6 +37,14 @@ end
 
 local function onRequestCraft(player: Player, itemId)
 	if type(itemId) ~= "string" then
+		return
+	end
+
+	-- Same gate as casting (FishingService): spending or earning against the
+	-- session defaults during the async profile load would be overwritten
+	-- when the real data lands.
+	if not DataService.isLoaded(player) then
+		fail(player, itemId, "Hauling in your things... one moment.")
 		return
 	end
 

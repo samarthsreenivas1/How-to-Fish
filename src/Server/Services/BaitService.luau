@@ -154,13 +154,17 @@ local function onPlayerAdded(player: Player)
 	pushCounts(player)
 end
 
-local function onPlayerRemoving(player: Player)
-	counts[player] = nil
-	selected[player] = nil
-end
-
 function BaitService.init()
-	DataService.register("bait", { load = loadSlice, serialize = serializeSlice })
+	-- The per-player wipe is DataService's `release`, run after the final
+	-- serialize on leave - never our own PlayerRemoving connection.
+	DataService.register("bait", {
+		load = loadSlice,
+		serialize = serializeSlice,
+		release = function(player: Player)
+			counts[player] = nil
+			selected[player] = nil
+		end,
+	})
 	Remotes.GetBait.OnServerInvoke = function(player: Player)
 		return counts[player] or {}
 	end
@@ -174,7 +178,6 @@ end
 
 function BaitService.start()
 	Players.PlayerAdded:Connect(onPlayerAdded)
-	Players.PlayerRemoving:Connect(onPlayerRemoving)
 	for _, player in Players:GetPlayers() do
 		onPlayerAdded(player)
 	end

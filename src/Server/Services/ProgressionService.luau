@@ -176,14 +176,20 @@ end
 
 function ProgressionService.init()
 	CreatureService.Killed.Event:Connect(onKilled)
-	DataService.register("progression", { load = loadSlice, serialize = serializeSlice })
+	-- No PlayerRemoving wipe here: DataService calls `release` after the
+	-- final serialize (wiping on our own connection raced the save and could
+	-- serialize defaults - see DataService's header).
+	DataService.register("progression", {
+		load = loadSlice,
+		serialize = serializeSlice,
+		release = function(player: Player)
+			states[player] = nil
+		end,
+	})
 end
 
 function ProgressionService.start()
 	Players.PlayerAdded:Connect(ensure)
-	Players.PlayerRemoving:Connect(function(player)
-		states[player] = nil
-	end)
 	for _, player in Players:GetPlayers() do
 		ensure(player)
 	end

@@ -39,6 +39,7 @@ local World = require(Shared.Config.World)
 local BaitService = require(script.Parent.BaitService)
 local BossService = require(script.Parent.BossService)
 local CreatureService = require(script.Parent.CreatureService)
+local DataService = require(script.Parent.DataService)
 local InventoryService = require(script.Parent.InventoryService)
 local MaterialService = require(script.Parent.MaterialService)
 local ProgressionService = require(script.Parent.ProgressionService)
@@ -440,6 +441,15 @@ local function onRequestCast(player: Player, claimedLanding)
 		return
 	end
 
+	-- Nothing is earned before the profile lands: every loadSlice OVERWRITES
+	-- its slice, so coins/materials from a cast made during the async load
+	-- window would silently vanish when the real data arrived. Casting (and
+	-- crafting, same gate in CraftingService) waits the few seconds out.
+	if not DataService.isLoaded(player) then
+		Remotes.CastRejected:FireClient(player, "Hauling in your things... one moment.")
+		return
+	end
+
 	local character = player.Character
 	if not character then
 		return
@@ -480,11 +490,14 @@ local function onRequestCast(player: Player, claimedLanding)
 	local selectedId = BaitService.getSelected(player)
 	local selected = selectedId and Bait.items[selectedId]
 	local summons = selected and selected.effect and selected.effect.summonsBoss
+	-- A summon bait selected at count 0 is NOT a rejection: selection is
+	-- intent, and the cast falls back to baitless exactly like every other
+	-- zero-count selection (BaitService's contract; the ordinary spend path
+	-- below already behaves that way).
+	if summons and BaitService.getCount(player, selectedId) < 1 then
+		summons = nil
+	end
 	if summons then
-		if BaitService.getCount(player, selectedId) < 1 then
-			Remotes.CastRejected:FireClient(player, "You have none of that bait.")
-			return
-		end
 		local ok, why = BossService.summonFor(player, summons)
 		if not ok then
 			Remotes.CastRejected:FireClient(player, why or "Nothing answers the call.")
