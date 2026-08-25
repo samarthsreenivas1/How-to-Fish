@@ -17,8 +17,12 @@ local World = require(Shared.Config.World)
 
 local Islands = {}
 
--- Display order in the teleport menu.
-Islands.order = { "tropical", "volcano" }
+-- Display order in the teleport menu - AND the progression chain: travel to
+-- entry N+1 requires the `Cleared_` attribute of entry N's boss
+-- (WorldService.handleTeleport). This is the revamp's final 6-island line
+-- (docs/revamp-plan.md band table); The Maelstrom finale site deliberately
+-- stays OUT of this list (Session 4 adds it as `site = true`).
+Islands.order = { "tropical", "swamp", "ice", "volcano", "gloom", "wreck" }
 
 -- Each island:
 --   name          - shown in the menu.
@@ -56,38 +60,83 @@ Islands.items = {
 		boss = "brinejaw",
 	},
 
-	-- Enable once assets/island_volcano.glb is imported to
-	-- ReplicatedStorage/Assets as "Volcano" (assets/README.md). Until the mesh
-	-- exists the menu shows it as "coming soon" and travel is refused, so it is
-	-- safe to leave listed. Placed far from the origin so it doesn't overlap the
-	-- starter on the shared ocean.
+	-- Blackmire Fen (revamp Session 2, slot 2, L8-14): the swamp. A meshless
+	-- island shows as "coming soon" and refuses travel, so every entry below
+	-- is safe to list before its import lands. Its interior murk pools are
+	-- the fishable Swamp_Water (the `waters = "swamp"` roster); the sea off
+	-- its +Z dock is ordinary ocean.
+	swamp = {
+		name = "Blackmire Fen",
+		blurb = "Peat, murk, and things with too many teeth. The fen's gulls hunt back.",
+		model = "Swamp",
+		worldPosition = Vector3.new(3000, 0, 0),
+		radius = 180,
+		spawn = Vector3.new(3000, 4, 122), -- X/Z: on the bank before the dock (planks run Z=140..182); Y is the probe's fallback
+		unlockLevel = 8,
+		boss = "old_gnashroot",
+	},
+
+	-- Frostmaw Reach (slot 3, L15-21). Skeleton entry: b8's Session 4 lane
+	-- fills the boss (rimefang) + kit; the Frostmaw_IceHoles water wiring
+	-- lands with it.
+	ice = {
+		name = "Frostmaw Reach",
+		blurb = "A frozen shelf over black water. Fish the ice-holes - mind the blizzards.",
+		model = "Frostmaw",
+		worldPosition = Vector3.new(6000, 0, 0),
+		radius = 230,
+		spawn = Vector3.new(6000, 5, 174), -- X/Z: shore before the dock (planks run Z=192..238); Y is the probe's fallback
+		unlockLevel = 15,
+	},
+
+	-- Ashfall Caldera - FINAL slot 4 (L22-28; revamp Session 2 moved it from
+	-- the interim slot). Content re-gates to the band in b8's Session 4 pass;
+	-- its three guns already sit at L22/25/28.
 	--
 	-- REDESIGNED 2026-08-24 (user): a ~940-stud jagged stratovolcano you never
 	-- climb. The playable area is the flat ash APRON around the foot at sea
 	-- level - ocean-bounded exactly like the starter, so there is deliberately
 	-- no `rim`/`pier` bounds block any more (WorldService's rim sampler is
 	-- dormant without one). The fishing dock is a plain shore jetty into the
-	-- SEA (Roblox +Z side, same convention as the starter's dock; you fish
-	-- ocean water off it). Lava pours from the summit crater down every flank
-	-- and dies in molten PONDS on the apron - those ponds are the island's
-	-- fishable lava (the `waters = "volcano"` roster), reached on foot, and
-	-- the apron is littered with burnt snags / basalt columns / cinder vents.
+	-- SEA (Roblox +Z side); lava pours from the summit into molten PONDS on
+	-- the apron - the island's fishable lava (`waters = "volcano"`).
 	volcano = {
 		name = "Ashfall Caldera",
 		blurb = "A towering volcano - fish its shore, brave the lava ponds.",
 		model = "Volcano",
-		worldPosition = Vector3.new(3000, 0, 0),
+		worldPosition = Vector3.new(9000, 0, 0),
 		radius = 640, -- capped so the base mesh imports (Roblox's 2048-stud limit)
-		spawn = Vector3.new(3000, 12, 505), -- X/Z: on the ash apron right in front of the dock (dock starts at r~527 on +Z); Y is the probe's reference + fallback only
-		-- Interim gate (docs/revamp-plan.md): the volcano is island 2 until the
-		-- swamp and ice islands ship, so it opens right after Brinejaw's L1-7
-		-- band. When it slides to slot 4 this becomes 22 (and the position moves).
-		unlockLevel = 8,
+		spawn = Vector3.new(9000, 12, 505), -- X/Z: on the ash apron right in front of the dock (dock starts at r~527 on +Z); Y is the probe's reference + fallback only
+		unlockLevel = 22,
 		-- Pyrelisk guards it (summoned by Caldera's Call, exactly the Brinejaw
 		-- ritual) - the progression chain no longer dead-ends here.
 		boss = "pyrelisk",
 		-- No castRangeMult: the dock fishes open sea and the lava ponds are
 		-- fished standing beside them, so the base reach is right.
+	},
+
+	-- Gloomtrench (slot 5, L29-35). Skeleton: b8 fills the boss (noctyss) +
+	-- kit + the Gloomtrench_DarkWater wiring + the lantern mechanic.
+	gloom = {
+		name = "Gloomtrench",
+		blurb = "Where the light gives up. Bring your own, and keep it lit.",
+		model = "Gloomtrench",
+		worldPosition = Vector3.new(12000, 0, 0),
+		radius = 200,
+		spawn = Vector3.new(12000, 4, 154), -- X/Z: shore before the dock (planks run Z=172..216); Y is the probe's fallback
+		unlockLevel = 29,
+	},
+
+	-- Wreckwater (slot 6, L36-42). Skeleton: b8 fills the boss
+	-- (admiral_wrack) + kit + the Wreckwater_Bay wiring + boarding raids.
+	wreck = {
+		name = "Wreckwater",
+		blurb = "A graveyard of ghost ships that never finished sinking.",
+		model = "Wreckwater",
+		worldPosition = Vector3.new(15000, 0, 0),
+		radius = 210,
+		spawn = Vector3.new(15000, 4, 167), -- X/Z: shore before the dock (planks run Z=185..231); Y is the probe's fallback
+		unlockLevel = 36,
 	},
 }
 

@@ -28,6 +28,10 @@ World.OCEAN_NAME = "Ocean"
 World.FISHABLE_NAMES = {
 	[World.OCEAN_NAME] = true,
 	Volcano_Lava = true,
+	-- Blackmire Fen's interior murk pools (the Swamp mesh, revamp S2). The
+	-- sea around the fen is the ordinary ocean; these are the still black
+	-- pools inland that fish the swamp roster.
+	Swamp_Water = true,
 }
 
 -- Which POOL of creatures a fishable surface draws from, by part name. This is
@@ -40,6 +44,7 @@ World.WATERS_OCEAN = "ocean"
 World.WATERS_BY_PART = {
 	[World.OCEAN_NAME] = World.WATERS_OCEAN,
 	Volcano_Lava = "volcano",
+	Swamp_Water = "swamp",
 }
 
 -- The two collision groups that make the world's invisible barriers ONE-WAY

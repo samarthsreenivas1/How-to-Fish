@@ -316,6 +316,123 @@ Bosses.items.pyrelisk = {
 	},
 }
 
+-- ============================================================ Blackmire Fen
+-- Old Gnashroot, the Fen Tyrant: a moss-backed snapping horror - half gator,
+-- half drowned oak - that heaves out of the murk off the fen's jetty.
+-- Summoned by casting Tyrant's Call (Bait.luau), the Brinejaw ritual. Three
+-- phases per the revamp plan: bites and sweeps, then it DIVES into the peat
+-- murk and comes up under you while its brood (toads, gulls, leeches) swarms
+-- and its roots drag you in, then it enrages into volleys and rains of
+-- splintered root-spines.
+Bosses.items.old_gnashroot = {
+	id = "old_gnashroot",
+	name = "Old Gnashroot, the Fen Tyrant",
+	shortName = "Old Gnashroot",
+	creature = "old_gnashroot",
+	islandId = "swamp",
+	-- The bait is the gate, as always: level only, the fen band's end.
+	gate = { level = 14 },
+	-- Off the end of the fen's jetty (the Swamp dock runs +Z from Z=140 to
+	-- ~182 at radius 180): it rises from the open water past the planks, and
+	-- can haul itself toward them.
+	arena = { offset = Vector3.new(0, 0, 210), radius = 28 },
+	aggro = 90,
+	standoff = 14,
+	hitRadius = 6, -- at scale 1, pivot to the jaws; x1.5 = 9, the Brinejaw frame
+	submerge = 2.4,
+	riseDepth = 18,
+	riseTime = 3.8,
+	speed = 7.5,
+	turnRate = math.rad(78),
+	attackGapMin = 0.7,
+	attackGapMax = 1.35,
+	enrageBelow = 0.3,
+	enrageCooldownMult = 0.55,
+	enrageDamageMult = 1.4,
+	phases = {
+		{ below = 1.0, attacks = { "snap", "tail", "slam" } },
+		{ below = 0.65, attacks = { "snap", "tail", "slam", "dive", "brood", "pull" } },
+		{ below = 0.3, attacks = { "snap", "slam", "dive", "brood", "pull", "volley", "spines", "spines" } },
+	},
+	attacks = {
+		snap = {
+			windup = 0.75,
+			duration = 0.35,
+			recover = 0.55,
+			cooldown = 1.8,
+			lunge = 14,
+			radius = 17,
+			cone = math.rad(65),
+			damage = { 58, 82 },
+		},
+		tail = {
+			windup = 0.9,
+			duration = 0.45,
+			recover = 0.65,
+			cooldown = 2.4,
+			radius = 21,
+			damage = { 48, 68 },
+		},
+		slam = { windup = 1.6, duration = 0.3, recover = 0.85, cooldown = 4.2, radius = 26, damage = { 58, 82 } },
+		-- Slips under the peat murk after your live position, locks under
+		-- your feet, and the fen floor erupts.
+		dive = {
+			windup = 0.7,
+			duration = 2.6,
+			lock = 0.9,
+			recover = 0.9,
+			cooldown = 7.5,
+			speed = 31,
+			radius = 13,
+			damage = { 58, 82 },
+		},
+		-- The fen answers: toads, gulls and leeches - the gulls keep flying
+		-- once the boss is dead, which is the point of learning them here.
+		brood = {
+			windup = 0.8,
+			duration = 0.4,
+			recover = 0.6,
+			cooldown = 10.0,
+			count = 4,
+			rows = { "croakjaw_toad", "bog_gull", "mire_leech" },
+		},
+		pull = {
+			windup = 0.5,
+			duration = 2.4,
+			recover = 0.2,
+			cooldown = 6.5,
+			radius = 65,
+			strength = 36,
+			follow = "snap",
+		},
+		-- A fan of peat-black globs.
+		volley = {
+			windup = 0.7,
+			duration = 0.9,
+			recover = 0.5,
+			cooldown = 3.0,
+			count = 6,
+			spread = 12,
+			flight = 1.0,
+			stagger = 0.13,
+			radius = 8,
+			damage = { 24, 34 },
+		},
+		-- Splintered root-spines rain around the player.
+		spines = {
+			windup = 0.8,
+			duration = 1.6,
+			recover = 0.5,
+			cooldown = 5.0,
+			count = 10,
+			spread = 14,
+			flight = 0.8,
+			radius = 6,
+			damage = { 30, 42 },
+		},
+	},
+}
+
 -- islandId -> boss, so the travel gate and BossService can look up "the
 -- boss of this island" directly.
 Bosses.byIsland = {} :: { [string]: Boss }

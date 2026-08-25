@@ -1470,14 +1470,18 @@ power-up does." Every menu and HUD is now built from one kit:
   attack its own voice). The only water sounds left are the bobber plop /
   reel tug and the boss's rise and fall (`impact_water`, pitched right
   down) — if those are the next complaint, they're one `id` each.
-- **OVERTURNED 2026-08-24 (user): ranged weapons are coming.** This bullet
-  used to read "no guns or ranged weapons, ever"; the user explicitly
-  reversed it for the 7-island progression revamp (`docs/revamp-plan.md`) —
-  fantasy-flavored ranged early (bow / crossbow / flintlock), modern
-  firearms from the volcano island on. The ranged engine and the first
-  ranged rows land in revamp Session 2; until then every Weapons row is
-  still melee. The `flyer` archetype ships alongside ranged (its grounded
-  recovery window is the melee counterplay).
+- **OVERTURNED 2026-08-24 (user), SHIPPED 2026-08-25: ranged weapons are
+  live.** This bullet used to read "no guns or ranged weapons, ever"; the
+  user explicitly reversed it for the 7-island progression revamp
+  (`docs/revamp-plan.md`), and revamp Session 2 built the engine: a Weapons
+  row with a `ranged` block shoots (CombatService's shot pipeline — hitscan
+  at fire time, damage after distance/projectileSpeed, token-bucket rate
+  limit + server magazine/reload; ShotAim validates the ray; RangedController
+  / RangedFxController client-side). Fantasy tier on the swamp (Bogwood Bow /
+  Gatorjaw Crossbow / Mire Flintlock), full-auto from the volcano on
+  (Cinderlock Carbine / Basalt Scattergun / Vulkan Repeater). The `flyer` +
+  `skythief` archetypes shipped alongside (grounded recovery after each dive
+  is the melee counterplay; the skythief steals your resting catch).
 - **Every catch is fought and killed.** No auto-collect tier.
 - **A landed catch is thrown at the player by physics** and lands inland
   behind them. A scoped exception to "no physics on creatures".

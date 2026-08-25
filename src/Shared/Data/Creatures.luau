@@ -984,6 +984,346 @@ Creatures.items.pyrelisk = {
 	},
 }
 
+-- ============================================================ Blackmire Fen (revamp Session 2)
+-- The swamp island's roster (docs/revamp-plan.md, Island 2): 13 rows + the
+-- Golden Gar chase + Old Gnashroot. Every row is `waters = "swamp"`, rolled
+-- only when the cast lands in Swamp_Water (the fen's interior murk pools);
+-- the sea off the fen's dock fishes the ocean roster like anywhere else.
+-- This island introduces the FLYERS (Systems §2): the gull, the wisp and the
+-- dragonfly circle out of melee reach and dive - the grounded recovery after
+-- each dive is the melee window, and the new guns reach them any time.
+--
+-- Health and explicit rewards sit at the island-2 multiplier (x2 the
+-- Tuning.Rewards baseline), matching its L8-14 band. Meshes: the fish reuse
+-- recoloured FishPack species and the hostiles procedural `shape` stand-ins
+-- (the volcano pattern) until the art lane's swamp species land in the
+-- CreaturePack - each row already names its final species.
+
+-- ---- Fen fish (passive floppers, peat palette) ----
+
+Creatures.items.peat_darter = {
+	id = "peat_darter",
+	name = "Peat Darter",
+	rarity = "Common",
+	archetype = "flopper",
+	health = 140,
+	waters = "swamp",
+	rewards = { coins = { 8, 16 }, xp = 24 },
+	drops = { materials = { bog_iron = { 1, 1 } } },
+	body = {
+		model = "FishPack",
+		species = "Perch",
+		scale = 0.65,
+		color = Color3.fromRGB(96, 84, 52),
+		finColor = Color3.fromRGB(140, 110, 58),
+		markColor = Color3.fromRGB(52, 44, 30),
+	},
+}
+
+Creatures.items.mudwhisker_catfish = {
+	id = "mudwhisker_catfish",
+	name = "Mudwhisker Catfish",
+	rarity = "Common",
+	archetype = "flopper",
+	health = 165,
+	waters = "swamp",
+	rewards = { coins = { 8, 16 }, xp = 24 },
+	drops = { materials = { bog_iron = { 1, 2 } } },
+	body = {
+		model = "FishPack",
+		species = "Catfish",
+		scale = 1.25,
+		color = Color3.fromRGB(74, 68, 54),
+		finColor = Color3.fromRGB(54, 50, 40),
+	},
+}
+
+Creatures.items.bog_bream = {
+	id = "bog_bream",
+	name = "Bog Bream",
+	rarity = "Common",
+	archetype = "flopper",
+	health = 150,
+	waters = "swamp",
+	rewards = { coins = { 8, 16 }, xp = 24 },
+	drops = { materials = { bog_iron = { 1, 1 } } },
+	body = {
+		model = "FishPack",
+		species = "Bass",
+		scale = 0.9,
+		color = Color3.fromRGB(104, 110, 70),
+		finColor = Color3.fromRGB(76, 82, 52),
+		markColor = Color3.fromRGB(46, 52, 34),
+	},
+}
+
+Creatures.items.rustgill_gar = {
+	id = "rustgill_gar",
+	name = "Rustgill Gar",
+	rarity = "Uncommon",
+	archetype = "flopper",
+	health = 330,
+	waters = "swamp",
+	rewards = { coins = { 24, 40 }, xp = 70 },
+	drops = { materials = { bog_iron = { 1, 2 }, fish_scale = { 1, 2 } } },
+	body = {
+		model = "FishPack",
+		species = "Mackerel",
+		scale = 1.6,
+		color = Color3.fromRGB(122, 96, 60),
+		finColor = Color3.fromRGB(160, 84, 48),
+		markColor = Color3.fromRGB(196, 118, 60),
+	},
+}
+
+-- ---- Fen hostiles ----
+
+-- The island's flyer tutor: circles overhead out of punching reach, then
+-- dive-bombs where you stood. Shoot it down, or catch it in the grounded
+-- recovery after each dive.
+Creatures.items.bog_gull = {
+	id = "bog_gull",
+	name = "Bog Gull",
+	rarity = "Uncommon",
+	archetype = "flyer",
+	health = 260,
+	waters = "swamp",
+	rewards = { coins = { 24, 40 }, xp = 70 },
+	drops = { materials = { fish_scale = { 1, 2 } } },
+	body = {
+		model = "CreaturePack",
+		species = "BogGull",
+		shape = "ray", -- winged stand-in until the pack species lands
+		scale = 1.0,
+		color = Color3.fromRGB(214, 210, 198), -- dirty white feathers
+		finColor = Color3.fromRGB(120, 116, 104), -- storm-grey wingtips
+		markColor = Color3.fromRGB(228, 160, 62), -- the beak
+	},
+}
+
+Creatures.items.croakjaw_toad = {
+	id = "croakjaw_toad",
+	name = "Croakjaw Toad",
+	rarity = "Uncommon",
+	archetype = "spitter",
+	health = 300,
+	waters = "swamp",
+	rewards = { coins = { 24, 40 }, xp = 70 },
+	drops = { materials = { gator_scute = { 1, 1 } } },
+	body = {
+		model = "CreaturePack",
+		species = "CroakjawToad",
+		shape = "gulletcod",
+		scale = 1.1,
+		color = Color3.fromRGB(92, 112, 62),
+		finColor = Color3.fromRGB(66, 84, 48),
+		markColor = Color3.fromRGB(214, 196, 120), -- the throat sac
+	},
+}
+
+Creatures.items.mire_leech = {
+	id = "mire_leech",
+	name = "Mire Leech",
+	rarity = "Uncommon",
+	archetype = "rusher",
+	health = 280,
+	waters = "swamp",
+	rewards = { coins = { 24, 40 }, xp = 70 },
+	drops = { materials = { bog_iron = { 1, 2 } } },
+	body = {
+		model = "CreaturePack",
+		species = "MireLeech",
+		shape = "lurker",
+		scale = 1.0,
+		color = Color3.fromRGB(58, 46, 50),
+		finColor = Color3.fromRGB(90, 58, 60),
+		markColor = Color3.fromRGB(160, 60, 62), -- the sucker mouth
+	},
+}
+
+Creatures.items.snagtooth_gator = {
+	id = "snagtooth_gator",
+	name = "Snagtooth Gator",
+	rarity = "Rare",
+	archetype = "charger",
+	health = 620,
+	waters = "swamp",
+	rewards = { coins = { 70, 110 }, xp = 180 },
+	drops = { materials = { gator_scute = { 1, 2 } } },
+	body = {
+		model = "CreaturePack",
+		species = "SnagtoothGator",
+		shape = "skipper",
+		scale = 1.5,
+		color = Color3.fromRGB(70, 88, 56),
+		finColor = Color3.fromRGB(52, 66, 44),
+		markColor = Color3.fromRGB(206, 198, 160), -- the snaggle teeth
+	},
+}
+
+-- A cold flame that drifts above the murk. Flyer machine, but its "dive" is
+-- the light swooping through you.
+Creatures.items.will_o_wisp = {
+	id = "will_o_wisp",
+	name = "Will-o-Wisp",
+	rarity = "Rare",
+	archetype = "flyer",
+	health = 480,
+	waters = "swamp",
+	rewards = { coins = { 70, 110 }, xp = 180 },
+	drops = { materials = { wisp_light = { 1, 2 } } },
+	body = {
+		model = "CreaturePack",
+		species = "WillOWisp",
+		shape = "jelly", -- a hovering bell of light until the pack species lands
+		scale = 0.9,
+		color = Color3.fromRGB(150, 235, 200),
+		finColor = Color3.fromRGB(110, 190, 170),
+		markColor = Color3.fromRGB(220, 255, 235), -- the core
+	},
+}
+
+-- The fen's skythief: it doesn't want you, it wants the catch flopping on
+-- the bank. Kill it before it clears the treeline or lose the fish.
+Creatures.items.dread_dragonfly = {
+	id = "dread_dragonfly",
+	name = "Dread Dragonfly",
+	rarity = "Rare",
+	archetype = "skythief",
+	health = 440,
+	waters = "swamp",
+	rewards = { coins = { 70, 110 }, xp = 180 },
+	drops = { materials = { wisp_light = { 1, 1 }, fish_scale = { 1, 2 } } },
+	body = {
+		model = "CreaturePack",
+		species = "DreadDragonfly",
+		shape = "ray",
+		scale = 1.1,
+		color = Color3.fromRGB(48, 66, 72), -- oil-dark body
+		finColor = Color3.fromRGB(130, 190, 196), -- glass wings
+		markColor = Color3.fromRGB(96, 226, 210), -- the eyes
+	},
+}
+
+Creatures.items.sunken_trapper = {
+	id = "sunken_trapper",
+	name = "Sunken Trapper",
+	rarity = "Rare",
+	archetype = "mimic",
+	health = 560,
+	waters = "swamp",
+	rewards = { coins = { 70, 110 }, xp = 180 },
+	drops = { materials = { wisp_light = { 1, 1 }, pearl = { 1, 1 } } },
+	body = {
+		model = "CreaturePack",
+		species = "SunkenTrapper",
+		shape = "mimic",
+		stance = "upright",
+		scale = 1.2,
+		color = Color3.fromRGB(78, 70, 50), -- a drowned crate's rotten boards
+		finColor = Color3.fromRGB(58, 52, 40), -- the lid
+		markColor = Color3.fromRGB(150, 235, 200), -- the wisp-light lure inside
+	},
+}
+
+Creatures.items.fen_serpent = {
+	id = "fen_serpent",
+	name = "Fen Serpent",
+	rarity = "Epic",
+	archetype = "spitter",
+	health = 1050,
+	waters = "swamp",
+	rewards = { coins = { 180, 280 }, xp = 440 },
+	drops = { materials = { fen_venom = { 1, 2 } } },
+	body = {
+		model = "CreaturePack",
+		species = "FenSerpent",
+		shape = "gulletcod",
+		scale = 1.8,
+		color = Color3.fromRGB(56, 74, 58),
+		finColor = Color3.fromRGB(88, 110, 66),
+		markColor = Color3.fromRGB(178, 210, 90), -- the venom sheen
+	},
+}
+
+Creatures.items.peat_revenant = {
+	id = "peat_revenant",
+	name = "Peat Revenant",
+	rarity = "Epic",
+	archetype = "shambler",
+	health = 1150,
+	waters = "swamp",
+	rewards = { coins = { 180, 280 }, xp = 440 },
+	drops = { materials = { fen_venom = { 1, 1 }, bog_iron = { 1, 2 } } },
+	body = {
+		model = "CreaturePack",
+		species = "PeatRevenant",
+		shape = "zombie",
+		stance = "upright",
+		scale = 1.15,
+		color = Color3.fromRGB(70, 66, 50), -- peat-tanned hide
+		finColor = Color3.fromRGB(50, 48, 38),
+		markColor = Color3.fromRGB(150, 235, 200), -- wisp-lit eyes
+	},
+}
+
+-- The fen's Legendary chase: an impossible golden gar older than the trees.
+Creatures.items.golden_gar = {
+	id = "golden_gar",
+	name = "The Golden Gar",
+	rarity = "Legendary",
+	archetype = "flopper",
+	health = 1900,
+	waters = "swamp",
+	rewards = { coins = { 500, 800 }, xp = 1200 },
+	drops = {
+		materials = { fen_venom = { 2, 3 }, pearl = { 2, 3 } },
+	},
+	body = {
+		model = "FishPack",
+		species = "Mackerel",
+		scale = 2.2,
+		color = Color3.fromRGB(212, 172, 74), -- old gold flanks
+		finColor = Color3.fromRGB(150, 112, 44),
+		markColor = Color3.fromRGB(244, 226, 150), -- pale royal banding
+	},
+}
+
+-- Old Gnashroot, the Fen Tyrant - Blackmire Fen's boss (Bosses.luau). A
+-- moss-backed snapping horror, half gator half drowned oak, summoned by
+-- casting Tyrant's Call. Rarity "Boss" keeps it out of every roll; its heart
+-- is the Heart_old_gnashroot attribute, never a drop.
+Creatures.items.old_gnashroot = {
+	id = "old_gnashroot",
+	name = "Old Gnashroot, the Fen Tyrant",
+	rarity = "Boss",
+	archetype = "boss",
+	boss = "old_gnashroot",
+	waters = "swamp",
+	-- A wall for L8-14 gear (~120-170 dps): a longer fight than Brinejaw
+	-- because the brood (toads, gulls) keeps interrupting it.
+	health = 16000,
+	rewards = { coins = { 1800, 2600 }, xp = 5200 },
+	drops = {
+		materials = {
+			bog_iron = { 6, 10 },
+			gator_scute = { 4, 6 },
+			wisp_light = { 3, 5 },
+			fen_venom = { 2, 4 },
+		},
+	},
+	body = {
+		model = "CreaturePack",
+		species = "Gnashroot",
+		shape = "leviathan", -- pre-import stand-in: the boss silhouette, moss-dark
+		stance = "upright",
+		scale = 1.5,
+		color = Color3.fromRGB(58, 66, 46), -- moss-backed hide
+		finColor = Color3.fromRGB(88, 76, 52), -- root-bark plates
+		markColor = Color3.fromRGB(150, 235, 200), -- wisp-lit eyes and maw (neon)
+	},
+}
+
 -- Rarity -> list of rows, so a rarity roll can pick uniformly within the
 -- tier. Built once here rather than rescanned per cast.
 Creatures.byRarity = {} :: { [string]: { Creature } }

@@ -657,6 +657,246 @@ Rods.items.phoenix_ash_rod = {
 	},
 }
 
+-- ============================================================ Blackmire Fen (L8-14)
+-- The swamp's five (revamp Session 2, docs/revamp-plan.md Island 2): U / R /
+-- R / E / Legendary up the fen's band, costed in the fen's own material
+-- chain. RodPack variants named for the art lane; the plain-cylinder
+-- stand-in shows until they're generated + imported.
+
+Rods.items.reedlash_rod = {
+	id = "reedlash_rod",
+	name = "Reedlash",
+	description = "A whippy fen reed cured in bog water. It bends where stiffer rods snap.",
+	rarity = "Uncommon",
+	icon = "",
+	model = {
+		model = "RodPack",
+		variant = "Reedlash",
+		grip = 0.95,
+		length = 7.0,
+		-- Cured reed, rust bindings, a cork-and-rust float.
+		colors = {
+			twig = Color3.fromRGB(148, 142, 90),
+			grip = Color3.fromRGB(96, 88, 58),
+			trim = Color3.fromRGB(164, 98, 62),
+			line = Color3.fromRGB(214, 210, 190),
+			bobberTop = Color3.fromRGB(164, 98, 62),
+			bobberBottom = Color3.fromRGB(226, 216, 186),
+		},
+	},
+	stats = {
+		luck = 1.3,
+		power = 1.1,
+		control = 1.2,
+	},
+	reel = {
+		clicksRequired = 3,
+		barSpeed = 0.6,
+		redWidth = 0.05,
+		greenWidth = 0.16,
+	},
+	recipe = {
+		requiresLevel = 8,
+		coins = 300,
+		materials = { bog_iron = 6, kelp_fiber = 8 },
+	},
+	perk = {
+		id = "reed_bend",
+		name = "Reed Bend",
+		description = "The reed soaks up one slip - your first miss each cast costs you nothing.",
+		freeMisses = 1,
+	},
+}
+
+Rods.items.gatorback_rod = {
+	id = "gatorback_rod",
+	name = "Gatorback",
+	description = "A blank armoured in gator scute. Nothing about it ever gives.",
+	rarity = "Rare",
+	icon = "",
+	model = {
+		model = "RodPack",
+		variant = "Gatorback",
+		grip = 0.95,
+		length = 7.0,
+		-- Scute-green plates over dark iron, a bone-white float.
+		colors = {
+			twig = Color3.fromRGB(94, 116, 72),
+			grip = Color3.fromRGB(58, 70, 48),
+			trim = Color3.fromRGB(164, 98, 62),
+			line = Color3.fromRGB(206, 210, 196),
+			bobberTop = Color3.fromRGB(94, 116, 72),
+			bobberBottom = Color3.fromRGB(226, 222, 200),
+		},
+	},
+	stats = {
+		luck = 1.45,
+		power = 1.25,
+		control = 1.3,
+	},
+	reel = {
+		clicksRequired = 3,
+		barSpeed = 0.6,
+		redWidth = 0.05,
+		greenWidth = 0.16,
+	},
+	recipe = {
+		requiresLevel = 9,
+		coins = 550,
+		materials = { gator_scute = 8, bog_iron = 6 },
+	},
+	perk = {
+		id = "armoured_line",
+		name = "Armoured Line",
+		description = "Scute-plated from butt to tip - the reel's zones never shrink, however many pulls you miss.",
+		noShrink = true,
+	},
+}
+
+Rods.items.wisplight_rod = {
+	id = "wisplight_rod",
+	name = "Wisplight",
+	description = "A cold flame in a cage at the tip. The longer you follow it, the stranger what follows back.",
+	rarity = "Rare",
+	icon = "",
+	model = {
+		model = "RodPack",
+		variant = "Wisplight",
+		grip = 0.95,
+		length = 7.0,
+		-- Bog-dark wood under a glowing wisp-green lantern and float.
+		colors = {
+			twig = Color3.fromRGB(74, 68, 54),
+			grip = Color3.fromRGB(52, 48, 40),
+			trim = Color3.fromRGB(150, 235, 200),
+			line = Color3.fromRGB(198, 226, 212),
+			bobberTop = Color3.fromRGB(150, 235, 200),
+			bobberBottom = Color3.fromRGB(96, 150, 128),
+		},
+		neon = { "Rod_Trim", "Rod_BobberTop" },
+	},
+	stats = {
+		luck = 1.6,
+		power = 1.2,
+		control = 1.25,
+	},
+	reel = {
+		clicksRequired = 3,
+		barSpeed = 0.6,
+		redWidth = 0.05,
+		greenWidth = 0.16,
+	},
+	recipe = {
+		requiresLevel = 11,
+		coins = 900,
+		materials = { wisp_light = 5, bog_iron = 8, pearl = 2 },
+	},
+	perk = {
+		id = "follow_the_light",
+		name = "Follow the Light",
+		description = "Every cast seen through feeds the flame - your luck grows with the streak, until you walk away from one.",
+		streakLuck = 0.12,
+		streakMax = 0.6,
+	},
+}
+
+Rods.items.fenpiercer_rod = {
+	id = "fenpiercer_rod",
+	name = "Fenpiercer",
+	description = "A lance of bog iron that casts clear across the murk and hooks nothing common.",
+	rarity = "Epic",
+	icon = "",
+	model = {
+		model = "RodPack",
+		variant = "Fenpiercer",
+		grip = 0.95,
+		length = 7.0,
+		-- Rust-dark iron, venom-green fittings.
+		colors = {
+			twig = Color3.fromRGB(110, 74, 52),
+			grip = Color3.fromRGB(64, 50, 42),
+			trim = Color3.fromRGB(178, 210, 90),
+			line = Color3.fromRGB(214, 222, 186),
+			bobberTop = Color3.fromRGB(178, 210, 90),
+			bobberBottom = Color3.fromRGB(120, 140, 70),
+		},
+		neon = { "Rod_Trim" },
+	},
+	stats = {
+		luck = 1.75,
+		power = 1.35,
+		control = 1.3,
+	},
+	reel = {
+		clicksRequired = 3,
+		barSpeed = 0.6,
+		redWidth = 0.05,
+		greenWidth = 0.16,
+	},
+	recipe = {
+		requiresLevel = 12,
+		coins = 1400,
+		materials = { fen_venom = 3, gator_scute = 8, wisp_light = 4 },
+	},
+	perk = {
+		id = "deep_murk",
+		name = "Deep Murk",
+		description = "Casts half again as far into water others can't reach, and won't hook anything under Uncommon.",
+		minRarity = "Uncommon",
+		castRange = 1.5,
+	},
+}
+
+Rods.items.mireheart_rod = {
+	id = "mireheart_rod",
+	name = "Mireheart Rod",
+	description = "Cut from Old Gnashroot's root-bark in the presence of its still-beating heart. The whole fen answers it.",
+	rarity = "Legendary",
+	icon = "",
+	model = {
+		model = "RodPack",
+		variant = "Mireheart",
+		grip = 0.95,
+		length = 7.0,
+		-- Moss-black root wood, the heart's wisp-glow in every fitting.
+		colors = {
+			twig = Color3.fromRGB(58, 66, 46),
+			grip = Color3.fromRGB(44, 48, 36),
+			trim = Color3.fromRGB(150, 235, 200),
+			line = Color3.fromRGB(198, 226, 212),
+			bobberTop = Color3.fromRGB(150, 235, 200),
+			bobberBottom = Color3.fromRGB(58, 66, 46),
+		},
+		neon = { "Rod_Trim", "Rod_BobberTop" },
+	},
+	stats = {
+		luck = 2.0,
+		power = 1.45,
+		control = 1.4,
+	},
+	reel = {
+		clicksRequired = 3,
+		barSpeed = 0.6,
+		redWidth = 0.05,
+		greenWidth = 0.16,
+	},
+	-- The fen's capstone: gated on the Tyrant's heart (owned, never spent).
+	recipe = {
+		requiresLevel = 14,
+		coins = 3000,
+		materials = { fen_venom = 5, wisp_light = 8, gator_scute = 10, bog_iron = 12 },
+		requiresHearts = { "old_gnashroot" },
+	},
+	perk = {
+		id = "the_fen_answers",
+		name = "The Fen Answers",
+		description = "Reaches further than anything the fen has seen, forgives two misses before the zones shrink, and won't hook anything under Rare.",
+		minRarity = "Rare",
+		castRange = 1.6,
+		freeMisses = 2,
+	},
+}
+
 -- Every new player starts holding this one. See InventoryService.
 Rods.STARTER_ROD_ID = "twig_rod"
 
@@ -669,6 +909,11 @@ Rods.order = {
 	"reefmaw_rod",
 	"bonecaster_rod",
 	"brineheart_rod",
+	"reedlash_rod",
+	"gatorback_rod",
+	"wisplight_rod",
+	"fenpiercer_rod",
+	"mireheart_rod",
 	"cinderline_rod",
 	"obsidian_rod",
 	"cinderglass_rod",

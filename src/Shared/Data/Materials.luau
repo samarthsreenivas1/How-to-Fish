@@ -169,6 +169,50 @@ Materials.items.magma_core = {
 	color = Color3.fromRGB(244, 96, 40),
 }
 
+-- Blackmire Fen drops (revamp Session 2). The swamp's signature chain,
+-- dropped by the `waters = "swamp"` rows; they feed the fen's rods / weapons
+-- / bait recipes. U / U / R / E, per the revamp's per-island ladder.
+
+Materials.items.bog_iron = {
+	id = "bog_iron",
+	name = "Bog Iron",
+	description = "A lump of rust-red ore pulled from the peat. The fen has been eating shipwrecks for centuries.",
+	tier = "rare",
+	rarity = "Uncommon",
+	icon = "",
+	color = Color3.fromRGB(164, 98, 62),
+}
+
+Materials.items.gator_scute = {
+	id = "gator_scute",
+	name = "Gator Scute",
+	description = "A ridged armour plate off something that owns its stretch of the mire. Hard as old oak.",
+	tier = "rare",
+	rarity = "Uncommon",
+	icon = "",
+	color = Color3.fromRGB(94, 116, 72),
+}
+
+Materials.items.wisp_light = {
+	id = "wisp_light",
+	name = "Wisp Light",
+	description = "A cold flame in a jar of fen-glass. It flickers toward whatever you've lost.",
+	tier = "rare",
+	rarity = "Rare",
+	icon = "",
+	color = Color3.fromRGB(150, 235, 200),
+}
+
+Materials.items.fen_venom = {
+	id = "fen_venom",
+	name = "Fen Venom",
+	description = "Milky venom drawn from the fen's worst. It never quite stops moving in the vial.",
+	tier = "rare",
+	rarity = "Epic",
+	icon = "",
+	color = Color3.fromRGB(178, 210, 90),
+}
+
 -- Stable display order for the HUD / crafting list (table iteration order
 -- isn't guaranteed). Basic first, then rare, then the creature drops by island.
 Materials.order = {
@@ -180,6 +224,10 @@ Materials.order = {
 	"cursed_bone",
 	"nacre",
 	"volt_gland",
+	"bog_iron",
+	"gator_scute",
+	"wisp_light",
+	"fen_venom",
 	"ember",
 	"sulfur",
 	"obsidian_shard",

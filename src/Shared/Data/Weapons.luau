@@ -323,12 +323,201 @@ Weapons.items.heartrender = {
 	},
 }
 
+-- ============================================================ Blackmire Fen (L8-14)
+-- The swamp's five (revamp Session 2): TWO melee, THREE ranged - this is the
+-- island that introduces guns, at the fantasy tier (bow / crossbow /
+-- flintlock). Balance per the plan: ranged sustained DPS sits under
+-- same-tier melee (the safety premium - you're shooting from outside contact
+-- range), burst above it. Damage on a ranged row is per SHOT; `cooldown` the
+-- time between shots; mag-1 weapons fold the reload into the cooldown
+-- (reloadTime 0 - nocking IS the draw).
+
+Weapons.items.bogwood_bow = {
+	id = "bogwood_bow",
+	name = "Bogwood Bow",
+	description = "A recurve of steam-bent bogwood strung with gut. The fen's gulls learned to fear it first.",
+	rarity = "Uncommon",
+	icon = "",
+	damage = { 28, 40 }, -- ~76 dps sustained; the first answer to a circling flyer
+	cooldown = 0.45,
+	reach = 0,
+	knockback = 3,
+	model = {
+		shape = "bow", -- pre-import fallback; the WeaponPack's BogwoodBow_* is preferred
+		model = "WeaponPack",
+		variant = "BogwoodBow",
+		length = 3.4,
+		grip = 1.7,
+		color = Color3.fromRGB(110, 92, 58), -- steam-bent bogwood
+		accent = Color3.fromRGB(214, 206, 180), -- the gut string
+		wrap = Color3.fromRGB(74, 88, 58), -- moss-cord grip
+	},
+	ranged = {
+		projectileSpeed = 90,
+		range = 110,
+		fireMode = "single",
+		magazine = 1,
+		reloadTime = 0,
+		arc = true, -- a real arrow: lobbed, and a dodged one misses
+	},
+	recipe = {
+		requiresLevel = 8,
+		coins = 350,
+		materials = { bog_iron = 5, driftwood = 10, kelp_fiber = 6 },
+	},
+}
+
+Weapons.items.rustfang_machete = {
+	id = "rustfang_machete",
+	name = "Rustfang Machete",
+	description = "A broad blade eaten to a ragged edge by bog water. What it cuts keeps rotting.",
+	rarity = "Rare",
+	icon = "",
+	damage = { 24, 34 }, -- ~121 dps, and the rot on top
+	cooldown = 0.24,
+	reach = 15,
+	knockback = 14,
+	swing = "slash",
+	model = {
+		shape = "blade",
+		model = "WeaponPack",
+		variant = "RustfangMachete",
+		length = 3.3,
+		grip = 0.62,
+		color = Color3.fromRGB(96, 78, 54), -- bog-oak handle
+		accent = Color3.fromRGB(164, 98, 62), -- the rust-eaten blade
+		wrap = Color3.fromRGB(64, 70, 50),
+	},
+	recipe = {
+		requiresLevel = 9,
+		coins = 550,
+		materials = { bog_iron = 10, gator_scute = 4 },
+	},
+	perk = {
+		id = "fen_rot",
+		name = "Fen Rot",
+		description = "The rust never sleeps - every cut festers on, even through hide or murk.",
+		poison = { damage = 55, duration = 4 },
+	},
+}
+
+Weapons.items.gatorjaw_crossbow = {
+	id = "gatorjaw_crossbow",
+	name = "Gatorjaw Crossbow",
+	description = "A crossbow stocked in gator scute, its prod drawn by a jaw spring. It hits like the animal did.",
+	rarity = "Rare",
+	icon = "",
+	damage = { 90, 120 }, -- a heavy single bolt: burst over a melee blade, slower between
+	cooldown = 1.3,
+	reach = 0,
+	knockback = 4,
+	model = {
+		shape = "bow", -- pre-import fallback; the WeaponPack's GatorjawCrossbow_* is preferred
+		model = "WeaponPack",
+		variant = "GatorjawCrossbow",
+		length = 3.0,
+		grip = 0.8,
+		color = Color3.fromRGB(94, 116, 72), -- scute-plated stock
+		accent = Color3.fromRGB(206, 198, 160), -- bone prod and bolt
+		wrap = Color3.fromRGB(58, 70, 48),
+	},
+	ranged = {
+		projectileSpeed = 140,
+		range = 140,
+		fireMode = "single",
+		magazine = 1,
+		reloadTime = 0,
+	},
+	recipe = {
+		requiresLevel = 11,
+		coins = 900,
+		materials = { gator_scute = 10, bog_iron = 8, kelp_fiber = 6 },
+	},
+}
+
+Weapons.items.mire_flintlock = {
+	id = "mire_flintlock",
+	name = "Mire Flintlock",
+	description = "A long-barrelled flintlock kept dry through the wettest place on earth. One shot, made to finish things.",
+	rarity = "Epic",
+	icon = "",
+	damage = { 110, 150 }, -- one thunderclap; double into a wounded target
+	cooldown = 1.8,
+	reach = 0,
+	knockback = 4,
+	model = {
+		shape = "gun", -- pre-import fallback; the WeaponPack's MireFlintlock_* is preferred
+		model = "WeaponPack",
+		variant = "MireFlintlock",
+		length = 2.3,
+		grip = 0.5,
+		color = Color3.fromRGB(84, 62, 44), -- walnut stock
+		accent = Color3.fromRGB(178, 160, 120), -- the brass barrel
+		wrap = Color3.fromRGB(56, 46, 36),
+	},
+	ranged = {
+		projectileSpeed = 220,
+		range = 150,
+		fireMode = "single",
+		magazine = 1,
+		reloadTime = 0,
+	},
+	recipe = {
+		requiresLevel = 12,
+		coins = 1400,
+		materials = { bog_iron = 14, fen_venom = 2, pearl = 2 },
+	},
+	perk = {
+		id = "powder_mercy",
+		name = "Powder Mercy",
+		description = "Made for the killing shot - a wounded target takes double from the ball.",
+		execute = true,
+	},
+}
+
+Weapons.items.fenreaver = {
+	id = "fenreaver",
+	name = "Fenreaver",
+	description = "A root-bark glaive cut in the presence of Old Gnashroot's heart. The fen feeds whoever swings it.",
+	rarity = "Legendary",
+	icon = "",
+	damage = { 38, 54 }, -- ~170 dps, and it feeds you while you fight
+	cooldown = 0.27,
+	reach = 16,
+	knockback = 18,
+	swing = "slash",
+	model = {
+		shape = "blade",
+		model = "WeaponPack",
+		variant = "Fenreaver",
+		length = 3.8,
+		grip = 0.7,
+		color = Color3.fromRGB(58, 66, 46), -- moss-black root wood
+		accent = Color3.fromRGB(150, 235, 200), -- the wisp-lit edge
+		wrap = Color3.fromRGB(44, 48, 36),
+		glow = Color3.fromRGB(150, 235, 200),
+		neon = { "Weapon_Glow" },
+	},
+	-- The fen's capstone: gated on the Tyrant's heart (owned, never spent).
+	recipe = {
+		requiresLevel = 14,
+		coins = 2600,
+		materials = { fen_venom = 5, bog_iron = 12, wisp_light = 6, gator_scute = 8 },
+		requiresHearts = { "old_gnashroot" },
+	},
+	perk = {
+		id = "bog_feast",
+		name = "Bog Feast",
+		description = "Every wound it opens feeds you - a share of the damage comes back as your own health.",
+		lifesteal = true,
+	},
+}
+
 -- ============================================================ Ashfall Caldera (interim L8-14)
--- The volcano's two kept melee weapons, buffed for their slot; its three guns
--- (Cinderlock Carbine, Basalt Scattergun, Vulkan Repeater) arrive with the
--- ranged engine (Session 2, docs/revamp-plan.md). INTERIM GATES: L8-14 with
--- island-2-scale costs while the volcano is still island 2; they re-gate to
--- L22-28 when it slides to slot 4 in Session 4.
+-- The volcano's two kept melee weapons, buffed for their slot, plus its
+-- three GUNS (revamp Session 2) - the first modern firearms, gated at the
+-- island's FINAL L22-28 band (the volcano slides to slot 4; b8's re-gate
+-- pass moves the melee pair to match).
 
 Weapons.items.obsidian_piercer = {
 	id = "obsidian_piercer",
@@ -402,6 +591,123 @@ Weapons.items.magma_gauntlets = {
 	},
 }
 
+-- The volcano's three guns: the first full-auto tier. Final L22-28 gates.
+
+Weapons.items.cinderlock_carbine = {
+	id = "cinderlock_carbine",
+	name = "Cinderlock Carbine",
+	description = "A vent-forged carbine that never stops being warm. The first thing on any island that just keeps firing.",
+	rarity = "Uncommon",
+	icon = "",
+	damage = { 15, 21 }, -- per round; ~110 dps sustained across the reload
+	cooldown = 0.13,
+	reach = 0,
+	knockback = 2,
+	model = {
+		shape = "gun", -- pre-import fallback; the WeaponPack's CinderlockCarbine_* is preferred
+		model = "WeaponPack",
+		variant = "CinderlockCarbine",
+		length = 3.2,
+		grip = 0.9,
+		color = Color3.fromRGB(70, 58, 56), -- vent-metal furniture
+		accent = Color3.fromRGB(240, 132, 52), -- the heat-striped barrel
+		wrap = Color3.fromRGB(50, 44, 42),
+	},
+	ranged = {
+		projectileSpeed = 300,
+		range = 180,
+		fireMode = "auto",
+		magazine = 24,
+		reloadTime = 0.8,
+	},
+	recipe = {
+		requiresLevel = 22,
+		coins = 2200,
+		materials = { ember = 10, obsidian_shard = 6, sulfur = 6 },
+	},
+}
+
+Weapons.items.basalt_scattergun = {
+	id = "basalt_scattergun",
+	name = "Basalt Scattergun",
+	description = "A twin-tube scattergun that throws a fistful of basalt shot. Everything close regrets it.",
+	rarity = "Rare",
+	icon = "",
+	damage = { 24, 34 }, -- per PELLET, six a shell: a point-blank thunderclap
+	cooldown = 0.75,
+	reach = 0,
+	knockback = 4,
+	model = {
+		shape = "gun", -- pre-import fallback; the WeaponPack's BasaltScattergun_* is preferred
+		model = "WeaponPack",
+		variant = "BasaltScattergun",
+		length = 3.0,
+		grip = 0.85,
+		color = Color3.fromRGB(60, 62, 70), -- basalt-grey tubes
+		accent = Color3.fromRGB(226, 206, 88), -- sulfur-brass fittings
+		wrap = Color3.fromRGB(48, 44, 42),
+	},
+	ranged = {
+		projectileSpeed = 250,
+		range = 60, -- close-range by design; the spread eats it past this anyway
+		fireMode = "single",
+		magazine = 2,
+		reloadTime = 1.7,
+		pellets = 6,
+		spread = 0.075,
+	},
+	recipe = {
+		requiresLevel = 25,
+		coins = 3800,
+		materials = { obsidian_shard = 12, sulfur = 8, ember = 8 },
+	},
+}
+
+Weapons.items.vulkan_repeater = {
+	id = "vulkan_repeater",
+	name = "Vulkan Repeater",
+	description = "Forged in the presence of Pyrelisk's heart, it fires rounds that are still burning. The mountain, made portable.",
+	rarity = "Legendary",
+	icon = "",
+	damage = { 24, 32 }, -- per round; ~200 dps sustained, and the burn on top
+	cooldown = 0.11,
+	reach = 0,
+	knockback = 2,
+	model = {
+		shape = "gun", -- pre-import fallback; the WeaponPack's VulkanRepeater_* is preferred
+		model = "WeaponPack",
+		variant = "VulkanRepeater",
+		length = 3.6,
+		grip = 0.95,
+		color = Color3.fromRGB(38, 32, 40), -- cooled obsidian housing
+		accent = Color3.fromRGB(255, 96, 16), -- the melt in every seam
+		wrap = Color3.fromRGB(50, 44, 42),
+		glow = Color3.fromRGB(255, 96, 16),
+		neon = { "Weapon_Glow" },
+	},
+	ranged = {
+		projectileSpeed = 320,
+		range = 200,
+		fireMode = "auto",
+		magazine = 40,
+		reloadTime = 1.2,
+	},
+	-- The volcano's ranged capstone: gated on the Wyrm's heart (owned, never
+	-- spent).
+	recipe = {
+		requiresLevel = 28,
+		coins = 9000,
+		materials = { magma_core = 6, obsidian_shard = 15, ember = 12 },
+		requiresHearts = { "pyrelisk" },
+	},
+	perk = {
+		id = "incendiary_rounds",
+		name = "Incendiary Rounds",
+		description = "Every round is still burning when it lands - the fire keeps eating after the hit.",
+		poison = { damage = 40, duration = 3 },
+	},
+}
+
 -- Stable display order for the inventory / crafting menus (table iteration
 -- order isn't guaranteed). Starter first, then by island and level gate.
 Weapons.order = {
@@ -411,8 +717,16 @@ Weapons.order = {
 	"shellcrusher",
 	"drowncleaver",
 	"heartrender",
+	"bogwood_bow",
+	"rustfang_machete",
+	"gatorjaw_crossbow",
+	"mire_flintlock",
+	"fenreaver",
+	"cinderlock_carbine",
 	"obsidian_piercer",
+	"basalt_scattergun",
 	"magma_gauntlets",
+	"vulkan_repeater",
 }
 
 -- Every player starts with (and can't lose) this one.

@@ -153,6 +153,69 @@ Bait.items.leviathans_call = {
 	},
 }
 
+-- ============================================================ Blackmire Fen
+-- The swamp's three (revamp Session 2): two utility, one boss-summon, gated
+-- up the fen's L8-14 band.
+
+Bait.items.glowgrub = {
+	id = "glowgrub",
+	name = "Glowgrub",
+	description = "A fat grub that swallowed a mote of wisp light. What takes it comes up blinded and reeling.",
+	rarity = "Uncommon",
+	icon = "",
+	color = Color3.fromRGB(150, 235, 200),
+	-- The stun bait's fen successor: six seconds of free hits, and the light
+	-- draws slightly stranger things up.
+	effect = { stun = 6, luck = 1.15 },
+	recipe = {
+		requiresLevel = 9,
+		coins = 200,
+		materials = { bog_iron = 4, kelp_fiber = 4 },
+		yield = 4,
+	},
+}
+
+Bait.items.dredge_lure = {
+	id = "dredge_lure",
+	name = "Dredge Lure",
+	description = "A weighted rake-lure that combs the fen floor. It brings up no fish at all - just everything the bog has swallowed.",
+	rarity = "Rare",
+	icon = "",
+	color = Color3.fromRGB(164, 98, 62),
+	-- Gravelure's fen successor: the no-fish cast, paid in materials and
+	-- coins straight out of the murk, scaled by the minigame grade.
+	effect = { salvage = true, rewardMult = 1.3 },
+	recipe = {
+		requiresLevel = 11,
+		coins = 400,
+		materials = { bog_iron = 6, gator_scute = 4 },
+		yield = 3,
+	},
+}
+
+Bait.items.tyrants_call = {
+	id = "tyrants_call",
+	name = "Tyrant's Call",
+	description = "A snarl of root, scute and cold flame that smells like a challenge. Cast it, and Old Gnashroot answers. One use.",
+	rarity = "Legendary",
+	icon = "",
+	color = Color3.fromRGB(150, 235, 200), -- the Tyrant's wisp-lit glare
+	effect = { summonsBoss = "old_gnashroot" },
+	recipe = {
+		requiresLevel = 14,
+		coins = 1200,
+		materials = {
+			fish_scale = 12,
+			bog_iron = 8,
+			gator_scute = 8,
+			wisp_light = 5,
+			fen_venom = 4,
+			pearl = 3,
+		},
+		yield = 1,
+	},
+}
+
 -- ============================================================ Ashfall Caldera
 -- The volcano's three (it had zero bait before the thinning pass). INTERIM
 -- GATES: L8-14 while the volcano is still island 2 (docs/revamp-plan.md);
@@ -222,6 +285,9 @@ Bait.order = {
 	"chum",
 	"bloodbait",
 	"leviathans_call",
+	"glowgrub",
+	"dredge_lure",
+	"tyrants_call",
 	"ember_roe",
 	"magma_chum",
 	"calderas_call",
