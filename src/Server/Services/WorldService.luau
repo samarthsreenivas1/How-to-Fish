@@ -267,9 +267,18 @@ local NON_COLLIDE = {
 	"Palm_Fronds",
 	"Island_Bushes",
 	"Palm_Coconuts",
-	"Island_Foam",
-	"Volcano_Foam",
 	"Volcano_Lava",
+	-- Every island's shoreline foam slab (Island_Foam, Volcano_Foam,
+	-- Swamp_Foam, Frostmaw_Foam, ...): matched by the substring so a new
+	-- island's foam can never be stood on by omission.
+	"_Foam",
+	-- The four new islands' fishable water surfaces - like the lava, water
+	-- is a surface you fall into, not a floor (the procedural
+	-- Maelstrom_Water sets its own CanCollide directly).
+	"Swamp_Water",
+	"Frostmaw_IceHoles",
+	"Gloomtrench_DarkWater",
+	"Wreckwater_Bay",
 }
 
 local function shouldCollide(instanceName: string): boolean
