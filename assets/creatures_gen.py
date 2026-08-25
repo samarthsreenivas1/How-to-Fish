@@ -171,6 +171,31 @@ COLORS = {
     "KrakenTentacle_Body": (0.20, 0.15, 0.24),
     "KrakenTentacle_Fins": (0.30, 0.20, 0.30),
     "KrakenTentacle_Marks": (0.40, 0.90, 0.90),
+    # Flyers (the new archetype: swamp, ice, wreck, maelstrom).
+    "BogGull_Body": (0.72, 0.70, 0.62),
+    "BogGull_Fins": (0.38, 0.36, 0.30),
+    "BogGull_Eyes": (0.06, 0.06, 0.06),
+    "BogGull_Marks": (0.50, 0.55, 0.40),
+    "WillOWisp_Body": (0.75, 0.85, 0.80),
+    "WillOWisp_Fins": (0.45, 0.70, 0.60),
+    "WillOWisp_Eyes": (0.05, 0.06, 0.06),
+    "WillOWisp_Marks": (0.60, 0.95, 0.75),
+    "DreadDragonfly_Body": (0.20, 0.24, 0.20),
+    "DreadDragonfly_Fins": (0.65, 0.75, 0.70),
+    "DreadDragonfly_Eyes": (0.55, 0.90, 0.60),
+    "DreadDragonfly_Marks": (0.55, 0.90, 0.50),
+    "HailfinSkua_Body": (0.78, 0.82, 0.86),
+    "HailfinSkua_Fins": (0.45, 0.55, 0.68),
+    "HailfinSkua_Eyes": (0.06, 0.06, 0.06),
+    "HailfinSkua_Marks": (0.62, 0.80, 0.95),
+    "RiggingWraith_Body": (0.55, 0.60, 0.58),
+    "RiggingWraith_Fins": (0.42, 0.46, 0.44),
+    "RiggingWraith_Eyes": (0.50, 1.0, 0.85),
+    "RiggingWraith_Marks": (0.45, 0.90, 0.75),
+    "Stormpetrel_Body": (0.20, 0.22, 0.28),
+    "Stormpetrel_Fins": (0.30, 0.33, 0.42),
+    "Stormpetrel_Eyes": (0.06, 0.06, 0.07),
+    "Stormpetrel_Marks": (0.75, 0.85, 1.0),
 }
 
 # The volcano roster, by species prefix. Used only to soften their preview
@@ -227,6 +252,14 @@ GLOW_PARTS = {
     "Kraken_Marks",
     "Kraken_Eyes",
     "KrakenTentacle_Marks",
+    # Flyers: the wisp IS a light, the dragonfly's dread-glow abdomen is its
+    # dive tell, the wraith burns ghost-fire, the petrel crackles.
+    "WillOWisp_Marks",
+    "DreadDragonfly_Marks",
+    "DreadDragonfly_Eyes",
+    "RiggingWraith_Eyes",
+    "RiggingWraith_Marks",
+    "Stormpetrel_Marks",
 }
 
 
@@ -2548,6 +2581,211 @@ def build_kraken_tentacle():
     ]
 
 
+# ---------------------------------------------------------------- the flyers
+# The new `flyer` archetype's rosters: small airborne mobs. All authored
+# facing +X like everything else; the winged ones keep the flat x>y>z rule
+# (wings swept BACK so span stays inside length), the hoverers (wisp,
+# wraith) are upright-stance shapes.
+
+
+# ---- Bog Gull (swamp, dive-bomber): a scruffy fen gull - dumpy body, mud-
+# stained swept wings, a hooked beak, feet tucked for the dive.
+def build_boggull():
+    body = bmesh.new()
+    fins = bmesh.new()
+    eyes = bmesh.new()
+    marks = bmesh.new()
+
+    ellipsoid(body, (0, 0, 1.2), (1.15, 0.55, 0.5), 1)
+    ellipsoid(body, (1.25, 0, 1.5), (0.45, 0.35, 0.35), 1)
+    cone(body, (1.6, 0, 1.5), (2.3, 0, 1.42), 0.14, 5)
+    cone(fins, (2.25, 0, 1.44), (2.4, 0, 1.25), 0.07, 4)  # the hook
+    # Swept-back wings, mud-brown.
+    for s in (-1, 1):
+        plate(fins, [(0.5, s * 0.45), (-0.7, s * 1.8), (-2.3, s * 2.05), (-1.5, s * 0.9), (-0.4, s * 0.45)], 0.12, "xy", offset=(0, 0, 1.45))
+    # Tail fan and tucked feet.
+    plate(fins, [(-1.0, 0.35), (-2.0, 0.5), (-2.1, -0.5), (-1.0, -0.35)], 0.1, "xy", offset=(0, 0, 1.25))
+    for s in (-1, 1):
+        cone(body, (0.2, s * 0.2, 0.75), (0.55, s * 0.25, 0.55), 0.1, 4)
+    # Bog streaks down the wings.
+    for s in (-1, 1):
+        box(marks, (-1.1, s * 1.3, 1.53), (0.7, 0.25, 0.05), Matrix.Rotation(math.radians(s * -35), 4, "Z"))
+    for s in (-1, 1):
+        ellipsoid(eyes, (1.45, s * 0.22, 1.62), (0.09, 0.07, 0.09), 0)
+
+    return [
+        finish("BogGull_Body", body, MATS["BogGull_Body"]),
+        finish("BogGull_Fins", fins, MATS["BogGull_Fins"]),
+        finish("BogGull_Eyes", eyes, MATS["BogGull_Eyes"]),
+        finish("BogGull_Marks", marks, MATS["BogGull_Marks"]),
+    ]
+
+
+# ---- Will-o-Wisp (swamp): a hovering fen-light - a glowing core wrapped in
+# pale flame licks, trailing tendrils below. Upright-stance hoverer.
+def build_willowisp():
+    body = bmesh.new()
+    fins = bmesh.new()
+    eyes = bmesh.new()
+    marks = bmesh.new()
+
+    ellipsoid(marks, (0, 0, 1.7), (0.55, 0.55, 0.6), 1)  # the core
+    # Flame licks curling up around it.
+    for k in range(5):
+        a = (k / 5) * TAU
+        bx, by = math.cos(a) * 0.5, math.sin(a) * 0.5
+        cone(body, (bx, by, 1.3), (bx * 1.5, by * 1.5, 2.4 + 0.25 * math.sin(a * 2)), 0.22, 4)
+    cone(body, (0, 0, 2.1), (0.1, 0, 2.9), 0.28, 5)
+    # Trailing tendrils drifting beneath.
+    for k in range(3):
+        a = (k / 3) * TAU + 0.5
+        bx, by = math.cos(a) * 0.3, math.sin(a) * 0.3
+        chain(fins, [(bx, by, 1.2), (bx * 2.2, by * 2.2, 0.6), (bx * 2.8, by * 2.8, 0.15)], [0.1, 0.06, 0.02], 4)
+    # A hinted face: two dark sockets in the glow.
+    for s in (-1, 1):
+        ellipsoid(eyes, (0.42, s * 0.18, 1.85), (0.1, 0.09, 0.13), 0)
+
+    return [
+        finish("WillOWisp_Body", body, MATS["WillOWisp_Body"]),
+        finish("WillOWisp_Fins", fins, MATS["WillOWisp_Fins"]),
+        finish("WillOWisp_Eyes", eyes, MATS["WillOWisp_Eyes"]),
+        finish("WillOWisp_Marks", marks, MATS["WillOWisp_Marks"]),
+    ]
+
+
+# ---- Dread Dragonfly (swamp): a long dark darner with two wing pairs, huge
+# glowing eyes and a dread-lit abdomen - the glow is its dive tell.
+def build_dreaddragonfly():
+    body = bmesh.new()
+    fins = bmesh.new()
+    eyes = bmesh.new()
+    marks = bmesh.new()
+
+    revolve(body, [(-1.6, 0.0), (-0.9, 0.2), (0.2, 0.32), (1.1, 0.42), (1.9, 0.28), (2.3, 0.0)], sides=7, axis="x", center=(0, 0, 1.4))
+    # The abdomen: a thin tail with glowing segment rings.
+    limb(body, (-1.5, 0, 1.4), (-3.1, 0, 1.32), 0.16, 0.08, 5)
+    for i in range(3):
+        x = -1.9 - i * 0.45
+        limb(marks, (x, 0, 1.38 - i * 0.02), (x + 0.12, 0, 1.38 - i * 0.02), 0.14 - i * 0.02, 0.14 - i * 0.02, 6)
+    # Two wing pairs, hind pair swept further back.
+    for s in (-1, 1):
+        plate(fins, [(0.9, s * 0.3), (0.7, s * 1.95), (0.1, s * 2.05), (0.3, s * 0.3)], 0.06, "xy", offset=(0, 0, 1.62))
+        plate(fins, [(0.1, s * 0.3), (-0.3, s * 1.85), (-0.9, s * 1.9), (-0.5, s * 0.3)], 0.06, "xy", offset=(0, 0, 1.56))
+    # The eyes: two big glowing orbs that ARE the head's silhouette.
+    for s in (-1, 1):
+        ellipsoid(eyes, (2.0, s * 0.26, 1.55), (0.3, 0.24, 0.28), 1)
+    # Mandibles.
+    for s in (-1, 1):
+        cone(body, (2.3, s * 0.12, 1.25), (2.55, s * 0.2, 1.15), 0.06, 4)
+
+    return [
+        finish("DreadDragonfly_Body", body, MATS["DreadDragonfly_Body"]),
+        finish("DreadDragonfly_Fins", fins, MATS["DreadDragonfly_Fins"]),
+        finish("DreadDragonfly_Eyes", eyes, MATS["DreadDragonfly_Eyes"]),
+        finish("DreadDragonfly_Marks", marks, MATS["DreadDragonfly_Marks"]),
+    ]
+
+
+# ---- Hailfin Skua (ice): a lean pale seabird with long slate wings, a
+# forked tail and ice-streaked leading edges. Faster silhouette than the
+# gull: everything longer and sharper.
+def build_hailfinskua():
+    body = bmesh.new()
+    fins = bmesh.new()
+    eyes = bmesh.new()
+    marks = bmesh.new()
+
+    ellipsoid(body, (0, 0, 1.3), (1.35, 0.48, 0.42), 1)
+    ellipsoid(body, (1.5, 0, 1.55), (0.4, 0.3, 0.3), 1)
+    cone(body, (1.85, 0, 1.55), (2.6, 0, 1.5), 0.11, 5)
+    # Long narrow wings, sharply swept.
+    for s in (-1, 1):
+        plate(fins, [(0.7, s * 0.4), (-0.5, s * 1.7), (-2.6, s * 2.3), (-2.0, s * 1.0), (-0.3, s * 0.4)], 0.1, "xy", offset=(0, 0, 1.5))
+    # Forked tail.
+    for s in (-1, 1):
+        plate(fins, [(-1.2, s * 0.1), (-2.6, s * 0.45), (-2.3, s * 0.05)], 0.08, "xy", offset=(0, 0, 1.35))
+    # Ice streaks along each wing's leading edge.
+    for s in (-1, 1):
+        box(marks, (0.0, s * 1.1, 1.58), (1.1, 0.14, 0.05), Matrix.Rotation(math.radians(s * -28), 4, "Z"))
+    for s in (-1, 1):
+        ellipsoid(eyes, (1.68, s * 0.2, 1.66), (0.08, 0.07, 0.08), 0)
+
+    return [
+        finish("HailfinSkua_Body", body, MATS["HailfinSkua_Body"]),
+        finish("HailfinSkua_Fins", fins, MATS["HailfinSkua_Fins"]),
+        finish("HailfinSkua_Eyes", eyes, MATS["HailfinSkua_Eyes"]),
+        finish("HailfinSkua_Marks", marks, MATS["HailfinSkua_Marks"]),
+    ]
+
+
+# ---- Rigging Wraith (wreck): drowned sailcloth given a shape - a hooded
+# shroud, two ragged canvas wings, rope-end talons, ghost-fire eyes.
+# Upright-stance hoverer.
+def build_riggingwraith():
+    body = bmesh.new()
+    fins = bmesh.new()
+    eyes = bmesh.new()
+    marks = bmesh.new()
+
+    # The shroud: a draped cone rising to a hood peak, hem torn into points.
+    revolve(body, [(0.0, 1.05), (0.9, 0.92), (1.8, 0.55), (2.5, 0.18)], sides=8, axis="z", center=(0, 0, 0.9))
+    cone(body, (0, 0, 3.35), (0.15, 0, 3.85), 0.2, 5)
+    for k in range(7):
+        a = (k / 7) * TAU
+        bx, by = math.cos(a) * 0.95, math.sin(a) * 0.95
+        cone(fins, (bx, by, 1.0), (bx * 1.15, by * 1.15, 0.35), 0.16, 4)
+    # Ragged canvas wings.
+    for s in (-1, 1):
+        plate(fins, [(0.2, s * 0.7), (-0.5, s * 2.3), (-1.8, s * 2.7), (-1.2, s * 1.6), (-1.6, s * 1.0), (-0.6, s * 0.7)], 0.1, "xy", offset=(0, 0, 2.6))
+    # Rope-end talons swinging under the hem.
+    for s in (-1, 1):
+        chain(fins, [(0.5, s * 0.4, 0.8), (0.8, s * 0.55, 0.2), (1.1, s * 0.5, -0.1)], [0.08, 0.06, 0.03], 4)
+        cone(fins, (1.1, s * 0.5, -0.1), (1.35, s * 0.45, -0.25), 0.06, 4)
+    # Ghost-fire eyes in the hood's shadow, and glowing seams down the shroud.
+    for s in (-1, 1):
+        ellipsoid(eyes, (0.62, s * 0.28, 2.75), (0.14, 0.12, 0.17), 0)
+    for a in (0.7, 2.6, 4.5):
+        bx, by = math.cos(a), math.sin(a)
+        chain(marks, [(bx * 0.85, by * 0.85, 1.2), (bx * 0.6, by * 0.6, 2.2), (bx * 0.3, by * 0.3, 3.1)], [0.05, 0.04, 0.03], 4)
+
+    return [
+        finish("RiggingWraith_Body", body, MATS["RiggingWraith_Body"]),
+        finish("RiggingWraith_Fins", fins, MATS["RiggingWraith_Fins"]),
+        finish("RiggingWraith_Eyes", eyes, MATS["RiggingWraith_Eyes"]),
+        finish("RiggingWraith_Marks", marks, MATS["RiggingWraith_Marks"]),
+    ]
+
+
+# ---- Stormpetrel (maelstrom): a storm-dark petrel with long angular wings
+# and lightning crawling their undersides.
+def build_stormpetrel():
+    body = bmesh.new()
+    fins = bmesh.new()
+    eyes = bmesh.new()
+    marks = bmesh.new()
+
+    ellipsoid(body, (0, 0, 1.3), (1.1, 0.45, 0.42), 1)
+    ellipsoid(body, (1.2, 0, 1.5), (0.38, 0.3, 0.3), 1)
+    cone(body, (1.5, 0, 1.5), (2.1, 0, 1.46), 0.1, 5)
+    # Long angular wings with a marked elbow crank.
+    for s in (-1, 1):
+        plate(fins, [(0.5, s * 0.4), (0.2, s * 1.3), (-1.2, s * 1.9), (-2.5, s * 2.05), (-1.4, s * 1.0), (-0.3, s * 0.4)], 0.1, "xy", offset=(0, 0, 1.48))
+    plate(fins, [(-0.9, 0.3), (-1.9, 0.4), (-1.9, -0.4), (-0.9, -0.3)], 0.09, "xy", offset=(0, 0, 1.3))
+    # Lightning: jagged strokes under each wing.
+    for s in (-1, 1):
+        box(marks, (-0.5, s * 1.3, 1.42), (0.5, 0.08, 0.05), Matrix.Rotation(math.radians(s * -30), 4, "Z"))
+        box(marks, (-1.1, s * 1.75, 1.42), (0.45, 0.08, 0.05), Matrix.Rotation(math.radians(s * 25), 4, "Z"))
+    for s in (-1, 1):
+        ellipsoid(eyes, (1.4, s * 0.2, 1.6), (0.08, 0.07, 0.08), 0)
+
+    return [
+        finish("Stormpetrel_Body", body, MATS["Stormpetrel_Body"]),
+        finish("Stormpetrel_Fins", fins, MATS["Stormpetrel_Fins"]),
+        finish("Stormpetrel_Eyes", eyes, MATS["Stormpetrel_Eyes"]),
+        finish("Stormpetrel_Marks", marks, MATS["Stormpetrel_Marks"]),
+    ]
+
+
 def report_bbox(name, objs, expect_flat):
     """Print the built bounding box so the orientation rules can be checked
     without a Studio round-trip (the fish_gen.py puffer trick)."""
@@ -2669,6 +2907,13 @@ CREATURES = [
     ("AdmiralWrack", build_admiralwrack, False),
     ("Kraken", build_kraken, False),
     ("KrakenTentacle", build_kraken_tentacle, False),
+    # Flyers (wisp + wraith are upright-stance hoverers).
+    ("BogGull", build_boggull, True),
+    ("WillOWisp", build_willowisp, False),
+    ("DreadDragonfly", build_dreaddragonfly, True),
+    ("HailfinSkua", build_hailfinskua, True),
+    ("RiggingWraith", build_riggingwraith, False),
+    ("Stormpetrel", build_stormpetrel, True),
 ]
 
 
