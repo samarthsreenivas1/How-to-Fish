@@ -4,6 +4,29 @@ This is the master design for the full progression revamp, executed across 4 Cla
 (prompts at the bottom). Written 2026-08-25. If a session changes a decision here, update this
 file in the same commit.
 
+## Rollout status (overnight run, 2026-08-25 — maintained by the coordinating session)
+
+Five sessions executed this plan in parallel lanes on one shared checkout:
+S2 src = f4 · S3 src = 5a · S4 src (all) = b8 · weapon/boat/creature art = 16 ·
+islands + coordination = 81. Decisions taken along the way (all recommended-path):
+**interim volcano re-gate skipped** — every island ships straight at its FINAL
+band/position from the table below; the sparse L15–21 window existed only while
+Frostmaw was being written the same night.
+
+- [x] S1 — persistence (DataService) + thinning + Pyrelisk + hearts framework (f293308)
+- [x] Baseline commit of prior volcano-session WIP (11a650b)
+- [x] Art: six ranged weapon meshes in WeaponPack (8253923)
+- [x] Art: Swamp / Frostmaw / Gloomtrench / Wreckwater island meshes + 6-island pack (8a15622)
+- [x] S2 shapes milestone: ranged remotes/type/Tuning + flyer & skythief archetypes (d855af6)
+- [ ] S2 full: shot pipeline, controllers, swamp data, volcano final slot + guns — f4
+- [ ] S3 boat: BoatService/Controller, tiers, mayEnter + containment sweep — 5a
+- [ ] S3 raids: SpawnerService, RaidService, Hazards, eruption, WeatherController — 5a (after S2)
+- [ ] S4a: Frostmaw/Gloomtrench/Wreckwater data + volcano final re-gate + blizzard — b8
+- [ ] S4b: Maelstrom site, Kraken, TrophyController, trophy shelf — b8 (after S3)
+- [ ] Art: BoatPack, boss/flyer creature meshes, fish species — 16
+- [ ] Final integration review + verification sweep — 81
+- [ ] **Manual (user, in Studio): imports per docs/import-checklist.md**
+
 ## Context
 
 The game before this revamp: two islands with bloated, uneven content — 22 rods (14 on the
