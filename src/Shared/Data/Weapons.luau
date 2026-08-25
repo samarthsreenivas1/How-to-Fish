@@ -1156,7 +1156,7 @@ Weapons.items.grave_blunderbuss = {
 		magazine = 2,
 		reloadTime = 2.2,
 		pellets = 8,
-		spread = 7,
+		spread = 0.08, -- radians per pellet - a touch wider than the Scattergun's cone
 	},
 	recipe = {
 		requiresLevel = 37,
