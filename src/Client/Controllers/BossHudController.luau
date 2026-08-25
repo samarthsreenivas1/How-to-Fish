@@ -247,6 +247,11 @@ local function onCreatureEvent(kind, _position, extra)
 	end
 	if kind == "bossRise" then
 		showCard(string.upper(tostring(extra.name or "THE BOSS")), "rises from the deep", BAR_COLOR)
+	elseif kind == "exposed" then
+		-- The Kraken: the last tentacle is down and the head can be hurt.
+		showCard("THE MAW IS EXPOSED", "every arm is down - strike now", Theme.Color.gold)
+	elseif kind == "regrow" then
+		showCard("THE ARMS REGROW", "bring them down again", Theme.Color.red)
 	elseif kind == "bossDown" then
 		if extra.finale then
 			-- The Kraken. There is no next island; this is the saga's end.

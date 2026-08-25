@@ -331,12 +331,55 @@ local MESH_COLOR = {
 	Volcano_Vents = Color3.fromRGB(61, 51, 48), -- M_Cinder
 	Volcano_Dunes = Color3.fromRGB(79, 71, 71), -- M_VolAsh (soft ash drifts)
 	Volcano_Scree = Color3.fromRGB(23, 23, 31), -- M_Obsidian (fine ground chunks)
+
+	-- Blackmire Fen (assets/island_swamp_gen.py; palette from the generator).
+	Swamp_Water = Color3.fromRGB(55, 77, 60),
+	Swamp_Trunks = Color3.fromRGB(91, 71, 50),
+	Swamp_Canopy = Color3.fromRGB(83, 115, 62),
+	Swamp_Reeds = Color3.fromRGB(139, 135, 77),
+	Swamp_Snags = Color3.fromRGB(66, 53, 40),
+	Swamp_Hummocks = Color3.fromRGB(86, 75, 55),
+	Swamp_Dock_Planks = Color3.fromRGB(115, 94, 64),
+	Swamp_Dock_Posts = Color3.fromRGB(79, 64, 45),
+	Swamp_Foam = Color3.fromRGB(217, 224, 212),
+
+	-- Frostmaw Reach (assets/island_ice_gen.py).
+	Frostmaw_IceHoles = Color3.fromRGB(18, 33, 55),
+	Frostmaw_RimIce = Color3.fromRGB(150, 191, 224),
+	Frostmaw_Seracs = Color3.fromRGB(150, 191, 224),
+	Frostmaw_Rocks = Color3.fromRGB(68, 74, 84),
+	Frostmaw_Snags = Color3.fromRGB(132, 126, 118),
+	Frostmaw_Dock_Planks = Color3.fromRGB(142, 122, 96),
+	Frostmaw_Dock_Posts = Color3.fromRGB(103, 86, 67),
+	Frostmaw_Foam = Color3.fromRGB(240, 246, 250),
+
+	-- Gloomtrench (assets/island_gloom_gen.py). The glow objects are Neon.
+	Gloomtrench_DarkWater = Color3.fromRGB(6, 11, 22),
+	Gloomtrench_Spires = Color3.fromRGB(33, 32, 42),
+	Gloomtrench_Stalks = Color3.fromRGB(59, 62, 76),
+	Gloomtrench_GlowCyan = Color3.fromRGB(74, 239, 224),
+	Gloomtrench_GlowViolet = Color3.fromRGB(169, 106, 239),
+	Gloomtrench_Dock_Planks = Color3.fromRGB(71, 66, 82),
+	Gloomtrench_Dock_Posts = Color3.fromRGB(50, 46, 60),
+	Gloomtrench_Foam = Color3.fromRGB(171, 179, 199),
+
+	-- Wreckwater (assets/island_wreck_gen.py). The ghost-glow is Neon.
+	Wreckwater_Bay = Color3.fromRGB(22, 50, 55),
+	Wreckwater_Hulks = Color3.fromRGB(55, 46, 37),
+	Wreckwater_GhostGlow = Color3.fromRGB(173, 241, 196),
+	Wreckwater_Rocks = Color3.fromRGB(90, 92, 96),
+	Wreckwater_Dock_Planks = Color3.fromRGB(121, 103, 79),
+	Wreckwater_Dock_Posts = Color3.fromRGB(84, 69, 52),
+	Wreckwater_Foam = Color3.fromRGB(225, 231, 228),
 }
 
 -- Per-part material overrides; anything not listed gets SmoothPlastic (the flat
 -- low-poly default). Lava glows.
 local MESH_MATERIAL = {
 	Volcano_Lava = Enum.Material.Neon,
+	Gloomtrench_GlowCyan = Enum.Material.Neon,
+	Gloomtrench_GlowViolet = Enum.Material.Neon,
+	Wreckwater_GhostGlow = Enum.Material.Neon,
 }
 
 local function applyMeshColors(island: Model)
@@ -1475,11 +1518,99 @@ end
 -- it normally lives OUT of Islands.order, and even listed it must never
 -- reach placeIsland, whose FindFirstChild(entry.model) would throw on nil
 -- and take the whole boot down.
+-- The Maelstrom: the finale SITE (site = true, no mesh). The whole arena is
+-- parts, built deterministically (seeded Random) so every server raises the
+-- same storm: a dark whirlpool disc - the fishable "Maelstrom_Water"
+-- surface (waters = "maelstrom"; the name is the contract, never split it) -
+-- ringed by nine jagged rock platforms the fight is fought from (inside
+-- tentacle reach by design), a bigger spawn platform on +Z where travel
+-- drops you, and a crown of outer spires for the horizon. Marked `placed`
+-- so the shared ocean spans out to it and mayEnter's placement check
+-- passes.
+local function buildMaelstromSite(parent: Instance, id: string, entry): boolean
+	local origin = Vector3.new(entry.worldPosition.X, 0, entry.worldPosition.Z)
+	local site = Instance.new("Model")
+	site.Name = "Maelstrom"
+
+	local function rock(size: Vector3, cf: CFrame, color: Color3, material: Enum.Material?): Part
+		local p = Instance.new("Part")
+		p.Anchored = true
+		p.Size = size
+		p.CFrame = cf
+		p.Color = color
+		p.Material = material or Enum.Material.Slate
+		p.TopSurface = Enum.SurfaceType.Smooth
+		p.BottomSurface = Enum.SurfaceType.Smooth
+		p.Parent = site
+		return p
+	end
+
+	-- The whirlpool disc, slightly proud of the sea so it reads against the
+	-- ocean plane. Non-collidable, like every fishable water.
+	local water = rock(
+		Vector3.new(0.6, 150, 150),
+		CFrame.new(origin.X, World.WATER_Y + 0.12, origin.Z) * CFrame.Angles(0, 0, math.rad(90)),
+		Color3.fromRGB(24, 32, 64),
+		Enum.Material.SmoothPlastic
+	)
+	water.Name = "Maelstrom_Water"
+	water.Shape = Enum.PartType.Cylinder
+	water.CanCollide = false
+
+	local rng = Random.new(180000)
+	for i = 1, 9 do
+		local angle = (i / 9) * math.pi * 2 + rng:NextNumber(-0.12, 0.12)
+		local r = rng:NextNumber(38, 52)
+		local x = origin.X + math.cos(angle) * r
+		local z = origin.Z + math.sin(angle) * r
+		local w = rng:NextNumber(14, 20)
+		local topY = rng:NextNumber(3.4, 6.0)
+		rock(
+			Vector3.new(w, topY + 14, w * rng:NextNumber(0.8, 1.2)),
+			CFrame.new(x, topY - (topY + 14) / 2, z) * CFrame.Angles(0, angle + rng:NextNumber(-0.4, 0.4), 0),
+			Color3.fromRGB(46, 48, 60)
+		)
+		rock(
+			Vector3.new(w * 0.35, 2.4, w * 0.3),
+			CFrame.new(x + rng:NextNumber(-w / 3, w / 3), topY + 0.9, z + rng:NextNumber(-w / 3, w / 3))
+				* CFrame.Angles(rng:NextNumber(-0.3, 0.3), angle, rng:NextNumber(-0.3, 0.3)),
+			Color3.fromRGB(33, 34, 44)
+		)
+	end
+
+	-- The spawn platform (+Z): matches the entry's spawn point.
+	rock(Vector3.new(26, 18, 22), CFrame.new(origin.X, -4, origin.Z + 44), Color3.fromRGB(52, 54, 66))
+
+	-- Outer spires: the storm's teeth on the horizon.
+	for i = 1, 12 do
+		local angle = (i / 12) * math.pi * 2 + rng:NextNumber(-0.2, 0.2)
+		local r = rng:NextNumber(78, 110)
+		local h = rng:NextNumber(18, 46)
+		rock(
+			Vector3.new(rng:NextNumber(5, 10), h, rng:NextNumber(5, 10)),
+			CFrame.new(origin.X + math.cos(angle) * r, h / 2 - rng:NextNumber(2, 6), origin.Z + math.sin(angle) * r)
+				* CFrame.Angles(rng:NextNumber(-0.1, 0.1), angle, rng:NextNumber(-0.1, 0.1)),
+			Color3.fromRGB(40, 42, 54)
+		)
+	end
+
+	site.Parent = parent
+	placed[id] = true
+	return true
+end
+
 local function loadIslands(parent: Instance)
 	for _, id in Islands.order do
 		local entry = Islands.items[id]
 		if entry and not entry.site then
 			placed[id] = placeIsland(parent, id, entry)
+		end
+	end
+	-- Site entries (out of Islands.order, no mesh) build themselves: the
+	-- Maelstrom's rock ring rises wherever its entry points.
+	for id, entry in Islands.items do
+		if entry.site and not placed[id] then
+			buildMaelstromSite(parent, id, entry)
 		end
 	end
 end
@@ -1702,6 +1833,28 @@ function WorldService.mayEnter(player: Player, islandId: any): (boolean, string?
 	local level = player:GetAttribute(Progression.ATTR.level) or Progression.START_LEVEL
 	if level < entry.unlockLevel then
 		return false, string.format("Reach level %d", entry.unlockLevel)
+	end
+
+	-- A site entry (the Maelstrom) sits outside Islands.order, so the linear
+	-- chain below never sees it: its gate is every island boss's heart, plus
+	-- the last boat (the plan's Stormbreaker Keel unlocks the crossing).
+	if entry.site then
+		for _, orderedId in Islands.order do
+			local ordered = Islands.items[orderedId]
+			if ordered and ordered.boss and player:GetAttribute("Heart_" .. ordered.boss) ~= true then
+				return false, "Claim every island boss's heart first"
+			end
+		end
+		local finalTier = #Islands.order
+		local tier = player:GetAttribute("BoatTier") or 0
+		if tier < finalTier then
+			local wanted = Boats.byTier[finalTier]
+			return false,
+				if wanted
+					then string.format("Only the %s survives that crossing", wanted.name)
+					else string.format("You need a tier-%d boat for that crossing", finalTier)
+		end
+		return true
 	end
 
 	local index = table.find(Islands.order, islandId)

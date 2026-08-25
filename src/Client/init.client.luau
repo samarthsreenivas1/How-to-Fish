@@ -34,6 +34,7 @@ local ORDER = {
 	"AdminController", -- after CameraController: P cheat panel (only shown to admins), borrows the cursor while open
 	"IslandsController", -- after CameraController: the Islands travel menu (borrows the cursor while open)
 	"TrophyController", -- after CameraController: H opens the Trophy Hall (boss hearts off the Heart_* attributes)
+	"TrophyShelfController", -- no dependencies; decorates any boat's TrophyShelf mounts with the owner's heart orbs
 	"BoatController", -- no dependencies; R summons the boat, drives it while seated at your own helm (client-owned physics)
 	"DropController", -- no dependencies; "You found: X!" banner off the ItemDropped remote
 	-- A name here with no matching module fails the assert below and kills the
