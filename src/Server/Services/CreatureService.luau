@@ -504,6 +504,12 @@ end
 
 local function despawn(index: number)
 	local creature = creatures[index]
+	-- Flagged dead even though nothing killed it: anything still holding the
+	-- struct (a gun shot in flight, a skythief's steal target) must see a
+	-- lingered-out creature as gone, or it lands damage - loot pipeline and
+	-- all - on a ghost whose model is already destroyed (review find,
+	-- 2026-08-25).
+	creature.dead = true
 	byModel[creature.model] = nil
 	creature.model:Destroy()
 	-- Swap-remove: order doesn't matter and this keeps removal O(1).
@@ -529,7 +535,12 @@ end
 
 -- Every live creature whose centre is within `radius` of `position`, nearest
 -- first. For attacks that check reach rather than raycast.
-function CreatureService.inRange(position: Vector3, radius: number): { any }
+-- `opts.skipRangedOnly` drops rows flagged `rangedOnly` (the Kraken's head):
+-- the MELEE target pick passes it, so swings reach past the head to the
+-- tentacles, while ranged fire (raycastNearest / the arc re-check) still
+-- connects.
+function CreatureService.inRange(position: Vector3, radius: number, opts: { skipRangedOnly: boolean? }?): { any }
+	local skipRangedOnly = opts ~= nil and opts.skipRangedOnly == true
 	local hits = {}
 	for _, creature in creatures do
 		-- A buried lurker or a shut mimic is simply not there to be hit; the
@@ -539,7 +550,12 @@ function CreatureService.inRange(position: Vector3, radius: number): { any }
 		-- moment it got between you and the enemy. It can still be damaged
 		-- through CreatureService.damage (an urchin's blast catches it) - it's
 		-- untargetable by the player, not invulnerable.
-		if not creature.dead and not creature.untargetable and not creature.friendly then
+		if
+			not creature.dead
+			and not creature.untargetable
+			and not creature.friendly
+			and not (skipRangedOnly and creature.row.rangedOnly)
+		then
 			-- A boss's body extends well past its pivot (`hitRadius`, from
 			-- Bosses.luau scaled by the row); reach is measured to its hide,
 			-- not its centre, or a 26-stud boss at stand-off is unhittable.
@@ -622,6 +638,28 @@ local function kill(creature, killer: Player?)
 	creature.dead = true
 	byModel[creature.model] = nil
 
+	-- A boss part (a Kraken tentacle): its death counts the ring down, and
+	-- the last one opens the head's exposure window (damage() refuses the
+	-- head while partsAlive > 0; updateBoss owns the regrow clock).
+	local owner = creature.partOf
+	if owner and not owner.dead and owner.partsAlive then
+		owner.partsAlive = math.max(0, owner.partsAlive - 1)
+		if owner.partsAlive == 0 then
+			owner.partsDownAt = os.clock()
+			fireCreatureEvent("exposed", owner.pos, {
+				name = owner.model:GetAttribute(ATTR_BOSS_NAME),
+			})
+		end
+	end
+	-- And a boss with a parts ring takes its surviving arms down with it.
+	if creature.partsAlive ~= nil then
+		for _, other in creatures do
+			if other.partOf == creature and not other.dead then
+				kill(other, killer)
+			end
+		end
+	end
+
 	-- Magma Ooze: killing it doesn't end it, it divides it. The halves are
 	-- smaller, weaker, pay a fraction each, and carry `noSplit` so a fight is
 	-- bounded at three bodies instead of doubling forever. Spawned before the
@@ -696,6 +734,17 @@ function CreatureService.damage(creature, amount: number, attacker: Player?, opt
 		return nil
 	end
 	if creature.untargetable and not (opts and opts.ignoreUntargetable) then
+		return nil
+	end
+	-- The Kraken's head: invulnerable while any of its tentacle ring stands
+	-- (row.vulnerableWhen = "partsDown"; updateBoss maintains partsAlive).
+	-- Brine Rot's ignoreUntargetable burns through here too - the poison is
+	-- already in the wound, same ruling as a boss's dive.
+	if
+		creature.row.vulnerableWhen == "partsDown"
+		and (creature.partsAlive or 0) > 0
+		and not (opts and opts.ignoreUntargetable)
+	then
 		return nil
 	end
 	amount = math.max(0, amount)
@@ -2184,6 +2233,39 @@ local function updateBossAttack(
 	end
 end
 
+-- The Kraken's tentacle ring (Bosses entry `parts`): `count` copies of
+-- `parts.row` planted evenly on a `ring`-stud circle around the arena
+-- centre. Each is an ordinary creature struct with `partOf` back at the
+-- boss - noLinger (its owner is the fight), suppressed materials, a token
+-- bounty - and the ring is what gates the head: damage() refuses a
+-- `vulnerableWhen = "partsDown"` boss while partsAlive > 0, kill() counts
+-- the ring down, and the regrow clock below re-plants it.
+local function spawnBossParts(creature, def)
+	local parts = def.parts
+	local row = Creatures.items[parts.row]
+	if not row then
+		warn(string.format("[CreatureService] boss %q parts name unknown row %q", def.id, parts.row))
+		return
+	end
+	local centre = creature.anchor or creature.pos
+	for i = 1, parts.count do
+		local angle = (i / parts.count) * math.pi * 2
+		local at =
+			Vector3.new(centre.X + math.cos(angle) * parts.ring, centre.Y, centre.Z + math.sin(angle) * parts.ring)
+		local model = CreatureService.spawn(row, at, nil, "Neutral", {
+			noLinger = true,
+			suppressDrops = true,
+			bounty = 0.5,
+		})
+		local part = byModel[model]
+		if part then
+			part.partOf = creature
+		end
+	end
+	creature.partsAlive = parts.count
+	creature.partsDownAt = nil
+end
+
 local function updateBoss(creature, now: number, dt: number)
 	local def = bossDef(creature)
 	local model = creature.model
@@ -2225,8 +2307,25 @@ local function updateBoss(creature, now: number, dt: number)
 		if u >= 1 then
 			creature.untargetable = false
 			setMode(creature, "prowl", 0, now)
+			-- The tentacle ring rises with it (the Kraken).
+			if def.parts then
+				spawnBossParts(creature, def)
+			end
 		end
 		return
+	end
+
+	-- The ring regrows: `parts.regrow` seconds after the last tentacle falls
+	-- (the head's exposure window), the arms come back - as long as the boss
+	-- still lives. Checked in every mode so an attack can't stall the clock.
+	if
+		def.parts
+		and creature.partsAlive == 0
+		and creature.partsDownAt
+		and now - creature.partsDownAt >= def.parts.regrow
+	then
+		spawnBossParts(creature, def)
+		fireEvent("regrow", creature.anchor or creature.pos, { count = def.parts.count, name = def.name })
 	end
 
 	if creature.mode == "attack" then
@@ -2337,6 +2436,59 @@ local function updateMagnetize(creature, now: number, dt: number)
 		end
 	end
 	updateCharger(creature, now, dt)
+end
+
+-- ============================================================ tentacle archetype (the finale)
+-- A Kraken arm: PLANTED where spawnBossParts put it - it never walks, never
+-- takes knockback or launch (both multipliers 0), and never lingers
+-- (noLinger rides its spawn). It sways, faces the nearest player, and slams
+-- a telegraphed ring around itself on a cooldown; the counterplay is that
+-- killing the whole ring is what exposes the head. Reuses the boss slam's
+-- telegraph + slam events, so every client tell already exists.
+local function updateTentacle(creature, now: number, dt: number)
+	local root, _player, dist = nearestPlayerRoot(creature.pos)
+	if root then
+		creature.yaw0 = approachAngle(creature.yaw0, yawToward(root.Position - creature.pos), math.rad(110) * dt)
+	end
+	local phase = creature.tentaclePhase
+	if phase == "windup" then
+		local u = math.clamp((now - creature.tentacleStart) / C.TENTACLE_WINDUP, 0, 1)
+		creature.model:PivotTo(poseCFrame(creature, 1.8 * u, 0, math.rad(-26) * u))
+		if u >= 1 then
+			creature.tentaclePhase = "recover"
+			creature.tentacleStart = now
+			damagePlayersInRadius(
+				creature.pos,
+				C.TENTACLE_RADIUS,
+				C.TENTACLE_DAMAGE_MIN,
+				C.TENTACLE_DAMAGE_MAX,
+				creature,
+				0.5
+			)
+			fireEvent("slam", creature.pos, { radius = C.TENTACLE_RADIUS })
+		end
+	elseif phase == "recover" then
+		local u = math.clamp((now - creature.tentacleStart) / C.TENTACLE_RECOVER, 0, 1)
+		creature.model:PivotTo(poseCFrame(creature, 1.8 * (1 - u), 0, math.rad(8) * (1 - u)))
+		if u >= 1 then
+			creature.tentaclePhase = nil
+			creature.nextSlamAt = now + randomBetween(C.TENTACLE_COOLDOWN_MIN, C.TENTACLE_COOLDOWN_MAX)
+		end
+	else
+		-- Idle: a slow kelp-sway, out of step with its neighbours (seeded by
+		-- its own heading).
+		local sway = math.sin(now * 1.3 + creature.yaw0 * 3)
+		creature.model:PivotTo(poseCFrame(creature, sway * 0.5, sway * math.rad(5), math.sin(now * 0.8) * math.rad(4)))
+		if root and dist <= C.TENTACLE_AGGRO and now >= (creature.nextSlamAt or 0) then
+			creature.tentaclePhase = "windup"
+			creature.tentacleStart = now
+			fireEvent("telegraph", creature.pos, {
+				kind = "slam",
+				duration = C.TENTACLE_WINDUP,
+				radius = C.TENTACLE_RADIUS,
+			})
+		end
+	end
 end
 
 -- ============================================================ companion archetype
@@ -2487,7 +2639,17 @@ local function updateFlyerCore(creature, now: number, dt: number)
 		local to = creature.diveTarget - Vector3.new(creature.pos.X, 0, creature.pos.Z)
 		if to.Magnitude > 0.1 then
 			creature.yaw0 = yawToward(to)
-			creature.pos = resolveHorizontal(creature, flatUnit(to) * math.min(creature.diveRun * dt, to.Magnitude))
+			local step = flatUnit(to) * math.min(creature.diveRun * dt, to.Magnitude)
+			if creature.flyHeight and creature.flyHeight > 2.5 then
+				-- Still airborne: the obstacle ray in resolveHorizontal runs at
+				-- the GROUND-clamped pos, so a rock the bird is flying OVER
+				-- would stop the dive short of the telegraphed ring (review
+				-- find, 2026-08-25). Clear of the ground, it only re-grounds.
+				creature.pos = groundedPos(creature.pos + step, creature.halfThickness)
+			else
+				-- The final approach happens at head height; scenery counts.
+				creature.pos = resolveHorizontal(creature, step)
+			end
 		end
 		creature.flyHeight = creature.diveHeight * (1 - u)
 		model:PivotTo(poseCFrame(creature, creature.flyHeight, 0, math.rad(38)))
@@ -2535,6 +2697,7 @@ local function nearestStealable(pos: Vector3, radius: number)
 	for _, other in creatures do
 		if
 			not other.dead
+			and other.model.Parent ~= nil
 			and other.row.archetype == "flopper"
 			and not other.friendly
 			and not other.untargetable
@@ -2563,7 +2726,7 @@ local function updateSkythief(creature, now: number, dt: number)
 
 	if creature.mode == "swoop" then
 		local victim = creature.stealTarget
-		if not victim or victim.dead or victim.carriedBy or victim.state ~= "resting" then
+		if not victim or victim.dead or victim.carriedBy or victim.state ~= "resting" or not victim.model.Parent then
 			creature.stealTarget = nil
 			setMode(creature, "climb", 0, now)
 			return
@@ -2576,8 +2739,12 @@ local function updateSkythief(creature, now: number, dt: number)
 		if to.Magnitude <= C.SKYTHIEF_GRAB_RADIUS and creature.flyHeight <= 3 then
 			-- Snatched. The cargo is posed under the bird by the carried
 			-- branch in update(); its own loop is suspended until it drops.
+			-- Its linger clock is refreshed RIGHT NOW, not just per carried
+			-- frame - the sweep runs before the carried branch, so a fish
+			-- grabbed at its deadline would otherwise reap out of the claws.
 			victim.carriedBy = creature
 			victim.knockVel = nil
+			victim.lastFoughtAt = now
 			creature.cargo = victim
 			creature.fleeDistance = 0
 			fireEvent("steal", victim.model:GetPivot().Position, {})
@@ -2598,8 +2765,13 @@ local function updateSkythief(creature, now: number, dt: number)
 			else Vector3.new(math.cos(creature.yaw0), 0, -math.sin(creature.yaw0))
 		creature.yaw0 = approachAngle(creature.yaw0, yawToward(away), C.FLY_TURN_RATE * dt)
 		local step = away * C.SKYTHIEF_FLEE_SPEED * dt
+		local before = creature.pos
 		creature.pos = resolveHorizontal(creature, step)
-		creature.fleeDistance = (creature.fleeDistance or 0) + step.Magnitude
+		-- Escape is measured by ground actually covered, never by intent: a
+		-- bird pinned against a cliff or a bounds clamp must not "escape" in
+		-- place and vaporize the cargo (review find, 2026-08-25).
+		creature.fleeDistance = (creature.fleeDistance or 0)
+			+ Vector3.new(creature.pos.X - before.X, 0, creature.pos.Z - before.Z).Magnitude
 		creature.flyHeight = math.min(C.FLY_HEIGHT, (creature.flyHeight or 0) + C.FLY_CLIMB_SPEED * dt)
 		model:PivotTo(poseCFrame(creature, creature.flyHeight, 0, math.rad(-10)))
 		if creature.fleeDistance >= C.SKYTHIEF_ESCAPE then
@@ -2646,6 +2818,8 @@ local ARCHETYPE_UPDATERS = {
 	magnetize = updateMagnetize,
 	splitter = updateRusher,
 	thornback = updateRusher,
+	-- The finale: a Kraken arm, planted by the boss's parts ring.
+	tentacle = updateTentacle,
 }
 
 -- ============================================================ update
@@ -2743,13 +2917,17 @@ local function update(dt: number)
 			-- Two ways to leave, one exit. A companion goes when its minute is
 			-- up (it would otherwise never qualify below: it is never "left
 			-- alone", and being fought is not what keeps it here). Everything
-			-- else goes after LINGER seconds unfought.
+			-- else goes after LINGER seconds unfought - unless it is in a
+			-- skythief's claws: the carried branch below refreshes its timer,
+			-- but this sweep runs first, so a fish snatched right at its
+			-- deadline would otherwise reap out of the grip.
 			(creature.expiresAt and now >= creature.expiresAt)
 			or (
 				now - creature.lastFoughtAt > C.LINGER
 				and not creature.row.boss
 				and not creature.friendly
 				and not creature.noLinger
+				and not creature.carriedBy
 			)
 		then
 			-- The LINGER timer resets on every hit, so a fight in progress

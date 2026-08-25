@@ -170,6 +170,7 @@ Tuning.Creature = {
 		gascloud = 0.25, -- smoke, but it still has to walk to you
 		magnetize = 0.3,
 		reborn = 0.25,
+		tentacle = 0, -- a Kraken arm is anchored to the storm floor
 	},
 
 	-- Same idea for the vertical juggle launch. Hostiles are at 0 - they stay
@@ -203,6 +204,7 @@ Tuning.Creature = {
 		gascloud = 0,
 		magnetize = 0,
 		reborn = 0,
+		tentacle = 0,
 	},
 
 	-- Gravity while airborne, per archetype (x JUGGLE_GRAVITY). The jelly
@@ -464,6 +466,20 @@ Tuning.Creature = {
 	SKYTHIEF_CARRY_DROP = 2.4, -- the cargo hangs this far under the bird, studs
 	SKYTHIEF_FLEE_SPEED = 26, -- studs/second while carrying
 	SKYTHIEF_ESCAPE = 160, -- studs of flight before bird and cargo are gone for good
+
+	-- ---- the finale's tentacle archetype (a Kraken arm; revamp Session 4) ----
+	-- Planted where the boss's parts ring put it: it never walks, it slams a
+	-- telegraphed ring around itself. Both knockback and launch multipliers
+	-- are 0 (the tables above), so the counterplay is killing it, not
+	-- shoving it - and killing the whole ring is what exposes the head.
+	TENTACLE_AGGRO = 34, -- starts slamming with a player inside this, studs
+	TENTACLE_WINDUP = 0.9, -- the rear-back tell (telegraph ring), seconds
+	TENTACLE_RECOVER = 0.8, -- the opening after the slam, seconds
+	TENTACLE_RADIUS = 12, -- the slam ring, studs
+	TENTACLE_DAMAGE_MIN = 45,
+	TENTACLE_DAMAGE_MAX = 65,
+	TENTACLE_COOLDOWN_MIN = 3.5, -- between slams, seconds
+	TENTACLE_COOLDOWN_MAX = 5.0,
 }
 
 -- ============================================================ Player
@@ -588,7 +604,11 @@ Tuning.Perks = {
 	-- Uproot (Shellcrusher): overrides an archetype's launch resistance so
 	-- normally-grounded enemies can be popped and juggled. Archetypes listed
 	-- here stay planted regardless - a boss is never juggled.
-	UPROOT_IMMUNE = { boss = true },
+	-- Flyers are immune too: they are already airborne on their own height
+	-- track, and an uproot's juggle track (airY) fighting it snaps the bird
+	-- between two altitudes (review find, 2026-08-25). Ground them by
+	-- fighting them, not by launching them.
+	UPROOT_IMMUNE = { boss = true, flyer = true, skythief = true },
 
 	-- Blast Radius (Tidebomb Maul): the swing also catches every OTHER
 	-- creature within reach, at a fraction of the damage. Splash targets take

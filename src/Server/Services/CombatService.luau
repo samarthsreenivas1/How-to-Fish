@@ -89,7 +89,11 @@ end
 -- (cleave is handled by the melee caller, which has the in-reach list).
 -- Returns the rolled amount, so the melee caller can size its cleave splash.
 local function landHit(player: Player, weapon, target, from: Vector3, opts): number?
-	if not CreatureService.isAlive(target) then
+	-- A target that died OR went untargetable while the shot flew (a boss
+	-- starting its dive, a lurker burying, a mimic snapping shut) blocks the
+	-- whole hit - no damage, but also no poison stack, no frenzy advance and
+	-- no impact moment. Being unhittable is the point of those phases.
+	if not CreatureService.isAlive(target) or target.untargetable then
 		return nil
 	end
 	local now = os.clock()
@@ -188,8 +192,10 @@ local function onRequestAttack(player: Player)
 	lastAttackAt[player] = now
 
 	-- Nearest creature within reach takes the hit. inRange is nearest-first.
+	-- skipRangedOnly: a melee swing reaches past a rangedOnly boss head (the
+	-- Kraken's) to the tentacles - guns are how the head is hurt.
 	local from = (root :: BasePart).Position
-	local inReach = CreatureService.inRange(from, weapon.reach)
+	local inReach = CreatureService.inRange(from, weapon.reach, { skipRangedOnly = true })
 	local target = inReach[1]
 	if not target then
 		return
@@ -212,9 +218,12 @@ end
 
 -- ============================================================ ranged shots
 
--- Per-player gun state, reset whenever the equipped ranged weapon changes:
--- the server-tracked magazine, the reload clock, and the token bucket.
-local rangedState: { [Player]: any } = {}
+-- Per-player, PER-WEAPON gun state: the server-tracked magazine, the reload
+-- clock, and the token bucket. Keyed by weapon id and kept across swaps, so
+-- alternating between two owned guns can't refill a magazine, skip a reload
+-- or mint fresh bucket tokens (review find, 2026-08-25) - each weapon's
+-- state is exactly where its owner left it.
+local rangedState: { [Player]: { [string]: any } } = {}
 
 -- Shots in flight: fired (and, for guns, already resolved) but their damage
 -- lands after the cosmetic flight delay, on the Heartbeat queue below.
@@ -250,13 +259,34 @@ local function onRequestShoot(player: Player, rayOrigin, look)
 	if not character or not ShotAim.originOk(character, rayOrigin) then
 		return
 	end
+	-- The dead don't shoot: a downed player keeps their character (and root)
+	-- through the respawn window, so the root check alone isn't enough.
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	if not humanoid or humanoid.Health <= 0 then
+		return
+	end
 
 	local now = os.clock()
-	local state = rangedState[player]
-	if not state or state.weaponId ~= weapon.id then
-		-- Fresh weapon in hand: full magazine, a full bucket, no reload.
-		state = { weaponId = weapon.id, shotsInMag = ranged.magazine, reloadUntil = 0, bucket = 1, lastShotAt = now }
-		rangedState[player] = state
+	local byWeapon = rangedState[player]
+	if not byWeapon then
+		byWeapon = {}
+		rangedState[player] = byWeapon
+	end
+	local state = byWeapon[weapon.id]
+	if not state then
+		-- First time this gun has ever been raised: full magazine, one token.
+		state = { shotsInMag = ranged.magazine, reloadUntil = 0, bucket = 1, lastRefillAt = now }
+		byWeapon[weapon.id] = state
+	end
+
+	-- Token bucket: refills at one shot per cooldown, capped so at most one
+	-- extra shot of jitter queues. The refill clock advances on EVERY request
+	-- - accepted or refused - so the same elapsed interval can never be
+	-- credited twice by spamming the remote (review find, 2026-08-25).
+	state.bucket = math.min(RT.BUCKET_CAP, state.bucket + (now - state.lastRefillAt) / weapon.cooldown)
+	state.lastRefillAt = now
+	if state.bucket < 1 then
+		return
 	end
 
 	-- Reload gate: an empty magazine refills only once the reload clock has
@@ -269,15 +299,7 @@ local function onRequestShoot(player: Player, rayOrigin, look)
 		state.shotsInMag = ranged.magazine
 	end
 
-	-- Token bucket: refills at one shot per cooldown, capped so at most one
-	-- extra shot of jitter queues. A client spamming the remote lands exactly
-	-- 1/cooldown shots a second.
-	state.bucket = math.min(RT.BUCKET_CAP, state.bucket + (now - state.lastShotAt) / weapon.cooldown)
-	if state.bucket < 1 then
-		return
-	end
 	state.bucket -= 1
-	state.lastShotAt = now
 
 	state.shotsInMag -= 1
 	if state.shotsInMag <= 0 and ranged.reloadTime > 0 then
