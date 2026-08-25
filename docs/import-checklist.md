@@ -17,10 +17,10 @@ commit the .rbxm).
 | # | File | Replaces / adds under Assets | Notes |
 |---|---|---|---|
 | 1 | `assets/island_pack.glb` | `IslandPack` (or per-island models) | Now bundles ALL SIX islands: Island, Volcano, **Swamp, Frostmaw, Gloomtrench, Wreckwater**. One import covers every island. WorldService clones each child group by model name. Use PreciseConvexDecomposition collision fidelity on the `<Name>_Base` landforms and solid props (players walk them); water/foam slabs can stay default. |
-| 2 | `assets/weapon.glb` | `WeaponPack` | Regenerated with the six ranged variants: BogwoodBow, GatorjawCrossbow, MireFlintlock, CinderlockCarbine, BasaltScattergun, VulkanRepeater. |
+| 2 | `assets/weapon.glb` | `WeaponPack` | Regenerated with the six ranged variants (BogwoodBow, GatorjawCrossbow, MireFlintlock, CinderlockCarbine, BasaltScattergun, VulkanRepeater) and then again with the 22 S4 melee/ranged variants — import once, using the LAST weapon.glb commit in git log. |
 | 3 | `assets/boat.glb` | `BoatPack` (new) | Six tier hulls + Helm seat markers + trophy-shelf sterns (variant names in boat_gen.py). On first import, sanity-check the bow orientation in Studio (authored bow = Blender -y, same convention gotcha as the rod pack). |
 | 4 | `assets/creatures.glb` | `CreaturePack` | Regenerated with the new boss/flyer species (Gnashroot, Pyrelisk, Rimefang, Noctyss, AdmiralWrack, Kraken + tentacle, flyers...). |
-| 5 | `assets/fish.glb` | `FishPack` | Only if the fish-species pass landed (check git log for fish_gen.py commits). |
+| 5 | `assets/fish.glb` | `FishPack` | Regenerated with 18 new species (34 total), including the four Legendary chase fish. |
 | 6 | `assets/rod.glb` | `RodPack` | Regenerated with all 31 rod variants (cut rods pruned, every S2/S4 island's five added). Replace the old RodPack, keep the exact name. |
 
 ## After importing
