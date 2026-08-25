@@ -287,6 +287,64 @@ COLORS = {
     "WailingGunner_Fins": (0.50, 0.62, 0.60),
     "WailingGunner_Eyes": (0.50, 1.0, 0.85),
     "WailingGunner_Marks": (0.45, 0.90, 0.75),
+    # Blackmire Fen hostiles (island 2).
+    "CroakjawToad_Body": (0.35, 0.45, 0.28),
+    "CroakjawToad_Fins": (0.28, 0.36, 0.22),
+    "CroakjawToad_Eyes": (0.95, 0.80, 0.30),
+    "CroakjawToad_Marks": (0.75, 0.85, 0.50),
+    "MireLeech_Body": (0.30, 0.22, 0.25),
+    "MireLeech_Fins": (0.40, 0.30, 0.32),
+    "MireLeech_Eyes": (0.05, 0.05, 0.05),
+    "MireLeech_Marks": (0.55, 0.65, 0.45),
+    "SnagtoothGator_Body": (0.30, 0.38, 0.26),
+    "SnagtoothGator_Fins": (0.24, 0.30, 0.20),
+    "SnagtoothGator_Eyes": (0.95, 0.75, 0.30),
+    "SnagtoothGator_Marks": (0.75, 0.72, 0.55),
+    "SunkenTrapper_Body": (0.36, 0.30, 0.22),
+    "SunkenTrapper_Fins": (0.42, 0.35, 0.25),
+    "SunkenTrapper_Eyes": (0.90, 0.85, 0.40),
+    "SunkenTrapper_Marks": (0.50, 0.80, 0.55),
+    "FenSerpent_Body": (0.28, 0.40, 0.30),
+    "FenSerpent_Fins": (0.22, 0.32, 0.24),
+    "FenSerpent_Eyes": (0.95, 0.85, 0.40),
+    "FenSerpent_Marks": (0.65, 0.90, 0.35),
+    "PeatRevenant_Body": (0.25, 0.22, 0.16),
+    "PeatRevenant_Fins": (0.35, 0.30, 0.20),
+    "PeatRevenant_Eyes": (0.55, 0.90, 0.60),
+    "PeatRevenant_Marks": (0.55, 0.90, 0.60),
+    # The Maelstrom hostiles (island 7).
+    "GalestreakFlyingfish_Body": (0.45, 0.55, 0.65),
+    "GalestreakFlyingfish_Fins": (0.60, 0.70, 0.80),
+    "GalestreakFlyingfish_Eyes": (0.05, 0.05, 0.06),
+    "GalestreakFlyingfish_Marks": (0.80, 0.90, 1.0),
+    "RiptideBarracuda_Body": (0.50, 0.58, 0.62),
+    "RiptideBarracuda_Fins": (0.40, 0.46, 0.52),
+    "RiptideBarracuda_Eyes": (0.05, 0.05, 0.06),
+    "RiptideBarracuda_Marks": (0.25, 0.30, 0.35),
+    "CycloneRay_Body": (0.30, 0.34, 0.44),
+    "CycloneRay_Fins": (0.40, 0.44, 0.55),
+    "CycloneRay_Eyes": (0.80, 0.88, 0.95),
+    "CycloneRay_Marks": (0.60, 0.85, 1.0),
+    "WhirlpoolHorror_Body": (0.28, 0.32, 0.38),
+    "WhirlpoolHorror_Fins": (0.36, 0.40, 0.48),
+    "WhirlpoolHorror_Eyes": (0.90, 0.85, 0.50),
+    "WhirlpoolHorror_Marks": (0.50, 0.80, 0.95),
+    "TempestRevenant_Body": (0.35, 0.38, 0.45),
+    "TempestRevenant_Fins": (0.28, 0.30, 0.36),
+    "TempestRevenant_Eyes": (0.75, 0.85, 1.0),
+    "TempestRevenant_Marks": (0.75, 0.85, 1.0),
+    "ThunderlanceMarlin_Body": (0.30, 0.40, 0.55),
+    "ThunderlanceMarlin_Fins": (0.40, 0.50, 0.65),
+    "ThunderlanceMarlin_Eyes": (0.05, 0.05, 0.06),
+    "ThunderlanceMarlin_Marks": (0.70, 0.85, 1.0),
+    "StormcallerDjinn_Body": (0.30, 0.33, 0.42),
+    "StormcallerDjinn_Fins": (0.24, 0.26, 0.34),
+    "StormcallerDjinn_Eyes": (0.80, 0.90, 1.0),
+    "StormcallerDjinn_Marks": (0.75, 0.85, 1.0),
+    "KrakenSpawn_Body": (0.22, 0.17, 0.26),
+    "KrakenSpawn_Fins": (0.32, 0.22, 0.32),
+    "KrakenSpawn_Eyes": (1.0, 0.80, 0.30),
+    "KrakenSpawn_Marks": (0.40, 0.90, 0.90),
 }
 
 # The volcano roster, by species prefix. Used only to soften their preview
@@ -376,6 +434,22 @@ GLOW_PARTS = {
     "GhostfireJelly_Marks",
     "WailingGunner_Marks",
     "WailingGunner_Eyes",
+    # Fen: wisp-light and venom. Maelstrom: everything crackles.
+    "CroakjawToad_Marks",
+    "SunkenTrapper_Marks",
+    "SunkenTrapper_Eyes",
+    "FenSerpent_Marks",
+    "PeatRevenant_Marks",
+    "PeatRevenant_Eyes",
+    "CycloneRay_Marks",
+    "WhirlpoolHorror_Marks",
+    "TempestRevenant_Marks",
+    "TempestRevenant_Eyes",
+    "ThunderlanceMarlin_Marks",
+    "StormcallerDjinn_Marks",
+    "StormcallerDjinn_Eyes",
+    "KrakenSpawn_Marks",
+    "KrakenSpawn_Eyes",
 }
 
 
@@ -3710,6 +3784,521 @@ def build_wailinggunner():
     ]
 
 
+# ---------------------------------------------------------------- Blackmire Fen hostiles
+# The swamp's remaining roster (the gull, wisp, dragonfly and Gnashroot are
+# built above).
+
+
+# ---- Croakjaw Toad (spitter): a boulder of a toad, mouth wider than its
+# body is long, the glowing throat sac its spit tell. Flat, front +X.
+def build_croakjawtoad():
+    body = bmesh.new()
+    fins = bmesh.new()
+    eyes = bmesh.new()
+    marks = bmesh.new()
+
+    ellipsoid(body, (-0.5, 0, 0.75), (1.3, 1.0, 0.75), 1)
+    # The mouth: a wide slab jaw across the whole front.
+    box(body, (0.95, 0, 0.55), (1.1, 1.7, 0.3), Matrix.Rotation(math.radians(-6), 4, "Y"))
+    box(body, (0.9, 0, 0.9), (1.0, 1.6, 0.28), Matrix.Rotation(math.radians(4), 4, "Y"))
+    # The throat sac bulging under the jaw.
+    ellipsoid(marks, (0.95, 0, 0.35), (0.55, 0.8, 0.35), 1)
+    # Squat legs: big folded hoppers behind, small hands forward.
+    for s in (-1, 1):
+        ellipsoid(body, (-0.9, s * 0.95, 0.55), (0.55, 0.35, 0.45), 1)
+        chain(body, [(-0.6, s * 1.15, 0.25), (-0.1, s * 1.25, 0.1)], [0.14, 0.08], 4)
+        chain(body, [(0.5, s * 0.75, 0.4), (0.8, s * 0.85, 0.05)], [0.11, 0.06], 4)
+    # Warts across the back.
+    for px, py, r in ((-0.5, 0.5, 0.14), (-0.9, -0.3, 0.12), (0.0, -0.55, 0.11), (-0.2, 0.2, 0.1)):
+        ellipsoid(fins, (px, py, 1.35), (r, r, r * 0.7), 0)
+    # Eyes on top, periscope-style.
+    for s in (-1, 1):
+        ellipsoid(body, (0.5, s * 0.55, 1.35), (0.28, 0.24, 0.24), 1)
+        ellipsoid(eyes, (0.62, s * 0.55, 1.42), (0.14, 0.12, 0.13), 0)
+
+    return [
+        finish("CroakjawToad_Body", body, MATS["CroakjawToad_Body"]),
+        finish("CroakjawToad_Fins", fins, MATS["CroakjawToad_Fins"]),
+        finish("CroakjawToad_Eyes", eyes, MATS["CroakjawToad_Eyes"]),
+        finish("CroakjawToad_Marks", marks, MATS["CroakjawToad_Marks"]),
+    ]
+
+
+# ---- Mire Leech (rusher): a fat segmented leech, its front end all sucker
+# - a ring of rasping teeth around a gape. Flat, front +X.
+def build_mireleech():
+    body = bmesh.new()
+    fins = bmesh.new()
+    eyes = bmesh.new()
+    marks = bmesh.new()
+
+    # Segmented body: fattest amidships, arched slightly.
+    pts, radii = [], []
+    for i in range(8):
+        t = i / 7
+        pts.append((1.4 - t * 3.6, 0.35 * math.sin(t * 4.0), 0.5 + 0.1 * math.sin(t * math.pi)))
+        radii.append(0.28 + 0.34 * math.sin(math.pi * min(max(t, 0.12), 0.88)))
+    chain(body, pts, radii, 7)
+    # Segment rings proud of the hide.
+    for i in (1, 3, 5):
+        px, py, pz = pts[i]
+        limb(fins, (px - 0.04, py, pz), (px + 0.04, py, pz), radii[i] + 0.05, radii[i] + 0.05, 7)
+    # The sucker: a flaring ring of teeth around the gape.
+    limb(body, (1.4, 0, 0.5), (1.75, 0, 0.52), 0.55, 0.62, 8)
+    for k in range(7):
+        a = (k / 7) * TAU
+        by, bz = math.cos(a) * 0.45, math.sin(a) * 0.42
+        cone(fins, (1.78, by, 0.52 + bz), (1.95, by * 0.55, 0.52 + bz * 0.55), 0.07, 4)
+    # Slime sheen strips down the back.
+    for i in (2, 4):
+        px, py, pz = pts[i]
+        ellipsoid(marks, (px, py, pz + radii[i] * 0.8), (0.35, 0.2, 0.07), 1)
+    # Eye specks (it barely has any).
+    for s in (-1, 1):
+        ellipsoid(eyes, (1.15, s * 0.3, 1.0), (0.05, 0.05, 0.05), 0)
+
+    return [
+        finish("MireLeech_Body", body, MATS["MireLeech_Body"]),
+        finish("MireLeech_Fins", fins, MATS["MireLeech_Fins"]),
+        finish("MireLeech_Eyes", eyes, MATS["MireLeech_Eyes"]),
+        finish("MireLeech_Marks", marks, MATS["MireLeech_Marks"]),
+    ]
+
+
+# ---- Snagtooth Gator (charger): a lean fen gator - low body, armoured
+# scute rows, a jaw that doesn't close right. Flat, front +X. No shell:
+# nothing like Gnashroot at a glance.
+def build_snagtoothgator():
+    body = bmesh.new()
+    fins = bmesh.new()
+    eyes = bmesh.new()
+    marks = bmesh.new()
+
+    revolve(body, [(-2.2, 0.0), (-1.2, 0.5), (0.0, 0.72), (1.2, 0.6), (2.0, 0.0)], sides=8, axis="x", center=(0, 0, 0.6), squash=0.68)
+    # The snout: long, flat, the snaggle jaw hanging open.
+    revolve(body, [(-0.2, 0.55), (0.9, 0.42), (1.8, 0.3), (2.2, 0.0)], sides=7, axis="x", center=(1.9, 0, 0.68), squash=0.6)
+    box(body, (3.0, 0, 0.32), (1.7, 0.75, 0.2), Matrix.Rotation(math.radians(-8), 4, "Y"))
+    # Snaggle teeth: uneven, jutting at bad angles (marks - pale).
+    for i, (x, s, up, r) in enumerate(((2.6, 1, 1, 0.07), (3.1, -1, 1, 0.09), (3.6, 1, 1, 0.06), (2.9, 1, -1, 0.07), (3.5, -1, -1, 0.08), (4.0, -1, 1, 0.05))):
+        z0 = 0.42 if up > 0 else 0.6
+        cone(marks, (x, s * 0.28, z0), (x + 0.08, s * 0.32, z0 + up * 0.3), r, 4)
+    # Scute rows down the back and tail.
+    for i in range(5):
+        x = 0.8 - i * 0.75
+        for s in (-1, 0, 1):
+            box(fins, (x, s * 0.4, 1.05 - abs(s) * 0.1), (0.35, 0.25, 0.3), Matrix.Rotation(math.radians(30), 4, "Y"))
+    # The tail, swinging wide.
+    chain(body, [(-2.1, 0, 0.55), (-3.2, 0.5, 0.5), (-4.1, 0.85, 0.4)], [0.42, 0.26, 0.08], 6)
+    box(fins, (-3.2, 0.5, 0.85), (0.4, 0.2, 0.35), Matrix.Rotation(math.radians(35), 4, "Y"))
+    # Stumpy swimmer's legs.
+    for sy in (-1, 1):
+        for x in (0.9, -1.0):
+            chain(body, [(x, sy * 0.6, 0.4), (x + 0.1, sy * 1.0, 0.2), (x + 0.2, sy * 1.15, 0.0)], [0.16, 0.12, 0.05], 5)
+    for s in (-1, 1):
+        ellipsoid(body, (1.6, s * 0.42, 0.98), (0.22, 0.18, 0.18), 1)
+        ellipsoid(eyes, (1.7, s * 0.42, 1.05), (0.11, 0.1, 0.1), 0)
+
+    return [
+        finish("SnagtoothGator_Body", body, MATS["SnagtoothGator_Body"]),
+        finish("SnagtoothGator_Fins", fins, MATS["SnagtoothGator_Fins"]),
+        finish("SnagtoothGator_Eyes", eyes, MATS["SnagtoothGator_Eyes"]),
+        finish("SnagtoothGator_Marks", marks, MATS["SnagtoothGator_Marks"]),
+    ]
+
+
+# ---- Sunken Trapper (mimic): a waterlogged supply barrel gone carnivorous,
+# moss-lured. MIMIC LID CONTRACT: the lid is the whole _Fins object, the
+# barrel is centred on x=0. UPRIGHT (stance).
+def build_sunkentrapper():
+    body = bmesh.new()
+    fins = bmesh.new()
+    eyes = bmesh.new()
+    marks = bmesh.new()
+
+    # The barrel: staves and hoops, centred on x=0.
+    revolve(body, [(0.0, 0.85), (0.5, 1.0), (1.0, 1.05), (1.5, 0.98)], sides=10, axis="z", center=(0, 0, 0), squash=1.0, open_end=True)
+    for z in (0.3, 1.2):
+        limb(body, (0, 0, z - 0.05), (0, 0, z + 0.05), 1.06, 1.06, 10)
+    # The lid: a chewed plank disc with fangs down over the rim.
+    limb(fins, (0, 0, 1.5), (0, 0, 1.72), 1.05, 1.0, 10)
+    box(fins, (0, 0, 1.78), (1.5, 0.4, 0.14))
+    for a in (-0.9, -0.3, 0.3, 0.9):
+        px, py = math.cos(a * 0.8) * 0.88, math.sin(a) * 0.7
+        cone(fins, (px, py, 1.52), (px + 0.05, py, 1.14), 0.09, 4)
+    # Moss lure: glowing tufts on the lid's rim and a dangling bait-light.
+    for a in (0.6, 2.4, 4.2):
+        ellipsoid(marks, (math.cos(a) * 0.95, math.sin(a) * 0.95, 1.62), (0.2, 0.18, 0.12), 1)
+    chain(body, [(0.95, 0, 1.6), (1.35, 0, 1.3)], [0.05, 0.03], 4)
+    ellipsoid(marks, (1.42, 0, 1.15), (0.14, 0.14, 0.16), 1)
+    # Eyes glinting between the staves.
+    for s in (-1, 1):
+        ellipsoid(eyes, (0.95, s * 0.4, 0.85), (0.09, 0.08, 0.09), 1)
+
+    return [
+        finish("SunkenTrapper_Body", body, MATS["SunkenTrapper_Body"]),
+        finish("SunkenTrapper_Fins", fins, MATS["SunkenTrapper_Fins"]),
+        finish("SunkenTrapper_Eyes", eyes, MATS["SunkenTrapper_Eyes"]),
+        finish("SunkenTrapper_Marks", marks, MATS["SunkenTrapper_Marks"]),
+    ]
+
+
+# ---- Fen Serpent (spitter): a hooded swamp serpent, venom dripping bright.
+# Flat, front +X; the hood is its silhouette.
+def build_fenserpent():
+    body = bmesh.new()
+    fins = bmesh.new()
+    eyes = bmesh.new()
+    marks = bmesh.new()
+
+    pts, radii = [], []
+    n = 11
+    for i in range(n):
+        t = i / (n - 1)
+        pts.append((2.0 - t * 5.4, 1.0 * math.sin(t * math.pi * 1.5 + 0.4), 0.55))
+        radii.append(0.16 + 0.36 * math.sin(math.pi * min(max(t, 0.08), 0.92)))
+    chain(body, pts, radii, 6)
+    # The raised fore-body and head.
+    chain(body, [(2.0, pts[0][1], 0.55), (2.5, 0.1, 1.1), (2.8, 0, 1.7)], [0.32, 0.28, 0.24], 6)
+    ellipsoid(body, (3.0, 0, 1.85), (0.5, 0.32, 0.3), 1)
+    box(body, (3.3, 0, 1.6), (0.55, 0.4, 0.14), Matrix.Rotation(math.radians(12), 4, "Y"))
+    # The hood: two swept plates flanking the raised neck.
+    for s in (-1, 1):
+        plate(fins, [(2.4, 1.0), (2.2, 2.1), (2.9, 2.15), (3.1, 1.5)], 0.12, "xz", offset=(0, s * 0.4, 0))
+    # Fangs and the venom drip glowing under the jaw.
+    for s in (-1, 1):
+        cone(marks, (3.4, s * 0.15, 1.6), (3.45, s * 0.17, 1.35), 0.05, 4)
+    ellipsoid(marks, (3.42, 0, 1.2), (0.09, 0.09, 0.12), 1)
+    # Venom stripes chasing down the spine.
+    stripe = [(pts[i][0], pts[i][1], 0.55 + radii[i] * 0.85) for i in range(0, n, 2)]
+    chain(marks, stripe, [0.05] * len(stripe), 4)
+    for s in (-1, 1):
+        ellipsoid(eyes, (3.15, s * 0.22, 2.0), (0.1, 0.08, 0.09), 0)
+
+    return [
+        finish("FenSerpent_Body", body, MATS["FenSerpent_Body"]),
+        finish("FenSerpent_Fins", fins, MATS["FenSerpent_Fins"]),
+        finish("FenSerpent_Eyes", eyes, MATS["FenSerpent_Eyes"]),
+        finish("FenSerpent_Marks", marks, MATS["FenSerpent_Marks"]),
+    ]
+
+
+# ---- Peat Revenant (shambler): the bog's dead, walking - a hulk of peat
+# and root, branches for fingers, wisp-light burning in it. UPRIGHT.
+def build_peatrevenant():
+    body = bmesh.new()
+    fins = bmesh.new()
+    eyes = bmesh.new()
+    marks = bmesh.new()
+
+    # Hulking peat mass: legs, a slumped torso, a half-sunk head.
+    for s in (-1, 1):
+        box(body, (0, s * 0.45, 0.85), (0.7, 0.6, 1.7), Matrix.Rotation(math.radians(s * 4), 4, "X"))
+    box(body, (0, 0, 2.6), (1.2, 1.8, 2.0), Matrix.Rotation(math.radians(-8), 4, "Y"))
+    ellipsoid(body, (0.25, 0.1, 3.9), (0.55, 0.5, 0.5), 1)
+    # Root-branch arms, twig fingers.
+    chain(body, [(0.2, 0.95, 3.3), (0.9, 1.3, 2.6), (1.5, 1.2, 2.2)], [0.3, 0.22, 0.14], 5)
+    chain(body, [(0.2, -0.95, 3.3), (1.0, -1.2, 2.8), (1.7, -1.1, 3.0)], [0.3, 0.22, 0.14], 5)
+    for s, hand in ((1, (1.5, 1.2, 2.2)), (-1, (1.7, -1.1, 3.0))):
+        hx, hy, hz = hand
+        for k in range(3):
+            cone(fins, (hx, hy, hz), (hx + 0.45, hy + (k - 1) * 0.2, hz + 0.15 * (k - 1)), 0.05, 4)
+    # Branches jutting from the shoulders and back.
+    chain(fins, [(-0.4, 0.5, 3.6), (-0.7, 0.8, 4.4), (-0.5, 0.7, 5.0)], [0.12, 0.08, 0.03], 4)
+    chain(fins, [(-0.5, -0.4, 3.4), (-0.9, -0.8, 4.0)], [0.1, 0.04], 4)
+    # Dripping peat clumps at the hem.
+    for a in (0.5, 2.0, 3.8, 5.2):
+        ellipsoid(fins, (math.cos(a) * 0.7, math.sin(a) * 0.8, 0.45), (0.22, 0.2, 0.3), 0)
+    # The wisp light: burning in the chest cavity and both eye pits.
+    ellipsoid(marks, (0.62, 0.1, 2.9), (0.28, 0.35, 0.45), 1)
+    for s in (-1, 1):
+        ellipsoid(eyes, (0.72, 0.1 + s * 0.2, 4.0), (0.1, 0.09, 0.12), 0)
+
+    return [
+        finish("PeatRevenant_Body", body, MATS["PeatRevenant_Body"]),
+        finish("PeatRevenant_Fins", fins, MATS["PeatRevenant_Fins"]),
+        finish("PeatRevenant_Eyes", eyes, MATS["PeatRevenant_Eyes"]),
+        finish("PeatRevenant_Marks", marks, MATS["PeatRevenant_Marks"]),
+    ]
+
+
+# ---------------------------------------------------------------- Maelstrom hostiles
+# The finale's roster: everything crackles.
+
+
+# ---- Galestreak Flyingfish (flyer): a flying fish riding the storm - huge
+# wing-fins swept back, streak lines trailing. Flat, front +X.
+def build_galestreakflyingfish():
+    body = bmesh.new()
+    fins = bmesh.new()
+    eyes = bmesh.new()
+    marks = bmesh.new()
+
+    revolve(body, [(-1.9, 0.0), (-1.0, 0.32), (0.2, 0.45), (1.3, 0.32), (1.8, 0.0)], sides=8, axis="x", center=(0, 0, 0.9), squash=1.1)
+    # The wing-fins: oversized pectorals swept back like a glider.
+    for s in (-1, 1):
+        plate(fins, [(1.0, s * 0.35), (0.2, s * 1.6), (-1.4, s * 2.0), (-0.7, s * 0.7), (0.2, s * 0.35)], 0.08, "xy", offset=(0, 0, 1.0))
+    # Smaller pelvic winglets and the deep tail (lower lobe long - a flying
+    # fish's rudder).
+    for s in (-1, 1):
+        plate(fins, [(-0.9, s * 0.25), (-1.4, s * 0.85), (-1.7, s * 0.3)], 0.06, "xy", offset=(0, 0, 0.65))
+    plate(fins, [(-1.8, 1.15), (-2.5, 1.4), (-2.3, 0.9), (-2.7, 0.2), (-1.85, 0.65)], 0.08, "xz")
+    # Gale streaks: glowing speed-lines off both wingtips.
+    for s in (-1, 1):
+        chain(marks, [(-1.3, s * 1.9, 1.0), (-2.3, s * 2.0, 1.05)], [0.04, 0.02], 4)
+    for s in (-1, 1):
+        ellipsoid(eyes, (1.35, s * 0.24, 1.05), (0.12, 0.1, 0.12), 0)
+
+    return [
+        finish("GalestreakFlyingfish_Body", body, MATS["GalestreakFlyingfish_Body"]),
+        finish("GalestreakFlyingfish_Fins", fins, MATS["GalestreakFlyingfish_Fins"]),
+        finish("GalestreakFlyingfish_Eyes", eyes, MATS["GalestreakFlyingfish_Eyes"]),
+        finish("GalestreakFlyingfish_Marks", marks, MATS["GalestreakFlyingfish_Marks"]),
+    ]
+
+
+# ---- Riptide Barracuda (charger): an arrow of a fish - long, lean, jagged
+# dark stripes down the flank. Flat, front +X.
+def build_riptidebarracuda():
+    body = bmesh.new()
+    fins = bmesh.new()
+    eyes = bmesh.new()
+    marks = bmesh.new()
+
+    revolve(body, [(-2.6, 0.0), (-1.6, 0.28), (0.0, 0.4), (1.6, 0.36), (2.6, 0.16), (2.9, 0.0)], sides=8, axis="x", center=(0, 0, 0.62), squash=1.2)
+    # Underslung fanged jaw.
+    box(body, (2.6, 0, 0.45), (0.8, 0.24, 0.13), Matrix.Rotation(math.radians(8), 4, "Y"))
+    for s in (-1, 1):
+        cone(fins, (2.5, s * 0.08, 0.52), (2.52, s * 0.08, 0.68), 0.03, 4)
+        cone(fins, (2.75, s * 0.08, 0.66), (2.77, s * 0.08, 0.5), 0.03, 4)
+    # Fins: twin dorsals set far apart (the barracuda tell), forked tail.
+    plate(fins, [(0.9, 1.0), (0.5, 1.5), (0.3, 1.0)], 0.08, "xz")
+    plate(fins, [(-1.5, 1.0), (-1.9, 1.5), (-2.1, 1.0)], 0.08, "xz")
+    plate(fins, [(-2.8, 0.85), (-3.6, 1.25), (-3.3, 0.62), (-3.6, 0.0), (-2.8, 0.4)], 0.1, "xz")
+    for s in (-1, 1):
+        plate(fins, [(1.5, s * 0.35), (0.9, s * 0.85), (0.7, s * 0.4)], 0.06, "xy", offset=(0, 0, 0.4))
+    # The jagged stripes.
+    for s in (-1, 1):
+        for i in range(4):
+            x = 1.6 - i * 1.0
+            box(marks, (x, s * 0.38, 0.75), (0.12, 0.05, 0.4), Matrix.Rotation(math.radians(20), 4, "Y"))
+    for s in (-1, 1):
+        ellipsoid(eyes, (2.15, s * 0.26, 0.78), (0.11, 0.09, 0.11), 0)
+
+    return [
+        finish("RiptideBarracuda_Body", body, MATS["RiptideBarracuda_Body"]),
+        finish("RiptideBarracuda_Fins", fins, MATS["RiptideBarracuda_Fins"]),
+        finish("RiptideBarracuda_Eyes", eyes, MATS["RiptideBarracuda_Eyes"]),
+        finish("RiptideBarracuda_Marks", marks, MATS["RiptideBarracuda_Marks"]),
+    ]
+
+
+# ---- Cyclone Ray (pulser): a storm ray - the spiral etched on its disc
+# glows when it charges its pulse. Flat, front +X.
+def build_cycloneray():
+    body = bmesh.new()
+    fins = bmesh.new()
+    eyes = bmesh.new()
+    marks = bmesh.new()
+
+    ellipsoid(body, (0, 0, 0.5), (1.4, 1.05, 0.3), 1)
+    for s in (-1, 1):
+        plate(fins, [(0.7, s * 0.65), (-0.2, s * 1.9), (-1.5, s * 1.85), (-0.8, s * 0.85), (-0.5, s * 0.55)], 0.13, "xy", offset=(0, 0, 0.5))
+        cone(body, (1.25, s * 0.3, 0.5), (1.7, s * 0.42, 0.46), 0.09, 4)
+    chain(body, [(-1.3, 0, 0.5), (-2.2, 0.1, 0.55), (-2.8, 0.0, 0.5)], [0.11, 0.06, 0.02], 4)
+    # THE SPIRAL: a glowing whorl wound over the disc's back.
+    spiral = []
+    for k in range(9):
+        t = k / 8
+        a = t * TAU * 1.4
+        r = 0.15 + t * 0.85
+        spiral.append((math.cos(a) * r * 1.2 - 0.1, math.sin(a) * r * 0.85, 0.78))
+    chain(marks, spiral, [0.06] * len(spiral), 4)
+    for s in (-1, 1):
+        ellipsoid(eyes, (1.05, s * 0.38, 0.72), (0.1, 0.08, 0.08), 0)
+
+    return [
+        finish("CycloneRay_Body", body, MATS["CycloneRay_Body"]),
+        finish("CycloneRay_Fins", fins, MATS["CycloneRay_Fins"]),
+        finish("CycloneRay_Eyes", eyes, MATS["CycloneRay_Eyes"]),
+        finish("CycloneRay_Marks", marks, MATS["CycloneRay_Marks"]),
+    ]
+
+
+# ---- Whirlpool Horror (burrower): a spiral-shelled thing that IS its own
+# whirlpool - a ridged cone lying mouth-forward, tentacle fringe reaching
+# out of the throat. Flat, front +X.
+def build_whirlpoolhorror():
+    body = bmesh.new()
+    fins = bmesh.new()
+    eyes = bmesh.new()
+    marks = bmesh.new()
+
+    # The shell: a ridged cone, tip aft, mouth flaring forward.
+    revolve(body, [(-2.2, 0.05), (-1.3, 0.45), (-0.3, 0.8), (0.7, 1.05), (1.3, 1.1)], sides=9, axis="x", center=(0, 0, 1.1), squash=0.95, open_end=True)
+    # Spiral ridge riding the shell.
+    ridge = []
+    for k in range(10):
+        t = k / 9
+        a = t * TAU * 1.6
+        x = -2.0 + t * 3.2
+        r = 0.15 + t * 0.95
+        ridge.append((x, math.cos(a) * r, 1.1 + math.sin(a) * r * 0.9))
+    chain(fins, ridge, [0.09] * len(ridge), 4)
+    # The tentacle fringe reaching out of the mouth.
+    for k in range(6):
+        a = (k / 6) * TAU + 0.3
+        by, bz = math.cos(a) * 0.7, math.sin(a) * 0.65
+        chain(fins, [(1.2, by, 1.1 + bz), (1.9, by * 1.3, 1.1 + bz * 1.3), (2.5, by * 1.0, 1.1 + bz * 0.9)], [0.11, 0.07, 0.02], 4)
+    # The glow spiralling down the throat, and one hateful eye in the dark.
+    for k in range(3):
+        limb(marks, (0.9 - k * 0.5, 0, 1.1), (0.95 - k * 0.5, 0, 1.1), 0.85 - k * 0.25, 0.85 - k * 0.25, 8)
+    ellipsoid(eyes, (0.1, 0, 1.1), (0.22, 0.2, 0.2), 1)
+
+    return [
+        finish("WhirlpoolHorror_Body", body, MATS["WhirlpoolHorror_Body"]),
+        finish("WhirlpoolHorror_Fins", fins, MATS["WhirlpoolHorror_Fins"]),
+        finish("WhirlpoolHorror_Eyes", eyes, MATS["WhirlpoolHorror_Eyes"]),
+        finish("WhirlpoolHorror_Marks", marks, MATS["WhirlpoolHorror_Marks"]),
+    ]
+
+
+# ---- Tempest Revenant (shambler): a drowned sailor the storm took back -
+# the zombie frame wrapped in stormcloud, lightning crawling it. UPRIGHT.
+def build_tempestrevenant():
+    body = bmesh.new()
+    fins = bmesh.new()
+    eyes = bmesh.new()
+    marks = bmesh.new()
+
+    for s in (-1, 1):
+        box(body, (0, s * 0.4, 0.8), (0.55, 0.5, 1.6))
+    box(body, (0, 0, 2.5), (0.95, 1.5, 1.9), Matrix.Rotation(math.radians(4), 4, "Y"))
+    box(body, (0.12, 0.05, 3.85), (0.75, 0.75, 0.8))
+    chain(body, [(0.2, 0.8, 3.2), (0.95, 1.0, 2.85), (1.65, 0.9, 3.05)], [0.24, 0.2, 0.16], 5)
+    chain(body, [(0.2, -0.8, 3.2), (0.9, -0.95, 2.65)], [0.24, 0.2], 5)
+    # The stormcloud: ragged tufts wreathing the shoulders and hips.
+    for px, py, pz, r in ((-0.3, 0.7, 3.4, 0.4), (-0.4, -0.6, 3.3, 0.36), (-0.2, 0.0, 1.7, 0.45), (0.3, 0.85, 1.6, 0.3)):
+        ellipsoid(fins, (px, py, pz), (r, r * 0.9, r * 0.7), 0)
+    # Lightning: jagged strokes across the torso and down one leg.
+    for cx, cz, ln, ang in ((0.5, 2.9, 0.5, 55), (0.52, 2.3, 0.4, -35), (0.3, 1.2, 0.45, 70)):
+        box(marks, (cx, 0.2, cz), (0.05, 0.05, ln), Matrix.Rotation(math.radians(ang), 4, "Y"))
+    chain(marks, [(0.4, -0.5, 2.7), (0.5, -0.7, 2.2), (0.42, -0.55, 1.8)], [0.04, 0.05, 0.03], 4)
+    for s in (-1, 1):
+        ellipsoid(eyes, (0.52, 0.05 + s * 0.22, 3.95), (0.09, 0.09, 0.11), 0)
+
+    return [
+        finish("TempestRevenant_Body", body, MATS["TempestRevenant_Body"]),
+        finish("TempestRevenant_Fins", fins, MATS["TempestRevenant_Fins"]),
+        finish("TempestRevenant_Eyes", eyes, MATS["TempestRevenant_Eyes"]),
+        finish("TempestRevenant_Marks", marks, MATS["TempestRevenant_Marks"]),
+    ]
+
+
+# ---- Thunderlance Marlin (charger): the lance made flesh - a marlin whose
+# bill is half its length, lightning down the flanks, a storm-sail dorsal.
+# Flat, front +X.
+def build_thunderlancemarlin():
+    body = bmesh.new()
+    fins = bmesh.new()
+    eyes = bmesh.new()
+    marks = bmesh.new()
+
+    revolve(body, [(-2.4, 0.0), (-1.4, 0.4), (0.0, 0.55), (1.2, 0.42), (1.9, 0.2), (2.2, 0.1)], sides=8, axis="x", center=(0, 0, 0.85), squash=1.25)
+    # THE BILL: a tapered lance as long as the forebody.
+    cone(body, (2.2, 0, 0.9), (4.4, 0, 0.95), 0.11, 6)
+    # The storm-sail: a crackling dorsal, kept under the beam rule.
+    plate(fins, [(1.0, 1.3), (0.6, 2.15), (0.0, 1.85), (-0.6, 2.1), (-1.2, 1.7), (-1.6, 1.25)], 0.12, "xz")
+    plate(fins, [(-2.6, 1.3), (-3.5, 1.8), (-3.2, 0.85), (-3.5, 0.05), (-2.6, 0.45)], 0.12, "xz")
+    for s in (-1, 1):
+        plate(fins, [(1.2, s * 0.4), (0.3, s * 1.35), (0.1, s * 0.45)], 0.08, "xy", offset=(0, 0, 0.55))
+    # Lightning veins down both flanks and up the sail.
+    for s in (-1, 1):
+        chain(marks, [(1.6, s * 0.35, 0.95), (0.6, s * 0.5, 1.15), (-0.6, s * 0.5, 0.9), (-1.8, s * 0.35, 1.05)], [0.05, 0.06, 0.06, 0.04], 4)
+    chain(marks, [(0.6, 0, 2.0), (0.1, 0, 1.7), (-0.5, 0, 1.95)], [0.05, 0.05, 0.04], 4)
+    for s in (-1, 1):
+        ellipsoid(eyes, (1.7, s * 0.28, 1.05), (0.12, 0.1, 0.12), 0)
+
+    return [
+        finish("ThunderlanceMarlin_Body", body, MATS["ThunderlanceMarlin_Body"]),
+        finish("ThunderlanceMarlin_Fins", fins, MATS["ThunderlanceMarlin_Fins"]),
+        finish("ThunderlanceMarlin_Eyes", eyes, MATS["ThunderlanceMarlin_Eyes"]),
+        finish("ThunderlanceMarlin_Marks", marks, MATS["ThunderlanceMarlin_Marks"]),
+    ]
+
+
+# ---- Stormcaller Djinn (gascloud): a storm given opinions - a swirl of
+# cloud rising into a crowned torso, arms conducting the weather. UPRIGHT.
+def build_stormcallerdjinn():
+    body = bmesh.new()
+    fins = bmesh.new()
+    eyes = bmesh.new()
+    marks = bmesh.new()
+
+    # The swirl base rising into a torso.
+    for k in range(3):
+        a0 = (k / 3) * TAU
+        pts = []
+        for j in range(4):
+            t = j / 3
+            a = a0 + t * 2.8
+            r = 1.0 - 0.5 * t
+            pts.append((math.cos(a) * r, math.sin(a) * r, 0.25 + t * 1.6))
+        chain(body, pts, [0.32, 0.26, 0.2, 0.12], 5)
+    revolve(body, [(0.0, 0.75), (0.9, 0.85), (1.9, 0.6), (2.5, 0.4)], sides=8, axis="z", center=(0, 0, 1.7), squash=0.9, open_end=True)
+    ellipsoid(body, (0.1, 0, 4.6), (0.5, 0.45, 0.55), 1)
+    # Conducting arms flung wide.
+    for s in (-1, 1):
+        chain(body, [(0.1, s * 0.8, 3.8), (0.5, s * 1.5, 4.1), (0.9, s * 2.0, 4.5)], [0.24, 0.17, 0.08], 5)
+    # The crown: cloud horns; and thunderhead tufts at the shoulders.
+    for s in (-1, 1):
+        cone(fins, (0.0, s * 0.3, 5.05), (-0.15, s * 0.55, 5.5), 0.14, 4)
+        ellipsoid(fins, (-0.2, s * 0.9, 4.0), (0.45, 0.4, 0.35), 0)
+    # Lightning: a bolt held crackling between the hands, veins up the swirl.
+    chain(marks, [(0.9, 2.0, 4.5), (1.1, 0.7, 4.9), (1.05, -0.6, 4.7), (0.9, -2.0, 4.5)], [0.05, 0.07, 0.07, 0.05], 4)
+    chain(marks, [(0.6, 0.4, 1.0), (0.75, 0.1, 2.2), (0.6, -0.3, 3.2)], [0.05, 0.06, 0.04], 4)
+    for s in (-1, 1):
+        ellipsoid(eyes, (0.52, s * 0.2, 4.7), (0.1, 0.09, 0.12), 0)
+
+    return [
+        finish("StormcallerDjinn_Body", body, MATS["StormcallerDjinn_Body"]),
+        finish("StormcallerDjinn_Fins", fins, MATS["StormcallerDjinn_Fins"]),
+        finish("StormcallerDjinn_Eyes", eyes, MATS["StormcallerDjinn_Eyes"]),
+        finish("StormcallerDjinn_Marks", marks, MATS["StormcallerDjinn_Marks"]),
+    ]
+
+
+# ---- Kraken Spawn (splitter): an urchin-ball of baby tentacles - a knot
+# that comes apart when killed. UPRIGHT (a ball; stance keeps it as built).
+def build_krakenspawn():
+    body = bmesh.new()
+    fins = bmesh.new()
+    eyes = bmesh.new()
+    marks = bmesh.new()
+
+    ellipsoid(body, (0, 0, 1.0), (0.75, 0.72, 0.7), 1)
+    # Baby tentacles curling off it in every direction.
+    for k in range(9):
+        a = (k / 9) * TAU
+        lat = math.radians(-35 + (k % 3) * 38)
+        d = Vector((math.cos(lat) * math.cos(a), math.cos(lat) * math.sin(a), math.sin(lat)))
+        base = Vector((0, 0, 1.0)) + d * 0.65
+        mid = Vector((0, 0, 1.0)) + d * 1.25 + Vector((0, 0, 0.25))
+        tip = Vector((0, 0, 1.0)) + d * 1.55 + Vector((0, 0, 0.6))
+        chain(fins, [base, mid, tip], [0.16, 0.1, 0.03], 4)
+    # Sucker dots and one big baleful eye (its parent's).
+    for k in range(5):
+        a = (k / 5) * TAU + 0.5
+        ellipsoid(marks, (math.cos(a) * 0.68, math.sin(a) * 0.66, 1.35), (0.08, 0.08, 0.08), 0)
+    ellipsoid(eyes, (0.62, 0, 1.15), (0.26, 0.22, 0.24), 1)
+
+    return [
+        finish("KrakenSpawn_Body", body, MATS["KrakenSpawn_Body"]),
+        finish("KrakenSpawn_Fins", fins, MATS["KrakenSpawn_Fins"]),
+        finish("KrakenSpawn_Eyes", eyes, MATS["KrakenSpawn_Eyes"]),
+        finish("KrakenSpawn_Marks", marks, MATS["KrakenSpawn_Marks"]),
+    ]
+
+
 def report_bbox(name, objs, expect_flat):
     """Print the built bounding box so the orientation rules can be checked
     without a Studio round-trip (the fish_gen.py puffer trick)."""
@@ -3863,6 +4452,22 @@ CREATURES = [
     ("PlunderSprite", build_plundersprite, True),
     ("GhostfireJelly", build_ghostfirejelly, False),
     ("WailingGunner", build_wailinggunner, False),
+    # Blackmire Fen roster.
+    ("CroakjawToad", build_croakjawtoad, True),
+    ("MireLeech", build_mireleech, True),
+    ("SnagtoothGator", build_snagtoothgator, True),
+    ("SunkenTrapper", build_sunkentrapper, False),
+    ("FenSerpent", build_fenserpent, True),
+    ("PeatRevenant", build_peatrevenant, False),
+    # The Maelstrom roster.
+    ("GalestreakFlyingfish", build_galestreakflyingfish, True),
+    ("RiptideBarracuda", build_riptidebarracuda, True),
+    ("CycloneRay", build_cycloneray, True),
+    ("WhirlpoolHorror", build_whirlpoolhorror, True),
+    ("TempestRevenant", build_tempestrevenant, False),
+    ("ThunderlanceMarlin", build_thunderlancemarlin, True),
+    ("StormcallerDjinn", build_stormcallerdjinn, False),
+    ("KrakenSpawn", build_krakenspawn, False),
 ]
 
 
