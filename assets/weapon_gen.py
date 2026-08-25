@@ -60,6 +60,21 @@ FRAME = {
     "TidebombMaul": {"length": 3.7, "grip": 0.7},
     "Voltfang": {"length": 3.5, "grip": 0.7},
     "Heartrender": {"length": 3.9, "grip": 0.72},
+    # Volcano weapons (Weapons.luau "Volcano (lava island mats)").
+    "EmberCudgel": {"length": 3.4, "grip": 0.7},
+    "Cinderclub": {"length": 3.5, "grip": 0.72},
+    "SulfurKnuckles": {"length": 3.1, "grip": 0.6},
+    "PumiceFists": {"length": 3.1, "grip": 0.6},
+    "Cinderlash": {"length": 3.3, "grip": 0.62},
+    "ObsidianPiercer": {"length": 3.5, "grip": 0.64},
+    "RidgebackPike": {"length": 3.8, "grip": 0.76},
+    "SlagfistGauntlet": {"length": 3.6, "grip": 0.78},
+    "CinderSpear": {"length": 3.7, "grip": 0.74},
+    "LodestoneMaul": {"length": 3.9, "grip": 0.8},
+    "MagmaGauntlets": {"length": 3.2, "grip": 0.62},
+    "Riftcleaver": {"length": 3.6, "grip": 0.68},
+    "SootveilBlade": {"length": 3.4, "grip": 0.66},
+    "SlagheartWarhammer": {"length": 3.9, "grip": 0.8},
 }
 
 # Preview-only colours, per part object (r,g,b 0..1), mirroring the game rows.
@@ -101,6 +116,85 @@ COLORS = {
     "Heartrender_Edge": (0.77, 0.31, 0.32),  # red blade
     "Heartrender_Spike": (0.77, 0.31, 0.32),
     "Heartrender_Glow": (1.0, 0.38, 0.41),  # the beat
+    # Volcano weapons (Weapons.luau "Volcano (lava island mats)"). Colours
+    # mirror the game rows' color/accent/wrap/glow.
+    "EmberCudgel_Haft": (0.59, 0.44, 0.28),  # driftwood
+    "EmberCudgel_Grip": (0.27, 0.23, 0.19),  # charred binding
+    "EmberCudgel_Head": (0.94, 0.52, 0.20),  # ember-scorched head
+    "EmberCudgel_Spike": (0.94, 0.52, 0.20),
+    "Cinderclub_Haft": (0.51, 0.38, 0.25),  # ash-darkened driftwood
+    "Cinderclub_Grip": (0.24, 0.20, 0.17),  # charred binding
+    "Cinderclub_Head": (0.78, 0.43, 0.25),  # cinder-crusted head
+    "Cinderclub_Spike": (0.78, 0.43, 0.25),
+    "SulfurKnuckles_Haft": (0.55, 0.42, 0.27),  # driftwood
+    "SulfurKnuckles_Grip": (0.34, 0.55, 0.33),  # kelp binding
+    "SulfurKnuckles_Guard": (0.55, 0.42, 0.27),
+    "SulfurKnuckles_Edge": (0.89, 0.81, 0.35),  # sulfur crust
+    "SulfurKnuckles_Spike": (0.89, 0.81, 0.35),
+    "PumiceFists_Haft": (0.67, 0.64, 0.59),  # pale pumice
+    "PumiceFists_Grip": (0.34, 0.55, 0.33),  # kelp binding
+    "PumiceFists_Guard": (0.67, 0.64, 0.59),
+    "PumiceFists_Edge": (0.89, 0.81, 0.35),  # sulfur-dusted knuckles
+    "PumiceFists_Spike": (0.89, 0.81, 0.35),
+    "Cinderlash_Haft": (0.59, 0.44, 0.28),  # driftwood
+    "Cinderlash_Grip": (0.34, 0.55, 0.33),  # kelp binding
+    "Cinderlash_Guard": (0.59, 0.44, 0.28),
+    "Cinderlash_Edge": (0.94, 0.52, 0.20),  # the ember cord
+    "Cinderlash_Spike": (0.94, 0.52, 0.20),
+    "ObsidianPiercer_Haft": (0.55, 0.42, 0.27),  # driftwood
+    "ObsidianPiercer_Grip": (0.24, 0.20, 0.18),  # dark binding
+    "ObsidianPiercer_Guard": (0.55, 0.42, 0.27),
+    "ObsidianPiercer_Edge": (0.19, 0.17, 0.24),  # glass-black obsidian
+    "ObsidianPiercer_Spike": (0.19, 0.17, 0.24),
+    "ObsidianPiercer_Glow": (0.94, 0.52, 0.20),  # the hairline crack of heat
+    "RidgebackPike_Haft": (0.59, 0.46, 0.30),  # driftwood
+    "RidgebackPike_Grip": (0.59, 0.73, 0.82),  # fish-scale binding
+    "RidgebackPike_Guard": (0.59, 0.46, 0.30),
+    "RidgebackPike_Head": (0.19, 0.17, 0.24),  # obsidian hook base
+    "RidgebackPike_Spike": (0.19, 0.17, 0.24),
+    "RidgebackPike_Glow": (0.94, 0.52, 0.20),  # ember veins in the hook
+    "SlagfistGauntlet_Haft": (0.19, 0.17, 0.24),  # obsidian
+    "SlagfistGauntlet_Grip": (0.27, 0.26, 0.31),  # dark binding
+    "SlagfistGauntlet_Guard": (0.19, 0.17, 0.24),
+    "SlagfistGauntlet_Head": (0.89, 0.81, 0.35),  # sulfur-crusted knob
+    "SlagfistGauntlet_Spike": (0.89, 0.81, 0.35),
+    "SlagfistGauntlet_Glow": (0.96, 0.38, 0.16),  # molten cracks
+    "CinderSpear_Haft": (0.59, 0.44, 0.28),  # driftwood shaft
+    "CinderSpear_Grip": (0.78, 0.43, 0.24),  # ember cord
+    "CinderSpear_Guard": (0.59, 0.44, 0.28),
+    "CinderSpear_Head": (0.89, 0.81, 0.35),  # sulfur-crusted head
+    "CinderSpear_Spike": (0.89, 0.81, 0.35),
+    "CinderSpear_Glow": (0.94, 0.52, 0.20),  # the cord's smoulder
+    "LodestoneMaul_Haft": (0.55, 0.42, 0.27),  # driftwood
+    "LodestoneMaul_Grip": (0.24, 0.22, 0.27),  # obsidian-dark binding
+    "LodestoneMaul_Guard": (0.55, 0.42, 0.27),
+    "LodestoneMaul_Head": (0.38, 0.42, 0.52),  # lodestone
+    "LodestoneMaul_Spike": (0.19, 0.17, 0.24),  # obsidian braces
+    "LodestoneMaul_Glow": (0.59, 0.67, 0.82),  # the pull, arcing off the head
+    "MagmaGauntlets_Haft": (0.27, 0.23, 0.22),  # dark vent-metal
+    "MagmaGauntlets_Grip": (0.59, 0.73, 0.82),  # fish-scale binding
+    "MagmaGauntlets_Guard": (0.27, 0.23, 0.22),
+    "MagmaGauntlets_Edge": (0.89, 0.81, 0.35),  # sulfur-cured claws
+    "MagmaGauntlets_Spike": (0.89, 0.81, 0.35),
+    "MagmaGauntlets_Glow": (0.96, 0.38, 0.16),  # the magma vein
+    "Riftcleaver_Haft": (0.38, 0.42, 0.52),  # lodestone
+    "Riftcleaver_Grip": (0.22, 0.23, 0.26),  # dark binding
+    "Riftcleaver_Guard": (0.38, 0.42, 0.52),
+    "Riftcleaver_Edge": (0.31, 0.35, 0.43),  # grey-blue cleaver blade
+    "Riftcleaver_Spike": (0.31, 0.35, 0.43),
+    "Riftcleaver_Glow": (0.96, 0.38, 0.16),  # the rift of magma down its centre
+    "SootveilBlade_Haft": (0.19, 0.17, 0.24),  # obsidian-dark
+    "SootveilBlade_Grip": (0.59, 0.73, 0.82),  # fish-scale binding
+    "SootveilBlade_Guard": (0.19, 0.17, 0.24),
+    "SootveilBlade_Edge": (0.16, 0.15, 0.17),  # soot-blackened blade
+    "SootveilBlade_Spike": (0.16, 0.15, 0.17),
+    "SootveilBlade_Glow": (0.59, 0.16, 0.16),  # the drain, dim and red
+    "SlagheartWarhammer_Haft": (0.38, 0.42, 0.52),  # lodestone-braced haft
+    "SlagheartWarhammer_Grip": (0.24, 0.22, 0.27),  # dark binding
+    "SlagheartWarhammer_Guard": (0.38, 0.42, 0.52),
+    "SlagheartWarhammer_Head": (0.19, 0.17, 0.24),  # obsidian head
+    "SlagheartWarhammer_Spike": (0.19, 0.17, 0.24),
+    "SlagheartWarhammer_Glow": (0.96, 0.38, 0.16),  # the molten core
 }
 
 GLOW_PARTS = {  # emissive in the preview only
@@ -108,6 +202,15 @@ GLOW_PARTS = {  # emissive in the preview only
     "TidebombMaul_Glow",
     "Voltfang_Glow",
     "Heartrender_Glow",
+    "ObsidianPiercer_Glow",
+    "RidgebackPike_Glow",
+    "SlagfistGauntlet_Glow",
+    "CinderSpear_Glow",
+    "LodestoneMaul_Glow",
+    "MagmaGauntlets_Glow",
+    "Riftcleaver_Glow",
+    "SootveilBlade_Glow",
+    "SlagheartWarhammer_Glow",
 }
 
 
@@ -638,13 +741,538 @@ def build_drowncleaver():
     ]
 
 
+# ---------------------------------------------------------------- Ember Cudgel / Cinderclub (volcano starters)
+# Plain scorched driftwood clubs, same silhouette family as the Driftwood
+# Club - a tapered haft, a knotted head, knots poking out. No glow: these are
+# Common tier, same rule as the starter club/blade.
+
+
+def build_embercudgel():
+    f = FRAME["EmberCudgel"]
+    length, grip = f["length"], f["grip"]
+    haft = bmesh.new()
+    grip_bm = bmesh.new()
+    head = bmesh.new()
+    spike = bmesh.new()
+
+    limb(haft, (0, 0, 0.0), (-0.03, 0, length - 1.1), 0.16, 0.12, 6)
+    limb(grip_bm, (0, 0, grip - 0.55), (0, 0, grip + 0.55), 0.22, 0.2, 7)
+    ellipsoid(head, (-0.02, 0, length - 0.48), (0.4, 0.4, 0.6), subdiv=1)
+    box(head, (0, 0, length - 0.9), (0.5, 0.5, 0.45))
+    for cx, cy, cz, r in ((0.36, 0.12, length - 0.5, 0.16), (-0.3, -0.1, length - 0.3, 0.14), (0.05, -0.32, length - 0.7, 0.15)):
+        ellipsoid(spike, (cx, cy, cz), (r, r, r), subdiv=0)
+
+    return [
+        finish("EmberCudgel_Haft", haft),
+        finish("EmberCudgel_Grip", grip_bm),
+        finish("EmberCudgel_Head", head),
+        finish("EmberCudgel_Spike", spike),
+    ]
+
+
+def build_cinderclub():
+    f = FRAME["Cinderclub"]
+    length, grip = f["length"], f["grip"]
+    haft = bmesh.new()
+    grip_bm = bmesh.new()
+    head = bmesh.new()
+    spike = bmesh.new()
+
+    limb(haft, (0, 0, 0.0), (0.02, 0, length - 1.0), 0.14, 0.1, 6)
+    limb(grip_bm, (0, 0, grip - 0.5), (0, 0, grip + 0.5), 0.19, 0.17, 7)
+    box(head, (0, 0, length - 0.55), (0.42, 0.4, 0.5))
+    box(head, (0.05, 0.05, length - 0.2), (0.28, 0.26, 0.22), Matrix.Rotation(math.radians(18), 4, "Z"))
+    for cx, cy, cz, r in ((0.3, 0.16, length - 0.7, 0.11), (-0.26, -0.14, length - 0.45, 0.1), (0.1, -0.28, length - 0.85, 0.09)):
+        ellipsoid(spike, (cx, cy, cz), (r, r, r), subdiv=0)
+
+    return [
+        finish("Cinderclub_Haft", haft),
+        finish("Cinderclub_Grip", grip_bm),
+        finish("Cinderclub_Head", head),
+        finish("Cinderclub_Spike", spike),
+    ]
+
+
+# ---------------------------------------------------------------- Sulfur Knuckles / Pumice Fists (volcano uncommons)
+# Short knuckle-duster blades - a compact crossguard, a stubby blade, and
+# crusted knobs standing in for scale plates. Uncommon tier: no glow yet.
+
+
+def build_sulfurknuckles():
+    f = FRAME["SulfurKnuckles"]
+    length, grip = f["length"], f["grip"]
+    haft = bmesh.new()
+    grip_bm = bmesh.new()
+    guard = bmesh.new()
+    edge = bmesh.new()
+    spike = bmesh.new()
+
+    limb(haft, (0, 0, 0.05), (0, 0, 1.1), 0.09, 0.12, 6)
+    limb(grip_bm, (0, 0, grip - 0.35), (0, 0, grip + 0.35), 0.14, 0.15, 7)
+    box(guard, (0, 0, 1.16), (0.62, 0.18, 0.13))
+    for sign in (-1, 1):
+        box(guard, (sign * 0.36, 0, 1.2), (0.22, 0.16, 0.11), Matrix.Rotation(math.radians(-sign * 16), 4, "Y"))
+
+    profile = [(-0.11, 1.22), (0.11, 1.22), (0.16, 1.7), (0.0, length), (-0.16, 1.7)]
+    slab(edge, profile, 0.045)
+
+    for cx, cy, cz, r in ((0.34, 0.1, 1.24, 0.08), (-0.3, -0.08, 1.24, 0.07), (0.1, 0.14, 1.5, 0.06), (-0.14, -0.12, 1.55, 0.06)):
+        ellipsoid(spike, (cx, cy, cz), (r, r, r), subdiv=0)
+
+    return [
+        finish("SulfurKnuckles_Haft", haft),
+        finish("SulfurKnuckles_Grip", grip_bm),
+        finish("SulfurKnuckles_Guard", guard),
+        finish("SulfurKnuckles_Edge", edge),
+        finish("SulfurKnuckles_Spike", spike),
+    ]
+
+
+def build_pumicefists():
+    f = FRAME["PumiceFists"]
+    length, grip = f["length"], f["grip"]
+    haft = bmesh.new()
+    grip_bm = bmesh.new()
+    guard = bmesh.new()
+    edge = bmesh.new()
+    spike = bmesh.new()
+
+    limb(haft, (0, 0, 0.05), (0, 0, 1.0), 0.08, 0.1, 6)
+    limb(grip_bm, (0, 0, grip - 0.32), (0, 0, grip + 0.32), 0.13, 0.14, 7)
+    box(guard, (0, 0, 1.05), (0.5, 0.16, 0.11))
+
+    for x in (-0.3, -0.1, 0.1, 0.3):
+        ellipsoid(spike, (x, 0.05, 1.16), (0.13, 0.11, 0.13), subdiv=0)
+
+    profile = [(-0.14, 1.24), (0.14, 1.24), (0.1, 1.5), (0.0, length), (-0.1, 1.5)]
+    slab(edge, profile, 0.04)
+
+    return [
+        finish("PumiceFists_Haft", haft),
+        finish("PumiceFists_Grip", grip_bm),
+        finish("PumiceFists_Guard", guard),
+        finish("PumiceFists_Edge", edge),
+        finish("PumiceFists_Spike", spike),
+    ]
+
+
+# ---------------------------------------------------------------- Cinderlash (volcano uncommon)
+# A whip-like blade: a chain of tapering limb segments curving as it climbs,
+# ending in a smouldering knot. Uncommon tier: no glow yet.
+
+
+def build_cinderlash():
+    f = FRAME["Cinderlash"]
+    length, grip = f["length"], f["grip"]
+    haft = bmesh.new()
+    grip_bm = bmesh.new()
+    guard = bmesh.new()
+    edge = bmesh.new()
+    spike = bmesh.new()
+
+    limb(haft, (0, 0, 0.0), (0, 0, 1.1), 0.1, 0.13, 6)
+    limb(grip_bm, (0, 0, grip - 0.38), (0, 0, grip + 0.38), 0.15, 0.16, 7)
+    box(guard, (0, 0, 1.16), (0.3, 0.24, 0.12))
+
+    segs = 7
+    prev = Vector((0, 0, 1.2))
+    for i in range(1, segs + 1):
+        t = i / segs
+        z = 1.2 + t * (length - 1.2)
+        x = math.sin(t * 2.2) * 0.5
+        y = math.cos(t * 1.3) * 0.12
+        cur = Vector((x, y, z))
+        r0 = max(0.09 * (1 - t) + 0.02, 0.02)
+        r1 = max(0.09 * (1 - t * 1.05) + 0.015, 0.015)
+        limb(edge, prev, cur, r0, r1, sides=5)
+        prev = cur
+
+    ellipsoid(spike, prev, (0.09, 0.09, 0.09), subdiv=0)
+
+    return [
+        finish("Cinderlash_Haft", haft),
+        finish("Cinderlash_Grip", grip_bm),
+        finish("Cinderlash_Guard", guard),
+        finish("Cinderlash_Edge", edge),
+        finish("Cinderlash_Spike", spike),
+    ]
+
+
+# ---------------------------------------------------------------- Obsidian Piercer (volcano rare)
+# A thin tapering rapier of glass-black obsidian with a hairline crack of
+# heat running its length. Rare tier: glow.
+
+
+def build_obsidianpiercer():
+    f = FRAME["ObsidianPiercer"]
+    length, grip = f["length"], f["grip"]
+    haft = bmesh.new()
+    grip_bm = bmesh.new()
+    guard = bmesh.new()
+    edge = bmesh.new()
+    spike = bmesh.new()
+    glow = bmesh.new()
+
+    limb(haft, (0, 0, 0.08), (0, 0, 1.3), 0.1, 0.12, 6)
+    limb(grip_bm, (0, 0, grip - 0.4), (0, 0, grip + 0.4), 0.15, 0.14, 7)
+    box(guard, (0, 0, 1.36), (0.5, 0.16, 0.12))
+
+    profile = [(-0.1, 1.42), (0.1, 1.42), (0.16, 1.9), (0.06, 2.9), (0.0, length - 0.2), (-0.06, 2.9), (-0.16, 1.9)]
+    slab(edge, profile, 0.035)
+    cone(spike, (0, 0, length - 0.2), (0, 0, length), 0.05, sides=4)
+
+    box(glow, (0, 0, (1.5 + length - 0.2) / 2), (0.02, 0.045, (length - 0.2 - 1.5) / 2))
+
+    return [
+        finish("ObsidianPiercer_Haft", haft),
+        finish("ObsidianPiercer_Grip", grip_bm),
+        finish("ObsidianPiercer_Guard", guard),
+        finish("ObsidianPiercer_Edge", edge),
+        finish("ObsidianPiercer_Spike", spike),
+        finish("ObsidianPiercer_Glow", glow),
+    ]
+
+
+# ---------------------------------------------------------------- Ridgeback Pike (volcano rare)
+# A long haft crowned with a hooked obsidian ridgeback barb, ember veins
+# glowing along it. Rare tier: glow.
+
+
+def build_ridgebackpike():
+    f = FRAME["RidgebackPike"]
+    length, grip = f["length"], f["grip"]
+    haft = bmesh.new()
+    grip_bm = bmesh.new()
+    guard = bmesh.new()
+    head = bmesh.new()
+    spike = bmesh.new()
+    glow = bmesh.new()
+
+    limb(haft, (0, 0, 0.0), (0, 0, 2.6), 0.13, 0.09, 6)
+    limb(grip_bm, (0, 0, grip - 0.6), (0, 0, grip + 0.6), 0.2, 0.18, 8)
+    guard_bm_ring(guard, 2.65)
+
+    ellipsoid(head, (0, 0, 2.85), (0.24, 0.22, 0.3), subdiv=1)
+    limb(head, (0, 0.05, 2.95), (0.06, 0.4, length - 0.1), 0.13, 0.04, 5)
+    cone(spike, (0.06, 0.4, length - 0.1), (0.1, 0.55, length), 0.05, sides=4)
+    for cz, dy, dz in ((3.05, 0.24, 0.06), (3.3, -0.2, 0.18)):
+        base = Vector((0, 0.08, cz))
+        tip = base + Vector((0, dy, dz))
+        cone(spike, base, tip, 0.06, sides=4)
+
+    box(glow, (0.03, 0.22, 3.25), (0.02, 0.03, 0.5))
+
+    return [
+        finish("RidgebackPike_Haft", haft),
+        finish("RidgebackPike_Grip", grip_bm),
+        finish("RidgebackPike_Guard", guard),
+        finish("RidgebackPike_Head", head),
+        finish("RidgebackPike_Spike", spike),
+        finish("RidgebackPike_Glow", glow),
+    ]
+
+
+# ---------------------------------------------------------------- Slagfist Gauntlet (volcano rare)
+# A heavy faceted knob of obsidian and sulfur with knuckle ridges and molten
+# cracks running across it. Rare tier: glow.
+
+
+def build_slagfistgauntlet():
+    f = FRAME["SlagfistGauntlet"]
+    length, grip = f["length"], f["grip"]
+    haft = bmesh.new()
+    grip_bm = bmesh.new()
+    guard = bmesh.new()
+    head = bmesh.new()
+    spike = bmesh.new()
+    glow = bmesh.new()
+
+    limb(haft, (0, 0, 0.0), (0, 0, 2.3), 0.16, 0.12, 6)
+    limb(grip_bm, (0, 0, grip - 0.6), (0, 0, grip + 0.6), 0.25, 0.23, 8)
+    guard_bm_ring(guard, 2.35)
+
+    ellipsoid(head, (0, 0, 2.75), (0.55, 0.5, 0.55), subdiv=1)
+    box(head, (0, 0, 2.55), (0.62, 0.58, 0.4))
+
+    for x in (-0.3, -0.1, 0.1, 0.3):
+        box(spike, (x, 0.42, 2.9), (0.08, 0.08, 0.18))
+
+    for cx, cz, ln, ang in ((0.0, 2.9, 0.5, 25), (-0.18, 2.62, 0.35, -35), (0.2, 2.68, 0.32, 50)):
+        box(glow, (cx, 0.3, cz), (ln, 0.035, 0.05), Matrix.Rotation(math.radians(ang), 4, "Y"))
+
+    return [
+        finish("SlagfistGauntlet_Haft", haft),
+        finish("SlagfistGauntlet_Grip", grip_bm),
+        finish("SlagfistGauntlet_Guard", guard),
+        finish("SlagfistGauntlet_Head", head),
+        finish("SlagfistGauntlet_Spike", spike),
+        finish("SlagfistGauntlet_Glow", glow),
+    ]
+
+
+# ---------------------------------------------------------------- Cinder Spear (volcano rare)
+# A leaf-shaped sulfur-crusted spearhead on a driftwood shaft, glowing ember
+# cord wrapped just below it. Rare tier: glow.
+
+
+def build_cinderspear():
+    f = FRAME["CinderSpear"]
+    length, grip = f["length"], f["grip"]
+    haft = bmesh.new()
+    grip_bm = bmesh.new()
+    guard = bmesh.new()
+    head = bmesh.new()
+    spike = bmesh.new()
+    glow = bmesh.new()
+
+    limb(haft, (0, 0, 0.0), (0, 0, 2.5), 0.12, 0.09, 6)
+    limb(grip_bm, (0, 0, grip - 0.55), (0, 0, grip + 0.55), 0.18, 0.16, 7)
+    guard_bm_ring(guard, 2.55)
+
+    profile = [(-0.16, 2.6), (0.16, 2.6), (0.24, 3.0), (0.0, length), (-0.24, 3.0)]
+    slab(head, profile, 0.05)
+    for side in (-1, 1):
+        cone(spike, (side * 0.14, 0, 2.62), (side * 0.34, 0, 2.85), 0.06, sides=4)
+
+    for cz in (2.1, 2.3, 2.5):
+        limb(glow, (0, 0, cz - 0.03), (0, 0, cz + 0.03), 0.14, 0.14, 8)
+
+    return [
+        finish("CinderSpear_Haft", haft),
+        finish("CinderSpear_Grip", grip_bm),
+        finish("CinderSpear_Guard", guard),
+        finish("CinderSpear_Head", head),
+        finish("CinderSpear_Spike", spike),
+        finish("CinderSpear_Glow", glow),
+    ]
+
+
+# ---------------------------------------------------------------- Lodestone Maul (volcano epic)
+# A large faceted lodestone head braced in obsidian, magnetic pull-lines
+# radiating off it. Epic tier: glow.
+
+
+def build_lodestonemaul():
+    f = FRAME["LodestoneMaul"]
+    length, grip = f["length"], f["grip"]
+    haft = bmesh.new()
+    grip_bm = bmesh.new()
+    guard = bmesh.new()
+    head = bmesh.new()
+    spike = bmesh.new()
+    glow = bmesh.new()
+
+    limb(haft, (0, 0, 0.0), (0, 0, 2.5), 0.18, 0.13, 6)
+    limb(grip_bm, (0, 0, grip - 0.65), (0, 0, grip + 0.65), 0.28, 0.26, 8)
+    guard_bm_ring(guard, 2.55)
+
+    ellipsoid(head, (0, 0, 3.15), (0.62, 0.6, 0.62), subdiv=1)
+    box(head, (0, 0, 2.85), (0.7, 0.68, 0.42))
+
+    for side in (-1, 1):
+        box(spike, (side * 0.5, 0, 3.1), (0.14, 0.5, 0.16))
+    box(spike, (0, 0, 3.7), (0.3, 0.3, 0.12))
+
+    for i in range(5):
+        a = (i / 5) * TAU
+        d = Vector((math.cos(a), math.sin(a) * 0.8, 0.0))
+        base = Vector((0, 0, 3.15)) + d * 0.66
+        tip = base + d * 0.3
+        limb(glow, base, tip, 0.035, 0.01, 4)
+
+    return [
+        finish("LodestoneMaul_Haft", haft),
+        finish("LodestoneMaul_Grip", grip_bm),
+        finish("LodestoneMaul_Guard", guard),
+        finish("LodestoneMaul_Head", head),
+        finish("LodestoneMaul_Spike", spike),
+        finish("LodestoneMaul_Glow", glow),
+    ]
+
+
+# ---------------------------------------------------------------- Magma Gauntlets (volcano epic)
+# Three sulfur-crusted claw blades fanning off a short guard, a magma vein
+# glowing up the centre claw. Epic tier: glow.
+
+
+def build_magmagauntlets():
+    f = FRAME["MagmaGauntlets"]
+    length, grip = f["length"], f["grip"]
+    haft = bmesh.new()
+    grip_bm = bmesh.new()
+    guard = bmesh.new()
+    edge = bmesh.new()
+    spike = bmesh.new()
+    glow = bmesh.new()
+
+    limb(haft, (0, 0, 0.0), (0, 0, 1.4), 0.11, 0.09, 6)
+    limb(grip_bm, (0, 0, grip - 0.45), (0, 0, grip + 0.45), 0.19, 0.18, 8)
+    box(guard, (0, 0, 1.46), (0.62, 0.18, 0.14))
+
+    for x in (-0.24, 0.0, 0.24):
+        box(edge, (x, 0, (1.52 + length) / 2), (0.09, 0.08, (length - 1.52) / 2))
+        cone(spike, (x, 0, length), (x * 1.3, 0, length + 0.22), 0.05, sides=4)
+
+    box(glow, (0, 0, (1.6 + length) / 2), (0.03, 0.05, (length - 1.6) / 2))
+
+    return [
+        finish("MagmaGauntlets_Haft", haft),
+        finish("MagmaGauntlets_Grip", grip_bm),
+        finish("MagmaGauntlets_Guard", guard),
+        finish("MagmaGauntlets_Edge", edge),
+        finish("MagmaGauntlets_Spike", spike),
+        finish("MagmaGauntlets_Glow", glow),
+    ]
+
+
+# ---------------------------------------------------------------- Riftcleaver (volcano epic)
+# A broad lodestone-grey cleaver slab split by a glowing rift of magma down
+# its centre. Epic tier: glow.
+
+
+def build_riftcleaver():
+    f = FRAME["Riftcleaver"]
+    length, grip = f["length"], f["grip"]
+    haft = bmesh.new()
+    grip_bm = bmesh.new()
+    guard = bmesh.new()
+    edge = bmesh.new()
+    spike = bmesh.new()
+    glow = bmesh.new()
+
+    limb(haft, (0, 0, 0.0), (0, 0, 1.3), 0.13, 0.1, 6)
+    limb(grip_bm, (0, 0, grip - 0.42), (0, 0, grip + 0.42), 0.2, 0.19, 8)
+    box(guard, (0.1, 0, 1.38), (0.9, 0.22, 0.16))
+
+    profile = [
+        (-0.3, 1.44),
+        (0.62, 1.44),
+        (0.74, 2.1),
+        (0.7, 2.9),
+        (0.5, length),
+        (-0.34, length - 0.2),
+        (-0.32, 2.2),
+    ]
+    slab(edge, profile, 0.06)
+
+    cone(spike, (0.6, 0, 1.5), (0.86, 0, 1.66), 0.06, sides=4)
+
+    box(glow, (0.15, 0, (1.7 + length - 0.3) / 2), (0.035, 0.075, (length - 0.3 - 1.7) / 2))
+    for cz, ang in ((2.3, 35), (2.9, -30)):
+        box(glow, (0.15, 0, cz), (0.28, 0.07, 0.03), Matrix.Rotation(math.radians(ang), 4, "Y"))
+
+    return [
+        finish("Riftcleaver_Haft", haft),
+        finish("Riftcleaver_Grip", grip_bm),
+        finish("Riftcleaver_Guard", guard),
+        finish("Riftcleaver_Edge", edge),
+        finish("Riftcleaver_Spike", spike),
+        finish("Riftcleaver_Glow", glow),
+    ]
+
+
+# ---------------------------------------------------------------- Sootveil Blade (volcano epic)
+# A slim soot-blackened blade with a small hooked guard tip, a dim red
+# draining glow running up the edge. Epic tier: glow.
+
+
+def build_sootveilblade():
+    f = FRAME["SootveilBlade"]
+    length, grip = f["length"], f["grip"]
+    haft = bmesh.new()
+    grip_bm = bmesh.new()
+    guard = bmesh.new()
+    edge = bmesh.new()
+    spike = bmesh.new()
+    glow = bmesh.new()
+
+    limb(haft, (0, 0, 0.05), (0, 0, 1.25), 0.1, 0.12, 6)
+    limb(grip_bm, (0, 0, grip - 0.4), (0, 0, grip + 0.4), 0.15, 0.16, 7)
+    box(guard, (0, 0, 1.3), (0.56, 0.16, 0.13))
+    cone(spike, (0.3, 0, 1.32), (0.46, 0, 1.5), 0.06, sides=4)
+
+    profile = [(-0.12, 1.36), (0.12, 1.36), (0.15, 2.1), (0.0, length), (-0.15, 2.1)]
+    slab(edge, profile, 0.045)
+
+    box(glow, (0.1, 0, (1.5 + length) / 2), (0.02, 0.05, (length - 1.5) / 2))
+
+    return [
+        finish("SootveilBlade_Haft", haft),
+        finish("SootveilBlade_Grip", grip_bm),
+        finish("SootveilBlade_Guard", guard),
+        finish("SootveilBlade_Edge", edge),
+        finish("SootveilBlade_Spike", spike),
+        finish("SootveilBlade_Glow", glow),
+    ]
+
+
+# ---------------------------------------------------------------- Slagheart Warhammer (volcano legendary)
+# The capstone: a broad faceted warhammer head with two striking faces, a
+# molten magma core set in its centre with veins running to both faces and
+# down toward the haft, obsidian braces down each side and a back horn
+# spike. The richest build in the pack, matching Heartrender's role as the
+# other capstone.
+
+
+def build_slagheartwarhammer():
+    f = FRAME["SlagheartWarhammer"]
+    length, grip = f["length"], f["grip"]
+    haft = bmesh.new()
+    grip_bm = bmesh.new()
+    guard = bmesh.new()
+    head = bmesh.new()
+    spike = bmesh.new()
+    glow = bmesh.new()
+
+    limb(haft, (0, 0, 0.0), (0, 0, 2.6), 0.19, 0.14, 6)
+    limb(grip_bm, (0, 0, grip - 0.68), (0, 0, grip + 0.68), 0.3, 0.28, 8)
+    guard_bm_ring(guard, 2.65)
+
+    box(head, (0, 0, 3.15), (0.5, 0.78, 0.62))
+    ellipsoid(head, (0, 0.42, 3.15), (0.32, 0.22, 0.34), subdiv=1)
+    ellipsoid(head, (0, -0.42, 3.15), (0.32, 0.22, 0.34), subdiv=1)
+
+    for side in (-1, 1):
+        box(spike, (side * 0.28, 0, 2.85), (0.1, 0.7, 0.14))
+    cone(spike, (0, 0, 3.5), (0, 0, 3.85), 0.16, sides=5)
+
+    ellipsoid(glow, (0, 0, 3.15), (0.15, 0.22, 0.16), subdiv=1)
+    box(glow, (0, 0.2, 3.15), (0.06, 0.24, 0.06))
+    box(glow, (0, -0.2, 3.15), (0.06, 0.24, 0.06))
+    box(glow, (0, 0, 2.9), (0.05, 0.05, 0.3))
+
+    return [
+        finish("SlagheartWarhammer_Haft", haft),
+        finish("SlagheartWarhammer_Grip", grip_bm),
+        finish("SlagheartWarhammer_Guard", guard),
+        finish("SlagheartWarhammer_Head", head),
+        finish("SlagheartWarhammer_Spike", spike),
+        finish("SlagheartWarhammer_Glow", glow),
+    ]
+
+
 # ---------------------------------------------------------------- preview
 
 
 def render_preview(groups, out_png):
     scene = bpy.context.scene
-    scene.render.engine = "BLENDER_EEVEE_NEXT" if hasattr(bpy.types, "SceneEEVEE") else "BLENDER_EEVEE"
-    scene.render.resolution_x = 1100
+    # "BLENDER_EEVEE_NEXT" is the newer Blender's engine id, but the
+    # `hasattr(bpy.types, "SceneEEVEE")` probe misdetects on some builds
+    # (Blender 5.2 LTS keeps SceneEEVEE for compat while only accepting
+    # "BLENDER_EEVEE" as the enum value) - try the modern id, fall back if
+    # the running Blender rejects it. (Same fix as rod_gen.py.)
+    try:
+        scene.render.engine = "BLENDER_EEVEE_NEXT"
+    except TypeError:
+        scene.render.engine = "BLENDER_EEVEE"
+    # Widen the frame to fit the row - it was sized for the original 7
+    # weapons (spacing 3.2 -> row width 19.2) and now has to fit 21.
+    spacing = 3.2
+    row_width = spacing * max(len(groups) - 1, 0)
+    base_row_width = 19.2
+    # +55% margin so the outermost weapons don't clip the frame edge.
+    width_scale = max(row_width / base_row_width, 1.0) * 1.55
+    scene.render.resolution_x = min(int(1100 * width_scale), 5400)
     scene.render.resolution_y = 900
     scene.render.filepath = out_png
 
@@ -662,7 +1290,6 @@ def render_preview(groups, out_png):
     bpy.context.collection.objects.link(sun)
 
     # Stand the weapons up, spaced along X.
-    spacing = 3.2
     for i, objs in enumerate(groups):
         for obj in objs:
             if obj:
@@ -671,7 +1298,9 @@ def render_preview(groups, out_png):
     cam = bpy.data.objects.new("Cam", bpy.data.cameras.new("Cam"))
     bpy.context.collection.objects.link(cam)
     scene.camera = cam
-    cam.location = Vector((-2.0, -18.5, 3.2))
+    # Pull the camera back with the row width so a longer rack still frames
+    # fully - distance scales the same way resolution_x did above.
+    cam.location = Vector((-2.0, -18.5 * width_scale, 3.2))
     target = Vector((0.0, 0.0, 2.0))
     cam.rotation_euler = (target - cam.location).to_track_quat("-Z", "Y").to_euler()
     cam.data.lens = 50
@@ -697,6 +1326,20 @@ def main():
         build_tidebombmaul(),
         build_voltfang(),
         build_heartrender(),
+        build_embercudgel(),
+        build_cinderclub(),
+        build_sulfurknuckles(),
+        build_pumicefists(),
+        build_cinderlash(),
+        build_obsidianpiercer(),
+        build_ridgebackpike(),
+        build_slagfistgauntlet(),
+        build_cinderspear(),
+        build_lodestonemaul(),
+        build_magmagauntlets(),
+        build_riftcleaver(),
+        build_sootveilblade(),
+        build_slagheartwarhammer(),
     ]
 
     bpy.ops.object.select_all(action="SELECT")

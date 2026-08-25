@@ -68,10 +68,24 @@ CRAG_RADIAL = 0.0  # per-ring radial wobble (fraction of the ring radius)
 # there instead of over the whole lip. [] = none (tropical).
 NOTCHES = []
 
-# Walkable rim: (u_lo, u_hi) band where the profile is a flat plateau and
-# vertical crag is suppressed, so the crater rim reads as a wide, level ring a
-# player can stand on and fish off into the lava. None = no flat rim (tropical).
+# Walkable band: (u_lo, u_hi) where vertical crag is suppressed so the player
+# has level ground to walk and fight on. For the old rim volcano this was the
+# crater rim; for the tall volcano it is the ash apron at the foot. None = no
+# suppression (tropical, which has no crag anyway).
 RIM_FLAT = None
+
+# Where NOTCHES carve, as a (u_lo, u_hi) band. None = fall back to RIM_FLAT
+# (the old rim-volcano behaviour, notches through the walkable rim). The tall
+# volcano sets this to its summit-crater lip so the walkable apron and the
+# notch band are independent.
+NOTCH_BAND = None
+
+# Summit asymmetry: angular height modulation of the upper cone so the peak
+# is a broken, asymmetric ridgeline instead of a lathe. PEAK_TERMS are
+# (frequency, phase, amplitude01) sines summed per angle; PEAK_JAG scales the
+# sum in studs. 0 = symmetric (tropical, and any island that doesn't set it).
+PEAK_JAG = 0.0
+PEAK_TERMS = []
 
 # Where the inner material band gives way to the beach, as a relative radius;
 # must be one of RINGS so the boundary lies exactly on a mesh ring (a clean
@@ -252,7 +266,7 @@ def notch_cut(theta, u):
     high. NOTCHES is empty for smooth islands, so this is 0 for the tropics."""
     if not NOTCHES:
         return 0.0
-    lo, hi = RIM_FLAT if RIM_FLAT is not None else (0.34, 0.50)
+    lo, hi = NOTCH_BAND if NOTCH_BAND is not None else (RIM_FLAT if RIM_FLAT is not None else (0.34, 0.50))
     cut = 0.0
     for a0, half, depth in NOTCHES:
         da = abs(((theta - a0 + math.pi) % math.tau) - math.pi)
@@ -263,6 +277,26 @@ def notch_cut(theta, u):
         rad = smoothstep(lo - 0.06, lo + 0.02, u) * (1 - smoothstep(hi - 0.02, hi + 0.08, u))
         cut = max(cut, depth * ang * rad)
     return cut
+
+
+def peak_jag(theta, u):
+    """Broken-ridgeline height offset for the upper cone (PEAK_JAG > 0): the
+    crater mouth and shoulders rise and fall per angle so the silhouette is
+    craggy and asymmetric, fading to nothing by mid-flank and inside the
+    crater (the lake floor stays flat). Suppressed across each NOTCH's angular
+    window so a spillway gash always stays below the lava lake regardless of
+    how high the ridge beside it climbs."""
+    if PEAK_JAG == 0:
+        return 0.0
+    band = smoothstep(0.075, 0.13, u) * (1 - smoothstep(0.22, 0.42, u))
+    if band <= 0:
+        return 0.0
+    for a0, half, _depth in NOTCHES:
+        da = abs(((theta - a0 + math.pi) % math.tau) - math.pi)
+        if da < half:
+            band *= smoothstep(half * 0.35, half, da)
+    w = sum(a * math.sin(f * theta + ph) for f, ph, a in PEAK_TERMS)
+    return PEAK_JAG * w * band
 
 
 # ---------------------------------------------------------------- scene helpers
@@ -368,6 +402,36 @@ def add_post(bm, x, y, z_bottom, z_top, radius, sides=6):
     bpy.data.meshes.remove(mesh)
 
 
+def add_cone(bm, center, r_bottom, r_top, height, sides=6, tilt=(0.0, 0.0), yaw=0.0):
+    """A capped low-poly frustum whose BASE sits at `center`, its axis tilted
+    off vertical by (pitch_x, pitch_y) radians about the base. Trunks,
+    branches, vent cones."""
+    temp = bmesh.new()
+    bmesh.ops.create_cone(
+        temp, cap_ends=True, cap_tris=False, segments=sides, radius1=r_bottom, radius2=r_top, depth=height
+    )
+    matrix = (
+        Matrix.Translation(Vector(center))
+        @ Matrix.Rotation(yaw, 4, "Z")
+        @ Matrix.Rotation(tilt[0], 4, "X")
+        @ Matrix.Rotation(tilt[1], 4, "Y")
+        @ Matrix.Translation(Vector((0, 0, height / 2)))
+    )
+    bmesh.ops.transform(temp, matrix=matrix, verts=temp.verts[:])
+    mesh = bpy.data.meshes.new("_cone")
+    temp.to_mesh(mesh)
+    temp.free()
+    bm.from_mesh(mesh)
+    bpy.data.meshes.remove(mesh)
+
+
+def cone_axis(tilt, yaw):
+    """World direction of an add_cone's axis for the same tilt/yaw - for
+    seating branches partway up a tilted trunk."""
+    rot = Matrix.Rotation(yaw, 3, "Z") @ Matrix.Rotation(tilt[0], 3, "X") @ Matrix.Rotation(tilt[1], 3, "Y")
+    return rot @ Vector((0, 0, 1))
+
+
 def ragged(theta, base, terms):
     """`base` scaled by a sum of sines - an edge that wanders."""
     wobble = sum(a * math.sin(f * theta + ph) for f, ph, a in terms)
@@ -443,7 +507,8 @@ def build_island_base(base_name, material_names):
             if CRAG > 0 and CRAG_RADIAL > 0:
                 r *= 1 + noise.noise(Vector((math.cos(theta) * 6.0, math.sin(theta) * 6.0, u * 4.0))) * CRAG_RADIAL
             x, z = math.cos(theta) * r, math.sin(theta) * r
-            ring.append(bm.verts.new(Vector((x, z, height_at(x, z) + crag(x, z, u) - notch_cut(theta, u)))))
+            h = height_at(x, z) + crag(x, z, u) - notch_cut(theta, u) + peak_jag(theta, u)
+            ring.append(bm.verts.new(Vector((x, z, h))))
         rings.append(ring)
 
     def material_for_band(outer_u):
@@ -882,207 +947,421 @@ def _drop_to_ground(ground, x, z):
     profile - it disagrees with the jittered, craggy, faceted mesh by many studs
     (up to the full crag amplitude), which is what leaves props floating or
     buried when they trust it. The raycast uses the actual ground instead."""
-    hit = ground.ray_cast(Vector((x, z, 500.0)), Vector((0.0, 0.0, -1.0)))
+    # Cast from above any island's peak (the tall volcano tops ~940 studs).
+    hit = ground.ray_cast(Vector((x, z, 1500.0)), Vector((0.0, 0.0, -1.0)))
     return hit[0].z if hit[0] is not None else None
 
 
+def _near_dock_corridor(theta, u):
+    """True if (theta, u) sits in the wedge the shore dock (and the lava delta
+    it casts into) occupies, so rocks never block the walk onto the planks or
+    poke up through the delta."""
+    a = math.radians(DOCK_ANGLE_DEG)
+    da = abs(((theta - a + math.pi) % math.tau) - math.pi)
+    return da < 0.065 and u > 0.80
+
+
 def build_volcano_rocks(ground):
-    """Obsidian rock, in two places: big angular boulders on the flat apron at
-    the foot (island-scaled, read from afar), AND a dense scatter of rocks and
-    pebbles riddling the walkable crater rim (human-scaled, walked among) so the
-    top reads as broken volcanic ground, not a clean ring. EVERY rock is dropped
-    onto the real base-mesh surface (`ground` raycast) and seated slightly into
-    it, so none float above the crags or hover over the jittered facets. Both
-    skip the lava spillway channels so nothing sits over a notch."""
+    """Obsidian rock, in three places: big angular boulders on the walkable ash
+    apron at the foot (walked among), MASSIVE crag boulders jammed into the
+    steep flanks (read from the beach as broken rock faces), and a crown of
+    tall shattered spires around the summit crater so the silhouette is jagged
+    all the way up. EVERY rock is dropped onto the real base-mesh surface
+    (`ground` raycast) and seated slightly into it, so none float above the
+    crags or hover over the jittered facets. All skip the lava channels and
+    the dock corridor."""
     bm = bmesh.new()
 
-    # Apron boulders at the foot.
-    for i in range(16):
-        theta = (i / 16) * math.tau + random.uniform(-0.18, 0.18)
-        u = random.uniform(0.80, 0.98)  # the flat apron, not the cone
-        r = ring_radius(u, theta)
-        x, z = math.cos(theta) * r, math.sin(theta) * r
-        surface = _drop_to_ground(ground, x, z)
-        if surface is None:
-            continue
-        s = random.uniform(2.2, 4.6) * SCALE
-        sz = s * 0.7
-        # Seat it a touch into the ground so it reads as resting, never floating.
-        add_blob(bm, (x, z, surface - sz * 0.35), (s, s * 0.85, sz), 0.44, 200 + i * 7.0, yaw=random.uniform(0, math.tau))
-
-    # Rim scatter: lots of small pebbles + some chunkier rocks across the flat
-    # walkable ring.
-    lo, hi = RIM_FLAT if RIM_FLAT is not None else (0.34, 0.46)
+    # Apron boulders + pebbles at the foot - the ground the player fights on.
     count = 0
     tries = 0
-    while count < 130 and tries < 1200:
+    while count < 300 and tries < 3000:
         tries += 1
         theta = random.uniform(0, math.tau)
-        u = random.uniform(lo + 0.01, hi - 0.01)
-        if notch_cut(theta, u) > 2.0:
-            continue  # don't strand a rock over a lava spillway channel
+        u = random.uniform(0.74, 0.985)
+        if _near_dock_corridor(theta, u):
+            continue
         r = ring_radius(u, theta)
         x, z = math.cos(theta) * r, math.sin(theta) * r
+        if not _clear_of_ponds(x, z, 1.0):
+            continue
         surface = _drop_to_ground(ground, x, z)
         if surface is None:
             continue
-        pebble = random.random() < 0.68
-        s = random.uniform(0.6, 2.0) if pebble else random.uniform(2.5, 6.0)
-        rough = 0.5 if pebble else 0.42
+        pebble = random.random() < 0.6
+        s = random.uniform(1.2, 3.0) if pebble else random.uniform(4.5, 11.0)
         sz = s * random.uniform(0.5, 0.8)
         add_blob(
             bm,
             (x, z, surface - sz * 0.3),  # seated into the real surface, never hovering
             (s, s * random.uniform(0.7, 0.95), sz),
-            rough,
+            0.48 if pebble else 0.42,
             500 + count * 3.7,
             yaw=random.uniform(0, math.tau),
         )
         count += 1
 
+    # Flank crag boulders: huge shattered blocks jammed into the steep cone so
+    # the slopes read as broken rock faces, not a smooth lathe. Sized to be
+    # read from the beach hundreds of studs below.
+    for i in range(34):
+        theta = (i / 34) * math.tau + random.uniform(-0.1, 0.1)
+        u = random.uniform(0.24, 0.62)
+        if notch_cut(theta, min(u, 0.2)) > 2.0:
+            continue  # keep the lava channels clear
+        r = ring_radius(u, theta)
+        x, z = math.cos(theta) * r, math.sin(theta) * r
+        surface = _drop_to_ground(ground, x, z)
+        if surface is None:
+            continue
+        s = random.uniform(9.0, 22.0)
+        sz = s * random.uniform(0.8, 1.3)
+        add_blob(
+            bm,
+            (x, z, surface - sz * 0.4),
+            (s, s * random.uniform(0.6, 0.9), sz),
+            0.5,
+            200 + i * 7.0,
+            yaw=random.uniform(0, math.tau),
+        )
+
+    # Summit spires: a crown of tall angular shards around the crater lip so
+    # the very top is a ragged fang line, skipping the notches the lava pours
+    # through.
+    for i in range(14):
+        theta = (i / 14) * math.tau + random.uniform(-0.12, 0.12)
+        u = random.uniform(0.155, 0.195)
+        if notch_cut(theta, 0.17) > 2.0:
+            continue
+        r = ring_radius(u, theta)
+        x, z = math.cos(theta) * r, math.sin(theta) * r
+        surface = _drop_to_ground(ground, x, z)
+        if surface is None:
+            continue
+        s = random.uniform(6.0, 11.0)
+        h = s * random.uniform(2.2, 3.4)  # tall shards, not round blobs
+        add_blob(
+            bm,
+            (x, z, surface + h * 0.15),
+            (s, s * 0.7, h),
+            0.42,
+            900 + i * 5.0,
+            yaw=random.uniform(0, math.tau),
+        )
+
+    # Obsidian shards: small angular fangs stuck upright in the ash between
+    # the boulders - glassy debris rained off the mountain.
+    count = 0
+    tries = 0
+    while count < 70 and tries < 900:
+        tries += 1
+        theta = random.uniform(0, math.tau)
+        u = random.uniform(0.73, 0.985)
+        if _near_dock_corridor(theta, u):
+            continue
+        r = ring_radius(u, theta)
+        x, z = math.cos(theta) * r, math.sin(theta) * r
+        if not _clear_of_ponds(x, z, 1.0):
+            continue
+        surface = _drop_to_ground(ground, x, z)
+        if surface is None:
+            continue
+        s = random.uniform(0.9, 2.0)
+        h = s * random.uniform(2.4, 3.6)
+        add_blob(bm, (x, z, surface + h * 0.1), (s, s * 0.6, h), 0.4, 1500 + count * 4.3, yaw=random.uniform(0, math.tau))
+        count += 1
+
     return object_from_bmesh("Volcano_Rocks", bm, ["M_Obsidian"])
 
 
-def build_volcano_dock():
-    """A plank fishing pier at the TOP of the volcano: it starts at the crater
-    rim and runs INWARD out over the lava lake, so you walk off the rim and cast
-    straight down into the lava. Elevated at rim height on tall obsidian posts
-    that stand down in the lava, with a wider platform at the far end. Named and
-    materialled like the old shore dock (Volcano_Dock_Planks / _Posts) so
-    WorldService colours it unchanged - only its position moved."""
-    DOCK_POST_POSITIONS.clear()  # a rim pier has no water-foam collars
+def build_volcano_props(ground):
+    """The 'random stuff' riddling the walkable apron (user, 2026-08-24;
+    densified same day after "the base is barren"), in four single-material
+    objects. The apron is ~530k sq studs, so a thin uniform sprinkle reads
+    as empty - the props are GROUPED into landmarks a player walks between:
+    BURNT GROVES of dead snags (plus loners), BASALT COLUMN fields, CINDER
+    VENT clusters, and soft ASH DUNES, with heavy obsidian scree in
+    build_volcano_rocks filling the ground between them. Everything raycasts
+    the real surface, seats slightly into it, and keeps clear of the dock
+    corridor and the molten ponds."""
 
-    theta = math.radians(300)  # a clear stretch of rim, away from the notches (35, 205)
-    direction = Vector((math.cos(theta), math.sin(theta), 0))  # outward radial
-    r_in = ring_radius(0.34, theta)  # rim inner edge (top of the fishing cliff)
-    origin = direction * r_in
+    def apron_spot(pad=4.0, u_lo=0.73, u_hi=0.97):
+        for _ in range(40):
+            theta = random.uniform(0, math.tau)
+            u = random.uniform(u_lo, u_hi)
+            if _near_dock_corridor(theta, u):
+                continue
+            r = ring_radius(u, theta)
+            x, z = math.cos(theta) * r, math.sin(theta) * r
+            if not _clear_of_ponds(x, z, pad):
+                continue
+            surface = _drop_to_ground(ground, x, z)
+            if surface is not None:
+                return x, z, surface
+        return None
 
-    length = 130.0  # how far it reaches inward over the lava
-    width = 16.0
-    end_length = 24.0
-    end_width = 30.0
-    deck_top = 198.0  # just below the rim top (~200) so you step straight onto it
-    post_bottom = 150.0  # down into the lava lake (surface ~165)
+    def spot_near(cx, cz, spread):
+        """A ground point near a cluster's centre, still clear of ponds."""
+        for _ in range(12):
+            a = random.uniform(0, math.tau)
+            d = random.uniform(0, spread)
+            x, z = cx + math.cos(a) * d, cz + math.sin(a) * d
+            if not _clear_of_ponds(x, z):
+                continue
+            surface = _drop_to_ground(ground, x, z)
+            if surface is not None:
+                return x, z, surface
+        return None
 
-    plank_bm, post_bm = bmesh.new(), bmesh.new()
+    snag_bm = bmesh.new()
 
-    plank_thick = 0.45
-    plank_w = 1.25
-    plank_gap = 0.22
-    plank_z = deck_top - plank_thick / 2
-    stringer_h = 0.55
-    stringer_z = deck_top - plank_thick - stringer_h / 2
-    main_len = length - end_length
+    def snag(x, z, surface, big=False):
+        yaw = random.uniform(0, math.tau)
+        tilt = (random.uniform(-0.09, 0.09), random.uniform(-0.09, 0.09))
+        h = random.uniform(55.0, 75.0) if big else random.uniform(35.0, 60.0)
+        base = Vector((x, z, surface - 1.5))
+        add_cone(snag_bm, base, random.uniform(2.2, 3.4), 0.9, h, sides=6, tilt=tilt, yaw=yaw)
+        axis = cone_axis(tilt, yaw)
+        for _ in range(random.randint(2, 3)):
+            frac = random.uniform(0.45, 0.85)
+            joint = base + axis * (h * frac)
+            b_yaw = random.uniform(0, math.tau)
+            b_tilt = (random.uniform(0.9, 1.3), 0.0)  # near-horizontal snapped-off limbs
+            add_cone(snag_bm, joint, 0.85, 0.25, random.uniform(12.0, 24.0), sides=5, tilt=b_tilt, yaw=b_yaw)
 
-    pitch = plank_w + plank_gap
-    count = int(length / pitch)
-    for i in range(count):
-        t = pitch * (i + 0.5)
-        w = width if t < main_len else end_width
-        ln = w + random.uniform(-0.25, 0.35)
+    # Ten burnt groves - a dead forest's stands - plus scattered loners.
+    for _ in range(13):
+        grove = apron_spot(pad=2.0)
+        if grove is None:
+            continue
+        gx, gz, gs = grove
+        snag(gx, gz, gs, big=True)  # every grove has one tall veteran
+        for _ in range(random.randint(4, 7)):
+            member = spot_near(gx, gz, random.uniform(14.0, 32.0))
+            if member:
+                snag(*member)
+    for _ in range(18):
+        loner = apron_spot()
+        if loner:
+            snag(*loner)
+
+    basalt_bm = bmesh.new()
+    for _ in range(24):
+        spot = apron_spot(pad=2.5)
+        if spot is None:
+            continue
+        cx, cz, _ = spot
+        tallest = random.uniform(4.5, 9.0)
+        for c in range(random.randint(4, 8)):
+            a = random.uniform(0, math.tau)
+            d = random.uniform(0, 3.6)
+            x, z = cx + math.cos(a) * d, cz + math.sin(a) * d
+            surface = _drop_to_ground(ground, x, z)
+            if surface is None:
+                continue
+            # Tallest at the cluster's heart, stepping down outward.
+            h = tallest * random.uniform(0.85, 1.0) * (1.0 - d * 0.16)
+            add_post(basalt_bm, x, z, surface - 0.6, surface + max(1.6, h), random.uniform(0.9, 1.5), sides=6)
+
+    vent_bm = bmesh.new()
+    for _ in range(13):
+        spot = apron_spot(pad=2.5)
+        if spot is None:
+            continue
+        cx, cz, surface = spot
+        rb = random.uniform(2.6, 4.4)
+        add_cone(vent_bm, (cx, cz, surface - 0.5), rb, rb * random.uniform(0.35, 0.45), random.uniform(2.2, 4.8), sides=8)
+        # Most fumaroles come with a smaller companion cone alongside.
+        if random.random() < 0.7:
+            mate = spot_near(cx, cz, rb + 3.5)
+            if mate:
+                mr = rb * random.uniform(0.45, 0.65)
+                add_cone(vent_bm, (mate[0], mate[1], mate[2] - 0.4), mr, mr * 0.4, random.uniform(1.4, 2.6), sides=7)
+
+    # Fine scree: hundreds of small angular obsidian chunks half-buried in
+    # the ash - the ground clutter that makes the walk feel volcanic. Cheap
+    # yawed boxes (12 tris each), so the count can be high.
+    scree_bm = bmesh.new()
+    placed_chunks = 0
+    tries = 0
+    while placed_chunks < 460 and tries < 4600:
+        tries += 1
+        theta = random.uniform(0, math.tau)
+        u = random.uniform(0.73, 0.985)
+        if _near_dock_corridor(theta, u):
+            continue
+        r = ring_radius(u, theta)
+        x, z = math.cos(theta) * r, math.sin(theta) * r
+        if not _clear_of_ponds(x, z, 1.0):
+            continue
+        surface = _drop_to_ground(ground, x, z)
+        if surface is None:
+            continue
+        s = random.uniform(0.5, 1.6)
         add_box(
-            plank_bm,
-            (random.uniform(-0.08, 0.08), t, plank_z + random.uniform(-0.03, 0.03)),
-            (ln, plank_w, plank_thick),
-            yaw=random.uniform(-0.025, 0.025),
+            scree_bm,
+            (x, z, surface + s * 0.1),  # half-buried
+            (s, s * random.uniform(0.6, 0.9), s * random.uniform(0.5, 0.8)),
+            yaw=random.uniform(0, math.tau),
+        )
+        placed_chunks += 1
+
+    # Soft ash dunes: broad smooth mounds that give the flat apron rolling
+    # ground to walk over (blob roughness kept low so they read as drifts,
+    # not rocks).
+    dune_bm = bmesh.new()
+    for i in range(32):
+        spot = apron_spot(pad=8.0, u_lo=0.74, u_hi=0.96)
+        if spot is None:
+            continue
+        x, z, surface = spot
+        s = random.uniform(7.0, 16.0)
+        add_blob(
+            dune_bm,
+            (x, z, surface - s * 0.12),
+            (s, s * random.uniform(0.55, 0.8), s * random.uniform(0.18, 0.28)),
+            0.12,
+            3000 + i * 11.0,
+            yaw=random.uniform(0, math.tau),
         )
 
-    for sx in (-width / 2 + 0.8, width / 2 - 0.8):
-        add_box(plank_bm, (sx, main_len / 2, stringer_z), (0.7, main_len, stringer_h))
-    for sx in (-end_width / 2 + 0.8, end_width / 2 - 0.8):
-        add_box(plank_bm, (sx, main_len + end_length / 2, stringer_z), (0.7, end_length, stringer_h))
-
-    bollard_h = 1.4
-    post_r = 0.55
-    cap_r = 0.72
-    cap_h = 0.3
-    spacing = 9.0
-
-    def post(x, t):
-        top = deck_top + bollard_h
-        add_post(post_bm, x, t, post_bottom, top, post_r)
-        add_post(post_bm, x, t, top - 0.02, top + cap_h, cap_r)
-
-    t = 1.0
-    while t < main_len - 1.5:
-        for x in (-width / 2 + 0.35, width / 2 - 0.35):
-            post(x, t)
-        t += spacing
-    for x in (-end_width / 2 + 0.45, end_width / 2 - 0.45):
-        post(x, main_len + 0.6)
-        post(x, length - 0.6)
-
-    t = 1.0
-    while t < main_len - 1.5:
-        add_box(post_bm, (0.0, t, stringer_z - stringer_h / 2 - 0.3), (width - 0.4, 0.6, 0.6))
-        t += spacing
-
-    # Local +y must point INWARD (toward the crater centre) = -direction. In
-    # build_dock, Rotation(theta - pi/2) sends local +y outward; add pi (use
-    # +pi/2) to flip it inward instead. z stays absolute (origin's z is 0).
-    phi = theta + math.pi / 2
-    world = Matrix.Translation(origin) @ Matrix.Rotation(phi, 4, "Z")
-    for bm in (plank_bm, post_bm):
-        bmesh.ops.transform(bm, matrix=world, verts=bm.verts[:])
-
-    print(f"[island_gen] volcano dock: rim pier at 300 deg, deck y={deck_top}, reaches {length:.0f} inward over the lava")
     return (
-        object_from_bmesh("Volcano_Dock_Planks", plank_bm, ["M_VolPlank"]),
-        object_from_bmesh("Volcano_Dock_Posts", post_bm, ["M_VolPost"]),
+        object_from_bmesh("Volcano_DeadTrees", snag_bm, ["M_Charred"]),
+        object_from_bmesh("Volcano_Basalt", basalt_bm, ["M_Basalt"]),
+        object_from_bmesh("Volcano_Vents", vent_bm, ["M_Cinder"]),
+        object_from_bmesh("Volcano_Scree", scree_bm, ["M_Obsidian"]),
+        object_from_bmesh("Volcano_Dunes", dune_bm, ["M_VolAsh"]),
     )
 
 
-# Lava-lake surface height, and the lake disc's relative radius. The surface
-# sits below the rim everywhere except the carved notches, so it's a contained
-# lake that only pours out of the notches. LAKE_U is set a hair inside the rim
-# so the lava laps against the base of the inner cliff you fish off.
+def build_volcano_dock():
+    """The fishing dock at the BOTTOM of the volcano: an ordinary shore jetty
+    (the tropical build_dock machinery, sized by the DOCK_* overrides) that
+    runs off the ash beach out INTO THE SEA - the player fishes ocean water
+    here, exactly like the starter's dock (user, 2026-08-24: no lava under or
+    around the dock; the lava ponds inland are where volcano-water fish come
+    from). Object names / materials are the volcano's own (Volcano_Dock_Planks
+    / _Posts), which WorldService already colours. DOCK_POST_POSITIONS is left
+    populated so build_foam collars the posts standing in the surf."""
+    return build_dock("Volcano_Dock_Planks", "Volcano_Dock_Posts", "M_VolPlank", "M_VolPost")
+
+
+# Summit-crater lava surface height, and the lake disc's relative radius. The
+# surface sits below the crater lip everywhere except the carved notches, so
+# the lake pours out only through those gashes and runs the full flank.
 LAVA_LEVEL = 40.0
 LAKE_U = 0.36
 
+# Terminal ponds of the flows, recorded by build_lava as (x, y, radius) so the
+# apron scatter (rocks, props) can keep clear of the molten pools. These pools
+# are the volcano island's fishable lava now that the dock is over the sea.
+LAVA_PONDS = []
 
-def _lava_outflow(bm, theta0):
-    """One lava flow pouring out of a rim notch and SPREADING into a fan as it
-    runs down the outer slope. Starts at the lake surface in the notch and
-    follows the carved channel down. Rides just above the surface (crags and
-    the notch cut) so rock never hides it."""
-    us = [0.30, 0.40, 0.50, 0.62, 0.74, 0.85, 0.92]
+
+def _clear_of_ponds(x, z, pad=4.0):
+    return all((x - px) ** 2 + (z - py) ** 2 > (pr + pad) ** 2 for px, py, pr in LAVA_PONDS)
+
+
+def _jagged_disc(bm, cx, cy, rx, ry, z_top, thickness, salt, seg=26):
+    """A flat molten pool: a ragged-edged ellipse slab."""
+    points = []
+    for s in range(seg):
+        a = (s / seg) * math.tau
+        w = 1 + 0.10 * math.sin(3 * a + salt) + 0.06 * math.sin(7 * a + salt * 2.1)
+        points.append((cx + math.cos(a) * rx * w, cy + math.sin(a) * ry * w))
+    add_disc_slab(bm, points, z_top, thickness)
+
+
+def _lava_flow(bm, theta0, ground):
+    """One lava flow from the summit-crater notch at `theta0` down the WHOLE
+    flank. Marches from the crater lip to the foot, riding just above the
+    REAL faceted surface (`ground` raycast at the centre and both edges -
+    the analytic height_at + crag() disagrees with the mesh by tens of studs
+    because of the per-ring radial jitter, which buried earlier flows in the
+    slope), never climbing. Every flow ends in a molten pond on the apron -
+    lava never reaches the sea (user, 2026-08-24: the dock and the water
+    around it are plain ocean)."""
+    u_end = random.uniform(0.78, 0.84)
+    steps = 40  # dense: the straight strip between samples must not dip behind crag bulges
+    us = [0.145 + (u_end - 0.145) * (i / (steps - 1)) for i in range(steps)]
     theta = theta0
     left, right = [], []
+    last_h = LAVA_LEVEL + 0.4  # emerges from the crater lake surface
     for i, u in enumerate(us):
-        theta += random.uniform(-0.05, 0.05)  # slight wander
+        if i > 0:
+            theta += random.uniform(-0.03, 0.03)  # slight wander
         r = ring_radius(u, theta)
         x, z = math.cos(theta) * r, math.sin(theta) * r
-        if i == 0:
-            h = LAVA_LEVEL + 0.3  # emerges from the lake surface at the notch
-        else:
-            h = height_at(x, z) + crag(x, z, u) - notch_cut(theta, u) + 0.9
-        frac = i / (len(us) - 1)
-        w = (1.0 + 3.5 * frac) * SCALE  # narrow at the notch, fanning out downslope
+        frac = i / (steps - 1)
+        w = 4.0 + 11.0 * frac  # wide rivers, not trickles
         perp = Vector((-math.sin(theta), math.cos(theta), 0))
+        if i == 0:
+            h = last_h
+        else:
+            samples = []
+            for px, py in ((x, z), (x + perp.x * w, z + perp.y * w), (x - perp.x * w, z - perp.y * w)):
+                s = _drop_to_ground(ground, px, py)
+                samples.append(s if s is not None else height_at(px, py) + crag(px, py, u) - notch_cut(theta, u))
+            h = min(max(samples) + 2.2, last_h - 0.4)  # lava only ever runs downhill
+        last_h = h
         left.append(Vector((x, z, h)) + perp * w)
         right.append(Vector((x, z, h)) - perp * w)
-    add_strip_slab(bm, left, right, 0.7)
+    add_strip_slab(bm, left, right, 1.5)
+    return theta, us[-1], last_h
 
 
-def build_lava():
-    """Lava lives in exactly two places (user rule): the crater LAKE, and the
-    fans pouring out of the rim NOTCHES. The lake sits below the rim
-    everywhere except those notches, so it never rides over the whole lip."""
+def build_lava(ground):
+    """Lava lives in three places, all one Volcano_Lava object (the name is
+    the fishable-surface contract): the summit crater LAKE, the flows pouring
+    out of its NOTCHES down the whole flank, and the molten PONDS where they
+    die on the apron - the ponds are the island's fishable lava (the dock is
+    over plain sea). `ground` is the base mesh's BVH; the flows raycast it to
+    hug the real faceted slope."""
     bm = bmesh.new()
+    LAVA_PONDS.clear()
 
-    # Crater lake, contained below the rim; jagged edge so its shore isn't a
-    # clean circle either.
-    seg = 44
+    # Summit crater lake, contained below the lip; jagged edge so its shore
+    # isn't a clean circle.
+    seg = 36
     lake = []
     for s in range(seg):
         theta = (s / seg) * math.tau
-        r = ring_radius(LAKE_U, theta) * (1 + 0.05 * math.sin(6 * theta + 1.0))
+        r = ring_radius(LAKE_U, theta) * (1 + 0.06 * math.sin(5 * theta + 1.0))
         lake.append((math.cos(theta) * r, math.sin(theta) * r))
     add_disc_slab(bm, lake, LAVA_LEVEL, SLAB_THICKNESS)
 
-    # One spreading flow per rim notch - and nowhere else.
+    # One full-flank flow per crater notch. Each flow then SPREADS across the
+    # base as a cascade of 2-3 broad overlapping pools stepping outward and
+    # downhill, joined by short wide spill strips - so molten sheets thread a
+    # good part of the apron instead of one tidy pond per corner. Every pool
+    # is fishable lava, and every pool is recorded in LAVA_PONDS.
     for a0, _half, _depth in NOTCHES:
-        _lava_outflow(bm, a0)
+        end_theta, end_u, end_h = _lava_flow(bm, a0, ground)
+        ptheta, pu, ph = end_theta, end_u, end_h
+        prev_center = None
+        for k in range(random.randint(2, 3)):
+            r = ring_radius(pu, ptheta)
+            x, z = math.cos(ptheta) * r, math.sin(ptheta) * r
+            if k > 0:
+                # Each later pool sits on its own ground, a step lower.
+                ph = min(ph - 0.6, height_at(x, z) + 1.2)
+            pr = random.uniform(17.0, 28.0) * (1.0 - 0.15 * k)
+            # Thick slab: the apron slopes, so a thin disc would leave its
+            # downhill edge hovering.
+            _jagged_disc(bm, x, z, pr, pr * random.uniform(0.7, 0.95), ph - 0.2, 4.5, salt=ptheta + k)
+            LAVA_PONDS.append((x, z, pr))
+            if prev_center is not None:
+                # A wide spill strip joining this pool to the one above it.
+                px, pz, pph = prev_center
+                seg = Vector((x - px, z - pz, 0))
+                if seg.length > 1:
+                    perp = Vector((-seg.y, seg.x, 0)).normalized() * random.uniform(5.0, 8.0)
+                    a_pt = Vector((px, pz, pph - 0.3))
+                    b_pt = Vector((x, z, ph - 0.3))
+                    add_strip_slab(bm, [a_pt + perp, b_pt + perp], [a_pt - perp, b_pt - perp], 2.5)
+            prev_center = (x, z, ph)
+            ptheta += random.uniform(-0.07, 0.07)
+            pu = min(0.955, pu + random.uniform(0.05, 0.085))
 
     return object_from_bmesh("Volcano_Lava", bm, ["M_Lava"])
 
@@ -1104,16 +1383,51 @@ def build_tropical():
     return objects
 
 
+def print_volcano_handoff():
+    """The numbers the Luau side needs by hand (Islands.luau volcano entry,
+    World.luau dock constants), printed in ROBLOX coordinates relative to the
+    island's origin: Roblox X = Blender x, Roblox Z = -Blender y (the glTF
+    Y-up export's mapping), heights unchanged."""
+    theta = math.radians(DOCK_ANGLE_DEG)
+    d = Vector((math.cos(theta), math.sin(theta), 0))
+    start_r = ring_radius(DOCK_START_U, theta)
+    sx, sy = d.x * start_r, d.y * start_r
+    ex, ey = d.x * (start_r + DOCK_LENGTH), d.y * (start_r + DOCK_LENGTH)
+    print(f"[island_gen] HANDOFF dock start (Roblox rel) X={sx:.1f} Z={-sy:.1f}, end X={ex:.1f} Z={-ey:.1f}, plank top Y={DOCK_TOP}")
+
+    spawn_bx, spawn_by = 0.0, -505.0  # Islands.luau spawn (rel X=0, Z=505) in Blender coords
+    print(f"[island_gen] HANDOFF spawn (rel X=0 Z=505) ground Y~{height_at(spawn_bx, spawn_by):.1f} (+-1.8 beach noise; runtime probe stands the player)")
+
+    lips = []
+    for s in range(180):
+        t = (s / 180) * math.tau
+        if notch_cut(t, 0.155) > 2.0:
+            continue  # a spillway gash, not the lip
+        lips.append(profile_height(0.155) + peak_jag(t, 0.155))
+    rim_r = sum(ring_radius(0.155, (s / 90) * math.tau) for s in range(90)) / 90
+    lake_r = sum(ring_radius(LAKE_U, (s / 90) * math.tau) for s in range(90)) / 90
+    print(
+        f"[island_gen] HANDOFF crater rim height {min(lips):.0f}-{max(lips):.0f} (ragged), radius ~{rim_r:.0f}; "
+        f"summit lake Y={LAVA_LEVEL} radius ~{lake_r:.0f}; apron shelf ~y {profile_height(0.9):.1f} at u 0.90 "
+        f"(boundary-sampler ring: crag-free, tolerance ~4 works)"
+    )
+
+
 def build_volcano():
     base = build_island_base("Volcano_Base", ["M_VolRock", "M_VolAsh", "M_VolWet"])
     ground = _ground_bvh(base)  # raycast target so every rock seats on the real surface
-    return [
+    objects = [
         base,
+        # Lava first: it records LAVA_PONDS, which the rock/prop scatter
+        # keeps clear of.
+        build_lava(ground),
         build_volcano_rocks(ground),
-        build_lava(),
+        *build_volcano_props(ground),
         *build_volcano_dock(),
         build_foam("Volcano_Foam", "M_VolFoam"),
     ]
+    print_volcano_handoff()
+    return objects
 
 
 # ---------------------------------------------------------------- island config
@@ -1132,64 +1446,97 @@ ISLANDS = {
     "volcano": {
         "model": "Volcano",
         "overrides": {
-            # A huge volcano whose crater RIM is itself the playable area - a
-            # wide, flat, walkable ring (~100 studs across, a ~1,600-stud loop)
-            # with ample room to walk around AND fight, that you also fish off
-            # straight down into the lava lake it encircles. Radius is capped at
-            # 640 so the base mesh stays under Roblox's 2048-stud import limit
-            # (at 850 the base was 2508 wide and could not be imported).
+            # A TOWERING stratovolcano (2026-08-24 redesign, replacing the
+            # walkable-rim caldera): the peak is ~940 studs up - a colossal
+            # jagged spire you never climb. The PLAYABLE area is the flat ash
+            # apron around the foot at sea level, littered with volcanic
+            # props (dead snags, basalt columns, cinder vents, obsidian) and
+            # the flows' molten ponds; the fishing dock is a plain shore
+            # jetty into the SEA. Radius stays capped at 640 so the base mesh
+            # stays under Roblox's 2048-stud import limit (at 850 the base
+            # was 2508 wide and could not be imported); height 940 + skirt 9
+            # is comfortably under the same cap.
             "ISLAND_RADIUS": 640,
-            "SEGMENTS": 54,  # more facets so the huge rim ring is smooth to walk
-            "GRASS_U": 0.76,
+            "SEGMENTS": 64,  # facets stay big on a cone this size regardless
+            "GRASS_U": 0.70,  # basalt cone above, ash apron below
             "RINGS": [
-                0.0, 0.12, 0.20, 0.26, 0.30,
-                0.32, 0.38, 0.44, 0.48,  # the flat walkable rim plateau
-                0.56, 0.66, 0.76, 0.85, 0.93, 1.0, 1.09, 1.28,
+                0.0, 0.045, 0.075, 0.105, 0.14,  # crater floor -> lip -> outer drop
+                0.19, 0.25, 0.32, 0.40, 0.48, 0.56, 0.63,  # the huge flank
+                0.70, 0.76, 0.82, 0.90, 1.0, 1.09, 1.28,  # apron -> shore -> skirt
             ],  # fmt: skip
-            # A towering caldera: a broad crater basin holds a big lava lake
-            # (~500 studs across) at height 165. A short, steep inner cliff
-            # jumps from the lake up to the rim at 200, which then holds DEAD
-            # FLAT (u 0.32 -> 0.48, ~135 studs wide) as the walkable ring,
-            # before the outer flank plunges to a big apron. You stand on the
-            # flat 200 rim and fish ~35 studs down into the lake.
+            # Concave stratovolcano silhouette with a WIDE, ragged crater
+            # mouth (~150 studs across): crater floor, steep inner wall,
+            # the summit lip, then near-vertical outer walls easing into the
+            # walkable apron. Steepness is the drama - the cone drops ~770
+            # studs in ~350 horizontal. PEAK_JAG below breaks the lip and
+            # shoulders into an asymmetric ridgeline (+-~70 studs), so the
+            # rim is 935 +- the jag, not one clean height.
             "PROFILE": [
-                (0.00, 135.0),  # crater basin floor (under the lava)
-                (0.18, 135.0),
-                (0.26, 145.0),
-                (0.30, 172.0),  # inner cliff begins
-                (0.32, 200.0),  # rim inner edge - top of the fishing cliff
-                (0.40, 200.0),  # rim plateau - FLAT, walkable
-                (0.48, 200.0),  # rim outer edge
-                (0.56, 135.0),  # steep outer upper flank
-                (0.66, 80.0),
-                (0.76, 38.0),  # apron begins
-                (0.85, 15.0),
-                (0.93, 5.0),
-                (1.00, 0.6),
-                (1.09, -1.8),
-                (1.28, SKIRT_BOTTOM),
+                (0.000, 828.0),  # crater floor (under the summit lava lake)
+                (0.075, 828.0),
+                (0.110, 882.0),  # inner crater wall
+                (0.155, 935.0),  # the summit lip
+                (0.205, 800.0),  # outer drop, near-vertical
+                (0.250, 640.0),
+                (0.320, 470.0),
+                (0.400, 320.0),
+                (0.480, 205.0),
+                (0.560, 122.0),
+                (0.630, 64.0),
+                (0.700, 30.0),  # cone meets the ash apron
+                (0.760, 13.0),
+                (0.820, 7.0),
+                (0.900, 3.8),
+                (1.000, 1.2),  # shore: ~0.5 studs of rise per 10 approaching the waterline, matching the starter so the tide reads
+                (1.090, -1.8),
+                (1.280, SKIRT_BOTTOM),
             ],
-            "RIM_FLAT": (0.32, 0.48),  # flatten profile + crag across this band
-            "LAVA_LEVEL": 165.0,
-            "LAKE_U": 0.30,  # lava laps the base of the inner cliff
-            # Very jagged flanks, not a circle: strong multi-frequency outline
-            # wobble plus heavy crag + radial jitter (broken-rock slopes and a
-            # ragged crater mouth). The rim plateau stays flat (RIM_FLAT).
+            # Crag is suppressed across the apron (the ground the player
+            # actually walks) - the flanks and summit keep every stud of it.
+            "RIM_FLAT": (0.70, 1.0),
+            # The notches carve the SUMMIT crater lip, not the apron.
+            "NOTCH_BAND": (0.10, 0.21),
+            "LAVA_LEVEL": 838.0,  # summit lake, just below the 935 lip
+            "LAKE_U": 0.115,  # laps the inner crater wall; ~150-stud-wide lake
+            # The broken ridgeline: three incommensurate angular waves, up to
+            # ~70 studs of rise/fall around the crater mouth and shoulders.
+            "PEAK_JAG": 70.0,
+            "PEAK_TERMS": [(2, 0.8, 0.45), (3, 2.6, 0.35), (5, 1.1, 0.20)],
+            # Very jagged: strong outline wobble + heavy broad crag on the
+            # flanks + radial jitter, so the cone reads as shattered rock.
             "COAST_TERMS": [(2, 1.0, 0.12), (3, 3.0, 0.09), (5, 0.5, 0.07), (8, 2.0, 0.06)],
             "GRASS_TERMS": [(2, 0.9, 0.06), (4, 1.5, 0.05)],
-            "CRAG": 20.0,  # bold jaggedness at this scale
-            "CRAG_FREQ": 0.016,  # broad crag features, not fine noise
-            "CRAG_RADIAL": 0.11,
-            # Two spillway notches cut through the walkable rim (different
-            # sizes) - the only places lava pours out. Depth drops the 200 rim
-            # below the 165 lake there, so it overflows through the gap.
+            "CRAG": 56.0,  # huge broken-rock relief at this scale
+            "CRAG_FREQ": 0.012,  # broad features, read from the beach far below
+            "CRAG_RADIAL": 0.14,
+            # Five gashes in the crater lip - "lava flowing everywhere": one
+            # full-flank flow pours out of each, dying in a pond on the apron.
+            # None faces the dock (270): the sea in front of the planks stays
+            # plain ocean (user, 2026-08-24).
+            # Depths must drop the 935 lip below the 838 lake (>97), and
+            # peak_jag is zeroed inside each notch window so a high ridge
+            # beside a gash can't seal it.
             "NOTCHES": [
-                (math.radians(35), math.radians(18), 60.0),
-                (math.radians(205), math.radians(14), 54.0),
+                (math.radians(320), math.radians(16), 135.0),
+                (math.radians(15), math.radians(12), 122.0),
+                (math.radians(80), math.radians(10), 118.0),
+                (math.radians(150), math.radians(13), 128.0),
+                (math.radians(205), math.radians(10), 120.0),
             ],
-            # The dock is a rim fishing pier (build_volcano_dock) that runs
-            # inward over the lava from the crater rim - not a shore jetty - so
-            # it needs no DOCK_* shore knobs; its geometry is self-contained.
+            # The fishing dock: a plain shore jetty into the SEA (build_dock
+            # machinery) at the same Roblox +Z angle as the tropical dock,
+            # starting near the shoreline (the island is huge, so
+            # DOCK_START_U must sit close to 1.0 for the planks to reach open
+            # water).
+            "DOCK_ANGLE_DEG": 270,
+            "DOCK_START_U": 0.97,
+            "DOCK_LENGTH": 110.0,  # long enough to clear the shoreline and end well out over open sea
+            "DOCK_WIDTH": 14.0,
+            "DOCK_END_LENGTH": 20.0,
+            "DOCK_END_WIDTH": 30.0,
+            "DOCK_MIN_TOP": 2.6,  # a normal shore-dock deck; no lava to clear any more
+            "DOCK_POST_SPACING": 8.0,
+            "DOCK_POST_BOTTOM": -6.0,
             "COLORS": {
                 "M_VolRock": (0.17, 0.16, 0.19),  # dark basalt cone
                 "M_VolAsh": (0.31, 0.28, 0.28),  # ash apron
@@ -1199,6 +1546,9 @@ ISLANDS = {
                 "M_VolFoam": (0.85, 0.85, 0.89),  # pale wet rim / steam
                 "M_VolPlank": (0.46, 0.31, 0.22),  # dock planks (warm charred wood)
                 "M_VolPost": (0.30, 0.20, 0.15),  # dock posts
+                "M_Charred": (0.10, 0.085, 0.08),  # dead burnt snags
+                "M_Basalt": (0.14, 0.15, 0.185),  # hex column clusters
+                "M_Cinder": (0.24, 0.20, 0.19),  # fumarole vent cones
             },
         },
         "build": build_volcano,
@@ -1268,26 +1618,49 @@ def render_preview(out_png):
         raise RuntimeError(f"preview render did not produce {out_png}")
     print(f"[island_gen] preview rendered to {out_png}")
 
-    # If the island has a walkable crater rim, add a shot standing ON it,
-    # looking inward and down across the lava lake - the fishing vantage.
-    if RIM_FLAT is not None and NOTCHES:
-        lo, hi = RIM_FLAT
-        rim_u = (lo + hi) / 2
-        a = math.radians(300)  # stand at the rim dock, looking down the pier over the lava
+    # If the island pours lava, add two more shots: a close look at the dock
+    # over the delta (the fishing spot), and a full-tower postcard from out
+    # at sea - the shot that says "really really tall".
+    if NOTCHES:
+        a = math.radians(DOCK_ANGLE_DEG)
         outward = Vector((math.cos(a), math.sin(a), 0))
-        r_rim = ring_radius(rim_u, a)
-        rim_top = profile_height(rim_u)
-        cam.data.lens = 26
-        # Eye at head height on the rim; the near rim edge frames the bottom,
-        # the lava lake fills the middle, the far crater wall closes the back.
-        eye = outward * r_rim + Vector((0, 0, rim_top + 6.0))
-        target = -outward * (r_rim * 0.45) + Vector((0, 0, LAVA_LEVEL - 4.0))
+        r_shore = ring_radius(1.0, a)
+
+        cam.data.lens = 24
+        eye = outward * (r_shore + 85.0) + Vector((0, 0, 14.0))
+        target = outward * (r_shore - 40.0) + Vector((0, 0, 6.0))
         cam.location = eye
         cam.rotation_euler = (target - eye).to_track_quat("-Z", "Y").to_euler()
-        rim_png = os.path.splitext(out_png)[0] + "_rim.png"
-        scene.render.filepath = rim_png
+        dock_png = os.path.splitext(out_png)[0] + "_dock.png"
+        scene.render.filepath = dock_png
         bpy.ops.render.render(write_still=True)
-        print(f"[island_gen] rim view rendered to {rim_png}")
+        print(f"[island_gen] dock view rendered to {dock_png}")
+
+        cam.data.lens = 20
+        eye = outward * (r_shore + 430.0) + Vector((0, 0, 60.0))
+        target = Vector((0, 0, peak * 0.5))
+        cam.location = eye
+        cam.rotation_euler = (target - eye).to_track_quat("-Z", "Y").to_euler()
+        tower_png = os.path.splitext(out_png)[0] + "_tower.png"
+        scene.render.filepath = tower_png
+        bpy.ops.render.render(write_still=True)
+        print(f"[island_gen] tower view rendered to {tower_png}")
+
+        # And a walk-around shot: standing ON the apron near the dock,
+        # looking along the base - what the ground game actually feels like.
+        a_eye = math.radians(DOCK_ANGLE_DEG + 20)
+        a_tgt = math.radians(DOCK_ANGLE_DEG + 75)
+        r_eye = ring_radius(0.90, a_eye)
+        r_tgt = ring_radius(0.84, a_tgt)
+        cam.data.lens = 24
+        eye = Vector((math.cos(a_eye) * r_eye, math.sin(a_eye) * r_eye, 12.0))
+        target = Vector((math.cos(a_tgt) * r_tgt, math.sin(a_tgt) * r_tgt, 8.0))
+        cam.location = eye
+        cam.rotation_euler = (target - eye).to_track_quat("-Z", "Y").to_euler()
+        apron_png = os.path.splitext(out_png)[0] + "_apron.png"
+        scene.render.filepath = apron_png
+        bpy.ops.render.render(write_still=True)
+        print(f"[island_gen] apron view rendered to {apron_png}")
 
 
 # ---------------------------------------------------------------- export

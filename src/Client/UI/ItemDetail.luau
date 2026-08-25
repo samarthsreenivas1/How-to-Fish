@@ -109,7 +109,9 @@ local function hero(parent: Instance, opts, order: number)
 		Name = "Name",
 		Font = F.header,
 		TextSize = Theme.Size.name,
-		TextColor3 = opts.nameColor or C.text,
+		-- Ink fallback: the detail panel sits on paper now, so an uncoloured
+		-- name must be dark, not white.
+		TextColor3 = opts.nameColor or C.ink,
 		TextTruncate = Enum.TextTruncate.AtEnd,
 		Text = opts.name or "",
 		Position = UDim2.new(0, 84, 0, 4),

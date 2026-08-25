@@ -306,6 +306,13 @@ local MESH_COLOR = {
 	Volcano_Dock_Planks = Color3.fromRGB(117, 79, 56), -- M_VolPlank
 	Volcano_Dock_Posts = Color3.fromRGB(77, 51, 38), -- M_VolPost
 	Volcano_Foam = Color3.fromRGB(217, 217, 227), -- M_VolFoam
+	-- Apron props (2026-08-24 redesign): burnt snags, basalt column
+	-- clusters, cinder vent cones scattered over the walkable foot.
+	Volcano_DeadTrees = Color3.fromRGB(26, 22, 20), -- M_Charred (burnt bare trees)
+	Volcano_Basalt = Color3.fromRGB(36, 38, 47), -- M_Basalt
+	Volcano_Vents = Color3.fromRGB(61, 51, 48), -- M_Cinder
+	Volcano_Dunes = Color3.fromRGB(79, 71, 71), -- M_VolAsh (soft ash drifts)
+	Volcano_Scree = Color3.fromRGB(23, 23, 31), -- M_Obsidian (fine ground chunks)
 }
 
 -- Per-part material overrides; anything not listed gets SmoothPlastic (the flat

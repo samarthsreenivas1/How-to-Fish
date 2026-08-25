@@ -370,6 +370,468 @@ VARIANTS = {
             "bottom": (0.94, 0.91, 0.86),
         },
     },
+    # ---------------------------------------------------------- Volcano rods
+    # Fourteen more variants (Rods.luau cinderline_rod .. phoenix_ash_rod),
+    # Uncommon -> Legendary. Thirteen are plain config entries like Reefmaw;
+    # PhoenixAsh gets a bespoke builder (below) for its Legendary flourish.
+    #
+    # Cinderline - a scorched driftwood twig with a scatter of ember-hot
+    # cones. Simple recolour of the Twig frame. Uncommon.
+    "Cinderline": {
+        "radius_butt": 0.19,
+        "radius_tip": 0.045,
+        "sides": 6,
+        "flatten": 1.0,
+        "lean": 0.18,
+        "kink": 0.05,
+        "hook": 0.0,
+        "grip_style": "wrapped",
+        "grip_radius": 0.28,
+        "nodes": 0,
+        "node_amp": 0.0,
+        "cones": [(2.3, 1.0, 0.22, 0.5), (3.9, 4.0, 0.20, 0.5), (5.2, 2.4, 0.16, 0.5)],
+        "bands": [(2.0, 0.14), (4.5, 0.12)],
+        "guides": [2.0, 4.5],
+        "guide_style": "loop",
+        "tip_ring": False,
+        "reel": None,
+        "pommel": None,
+        "line": {"length": 2.5, "tilt": 24, "bow": 0.16, "radius": 0.026},
+        "float": "round",
+        "colors": {
+            "twig": (0.37, 0.28, 0.21),
+            "grip": (0.24, 0.19, 0.15),
+            "trim": (0.94, 0.52, 0.20),
+            "line": (0.77, 0.71, 0.64),
+            "top": (0.94, 0.52, 0.20),
+            "bottom": (0.24, 0.21, 0.18),
+        },
+    },
+    # Fumarole - a sulfur-stained cane with clear joints, brass-yellow
+    # ferrules. Simple recolour of the Bamboo frame. Uncommon.
+    "Fumarole": {
+        "radius_butt": 0.18,
+        "radius_tip": 0.05,
+        "sides": 7,
+        "flatten": 1.0,
+        "lean": 0.08,
+        "kink": 0.03,
+        "hook": 0.0,
+        "grip_style": "wrapped",
+        "grip_radius": 0.27,
+        "nodes": 3,
+        "node_amp": 0.035,
+        "cones": [],
+        "bands": [(2.1, 0.11), (3.9, 0.10), (5.4, 0.09)],
+        "guides": [2.4, 4.0, 5.6],
+        "guide_style": "loop",
+        "tip_ring": True,
+        "reel": None,
+        "pommel": "cap",
+        "line": {"length": 2.6, "tilt": 20, "bow": 0.12, "radius": 0.024},
+        "float": "quill",
+        "colors": {
+            "twig": (0.64, 0.58, 0.34),
+            "grip": (0.37, 0.33, 0.20),
+            "trim": (0.89, 0.81, 0.35),
+            "line": (0.84, 0.80, 0.66),
+            "top": (0.89, 0.81, 0.35),
+            "bottom": (0.37, 0.34, 0.23),
+        },
+    },
+    # Ashcane - an ash-grey blank tempered hard, cork-gripped. Uncommon.
+    "Ashcane": {
+        "radius_butt": 0.20,
+        "radius_tip": 0.07,
+        "sides": 6,
+        "flatten": 1.0,
+        "lean": 0.05,
+        "kink": 0.02,
+        "hook": 0.0,
+        "grip_style": "cork",
+        "grip_radius": 0.28,
+        "nodes": 0,
+        "node_amp": 0.0,
+        "cones": [],
+        "bands": [(2.2, 0.12), (4.4, 0.11)],
+        "guides": [2.6, 4.2, 5.6],
+        "guide_style": "loop",
+        "tip_ring": True,
+        "reel": None,
+        "pommel": "cap",
+        "line": {"length": 2.6, "tilt": 22, "bow": 0.1, "radius": 0.024},
+        "float": "round",
+        "colors": {
+            "twig": (0.47, 0.42, 0.40),
+            "grip": (0.29, 0.26, 0.24),
+            "trim": (0.94, 0.52, 0.20),
+            "line": (0.69, 0.66, 0.63),
+            "top": (0.94, 0.52, 0.20),
+            "bottom": (0.77, 0.74, 0.71),
+        },
+    },
+    # Pumice - a porous, pale stone-grey shaft, lighter than it looks.
+    # Uncommon.
+    "Pumice": {
+        "radius_butt": 0.19,
+        "radius_tip": 0.06,
+        "sides": 8,
+        "flatten": 1.0,
+        "lean": 0.06,
+        "kink": 0.02,
+        "hook": 0.0,
+        "grip_style": "cork",
+        "grip_radius": 0.26,
+        "nodes": 0,
+        "node_amp": 0.0,
+        "cones": [],
+        "bands": [(1.9, 0.1), (3.6, 0.09), (5.3, 0.08)],
+        "guides": [2.3, 3.8, 5.1, 6.2],
+        "guide_style": "loop",
+        "tip_ring": True,
+        "reel": None,
+        "pommel": "cap",
+        "line": {"length": 2.7, "tilt": 20, "bow": 0.1, "radius": 0.022},
+        "float": "pear",
+        "colors": {
+            "twig": (0.66, 0.62, 0.59),
+            "grip": (0.43, 0.39, 0.36),
+            "trim": (0.89, 0.81, 0.35),
+            "line": (0.81, 0.78, 0.75),
+            "top": (0.89, 0.81, 0.35),
+            "bottom": (0.57, 0.54, 0.51),
+        },
+    },
+    # Obsidian - a glassy black-glass blade that hooks forward, glowing
+    # ember hardware, a spinning reel. Rare.
+    "Obsidian": {
+        "radius_butt": 0.24,
+        "radius_tip": 0.06,
+        "sides": 6,
+        "flatten": 0.65,
+        "lean": 0.1,
+        "kink": 0.04,
+        "hook": 0.4,
+        "grip_style": "wrapped",
+        "grip_radius": 0.31,
+        "nodes": 0,
+        "node_amp": 0.0,
+        "cones": [(3.0, 1.2, 0.24, -0.4), (4.4, 4.4, 0.2, -0.4), (5.6, 2.4, 0.16, -0.45)],
+        "bands": [(2.2, 0.1), (3.6, 0.09), (5.0, 0.08)],
+        "guides": [2.2, 3.6, 5.0, 6.1],
+        "guide_style": "collar",
+        "tip_ring": True,
+        "reel": {"style": "spinning", "part": "Trim", "z": 1.46},
+        "pommel": "cap",
+        "line": {"length": 2.6, "tilt": 24, "bow": 0.09, "radius": 0.028},
+        "float": "round",
+        "neon": ["Trim", "BobberTop"],
+        "colors": {
+            "twig": (0.19, 0.17, 0.24),
+            "grip": (0.13, 0.12, 0.16),
+            "trim": (0.94, 0.52, 0.20),
+            "line": (0.35, 0.33, 0.39),
+            "top": (0.94, 0.52, 0.20),
+            "bottom": (0.16, 0.15, 0.20),
+        },
+    },
+    # Basalt - a hex-column shaft with baked joints, steel-blue hardware, a
+    # spinning reel. Rare.
+    "Basalt": {
+        "radius_butt": 0.25,
+        "radius_tip": 0.08,
+        "sides": 6,
+        "flatten": 1.0,
+        "lean": 0.06,
+        "kink": 0.03,
+        "hook": 0.0,
+        "grip_style": "wrapped",
+        "grip_radius": 0.34,
+        "nodes": 4,
+        "node_amp": 0.06,
+        "cones": [],
+        "bands": [(2.1, 0.14), (3.5, 0.13), (4.9, 0.12), (6.1, 0.10)],
+        "guides": [2.5, 3.9, 5.2, 6.3],
+        "guide_style": "collar",
+        "tip_ring": True,
+        "reel": {"style": "spinning", "part": "Trim", "z": 1.5},
+        "pommel": "cap",
+        "line": {"length": 2.6, "tilt": 22, "bow": 0.1, "radius": 0.03},
+        "float": "round",
+        "colors": {
+            "twig": (0.24, 0.23, 0.25),
+            "grip": (0.16, 0.15, 0.17),
+            "trim": (0.38, 0.42, 0.52),
+            "line": (0.47, 0.46, 0.49),
+            "top": (0.89, 0.81, 0.35),
+            "bottom": (0.27, 0.27, 0.29),
+        },
+    },
+    # Cinderglass - obsidian fused with hot cinder: a hooked flattened blade,
+    # glowing magma-orange hardware. Rare.
+    "Cinderglass": {
+        "radius_butt": 0.23,
+        "radius_tip": 0.05,
+        "sides": 6,
+        "flatten": 0.6,
+        "lean": 0.11,
+        "kink": 0.05,
+        "hook": 0.5,
+        "grip_style": "wrapped",
+        "grip_radius": 0.3,
+        "nodes": 0,
+        "node_amp": 0.0,
+        "cones": [(3.1, 1.4, 0.3, -0.5), (4.3, 4.6, 0.26, -0.55), (5.5, 2.6, 0.2, -0.6)],
+        "bands": [(2.3, 0.09), (3.7, 0.08), (5.1, 0.07)],
+        "guides": [2.3, 3.7, 5.1, 6.2],
+        "guide_style": "collar",
+        "tip_ring": True,
+        "reel": {"style": "spinning", "part": "Grip", "z": 1.46},
+        "pommel": "cap",
+        "line": {"length": 2.5, "tilt": 26, "bow": 0.07, "radius": 0.03},
+        "float": "quill",
+        "neon": ["Trim", "BobberTop"],
+        "colors": {
+            "twig": (0.19, 0.17, 0.24),
+            "grip": (0.13, 0.12, 0.16),
+            "trim": (0.96, 0.38, 0.16),
+            "line": (0.39, 0.35, 0.39),
+            "top": (0.96, 0.38, 0.16),
+            "bottom": (0.19, 0.17, 0.24),
+        },
+    },
+    # Sootline - a soot-blackened shaft with grown twig-cones, sulfur-bright
+    # hardware. Rare.
+    "Sootline": {
+        "radius_butt": 0.22,
+        "radius_tip": 0.06,
+        "sides": 6,
+        "flatten": 0.95,
+        "lean": 0.13,
+        "kink": 0.05,
+        "hook": 0.1,
+        "grip_style": "wrapped",
+        "grip_radius": 0.3,
+        "nodes": 0,
+        "node_amp": 0.0,
+        "cones": [(2.4, 0.9, 0.22, 0.4), (3.6, 3.8, 0.19, 0.4), (4.8, 1.8, 0.16, 0.4), (5.8, 4.9, 0.13, 0.4)],
+        "bands": [(2.0, 0.13), (3.5, 0.12), (5.0, 0.1)],
+        "guides": [2.5, 3.9, 5.2, 6.2],
+        "guide_style": "loop",
+        "tip_ring": True,
+        "reel": {"style": "spinning", "part": "Trim", "z": 1.46},
+        "pommel": "cap",
+        "line": {"length": 2.6, "tilt": 24, "bow": 0.12, "radius": 0.028},
+        "float": "round",
+        "colors": {
+            "twig": (0.23, 0.21, 0.19),
+            "grip": (0.15, 0.13, 0.12),
+            "trim": (0.89, 0.81, 0.35),
+            "line": (0.59, 0.56, 0.53),
+            "top": (0.89, 0.81, 0.35),
+            "bottom": (0.18, 0.17, 0.16),
+        },
+    },
+    # MagmaCore - a living coal bound into a hooked, backswept-barbed shaft, a
+    # spiked drum reel, a lantern float. Epic.
+    "MagmaCore": {
+        "radius_butt": 0.25,
+        "radius_tip": 0.05,
+        "sides": 6,
+        "flatten": 0.72,
+        "lean": 0.1,
+        "kink": 0.05,
+        "hook": 0.5,
+        "grip_style": "wrapped",
+        "grip_radius": 0.32,
+        "nodes": 0,
+        "node_amp": 0.0,
+        "cones": [(2.6, 1.5, 0.34, -0.55), (3.6, 4.7, 0.3, -0.6), (4.7, 1.9, 0.25, -0.65), (5.7, 4.9, 0.19, -0.7)],
+        "bands": [(2.2, 0.1), (3.4, 0.09), (4.6, 0.08), (5.7, 0.07)],
+        "guides": [2.4, 3.6, 4.8, 5.9],
+        "guide_style": "collar",
+        "tip_ring": True,
+        "reel": {"style": "spiked", "part": "Grip", "z": 1.5},
+        "pommel": "spike",
+        "line": {"length": 2.5, "tilt": 27, "bow": 0.07, "radius": 0.032},
+        "float": "lantern",
+        "neon": ["Trim", "BobberTop"],
+        "colors": {
+            "twig": (0.24, 0.16, 0.13),
+            "grip": (0.15, 0.10, 0.09),
+            "trim": (0.96, 0.38, 0.16),
+            "line": (0.59, 0.35, 0.31),
+            "top": (0.96, 0.38, 0.16),
+            "bottom": (0.19, 0.13, 0.11),
+        },
+    },
+    # Lodestone - a magnetite-veined shaft with fin-like forward-swept cones,
+    # glowing steel-blue hardware. Epic.
+    "Lodestone": {
+        "radius_butt": 0.24,
+        "radius_tip": 0.05,
+        "sides": 7,
+        "flatten": 0.85,
+        "lean": 0.07,
+        "kink": 0.03,
+        "hook": 0.3,
+        "grip_style": "wrapped",
+        "grip_radius": 0.32,
+        "nodes": 0,
+        "node_amp": 0.0,
+        "cones": [(2.7, 0.7, 0.2, 0.5), (3.8, 3.5, 0.18, 0.55), (4.9, 0.7, 0.15, 0.6), (5.9, 3.5, 0.12, 0.6)],
+        "bands": [(2.0, 0.09), (3.1, 0.08), (4.2, 0.07), (5.3, 0.065), (6.2, 0.055)],
+        "guides": [2.3, 3.4, 4.5, 5.6, 6.3],
+        "guide_style": "collar",
+        "tip_ring": True,
+        "reel": {"style": "spinning", "part": "Grip", "z": 1.45},
+        "pommel": "cap",
+        "line": {"length": 2.5, "tilt": 24, "bow": 0.05, "radius": 0.03},
+        "float": "quill",
+        "neon": ["Trim", "BobberTop"],
+        "colors": {
+            "twig": (0.27, 0.30, 0.35),
+            "grip": (0.18, 0.20, 0.24),
+            "trim": (0.38, 0.42, 0.52),
+            "line": (0.59, 0.61, 0.66),
+            "top": (0.78, 0.82, 0.88),
+            "bottom": (0.24, 0.26, 0.31),
+        },
+    },
+    # Emberforge - forge-warmed heartwood with heavy backswept barbs, a
+    # spiked drum reel, a bright ember-gold pear float. Epic.
+    "Emberforge": {
+        "radius_butt": 0.26,
+        "radius_tip": 0.05,
+        "sides": 7,
+        "flatten": 0.8,
+        "lean": 0.09,
+        "kink": 0.05,
+        "hook": 0.45,
+        "grip_style": "wrapped",
+        "grip_radius": 0.33,
+        "nodes": 0,
+        "node_amp": 0.0,
+        "cones": [(2.5, 1.7, 0.32, -0.5), (3.4, 4.9, 0.28, -0.55), (4.3, 1.7, 0.23, -0.6), (5.2, 4.9, 0.18, -0.65), (5.9, 1.7, 0.13, -0.7)],
+        "bands": [(2.1, 0.11), (3.2, 0.1), (4.3, 0.09), (5.4, 0.075)],
+        "guides": [2.3, 3.4, 4.5, 5.6],
+        "guide_style": "collar",
+        "tip_ring": True,
+        "reel": {"style": "spiked", "part": "Grip", "z": 1.55},
+        "pommel": "spike",
+        "line": {"length": 2.6, "tilt": 26, "bow": 0.07, "radius": 0.034},
+        "float": "pear",
+        "neon": ["Trim", "BobberTop"],
+        "colors": {
+            "twig": (0.37, 0.24, 0.16),
+            "grip": (0.22, 0.14, 0.10),
+            "trim": (0.94, 0.52, 0.20),
+            "line": (0.78, 0.59, 0.43),
+            "top": (1.0, 0.66, 0.38),
+            "bottom": (0.27, 0.18, 0.13),
+        },
+    },
+    # Lodefire - an iron-dark blank threaded with a seam of fire, backswept
+    # barbs, glowing magma hardware, a spiked drum reel, a lantern float.
+    # Epic.
+    "Lodefire": {
+        "radius_butt": 0.25,
+        "radius_tip": 0.05,
+        "sides": 6,
+        "flatten": 0.68,
+        "lean": 0.1,
+        "kink": 0.05,
+        "hook": 0.5,
+        "grip_style": "wrapped",
+        "grip_radius": 0.32,
+        "nodes": 0,
+        "node_amp": 0.0,
+        "cones": [(2.6, 1.1, 0.3, -0.5), (3.7, 4.3, 0.26, -0.55), (4.8, 1.6, 0.21, -0.6), (5.8, 4.5, 0.16, -0.65)],
+        "bands": [(2.2, 0.09), (3.4, 0.08), (4.6, 0.07), (5.7, 0.06)],
+        "guides": [2.4, 3.6, 4.8, 5.9],
+        "guide_style": "collar",
+        "tip_ring": True,
+        "reel": {"style": "spiked", "part": "Grip", "z": 1.5},
+        "pommel": "spike",
+        "line": {"length": 2.5, "tilt": 27, "bow": 0.06, "radius": 0.032},
+        "float": "lantern",
+        "neon": ["Trim", "BobberTop"],
+        "colors": {
+            "twig": (0.21, 0.19, 0.25),
+            "grip": (0.14, 0.13, 0.17),
+            "trim": (0.96, 0.38, 0.16),
+            "line": (0.55, 0.43, 0.39),
+            "top": (0.96, 0.38, 0.16),
+            "bottom": (0.38, 0.42, 0.52),
+        },
+    },
+    # VentWarden - an obsidian-dark shaft studded with fumarole-cone barbs,
+    # braced in glowing lodestone hardware, a sulfur-lit float. Epic.
+    "VentWarden": {
+        "radius_butt": 0.25,
+        "radius_tip": 0.07,
+        "sides": 6,
+        "flatten": 0.9,
+        "lean": 0.08,
+        "kink": 0.04,
+        "hook": 0.2,
+        "grip_style": "wrapped",
+        "grip_radius": 0.34,
+        "nodes": 0,
+        "node_amp": 0.0,
+        "cones": [(2.0, 1.0, 0.22, 0.15), (2.9, 4.2, 0.19, 0.1), (3.8, 2.0, 0.2, 0.15), (4.7, 5.4, 0.17, 0.1), (5.5, 3.0, 0.15, 0.15)],
+        "bands": [(1.9, 0.15), (3.4, 0.13), (5.0, 0.11)],
+        "guides": [2.5, 3.8, 5.1, 6.2],
+        "guide_style": "collar",
+        "tip_ring": True,
+        "reel": {"style": "spinning", "part": "Trim", "z": 1.48},
+        "pommel": "cap",
+        "line": {"length": 2.7, "tilt": 23, "bow": 0.13, "radius": 0.03},
+        "float": "round",
+        "neon": ["Trim", "BobberTop"],
+        "colors": {
+            "twig": (0.19, 0.17, 0.24),
+            "grip": (0.13, 0.12, 0.16),
+            "trim": (0.38, 0.42, 0.52),
+            "line": (0.47, 0.46, 0.51),
+            "top": (0.89, 0.81, 0.35),
+            "bottom": (0.16, 0.15, 0.20),
+        },
+    },
+    # PhoenixAsh - the capstone: bespoke geometry (build_phoenix_ash, below),
+    # this config only carries its shared frame/reel/line/float/colours.
+    # Legendary.
+    "PhoenixAsh": {
+        "radius_butt": 0.24,
+        "radius_tip": 0.045,
+        "sides": 8,
+        "flatten": 0.85,
+        "lean": 0.08,
+        "kink": 0.04,
+        "hook": 0.35,
+        "grip_style": "wrapped",
+        "grip_radius": 0.33,
+        "nodes": 0,
+        "node_amp": 0.0,
+        "cones": [],  # the bespoke builder adds the flame crest + barbs directly
+        "bands": [],
+        "guides": [],
+        "guide_style": "collar",
+        "tip_ring": False,
+        "reel": {"style": "spiked", "part": "Grip", "z": 1.55},
+        "pommel": "spike",
+        "line": {"length": 2.6, "tilt": 25, "bow": 0.06, "radius": 0.032},
+        "float": "lantern",
+        "neon": ["Trim", "BobberTop"],
+        "colors": {
+            "twig": (0.85, 0.62, 0.42),
+            "grip": (0.35, 0.22, 0.16),
+            "trim": (1.0, 0.66, 0.38),
+            "line": (0.95, 0.82, 0.70),
+            "top": (1.0, 0.66, 0.38),
+            "bottom": (0.80, 0.35, 0.16),
+        },
+    },
 }
 
 # Float profiles: revolved around the float's axis, (radius, z) with z
@@ -923,10 +1385,65 @@ def build_brineheart(name, cfg):
     return _finish(name, cfg, bms)
 
 
+# Phoenix Ash - the capstone relic reborn from fire: a slender ash-pale shaft
+# that flares at the tip into a fanned crest of flame feathers, a caged
+# ember-heart swells near the grip, backswept flame-feather barbs run down
+# the spine, and glowing rings mark where the ash still smoulders. Reads as
+# something that rose, not something that was carved. Legendary.
+def build_phoenix_ash(name, cfg):
+    bms = {p: bmesh.new() for p in PART_NAMES}
+    twig, trim = bms["Twig"], bms["Trim"]
+    sides = cfg["sides"]
+    z0 = GRIP_END
+    ember_z = 2.7
+
+    def r_at(z):
+        base = radius(z, cfg)
+        d = (z - ember_z) / 0.55
+        return base + 0.24 * math.exp(-d * d)  # swell where the ember-heart is caged
+
+    steps = 16
+    stations = [(*spine(z, cfg), z, r_at(z)) for z in (z0 + (ROD_LENGTH - z0) * (i / steps) for i in range(steps + 1))]
+    rings = tube(twig, stations, sides)
+    _cap_tube_tip(twig, rings, cfg, sides)
+
+    # A crest of flame feathers fanning up and back from the tip (Trim, glowing).
+    tipc = tip_point(cfg)
+    for i in range(5):
+        a = (i / 4 - 0.5) * 1.5
+        out = Vector((math.sin(a), 0.2, math.cos(a) * 0.6 + 0.5)).normalized()
+        cone(trim, tipc, out, 0.6 - abs(a) * 0.14, 0.05, sides=4)
+
+    # Backswept flame-feather barbs down the spine (Trim, glowing).
+    for z, ang in ((3.2, 1.4), (4.1, 4.6), (4.9, 2.6), (5.7, 0.4)):
+        out = Vector((math.cos(ang), math.sin(ang), 0.0))
+        base = shaft_point(z, cfg) + out * (r_at(z) * 0.6)
+        cone(trim, base, (out + Vector((0, 0, -0.6))).normalized(), 0.4, r_at(z) * 0.45, sides=4)
+
+    # The ember-heart: a glowing core (Trim) caged in ash-pale ribs (Twig).
+    heart = shaft_point(ember_z, cfg)
+    ball(trim, heart, 0.4, segments=8)
+    for i in range(5):
+        a = (i / 5) * math.tau + 0.3
+        out = Vector((math.cos(a), math.sin(a), 0.0))
+        segment(twig, heart + out * 0.3 + Vector((0, 0, -0.46)), heart + out * 0.5, 0.04, 0.04, sides=3)
+        segment(twig, heart + out * 0.5, heart + out * 0.3 + Vector((0, 0, 0.46)), 0.04, 0.04, sides=3)
+
+    build_grip(bms["Grip"], cfg)
+    if cfg["reel"]:
+        build_reel(bms[cfg["reel"]["part"]], cfg)
+    for z in (3.5, 4.6, 5.6):
+        torus(trim, shaft_point(z, cfg), Vector((0, 0, 1)), r_at(z) + 0.04, 0.05, seg_major=8, seg_minor=4)
+    build_line(bms["Line"], cfg)
+    build_float(bms["BobberTop"], bms["BobberBottom"], cfg)
+    return _finish(name, cfg, bms)
+
+
 BESPOKE = {
     "Bonecaster": build_bonecaster,
     "Voltline": build_voltline,
     "Brineheart": build_brineheart,
+    "PhoenixAsh": build_phoenix_ash,
 }
 
 
@@ -935,8 +1452,15 @@ BESPOKE = {
 
 def render_preview(variant_objects, out_png):
     scene = bpy.context.scene
-    scene.render.engine = "BLENDER_EEVEE_NEXT" if hasattr(bpy.types, "SceneEEVEE") else "BLENDER_EEVEE"
-    scene.render.resolution_x = 1400
+    # "BLENDER_EEVEE_NEXT" is the newer Blender's engine id, but the
+    # `hasattr(bpy.types, "SceneEEVEE")` probe misdetects on some builds
+    # (Blender 5.2 LTS keeps SceneEEVEE for compat while only accepting
+    # "BLENDER_EEVEE" as the enum value) - try the modern id, fall back if
+    # the running Blender rejects it.
+    try:
+        scene.render.engine = "BLENDER_EEVEE_NEXT"
+    except TypeError:
+        scene.render.engine = "BLENDER_EEVEE"
     scene.render.resolution_y = 1000
     scene.render.filepath = out_png
 
@@ -955,14 +1479,22 @@ def render_preview(variant_objects, out_png):
     # the underside hardware (guides, reels) silhouettes.
     spacing = 3.2
     names = list(variant_objects.keys())
+    width = max(1.0, (len(names) - 1) * spacing)
     for i, nm in enumerate(names):
         for obj in variant_objects[nm]:
             obj.location.x += (i - (len(names) - 1) / 2) * spacing
 
+    # Camera distance (and resolution width) scale with the lineup's width
+    # so every variant stays in frame no matter how many get added - ratio
+    # tuned to the original 8-variant framing (distance 34 at width 22.4).
+    reference_width = 22.4
+    distance = max(34.0, width * (34.0 / reference_width))
+    scene.render.resolution_x = min(4096, round(1400 * width / reference_width))
+
     cam = bpy.data.objects.new("Cam", bpy.data.cameras.new("Cam"))
     bpy.context.collection.objects.link(cam)
     scene.camera = cam
-    cam.location = Vector((0.0, -34.0, 5.4))
+    cam.location = Vector((0.0, -distance, 5.4))
     target = Vector((0.0, 0.0, 3.4))
     cam.rotation_euler = (target - cam.location).to_track_quat("-Z", "Y").to_euler()
     cam.data.lens = 40

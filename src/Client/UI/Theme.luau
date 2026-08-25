@@ -1,12 +1,13 @@
 --!nonstrict
 -- Theme.luau
 -- The one look every screen shares: a palette, fonts, radii and the minimum
--- touch target. The 2026-08-23 overhaul (user: "more on theme and detailed,
--- less text and numbers, better font") moved it from a neutral grey kit to
--- the game's own world - deep-water navy panels, a sea-foam accent, sand and
--- driftwood warmth for headers, gold for coin - and a rounded display font
--- for titles and buttons. Every menu is built from Client/UI/Kit.luau on top
--- of these tokens, so a colour change here restyles the whole game.
+-- touch target. The 2026-08-24 "sticker" pass (user reference: bright
+-- pet-sim style UI) moved the kit from moody deep-water navy to a sunny
+-- cartoon read: bright lagoon blues for the chrome, warm paper for content
+-- areas, and a dark INK outline around everything - windows, buttons, text
+-- glyphs - so every element sits on screen like a die-cut sticker. Every
+-- menu is built from Client/UI/Kit.luau on top of these tokens, so a colour
+-- change here restyles the whole game.
 --
 -- Keys that other files already read (accent / text / textDim / green / red
 -- / panel / panelLight / border / background, Font.header / Font.body,
@@ -18,33 +19,49 @@ local Theme = {}
 Theme.MIN_TAP = 64
 
 Theme.Color = {
-	-- Surfaces, dark to light: the sea at depth up to the shallows.
-	background = Color3.fromRGB(12, 24, 34),
-	panel = Color3.fromRGB(19, 38, 53),
-	panelLight = Color3.fromRGB(28, 54, 74),
-	panelHover = Color3.fromRGB(36, 68, 92),
-	border = Color3.fromRGB(52, 88, 112),
-	borderLight = Color3.fromRGB(84, 128, 156),
+	-- Chrome surfaces: bright lagoon blues, light to dark.
+	background = Color3.fromRGB(24, 96, 156),
+	panel = Color3.fromRGB(84, 178, 232),
+	panelLight = Color3.fromRGB(118, 200, 244),
+	panelHover = Color3.fromRGB(146, 214, 250),
+	border = Color3.fromRGB(38, 84, 132),
+	borderLight = Color3.fromRGB(170, 226, 250),
 
-	-- Sea-foam: the interactive colour (selected tab, primary button, links).
-	accent = Color3.fromRGB(92, 214, 226),
-	accentDark = Color3.fromRGB(30, 118, 136),
+	-- The sticker sheet: warm paper for content areas, and the ink outline
+	-- that goes around everything (frames AND text glyphs).
+	paper = Color3.fromRGB(255, 240, 221),
+	paperDark = Color3.fromRGB(247, 220, 193),
+	ink = Color3.fromRGB(35, 49, 78),
 
-	-- Warmth: driftwood headers, sand highlights, coin gold.
-	wood = Color3.fromRGB(128, 88, 54),
-	woodDark = Color3.fromRGB(78, 52, 32),
-	sand = Color3.fromRGB(236, 217, 166),
-	gold = Color3.fromRGB(255, 204, 92),
+	-- Interactive blue (buttons, selected things, links).
+	accent = Color3.fromRGB(56, 170, 240),
+	accentDark = Color3.fromRGB(20, 110, 184),
 
-	text = Color3.fromRGB(242, 247, 250),
-	textDim = Color3.fromRGB(152, 180, 198),
-	textOnAccent = Color3.fromRGB(10, 30, 38),
+	-- Warmth: cartoon driftwood, sand, coin gold.
+	wood = Color3.fromRGB(224, 158, 92),
+	woodDark = Color3.fromRGB(176, 116, 62),
+	sand = Color3.fromRGB(255, 226, 160),
+	gold = Color3.fromRGB(255, 196, 64),
+
+	-- Display text is white with an ink outline (Kit adds the outline);
+	-- textDim is body copy on paper / white surfaces.
+	text = Color3.fromRGB(255, 255, 255),
+	textDim = Color3.fromRGB(96, 116, 148),
+	textOnAccent = Color3.fromRGB(255, 255, 255),
 
 	-- Feedback. green / red are also the reel bar's zones.
-	green = Color3.fromRGB(96, 214, 130),
-	red = Color3.fromRGB(232, 96, 88),
+	green = Color3.fromRGB(92, 216, 110),
+	red = Color3.fromRGB(240, 88, 74),
 	ember = Color3.fromRGB(255, 140, 60),
 	violet = Color3.fromRGB(190, 120, 240),
+
+	-- Tackle: hemp rope, brass fittings, foam white and the classic
+	-- red-over-white float. Kit's bobber motif reads from these.
+	hemp = Color3.fromRGB(222, 190, 140),
+	hempDark = Color3.fromRGB(181, 144, 96),
+	brass = Color3.fromRGB(206, 160, 92),
+	foam = Color3.fromRGB(255, 255, 255),
+	bobberRed = Color3.fromRGB(238, 76, 60),
 }
 
 Theme.Font = {
