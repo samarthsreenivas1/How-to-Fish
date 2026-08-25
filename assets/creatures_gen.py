@@ -196,6 +196,97 @@ COLORS = {
     "Stormpetrel_Fins": (0.30, 0.33, 0.42),
     "Stormpetrel_Eyes": (0.06, 0.06, 0.07),
     "Stormpetrel_Marks": (0.75, 0.85, 1.0),
+    # Frostmaw Reach hostiles (island 3).
+    "FrostbitePup_Body": (0.82, 0.85, 0.88),
+    "FrostbitePup_Fins": (0.60, 0.66, 0.72),
+    "FrostbitePup_Eyes": (0.05, 0.05, 0.06),
+    "FrostbitePup_Marks": (0.65, 0.80, 0.92),
+    "IceshardCrab_Body": (0.55, 0.68, 0.78),
+    "IceshardCrab_Fins": (0.75, 0.88, 0.95),
+    "IceshardCrab_Eyes": (0.05, 0.05, 0.06),
+    "IceshardCrab_Marks": (0.60, 0.90, 1.0),
+    "GlacialLurker_Body": (0.58, 0.66, 0.74),
+    "GlacialLurker_Fins": (0.42, 0.52, 0.62),
+    "GlacialLurker_Eyes": (0.70, 0.95, 1.0),
+    "GlacialLurker_Marks": (0.55, 0.85, 1.0),
+    "IceveinPike_Body": (0.45, 0.56, 0.66),
+    "IceveinPike_Fins": (0.35, 0.45, 0.55),
+    "IceveinPike_Eyes": (0.05, 0.05, 0.06),
+    "IceveinPike_Marks": (0.55, 0.90, 1.0),
+    "FrozenMariner_Body": (0.50, 0.58, 0.60),
+    "FrozenMariner_Fins": (0.65, 0.78, 0.86),
+    "FrozenMariner_Eyes": (0.70, 0.95, 1.0),
+    "FrozenMariner_Marks": (0.60, 0.85, 0.95),
+    "AuroraJelly_Body": (0.75, 0.82, 0.90),
+    "AuroraJelly_Fins": (0.60, 0.70, 0.85),
+    "AuroraJelly_Eyes": (0.05, 0.05, 0.06),
+    "AuroraJelly_Marks": (0.50, 0.95, 0.80),
+    "BlizzardWraith_Body": (0.80, 0.86, 0.92),
+    "BlizzardWraith_Fins": (0.62, 0.70, 0.80),
+    "BlizzardWraith_Eyes": (0.55, 0.85, 1.0),
+    "BlizzardWraith_Marks": (0.70, 0.90, 1.0),
+    # Gloomtrench hostiles (island 5).
+    "GulperEel_Body": (0.20, 0.20, 0.26),
+    "GulperEel_Fins": (0.28, 0.28, 0.36),
+    "GulperEel_Eyes": (0.85, 0.90, 0.95),
+    "GulperEel_Marks": (0.50, 0.80, 1.0),
+    "FlashbulbSquid_Body": (0.45, 0.35, 0.45),
+    "FlashbulbSquid_Fins": (0.35, 0.27, 0.36),
+    "FlashbulbSquid_Eyes": (0.06, 0.06, 0.07),
+    "FlashbulbSquid_Marks": (1.0, 0.95, 0.75),
+    "TrenchSkitterer_Body": (0.30, 0.28, 0.32),
+    "TrenchSkitterer_Fins": (0.40, 0.37, 0.42),
+    "TrenchSkitterer_Eyes": (0.75, 0.85, 0.90),
+    "TrenchSkitterer_Marks": (0.45, 0.60, 0.70),
+    "LanternjawAngler_Body": (0.18, 0.16, 0.22),
+    "LanternjawAngler_Fins": (0.24, 0.21, 0.28),
+    "LanternjawAngler_Eyes": (0.85, 0.88, 0.95),
+    "LanternjawAngler_Marks": (1.0, 0.90, 0.55),
+    "VampireSquid_Body": (0.35, 0.15, 0.18),
+    "VampireSquid_Fins": (0.25, 0.10, 0.14),
+    "VampireSquid_Eyes": (1.0, 0.35, 0.30),
+    "VampireSquid_Marks": (0.60, 0.30, 0.50),
+    "PressureCrab_Body": (0.35, 0.33, 0.36),
+    "PressureCrab_Fins": (0.45, 0.42, 0.44),
+    "PressureCrab_Eyes": (0.80, 0.85, 0.85),
+    "PressureCrab_Marks": (0.55, 0.60, 0.65),
+    "VoidRay_Body": (0.12, 0.11, 0.17),
+    "VoidRay_Fins": (0.18, 0.16, 0.24),
+    "VoidRay_Eyes": (0.80, 0.85, 0.95),
+    "VoidRay_Marks": (0.55, 0.50, 1.0),
+    "SiltStalker_Body": (0.42, 0.38, 0.32),
+    "SiltStalker_Fins": (0.32, 0.29, 0.25),
+    "SiltStalker_Eyes": (0.90, 0.85, 0.60),
+    "SiltStalker_Marks": (0.60, 0.55, 0.42),
+    # Wreckwater hostiles (island 6).
+    "CannonballCrab_Body": (0.22, 0.22, 0.25),
+    "CannonballCrab_Fins": (0.50, 0.36, 0.26),
+    "CannonballCrab_Eyes": (0.05, 0.05, 0.06),
+    "CannonballCrab_Marks": (1.0, 0.70, 0.30),
+    "DrownedBoatswain_Body": (0.42, 0.50, 0.44),
+    "DrownedBoatswain_Fins": (0.50, 0.42, 0.30),
+    "DrownedBoatswain_Eyes": (0.50, 1.0, 0.85),
+    "DrownedBoatswain_Marks": (0.45, 0.90, 0.75),
+    "PhantomMoray_Body": (0.55, 0.65, 0.65),
+    "PhantomMoray_Fins": (0.40, 0.52, 0.52),
+    "PhantomMoray_Eyes": (0.50, 1.0, 0.85),
+    "PhantomMoray_Marks": (0.45, 0.90, 0.75),
+    "CursedChest_Body": (0.40, 0.28, 0.18),
+    "CursedChest_Fins": (0.45, 0.32, 0.20),
+    "CursedChest_Eyes": (0.90, 0.30, 0.25),
+    "CursedChest_Marks": (0.85, 0.90, 0.45),
+    "PlunderSprite_Body": (0.40, 0.75, 0.65),
+    "PlunderSprite_Fins": (0.30, 0.55, 0.50),
+    "PlunderSprite_Eyes": (1.0, 0.85, 0.40),
+    "PlunderSprite_Marks": (1.0, 0.85, 0.40),
+    "GhostfireJelly_Body": (0.55, 0.75, 0.70),
+    "GhostfireJelly_Fins": (0.40, 0.60, 0.56),
+    "GhostfireJelly_Eyes": (0.05, 0.06, 0.06),
+    "GhostfireJelly_Marks": (0.45, 1.0, 0.75),
+    "WailingGunner_Body": (0.35, 0.33, 0.36),
+    "WailingGunner_Fins": (0.50, 0.62, 0.60),
+    "WailingGunner_Eyes": (0.50, 1.0, 0.85),
+    "WailingGunner_Marks": (0.45, 0.90, 0.75),
 }
 
 # The volcano roster, by species prefix. Used only to soften their preview
@@ -260,6 +351,31 @@ GLOW_PARTS = {
     "RiggingWraith_Eyes",
     "RiggingWraith_Marks",
     "Stormpetrel_Marks",
+    # Ice: cold light. Gloom: everything that shines down there is a lure or
+    # a warning. Wreck: ghost-fire.
+    "IceveinPike_Marks",
+    "FrozenMariner_Marks",
+    "FrozenMariner_Eyes",
+    "GlacialLurker_Eyes",
+    "AuroraJelly_Marks",
+    "BlizzardWraith_Marks",
+    "BlizzardWraith_Eyes",
+    "GulperEel_Marks",
+    "FlashbulbSquid_Marks",
+    "LanternjawAngler_Marks",
+    "VampireSquid_Eyes",
+    "VoidRay_Marks",
+    "CannonballCrab_Marks",
+    "DrownedBoatswain_Eyes",
+    "DrownedBoatswain_Marks",
+    "PhantomMoray_Marks",
+    "CursedChest_Marks",
+    "CursedChest_Eyes",
+    "PlunderSprite_Marks",
+    "PlunderSprite_Eyes",
+    "GhostfireJelly_Marks",
+    "WailingGunner_Marks",
+    "WailingGunner_Eyes",
 }
 
 
@@ -2786,6 +2902,814 @@ def build_stormpetrel():
     ]
 
 
+# ---------------------------------------------------------------- Frostmaw Reach hostiles
+# The ice island's roster. Cold palette, crystalline silhouettes.
+
+
+# ---- Frostbite Pup (rusher): a deceptively cute seal pup with too many
+# teeth - plump body, swept flippers, frost patches. Flat, front +X.
+def build_frostbitepup():
+    body = bmesh.new()
+    fins = bmesh.new()
+    eyes = bmesh.new()
+    marks = bmesh.new()
+
+    revolve(body, [(-1.7, 0.0), (-0.9, 0.5), (0.0, 0.64), (0.9, 0.56), (1.5, 0.36), (1.8, 0.0)], sides=8, axis="x", center=(0, 0, 0.68), squash=0.95)
+    ellipsoid(body, (1.75, 0, 0.85), (0.5, 0.42, 0.4), 1)
+    ellipsoid(body, (2.2, 0, 0.72), (0.24, 0.2, 0.17), 1)
+    # The teeth: a rusher's grin, too wide for a pup.
+    for s in (-1, 1):
+        for i in range(3):
+            cone(fins, (2.0 + i * 0.13, s * (0.16 + i * 0.02), 0.6), (2.02 + i * 0.13, s * (0.17 + i * 0.02), 0.45), 0.04, 4)
+    # Fore-flippers swept back, and the tail flipper.
+    for s in (-1, 1):
+        plate(fins, [(0.9, s * 0.5), (0.1, s * 1.3), (-0.6, s * 1.25), (0.1, s * 0.5)], 0.12, "xy", offset=(0, 0, 0.35))
+    plate(fins, [(-1.6, 0.3), (-2.5, 0.55), (-2.4, 0.0), (-2.5, -0.55), (-1.6, -0.3)], 0.12, "xy", offset=(0, 0, 0.55))
+    # Frost patches on the back.
+    for px, py in ((0.3, 0.4), (-0.6, -0.35), (-0.2, 0.1)):
+        ellipsoid(marks, (px, py, 1.28), (0.4, 0.3, 0.08), 1)
+    for s in (-1, 1):
+        ellipsoid(eyes, (1.95, s * 0.24, 1.0), (0.14, 0.12, 0.14), 0)
+
+    return [
+        finish("FrostbitePup_Body", body, MATS["FrostbitePup_Body"]),
+        finish("FrostbitePup_Fins", fins, MATS["FrostbitePup_Fins"]),
+        finish("FrostbitePup_Eyes", eyes, MATS["FrostbitePup_Eyes"]),
+        finish("FrostbitePup_Marks", marks, MATS["FrostbitePup_Marks"]),
+    ]
+
+
+# ---- Iceshard Crab (rusher): a crab grown a crown of ice shards instead of
+# a smooth shell. Flat, front +X (claws).
+def build_iceshardcrab():
+    body = bmesh.new()
+    fins = bmesh.new()
+    eyes = bmesh.new()
+    marks = bmesh.new()
+
+    dome(body, (0, 0, 0.35), (1.05, 0.9, 0.55), 1)
+    ellipsoid(body, (0, 0, 0.35), (1.1, 0.95, 0.28), 1)
+    # The shard crown: crystals at set angles, kept under the length rule.
+    for k, (dx, dy, h, r) in enumerate(((0.3, 0.3, 0.9, 0.2), (-0.4, 0.15, 1.1, 0.24), (0.05, -0.45, 0.8, 0.18), (-0.15, 0.55, 0.7, 0.15), (0.45, -0.15, 0.6, 0.14))):
+        cone(fins, (dx, dy, 0.6), (dx * 1.6, dy * 1.6, 0.6 + h), r, 5)
+        ellipsoid(marks, (dx * 1.1, dy * 1.1, 0.75), (r * 0.7, r * 0.7, r * 0.5), 0)
+    # Legs: three per side, and two stout claws reaching well forward.
+    for sy in (-1, 1):
+        for i in range(3):
+            x = 0.35 - i * 0.4
+            chain(body, [(x, sy * 0.6, 0.35), (x + 0.05, sy * 1.0, 0.55), (x + 0.1, sy * 1.25, 0.0)], [0.09, 0.07, 0.02], 5)
+        chain(body, [(0.8, sy * 0.45, 0.35), (1.45, sy * 0.58, 0.45)], [0.14, 0.1], 5)
+        ellipsoid(fins, (1.78, sy * 0.6, 0.45), (0.35, 0.2, 0.18), 1)
+    for s in (-1, 1):
+        limb(body, (0.9, s * 0.2, 0.7), (1.05, s * 0.25, 1.0), 0.05, 0.04, 4)
+        ellipsoid(eyes, (1.07, s * 0.26, 1.05), (0.08, 0.08, 0.08), 0)
+
+    return [
+        finish("IceshardCrab_Body", body, MATS["IceshardCrab_Body"]),
+        finish("IceshardCrab_Fins", fins, MATS["IceshardCrab_Fins"]),
+        finish("IceshardCrab_Eyes", eyes, MATS["IceshardCrab_Eyes"]),
+        finish("IceshardCrab_Marks", marks, MATS["IceshardCrab_Marks"]),
+    ]
+
+
+# ---- Glacial Lurker (burrower): the thing under the ice sheet - a wedge
+# body built to shoulder up through the shelf, scoop claws, a crystal ridge.
+# Flat, front +X.
+def build_glaciallurker():
+    body = bmesh.new()
+    fins = bmesh.new()
+    eyes = bmesh.new()
+    marks = bmesh.new()
+
+    revolve(body, [(-2.1, 0.0), (-1.0, 0.72), (0.2, 1.0), (1.5, 0.72), (2.3, 0.0)], sides=8, axis="x", center=(0, 0, 0.62), squash=0.6)
+    # The scoop claws: broad digging plates angled down-forward.
+    for s in (-1, 1):
+        plate(fins, [(1.6, 0.9), (2.9, 0.55), (2.7, 0.1), (1.5, 0.35)], 0.42, "xz", offset=(0, s * 0.62, 0))
+    # Crystal ridge down the spine, biggest amidships - kept low so the wedge
+    # stays wider than it is tall.
+    for i, (x, h) in enumerate(((1.0, 0.45), (0.3, 0.62), (-0.5, 0.68), (-1.3, 0.5))):
+        box(fins, (x, 0, 1.05 + h * 0.3), (0.5, 0.22, h), Matrix.Rotation(math.radians(-18), 4, "Y"))
+    # Ice-vein tracery along the flanks.
+    for s in (-1, 1):
+        chain(marks, [(1.4, s * 0.6, 0.7), (0.2, s * 0.82, 0.85), (-1.2, s * 0.62, 0.75)], [0.05, 0.06, 0.04], 4)
+    # Eyes: glowing slits high on the wedge - what you see coming up at you.
+    for s in (-1, 1):
+        ellipsoid(eyes, (1.7, s * 0.35, 1.0), (0.18, 0.09, 0.08), 0)
+
+    return [
+        finish("GlacialLurker_Body", body, MATS["GlacialLurker_Body"]),
+        finish("GlacialLurker_Fins", fins, MATS["GlacialLurker_Fins"]),
+        finish("GlacialLurker_Eyes", eyes, MATS["GlacialLurker_Eyes"]),
+        finish("GlacialLurker_Marks", marks, MATS["GlacialLurker_Marks"]),
+    ]
+
+
+# ---- Icevein Pike (charger): a long spear of a fish, underslung jaw,
+# glowing veins down both flanks. Flat, front +X.
+def build_iceveinpike():
+    body = bmesh.new()
+    fins = bmesh.new()
+    eyes = bmesh.new()
+    marks = bmesh.new()
+
+    revolve(body, [(-2.5, 0.0), (-1.5, 0.3), (0.0, 0.44), (1.6, 0.4), (2.5, 0.22), (2.8, 0.0)], sides=8, axis="x", center=(0, 0, 0.62), squash=1.15)
+    # Underslung jaw and needle teeth.
+    box(body, (2.5, 0, 0.42), (0.9, 0.3, 0.16), Matrix.Rotation(math.radians(6), 4, "Y"))
+    for s in (-1, 1):
+        for i in range(3):
+            cone(fins, (2.25 + i * 0.22, s * 0.1, 0.5), (2.27 + i * 0.22, s * 0.1, 0.66), 0.035, 4)
+    # Fins: dorsal set far back (a pike's tell), forked tail, pectorals.
+    plate(fins, [(-1.2, 1.0), (-2.0, 1.5), (-2.2, 1.0)], 0.1, "xz")
+    plate(fins, [(-2.7, 0.8), (-3.6, 1.3), (-3.3, 0.6), (-3.6, -0.1), (-2.7, 0.4)], 0.12, "xz")
+    for s in (-1, 1):
+        plate(fins, [(1.4, s * 0.4), (0.7, s * 1.0), (0.5, s * 0.45)], 0.08, "xy", offset=(0, 0, 0.35))
+    # The veins: jagged glowing lines down both flanks.
+    for s in (-1, 1):
+        chain(marks, [(2.0, s * 0.4, 0.62), (1.0, s * 0.48, 0.78), (-0.2, s * 0.46, 0.55), (-1.4, s * 0.34, 0.72)], [0.05, 0.06, 0.06, 0.04], 4)
+    for s in (-1, 1):
+        ellipsoid(eyes, (2.05, s * 0.28, 0.78), (0.11, 0.09, 0.11), 0)
+
+    return [
+        finish("IceveinPike_Body", body, MATS["IceveinPike_Body"]),
+        finish("IceveinPike_Fins", fins, MATS["IceveinPike_Fins"]),
+        finish("IceveinPike_Eyes", eyes, MATS["IceveinPike_Eyes"]),
+        finish("IceveinPike_Marks", marks, MATS["IceveinPike_Marks"]),
+    ]
+
+
+# ---- Frozen Mariner (shambler): a sailor the pack ice kept - the zombie
+# frame under a crust of ice, icicles hanging off the reaching arms.
+# UPRIGHT (stance).
+def build_frozenmariner():
+    body = bmesh.new()
+    fins = bmesh.new()
+    eyes = bmesh.new()
+    marks = bmesh.new()
+
+    # Legs, torso, head - the deckhand's shamble, stiffer.
+    for s in (-1, 1):
+        box(body, (0, s * 0.4, 0.8), (0.55, 0.5, 1.6))
+    box(body, (0, 0, 2.5), (0.9, 1.5, 1.9), Matrix.Rotation(math.radians(6), 4, "Y"))
+    box(body, (0.15, 0.1, 3.85), (0.75, 0.75, 0.8))
+    # Arms: both reaching, frozen mid-grasp.
+    chain(body, [(0.2, 0.8, 3.2), (0.9, 1.0, 2.9), (1.6, 0.9, 3.1)], [0.24, 0.2, 0.16], 5)
+    chain(body, [(0.2, -0.8, 3.2), (1.0, -0.9, 2.7), (1.7, -0.8, 2.9)], [0.24, 0.2, 0.16], 5)
+    # The ice crust: slabs on the shoulders, head and back.
+    box(fins, (-0.1, 0.55, 3.5), (0.7, 0.7, 0.5), Matrix.Rotation(math.radians(15), 4, "X"))
+    box(fins, (0.1, -0.1, 4.3), (0.6, 0.6, 0.35), Matrix.Rotation(math.radians(-10), 4, "Y"))
+    box(fins, (-0.5, 0, 2.6), (0.4, 1.3, 1.2), Matrix.Rotation(math.radians(12), 4, "Y"))
+    # Icicles under both arms and the chin.
+    for px, py, pz in ((0.9, 1.0, 2.7), (1.5, 0.9, 2.9), (1.0, -0.9, 2.5), (1.6, -0.8, 2.7), (0.4, 0.1, 3.4)):
+        cone(fins, (px, py, pz), (px, py, pz - 0.55), 0.08, 4)
+    # The glaze: glowing frost lines across the torso, and the stare.
+    chain(marks, [(0.5, 0.6, 2.9), (0.55, 0.0, 2.4), (0.5, -0.6, 2.8)], [0.05, 0.06, 0.05], 4)
+    chain(marks, [(0.4, 0.4, 1.9), (0.45, -0.3, 1.6)], [0.05, 0.04], 4)
+    for s in (-1, 1):
+        ellipsoid(eyes, (0.55, 0.1 + s * 0.22, 3.95), (0.09, 0.09, 0.11), 0)
+
+    return [
+        finish("FrozenMariner_Body", body, MATS["FrozenMariner_Body"]),
+        finish("FrozenMariner_Fins", fins, MATS["FrozenMariner_Fins"]),
+        finish("FrozenMariner_Eyes", eyes, MATS["FrozenMariner_Eyes"]),
+        finish("FrozenMariner_Marks", marks, MATS["FrozenMariner_Marks"]),
+    ]
+
+
+# ---- Aurora Jelly (drifter): a bell with the northern lights caught in it -
+# an aurora ribbon winds around the bell. UPRIGHT (stance).
+def build_aurorajelly():
+    body = bmesh.new()
+    fins = bmesh.new()
+    eyes = bmesh.new()
+    marks = bmesh.new()
+
+    dome(body, (0, 0, 1.9), (1.15, 1.15, 1.0), 2)
+    ellipsoid(body, (0, 0, 1.9), (1.18, 1.18, 0.3), 1)
+    # Tentacles: a drifting skirt.
+    for k in range(7):
+        a = (k / 7) * TAU
+        bx, by = math.cos(a) * 0.85, math.sin(a) * 0.85
+        chain(fins, [(bx, by, 1.7), (bx * 1.25, by * 1.25, 0.9), (bx * 1.45, by * 1.45, 0.2)], [0.09, 0.06, 0.02], 4)
+    # Two longer oral arms trailing centre.
+    for s in (-1, 1):
+        chain(fins, [(0.15 * s, -0.1 * s, 1.7), (0.35 * s, -0.3 * s, 0.7), (0.6 * s, -0.2 * s, 0.05)], [0.12, 0.08, 0.03], 4)
+    # The aurora: a ribbon of glowing arcs winding around the bell.
+    ribbon = []
+    for k in range(9):
+        t = k / 8
+        a = t * TAU * 0.9 + 0.4
+        r = 1.05 - 0.25 * t
+        ribbon.append((math.cos(a) * r, math.sin(a) * r, 2.0 + t * 0.85))
+    chain(marks, ribbon, [0.07] * len(ribbon), 4)
+    ellipsoid(marks, (0, 0, 2.35), (0.35, 0.35, 0.3), 1)
+    for s in (-1, 1):
+        ellipsoid(eyes, (0.55, s * 0.3, 1.75), (0.07, 0.07, 0.07), 0)
+
+    return [
+        finish("AuroraJelly_Body", body, MATS["AuroraJelly_Body"]),
+        finish("AuroraJelly_Fins", fins, MATS["AuroraJelly_Fins"]),
+        finish("AuroraJelly_Eyes", eyes, MATS["AuroraJelly_Eyes"]),
+        finish("AuroraJelly_Marks", marks, MATS["AuroraJelly_Marks"]),
+    ]
+
+
+# ---- Blizzard Wraith (gascloud): a snow-squall with intent - spiralling
+# drift arms around a hooded core. UPRIGHT (stance).
+def build_blizzardwraith():
+    body = bmesh.new()
+    fins = bmesh.new()
+    eyes = bmesh.new()
+    marks = bmesh.new()
+
+    # The spiral: three snow-streams winding up around the core.
+    for k in range(3):
+        a0 = (k / 3) * TAU
+        pts = []
+        for j in range(5):
+            t = j / 4
+            a = a0 + t * 3.6
+            r = 1.15 - 0.55 * t
+            pts.append((math.cos(a) * r, math.sin(a) * r, 0.3 + t * 2.9))
+        chain(body, pts, [0.3, 0.26, 0.2, 0.14, 0.06], 5)
+    # The hooded core.
+    ellipsoid(body, (0, 0, 2.9), (0.6, 0.55, 0.75), 1)
+    cone(body, (0, 0, 3.5), (0.15, 0, 4.15), 0.3, 5)
+    # Drift-arms flung out.
+    for s in (-1, 1):
+        chain(fins, [(0.3, s * 0.5, 2.7), (0.9, s * 1.1, 2.5), (1.5, s * 1.5, 2.8)], [0.16, 0.11, 0.04], 4)
+    # Loose snow chunks orbiting the skirt.
+    for k in range(5):
+        a = (k / 5) * TAU + 0.3
+        ellipsoid(fins, (math.cos(a) * 1.35, math.sin(a) * 1.35, 0.55 + 0.2 * math.sin(a * 3)), (0.16, 0.14, 0.13), 0)
+    # The heart of the squall, and the stare.
+    ellipsoid(marks, (0.2, 0, 2.85), (0.28, 0.24, 0.3), 1)
+    for s in (-1, 1):
+        ellipsoid(eyes, (0.5, s * 0.2, 3.05), (0.1, 0.09, 0.12), 0)
+
+    return [
+        finish("BlizzardWraith_Body", body, MATS["BlizzardWraith_Body"]),
+        finish("BlizzardWraith_Fins", fins, MATS["BlizzardWraith_Fins"]),
+        finish("BlizzardWraith_Eyes", eyes, MATS["BlizzardWraith_Eyes"]),
+        finish("BlizzardWraith_Marks", marks, MATS["BlizzardWraith_Marks"]),
+    ]
+
+
+# ---------------------------------------------------------------- Gloomtrench hostiles
+# The dark island's roster: every light down here is a lure or a warning.
+
+
+# ---- Gulper Eel (spitter): mostly mouth - a vast gaping maw on a thin
+# tail, photophores tracing it back into the dark. Flat, front +X.
+def build_gulpereel():
+    body = bmesh.new()
+    fins = bmesh.new()
+    eyes = bmesh.new()
+    marks = bmesh.new()
+
+    # The maw: flares open toward +X (open_end).
+    revolve(body, [(-0.8, 0.1), (0.0, 0.75), (1.0, 1.05), (1.7, 0.95)], sides=9, axis="x", center=(0.6, 0, 1.05), squash=0.95, open_end=True)
+    # The pouch jaw hanging under it.
+    dome(body, (1.5, 0, 0.55), (1.0, 0.8, 0.5), 1)
+    bmesh.ops.transform(body, matrix=Matrix.Translation(Vector((1.5, 0, 0.55))) @ Matrix.Rotation(math.pi, 4, "Y") @ Matrix.Translation(Vector((-1.5, 0, -0.55))), verts=[v for v in body.verts if v.co.x > 0.4 and v.co.z < 0.85])
+    # The tail: a whip winding back, thin as string by the end.
+    tail = [(-0.2, 0, 1.0), (-1.4, 0.35, 0.95), (-2.6, -0.3, 0.85), (-3.7, 0.2, 0.8)]
+    chain(body, tail, [0.4, 0.24, 0.13, 0.05], 5)
+    plate(fins, [(-3.5, 1.0), (-4.3, 1.15), (-4.1, 0.75)], 0.07, "xz", offset=(0, 0.2, 0))
+    # Photophores: a dotted line down the tail and around the jaw rim, and
+    # the tail-tip light it waves to bait prey.
+    for i, (px, py, pz) in enumerate(tail):
+        ellipsoid(marks, (px, py, pz + 0.35 - i * 0.05), (0.09, 0.09, 0.09), 0)
+    for a in (-0.9, 0, 0.9):
+        ellipsoid(marks, (2.2, math.sin(a) * 0.85, 1.15 + math.cos(a) * 0.55), (0.08, 0.08, 0.08), 0)
+    ellipsoid(marks, (-3.85, 0.25, 0.85), (0.15, 0.15, 0.16), 1)
+    for s in (-1, 1):
+        ellipsoid(eyes, (0.35, s * 0.55, 1.6), (0.1, 0.09, 0.1), 0)
+
+    return [
+        finish("GulperEel_Body", body, MATS["GulperEel_Body"]),
+        finish("GulperEel_Fins", fins, MATS["GulperEel_Fins"]),
+        finish("GulperEel_Eyes", eyes, MATS["GulperEel_Eyes"]),
+        finish("GulperEel_Marks", marks, MATS["GulperEel_Marks"]),
+    ]
+
+
+# ---- Flashbulb Squid (drifter): a squid built around one huge lamp - the
+# blinding pop is its whole trick. UPRIGHT (stance).
+def build_flashbulbsquid():
+    body = bmesh.new()
+    fins = bmesh.new()
+    eyes = bmesh.new()
+    marks = bmesh.new()
+
+    revolve(body, [(0.0, 0.18), (0.8, 0.62), (1.9, 0.5), (2.6, 0.0)], sides=8, axis="z", center=(0, 0, 1.6), squash=0.95)
+    # Side fins near the mantle tip.
+    for s in (-1, 1):
+        plate(fins, [(0.1, s * 0.45), (-0.4, s * 1.05), (-0.7, s * 0.4)], 0.08, "xy", offset=(0, 0, 3.6))
+    # Arms: eight, curling out and down.
+    for k in range(8):
+        a = (k / 8) * TAU
+        bx, by = math.cos(a) * 0.4, math.sin(a) * 0.4
+        chain(fins, [(bx, by, 1.5), (bx * 2.6, by * 2.6, 0.8), (bx * 3.4, by * 3.4, 0.25)], [0.11, 0.07, 0.02], 4)
+    # THE BULB: bulging out of the mantle's front, plus a charge ring.
+    ellipsoid(marks, (0.55, 0, 2.5), (0.55, 0.5, 0.6), 1)
+    limb(marks, (0, 0, 1.35), (0, 0, 1.5), 0.62, 0.66, 9)
+    for s in (-1, 1):
+        ellipsoid(eyes, (0.45, s * 0.42, 1.75), (0.16, 0.14, 0.16), 1)
+
+    return [
+        finish("FlashbulbSquid_Body", body, MATS["FlashbulbSquid_Body"]),
+        finish("FlashbulbSquid_Fins", fins, MATS["FlashbulbSquid_Fins"]),
+        finish("FlashbulbSquid_Eyes", eyes, MATS["FlashbulbSquid_Eyes"]),
+        finish("FlashbulbSquid_Marks", marks, MATS["FlashbulbSquid_Marks"]),
+    ]
+
+
+# ---- Trench Skitterer (charger): a giant deep-sea isopod - overlapping
+# shell segments, too many legs, long feelers. Flat, front +X.
+def build_trenchskitterer():
+    body = bmesh.new()
+    fins = bmesh.new()
+    eyes = bmesh.new()
+    marks = bmesh.new()
+
+    # Four overlapping shell segments, nose to tail.
+    for i, (x, w, h) in enumerate(((1.0, 0.75, 0.5), (0.25, 0.85, 0.56), (-0.55, 0.8, 0.52), (-1.3, 0.65, 0.44))):
+        dome(body, (x, 0, 0.3), (0.55, w, h), 1)
+    cone(body, (-1.7, 0, 0.35), (-2.4, 0, 0.3), 0.3, 6)
+    # The head shield and feelers.
+    dome(body, (1.55, 0, 0.28), (0.45, 0.6, 0.42), 1)
+    for s in (-1, 1):
+        chain(fins, [(1.8, s * 0.2, 0.5), (2.6, s * 0.6, 0.7), (3.1, s * 0.9, 0.5)], [0.05, 0.04, 0.02], 4)
+    # Legs: five a side.
+    for sy in (-1, 1):
+        for i in range(5):
+            x = 1.1 - i * 0.55
+            chain(fins, [(x, sy * 0.6, 0.25), (x + 0.05, sy * 1.05, 0.4), (x + 0.1, sy * 1.3, 0.0)], [0.06, 0.05, 0.015], 4)
+    # Dim sensory dots along each segment's rim.
+    for i, x in enumerate((1.0, 0.25, -0.55, -1.3)):
+        for s in (-1, 1):
+            ellipsoid(marks, (x, s * (0.72 - i * 0.03), 0.5), (0.06, 0.06, 0.06), 0)
+    for s in (-1, 1):
+        ellipsoid(eyes, (1.85, s * 0.3, 0.55), (0.1, 0.08, 0.08), 0)
+
+    return [
+        finish("TrenchSkitterer_Body", body, MATS["TrenchSkitterer_Body"]),
+        finish("TrenchSkitterer_Fins", fins, MATS["TrenchSkitterer_Fins"]),
+        finish("TrenchSkitterer_Eyes", eyes, MATS["TrenchSkitterer_Eyes"]),
+        finish("TrenchSkitterer_Marks", marks, MATS["TrenchSkitterer_Marks"]),
+    ]
+
+
+# ---- Lanternjaw Angler (mimic): a hanging light that turns out to be a
+# mouth. MIMIC LID CONTRACT: the whole upper jaw is the _Fins object, the
+# lower jaw is centred on x=0, and the engine hinges the lid 0.9 behind
+# centre. The lamp rides a stalk off the LOWER body so it stays put while
+# the jaw snaps. UPRIGHT (stance, like the Mimic).
+def build_lanternjawangler():
+    body = bmesh.new()
+    fins = bmesh.new()
+    eyes = bmesh.new()
+    marks = bmesh.new()
+
+    # Lower jaw: a broad scoop centred on x=0, teeth around its front rim.
+    dome(body, (0, 0, 0.62), (1.35, 1.0, 0.55), 1)
+    bmesh.ops.transform(body, matrix=Matrix.Translation(Vector((0, 0, 0.62))) @ Matrix.Rotation(math.pi, 4, "X") @ Matrix.Translation(Vector((0, 0, -0.62))), verts=all_verts(body))
+    ellipsoid(body, (0, 0, 0.6), (1.4, 1.05, 0.2), 1)
+    for a in (-1.1, -0.55, 0.0, 0.55, 1.1):
+        px, py = math.cos(a * 0.75) * 1.25, math.sin(a) * 0.85
+        cone(body, (px, py, 0.6), (px + 0.05, py, 1.05), 0.09, 4)
+    # Upper jaw (the lid): a skull-browed dome with fangs pointing down.
+    dome(fins, (0, 0, 0.78), (1.4, 1.05, 0.75), 1)
+    box(fins, (0.9, 0, 1.15), (0.7, 1.0, 0.3), Matrix.Rotation(math.radians(14), 4, "Y"))
+    for a in (-0.9, -0.3, 0.3, 0.9):
+        px, py = math.cos(a * 0.75) * 1.3, math.sin(a) * 0.8
+        cone(fins, (px, py, 0.82), (px + 0.06, py, 0.35), 0.08, 4)
+    # The lamp: a stalk off the lower body's back, arcing over the front.
+    chain(body, [(-1.2, 0, 0.7), (-0.6, 0, 2.3), (0.9, 0, 2.9), (1.9, 0, 2.6)], [0.16, 0.12, 0.09, 0.07], 5)
+    ellipsoid(marks, (2.05, 0, 2.25), (0.4, 0.4, 0.45), 1)
+    # Glowing gum-line dots along the lower rim - the "hanging light" it
+    # pretends to be from a distance.
+    for a in (-0.8, 0.0, 0.8):
+        ellipsoid(marks, (math.cos(a * 0.75) * 1.05, math.sin(a) * 0.7, 0.68), (0.08, 0.08, 0.08), 0)
+    for s in (-1, 1):
+        ellipsoid(eyes, (0.55, s * 0.75, 0.85), (0.12, 0.1, 0.12), 1)
+
+    return [
+        finish("LanternjawAngler_Body", body, MATS["LanternjawAngler_Body"]),
+        finish("LanternjawAngler_Fins", fins, MATS["LanternjawAngler_Fins"]),
+        finish("LanternjawAngler_Eyes", eyes, MATS["LanternjawAngler_Eyes"]),
+        finish("LanternjawAngler_Marks", marks, MATS["LanternjawAngler_Marks"]),
+    ]
+
+
+# ---- Vampire Squid (thief): a blood-dark squid swimming cloaked - the
+# webbed skirt flares forward around the arms. Flat, front +X.
+def build_vampiresquid():
+    body = bmesh.new()
+    fins = bmesh.new()
+    eyes = bmesh.new()
+    marks = bmesh.new()
+
+    revolve(body, [(-1.9, 0.0), (-1.0, 0.55), (0.0, 0.72), (0.8, 0.55), (1.1, 0.35)], sides=8, axis="x", center=(0, 0, 0.85), squash=0.95)
+    # The cloak: a skirt flaring open toward +X.
+    revolve(body, [(0.9, 0.6), (2.1, 1.15)], sides=9, axis="x", center=(0, 0, 0.85), squash=0.95, open_end=True)
+    # Arm tips hooking out past the skirt rim.
+    for k in range(8):
+        a = (k / 8) * TAU + 0.2
+        by, bz = math.cos(a) * 1.1, math.sin(a) * 1.05
+        cone(fins, (2.05, by, 0.85 + bz), (2.55, by * 1.15, 0.85 + bz * 1.15), 0.08, 4)
+    # Cirri: thin spines lining the skirt's inside.
+    for k in range(6):
+        a = (k / 6) * TAU
+        by, bz = math.cos(a) * 0.75, math.sin(a) * 0.72
+        cone(fins, (1.7, by, 0.85 + bz), (2.0, by * 0.8, 0.85 + bz * 0.8), 0.04, 4)
+    # Ear-fins on the mantle.
+    for s in (-1, 1):
+        plate(fins, [(-0.9, 0.9), (-1.6, 1.5), (-1.8, 0.9)], 0.09, "xz", offset=(0, s * 0.35, 0))
+    # Huge blood-lit eyes, and dim photophore dots on the mantle tip.
+    for s in (-1, 1):
+        ellipsoid(eyes, (0.75, s * 0.62, 1.15), (0.24, 0.2, 0.22), 1)
+    for s in (-1, 1):
+        ellipsoid(marks, (-1.55, s * 0.3, 1.1), (0.08, 0.08, 0.08), 0)
+
+    return [
+        finish("VampireSquid_Body", body, MATS["VampireSquid_Body"]),
+        finish("VampireSquid_Fins", fins, MATS["VampireSquid_Fins"]),
+        finish("VampireSquid_Eyes", eyes, MATS["VampireSquid_Eyes"]),
+        finish("VampireSquid_Marks", marks, MATS["VampireSquid_Marks"]),
+    ]
+
+
+# ---- Pressure Crab (thornback): a crab armoured like a pressure vessel -
+# riveted iron-dark plates, crusher claws held like shields. Flat, front +X.
+def build_pressurecrab():
+    body = bmesh.new()
+    fins = bmesh.new()
+    eyes = bmesh.new()
+    marks = bmesh.new()
+
+    dome(body, (0, 0, 0.42), (1.2, 1.0, 0.7), 1)
+    ellipsoid(body, (0, 0, 0.42), (1.25, 1.05, 0.3), 1)
+    # The plates: banded armour over the dome, rivets down each seam.
+    for i, x in enumerate((0.55, 0.0, -0.55)):
+        box(fins, (x, 0, 0.85), (0.32, 1.9, 0.35))
+        for s in (-1, 1):
+            for j in range(3):
+                ellipsoid(marks, (x, s * (0.4 + j * 0.35), 1.05), (0.05, 0.05, 0.05), 0)
+    # Thorn bosses on the shell's crown.
+    for dx, dy in ((0.3, 0.45), (-0.35, -0.4), (0.0, 0.0)):
+        cone(fins, (dx, dy, 1.05), (dx * 1.3, dy * 1.3, 1.45), 0.14, 5)
+    # Legs: three per side, thick, tucked close.
+    for sy in (-1, 1):
+        for i in range(3):
+            x = 0.4 - i * 0.45
+            chain(body, [(x, sy * 0.7, 0.4), (x + 0.05, sy * 1.1, 0.6), (x + 0.1, sy * 1.35, 0.0)], [0.11, 0.09, 0.03], 5)
+    # Crusher claws held up like tower shields, well forward.
+    for s in (-1, 1):
+        chain(body, [(0.85, s * 0.55, 0.45), (1.6, s * 0.75, 0.6)], [0.16, 0.12], 5)
+        box(fins, (2.0, s * 0.8, 0.7), (0.55, 0.35, 0.75))
+    for s in (-1, 1):
+        limb(body, (1.0, s * 0.25, 0.85), (1.1, s * 0.28, 1.15), 0.05, 0.04, 4)
+        ellipsoid(eyes, (1.12, s * 0.29, 1.2), (0.08, 0.08, 0.08), 0)
+
+    return [
+        finish("PressureCrab_Body", body, MATS["PressureCrab_Body"]),
+        finish("PressureCrab_Fins", fins, MATS["PressureCrab_Fins"]),
+        finish("PressureCrab_Eyes", eyes, MATS["PressureCrab_Eyes"]),
+        finish("PressureCrab_Marks", marks, MATS["PressureCrab_Marks"]),
+    ]
+
+
+# ---- Void Ray (pulser): a winged disc of not-quite-darkness, its edges
+# traced in void light. Flat, front +X.
+def build_voidray():
+    body = bmesh.new()
+    fins = bmesh.new()
+    eyes = bmesh.new()
+    marks = bmesh.new()
+
+    ellipsoid(body, (0, 0, 0.55), (1.5, 1.1, 0.32), 1)
+    # Wings: swept-back deltas.
+    for s in (-1, 1):
+        plate(fins, [(0.8, s * 0.7), (-0.4, s * 1.95), (-1.7, s * 2.0), (-0.9, s * 0.9), (-0.6, s * 0.6)], 0.14, "xy", offset=(0, 0, 0.55))
+    # Head horns and the tail whip.
+    for s in (-1, 1):
+        cone(body, (1.4, s * 0.35, 0.55), (1.9, s * 0.5, 0.5), 0.1, 4)
+    chain(body, [(-1.4, 0, 0.55), (-2.3, 0.15, 0.6), (-3.0, 0.0, 0.5)], [0.12, 0.07, 0.02], 4)
+    # The void light: glowing trims along both wings' trailing edges and a
+    # pulse core in the disc's centre.
+    for s in (-1, 1):
+        chain(marks, [(-0.35, s * 1.85, 0.6), (-1.55, s * 1.9, 0.6), (-0.85, s * 0.95, 0.6)], [0.05, 0.05, 0.04], 4)
+    ellipsoid(marks, (0.1, 0, 0.8), (0.35, 0.28, 0.12), 1)
+    for s in (-1, 1):
+        ellipsoid(eyes, (1.15, s * 0.4, 0.75), (0.1, 0.08, 0.08), 0)
+
+    return [
+        finish("VoidRay_Body", body, MATS["VoidRay_Body"]),
+        finish("VoidRay_Fins", fins, MATS["VoidRay_Fins"]),
+        finish("VoidRay_Eyes", eyes, MATS["VoidRay_Eyes"]),
+        finish("VoidRay_Marks", marks, MATS["VoidRay_Marks"]),
+    ]
+
+
+# ---- Silt Stalker (burrower): a low segmented ambusher with folded scythe
+# claws, half sediment itself. Flat, front +X.
+def build_siltstalker():
+    body = bmesh.new()
+    fins = bmesh.new()
+    eyes = bmesh.new()
+    marks = bmesh.new()
+
+    # Segmented low body, tapering tail.
+    for i, (x, w, h) in enumerate(((0.8, 0.8, 0.5), (0.0, 0.9, 0.55), (-0.85, 0.8, 0.5), (-1.65, 0.6, 0.4))):
+        dome(body, (x, 0, 0.25), (0.6, w, h), 1)
+    chain(body, [(-2.0, 0, 0.4), (-2.9, 0.25, 0.35), (-3.6, 0.1, 0.3)], [0.28, 0.16, 0.05], 5)
+    # The head wedge and the scythe claws folded forward.
+    dome(body, (1.4, 0, 0.25), (0.55, 0.65, 0.5), 1)
+    for s in (-1, 1):
+        chain(fins, [(1.3, s * 0.5, 0.5), (2.3, s * 0.85, 0.75), (3.1, s * 0.45, 0.35)], [0.14, 0.11, 0.03], 5)
+        cone(fins, (3.1, s * 0.45, 0.35), (3.5, s * 0.25, 0.1), 0.07, 4)
+    # Silt frill skirts along both sides.
+    for s in (-1, 1):
+        plate(fins, [(1.0, s * 0.75), (0.0, s * 1.15), (-1.2, s * 1.05), (-1.8, s * 0.7), (-0.4, s * 0.8)], 0.1, "xy", offset=(0, 0, 0.18))
+    # Sensory dots in a row down the spine ridge.
+    for x in (0.8, 0.0, -0.85, -1.65):
+        ellipsoid(marks, (x, 0, 0.82), (0.07, 0.07, 0.07), 0)
+    for s in (-1, 1):
+        ellipsoid(eyes, (1.7, s * 0.3, 0.55), (0.09, 0.08, 0.08), 0)
+
+    return [
+        finish("SiltStalker_Body", body, MATS["SiltStalker_Body"]),
+        finish("SiltStalker_Fins", fins, MATS["SiltStalker_Fins"]),
+        finish("SiltStalker_Eyes", eyes, MATS["SiltStalker_Eyes"]),
+        finish("SiltStalker_Marks", marks, MATS["SiltStalker_Marks"]),
+    ]
+
+
+# ---------------------------------------------------------------- Wreckwater hostiles
+# The ghost-fleet's roster: drowned crew, cursed cargo, ghost-fire.
+
+
+# ---- Cannonball Crab (rusher): a crab that moved into a cannonball - the
+# fuse still fizzes. Flat, front +X.
+def build_cannonballcrab():
+    body = bmesh.new()
+    fins = bmesh.new()
+    eyes = bmesh.new()
+    marks = bmesh.new()
+
+    ellipsoid(body, (0, 0, 0.8), (0.88, 0.85, 0.85), 1)
+    limb(body, (0, -0.86, 0.8), (0, 0.86, 0.8), 0.1, 0.1, 8)  # the casting band
+    # The crab underneath: legs and claws poking out of the shot.
+    for sy in (-1, 1):
+        for i in range(3):
+            x = 0.3 - i * 0.35
+            chain(fins, [(x, sy * 0.55, 0.35), (x + 0.05, sy * 0.95, 0.5), (x + 0.1, sy * 1.15, 0.0)], [0.08, 0.06, 0.02], 4)
+        chain(fins, [(0.7, sy * 0.4, 0.35), (1.4, sy * 0.55, 0.4)], [0.12, 0.09], 5)
+        ellipsoid(fins, (1.68, sy * 0.58, 0.4), (0.3, 0.18, 0.16), 1)
+    # The fuse: a short stub off the top, spark glowing at its tip.
+    chain(body, [(-0.2, 0, 1.55), (-0.32, 0.12, 1.78)], [0.08, 0.05], 4)
+    ellipsoid(marks, (-0.36, 0.15, 1.86), (0.13, 0.12, 0.13), 1)
+    # Eye stalks between the shell and the claws.
+    for s in (-1, 1):
+        limb(fins, (0.75, s * 0.2, 0.95), (0.9, s * 0.24, 1.2), 0.05, 0.04, 4)
+        ellipsoid(eyes, (0.92, s * 0.25, 1.25), (0.08, 0.08, 0.08), 0)
+
+    return [
+        finish("CannonballCrab_Body", body, MATS["CannonballCrab_Body"]),
+        finish("CannonballCrab_Fins", fins, MATS["CannonballCrab_Fins"]),
+        finish("CannonballCrab_Eyes", eyes, MATS["CannonballCrab_Eyes"]),
+        finish("CannonballCrab_Marks", marks, MATS["CannonballCrab_Marks"]),
+    ]
+
+
+# ---- Drowned Boatswain (shambler): the deckhand's superior - rope coils
+# across the chest, a boarding hook for an arm, a belt lantern still lit.
+# UPRIGHT (stance).
+def build_drownedboatswain():
+    body = bmesh.new()
+    fins = bmesh.new()
+    eyes = bmesh.new()
+    marks = bmesh.new()
+
+    for s in (-1, 1):
+        box(body, (0, s * 0.4, 0.8), (0.55, 0.5, 1.6))
+    box(body, (0, 0, 2.5), (0.95, 1.55, 1.9), Matrix.Rotation(math.radians(-5), 4, "Y"))
+    box(body, (0.1, -0.05, 3.85), (0.75, 0.75, 0.8))
+    # The rope: coils slung shoulder to hip.
+    for i in range(3):
+        t = i * 0.28
+        limb(fins, (0.5, 0.65 - t, 3.1 - t * 1.6), (0.42, -0.75 + t * 0.3, 1.9 + t * 0.4), 0.09, 0.09, 5)
+    # Left arm reaching; right arm IS the boarding hook.
+    chain(body, [(0.2, 0.85, 3.2), (0.9, 1.05, 2.8), (1.6, 0.95, 3.0)], [0.24, 0.2, 0.16], 5)
+    chain(body, [(0.2, -0.85, 3.2), (0.8, -1.0, 2.6)], [0.24, 0.2], 5)
+    limb(fins, (0.8, -1.0, 2.6), (1.5, -1.0, 2.75), 0.12, 0.09, 5)
+    chain(fins, [(1.5, -1.0, 2.75), (1.85, -1.0, 3.05), (1.7, -1.0, 3.35)], [0.09, 0.07, 0.03], 4)
+    # The belt lantern, and the drowned glow.
+    limb(fins, (0.45, 0.45, 1.55), (0.45, 0.45, 1.35), 0.05, 0.05, 4)
+    ellipsoid(marks, (0.45, 0.45, 1.15), (0.16, 0.16, 0.2), 1)
+    chain(marks, [(0.5, 0.4, 2.9), (0.52, -0.2, 2.5), (0.48, 0.1, 2.0)], [0.04, 0.05, 0.04], 4)
+    for s in (-1, 1):
+        ellipsoid(eyes, (0.5, -0.05 + s * 0.22, 3.95), (0.09, 0.09, 0.11), 0)
+
+    return [
+        finish("DrownedBoatswain_Body", body, MATS["DrownedBoatswain_Body"]),
+        finish("DrownedBoatswain_Fins", fins, MATS["DrownedBoatswain_Fins"]),
+        finish("DrownedBoatswain_Eyes", eyes, MATS["DrownedBoatswain_Eyes"]),
+        finish("DrownedBoatswain_Marks", marks, MATS["DrownedBoatswain_Marks"]),
+    ]
+
+
+# ---- Phantom Moray (charger): a moray that kept hunting after it stopped
+# being alive - sinuous, tattered, lit in spectral rings. Flat, front +X.
+def build_phantommoray():
+    body = bmesh.new()
+    fins = bmesh.new()
+    eyes = bmesh.new()
+    marks = bmesh.new()
+
+    pts, radii = [], []
+    n = 10
+    for i in range(n):
+        t = i / (n - 1)
+        x = 2.2 - t * 5.2
+        y = 0.85 * math.sin(t * math.pi * 1.8)
+        pts.append((x, y, 0.62))
+        radii.append(0.2 + 0.42 * math.sin(math.pi * min(max(t, 0.1), 0.9)))
+    chain(body, pts, radii, 6)
+    # Head: blunt, jaw agape, needle teeth.
+    ellipsoid(body, (2.5, 0, 0.68), (0.65, 0.42, 0.42), 1)
+    box(body, (2.9, 0, 0.35), (0.8, 0.55, 0.14), Matrix.Rotation(math.radians(10), 4, "Y"))
+    for s in (-1, 1):
+        for i in range(2):
+            cone(fins, (2.75 + i * 0.25, s * 0.18, 0.55), (2.78 + i * 0.25, s * 0.18, 0.4), 0.035, 4)
+            cone(fins, (2.7 + i * 0.25, s * 0.2, 0.42), (2.72 + i * 0.25, s * 0.2, 0.56), 0.035, 4)
+    # The ragged dorsal ribbon down the whole spine.
+    ribbon = []
+    for i in range(n - 1):
+        px, py, pz = pts[i]
+        ribbon.append((px, pz + radii[i] + 0.32 + 0.12 * (i % 2)))
+    ribbon += [(pts[-1][0], pts[-1][2])] + [(pts[0][0], pts[0][2])]
+    plate(fins, ribbon, 0.1, "xz")
+    # Spectral rings every few segments, and the grave-light eyes.
+    for i in (1, 3, 5, 7):
+        px, py, pz = pts[i]
+        limb(marks, (px - 0.04, py, pz), (px + 0.04, py, pz), radii[i] + 0.06, radii[i] + 0.06, 7)
+    for s in (-1, 1):
+        ellipsoid(eyes, (2.6, s * 0.3, 0.92), (0.11, 0.09, 0.11), 1)
+
+    return [
+        finish("PhantomMoray_Body", body, MATS["PhantomMoray_Body"]),
+        finish("PhantomMoray_Fins", fins, MATS["PhantomMoray_Fins"]),
+        finish("PhantomMoray_Eyes", eyes, MATS["PhantomMoray_Eyes"]),
+        finish("PhantomMoray_Marks", marks, MATS["PhantomMoray_Marks"]),
+    ]
+
+
+# ---- Cursed Chest (mimic): the wreck fleet's treasure, still hungry.
+# MIMIC LID CONTRACT: the lid (with its fangs) is the whole _Fins object,
+# the lower chest is centred on x=0. UPRIGHT (stance).
+def build_cursedchest():
+    body = bmesh.new()
+    fins = bmesh.new()
+    eyes = bmesh.new()
+    marks = bmesh.new()
+
+    # The chest: banded planks, centred on x=0.
+    box(body, (0, 0, 0.5), (2.0, 1.4, 0.95))
+    for y in (-0.55, 0.0, 0.55):
+        box(body, (0, y, 0.5), (2.05, 0.18, 1.0))
+    # The lid: a domed top with iron bands and fangs down over the gape.
+    dome(fins, (0, 0, 1.0), (1.05, 0.72, 0.5), 1)
+    scale_verts(fins, all_verts(fins), 1.0, 1.0, 1.0)
+    box(fins, (0, 0, 1.06), (2.1, 1.5, 0.22))
+    for y in (-0.55, 0.0, 0.55):
+        box(fins, (0, y, 1.15), (2.12, 0.18, 0.3))
+    for i, y in enumerate((-0.5, -0.17, 0.17, 0.5)):
+        cone(fins, (1.0, y, 1.02), (1.04, y, 0.62), 0.09, 4)
+    # The tongue lolling out the front, coins stuck to it; a coin spill; and
+    # curse runes on the front panel.
+    chain(marks, [(0.9, 0.1, 0.72), (1.5, 0.15, 0.55), (1.9, 0.0, 0.3)], [0.22, 0.18, 0.08], 5)
+    for px, py, pz in ((1.35, 0.15, 0.72), (1.05, -0.25, 0.95), (1.7, -0.3, 0.12), (2.0, 0.35, 0.08)):
+        limb(marks, (px, py, pz - 0.03), (px, py, pz + 0.03), 0.14, 0.14, 7)
+    for cx, ln, ang in ((-0.5, 0.35, 55), (0.0, 0.3, -40), (0.5, 0.32, 20)):
+        box(marks, (1.02, cx, 0.45), (0.05, ln, 0.08), Matrix.Rotation(math.radians(ang), 4, "X"))
+    # Eyes glaring out of the gape's shadow.
+    for s in (-1, 1):
+        ellipsoid(eyes, (0.95, s * 0.4, 0.93), (0.1, 0.09, 0.1), 1)
+
+    return [
+        finish("CursedChest_Body", body, MATS["CursedChest_Body"]),
+        finish("CursedChest_Fins", fins, MATS["CursedChest_Fins"]),
+        finish("CursedChest_Eyes", eyes, MATS["CursedChest_Eyes"]),
+        finish("CursedChest_Marks", marks, MATS["CursedChest_Marks"]),
+    ]
+
+
+# ---- Plunder Sprite (thief): a darting sea-imp hugging a doubloon bigger
+# than its head. Flat, front +X (the coin leads).
+def build_plundersprite():
+    body = bmesh.new()
+    fins = bmesh.new()
+    eyes = bmesh.new()
+    marks = bmesh.new()
+
+    ellipsoid(body, (0, 0, 0.62), (0.72, 0.42, 0.38), 1)
+    ellipsoid(body, (0.6, 0, 0.78), (0.32, 0.28, 0.28), 1)
+    for s in (-1, 1):
+        cone(body, (0.5, s * 0.18, 1.0), (0.62, s * 0.28, 1.25), 0.07, 4)  # horns
+    # THE DOUBLOON, clutched in both arms.
+    limb(marks, (1.15, 0, 0.6), (1.27, 0, 0.6), 0.5, 0.5, 9)
+    for s in (-1, 1):
+        chain(body, [(0.35, s * 0.35, 0.65), (0.85, s * 0.3, 0.5), (1.1, s * 0.12, 0.62)], [0.09, 0.07, 0.05], 4)
+    # Legs trailing into a swimmer's kick, and little wing-frills.
+    for s in (-1, 1):
+        chain(body, [(-0.5, s * 0.2, 0.55), (-1.05, s * 0.3, 0.72), (-1.5, s * 0.25, 0.5)], [0.08, 0.06, 0.02], 4)
+        plate(fins, [(-0.1, s * 0.4), (-0.7, s * 0.95), (-1.1, s * 0.6), (-0.6, s * 0.38)], 0.07, "xy", offset=(0, 0, 0.85))
+    # A trail of dropped coins behind it.
+    for px, py in ((-1.3, 0.35), (-1.8, -0.2)):
+        limb(marks, (px, py, 0.3), (px, py, 0.36), 0.16, 0.16, 7)
+    for s in (-1, 1):
+        ellipsoid(eyes, (0.78, s * 0.14, 0.88), (0.09, 0.08, 0.1), 1)
+
+    return [
+        finish("PlunderSprite_Body", body, MATS["PlunderSprite_Body"]),
+        finish("PlunderSprite_Fins", fins, MATS["PlunderSprite_Fins"]),
+        finish("PlunderSprite_Eyes", eyes, MATS["PlunderSprite_Eyes"]),
+        finish("PlunderSprite_Marks", marks, MATS["PlunderSprite_Marks"]),
+    ]
+
+
+# ---- Ghostfire Jelly (gascloud): a jelly burning with cold fire - flame
+# licks off the bell where a jelly has none. UPRIGHT (stance).
+def build_ghostfirejelly():
+    body = bmesh.new()
+    fins = bmesh.new()
+    eyes = bmesh.new()
+    marks = bmesh.new()
+
+    dome(body, (0, 0, 1.7), (1.05, 1.05, 0.9), 2)
+    ellipsoid(body, (0, 0, 1.7), (1.08, 1.08, 0.28), 1)
+    # The ghost-flames: licks curling off the crown.
+    for k in range(5):
+        a = (k / 5) * TAU
+        bx, by = math.cos(a) * 0.55, math.sin(a) * 0.55
+        cone(marks, (bx, by, 2.3), (bx * 1.6, by * 1.6, 3.0 + 0.3 * math.sin(a * 2 + 1)), 0.18, 4)
+    cone(marks, (0, 0, 2.55), (0.12, 0, 3.5), 0.22, 5)
+    # Tendrils: sparse and drifting.
+    for k in range(6):
+        a = (k / 6) * TAU + 0.4
+        bx, by = math.cos(a) * 0.8, math.sin(a) * 0.8
+        chain(fins, [(bx, by, 1.5), (bx * 1.3, by * 1.3, 0.7), (bx * 1.5, by * 1.5, 0.1)], [0.08, 0.05, 0.015], 4)
+    # A faint witness of a face.
+    for s in (-1, 1):
+        ellipsoid(eyes, (0.5, s * 0.28, 1.6), (0.07, 0.07, 0.07), 0)
+
+    return [
+        finish("GhostfireJelly_Body", body, MATS["GhostfireJelly_Body"]),
+        finish("GhostfireJelly_Fins", fins, MATS["GhostfireJelly_Fins"]),
+        finish("GhostfireJelly_Eyes", eyes, MATS["GhostfireJelly_Eyes"]),
+        finish("GhostfireJelly_Marks", marks, MATS["GhostfireJelly_Marks"]),
+    ]
+
+
+# ---- Wailing Gunner (spitter): a gunner's ghost fused to his carronade -
+# the gun IS the body, the spectre rises from the breech mid-scream.
+# UPRIGHT (stance), front +X (the muzzle).
+def build_wailinggunner():
+    body = bmesh.new()
+    fins = bmesh.new()
+    eyes = bmesh.new()
+    marks = bmesh.new()
+
+    # The carronade on its carriage, muzzle tilted up-forward.
+    box(body, (0, 0, 0.5), (1.9, 1.5, 0.9))
+    for s in (-1, 1):
+        limb(body, (0.6, s * 0.75, 0.35), (0.6, s * 0.55, 0.35), 0.3, 0.3, 7)  # wheels
+        limb(body, (-0.6, s * 0.75, 0.35), (-0.6, s * 0.55, 0.35), 0.3, 0.3, 7)
+    barrel_rot = Matrix.Rotation(math.radians(-24), 4, "Y")
+    box(body, (0.7, 0, 1.55), (2.4, 0.75, 0.75), barrel_rot)
+    limb(body, (1.55, 0, 1.95), (1.9, 0, 2.1), 0.42, 0.44, 8)  # the flared muzzle
+    ellipsoid(marks, (1.85, 0, 2.06), (0.3, 0.3, 0.3), 1)  # the glow in the bore
+    # The spectre: torso boiling up out of the breech, arms spread, head
+    # thrown back mid-wail.
+    revolve(fins, [(0.0, 0.55), (0.9, 0.62), (1.8, 0.45), (2.4, 0.3)], sides=7, axis="z", center=(-0.7, 0, 1.2), squash=0.9, open_end=True)
+    ellipsoid(fins, (-0.55, 0, 3.9), (0.42, 0.4, 0.5), 1)
+    for s in (-1, 1):
+        chain(fins, [(-0.65, s * 0.5, 3.3), (-0.4, s * 1.1, 3.6), (0.0, s * 1.4, 3.4)], [0.18, 0.13, 0.05], 4)
+    # The wail: an open glowing mouth, and the burning stare.
+    ellipsoid(marks, (-0.2, 0, 3.8), (0.16, 0.14, 0.22), 1)
+    for s in (-1, 1):
+        ellipsoid(eyes, (-0.25, s * 0.18, 4.1), (0.09, 0.08, 0.1), 0)
+
+    return [
+        finish("WailingGunner_Body", body, MATS["WailingGunner_Body"]),
+        finish("WailingGunner_Fins", fins, MATS["WailingGunner_Fins"]),
+        finish("WailingGunner_Eyes", eyes, MATS["WailingGunner_Eyes"]),
+        finish("WailingGunner_Marks", marks, MATS["WailingGunner_Marks"]),
+    ]
+
+
 def report_bbox(name, objs, expect_flat):
     """Print the built bounding box so the orientation rules can be checked
     without a Studio round-trip (the fish_gen.py puffer trick)."""
@@ -2914,6 +3838,31 @@ CREATURES = [
     ("HailfinSkua", build_hailfinskua, True),
     ("RiggingWraith", build_riggingwraith, False),
     ("Stormpetrel", build_stormpetrel, True),
+    # Frostmaw Reach roster.
+    ("FrostbitePup", build_frostbitepup, True),
+    ("IceshardCrab", build_iceshardcrab, True),
+    ("GlacialLurker", build_glaciallurker, True),
+    ("IceveinPike", build_iceveinpike, True),
+    ("FrozenMariner", build_frozenmariner, False),
+    ("AuroraJelly", build_aurorajelly, False),
+    ("BlizzardWraith", build_blizzardwraith, False),
+    # Gloomtrench roster.
+    ("GulperEel", build_gulpereel, True),
+    ("FlashbulbSquid", build_flashbulbsquid, False),
+    ("TrenchSkitterer", build_trenchskitterer, True),
+    ("LanternjawAngler", build_lanternjawangler, False),
+    ("VampireSquid", build_vampiresquid, True),
+    ("PressureCrab", build_pressurecrab, True),
+    ("VoidRay", build_voidray, True),
+    ("SiltStalker", build_siltstalker, True),
+    # Wreckwater roster.
+    ("CannonballCrab", build_cannonballcrab, True),
+    ("DrownedBoatswain", build_drownedboatswain, False),
+    ("PhantomMoray", build_phantommoray, True),
+    ("CursedChest", build_cursedchest, False),
+    ("PlunderSprite", build_plundersprite, True),
+    ("GhostfireJelly", build_ghostfirejelly, False),
+    ("WailingGunner", build_wailinggunner, False),
 ]
 
 
