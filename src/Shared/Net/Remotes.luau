@@ -42,6 +42,17 @@ local DEFS = {
 	-- kicks. Health itself still replicates as the attribute.
 	{ name = "CreatureHit", class = "RemoteEvent" }, -- server -> all clients: hitPoint, direction, killed, attackerUserId
 
+	-- Ranged weapons (revamp Session 2, docs/revamp-plan.md Systems §1). The
+	-- client proposes a camera ray (the CastAim trust model); CombatService
+	-- re-validates the origin against the character (Tuning.Ranged.ORIGIN_SLACK),
+	-- raycasts at fire time, and applies the damage after the flight delay.
+	-- Melee's argument-less RequestAttack above stays untouched.
+	{ name = "RequestShoot", class = "RemoteEvent" }, -- client -> server: rayOrigin (Vector3), look (Vector3)
+	-- One fired shot for the tracer/muzzle-flash pool (RangedFxController).
+	-- `termini` is a small array of world points the tracer(s) end at (one per
+	-- pellet for a scattergun); the local shooter already predicted their own.
+	{ name = "ShotFired", class = "RemoteEvent" }, -- server -> all clients: attackerUserId, origin, termini { Vector3 }, weaponId
+
 	-- Progression: the running totals live as replicated attributes on the
 	-- Player (Shared/Modules/Progression.ATTR); this only carries the
 	-- "+coins +xp" moment for the HUD pop, which attributes can't express.

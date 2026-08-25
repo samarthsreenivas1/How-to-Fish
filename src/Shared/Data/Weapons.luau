@@ -1,10 +1,12 @@
 --!nonstrict
 -- Weapons.luau
 -- Weapons, as rows - the same id-keyed shape as Rods / Creatures / Materials.
--- All rows are melee TODAY, but the old "never a ranged row here" rule was
--- overturned by the user on 2026-08-24 (docs/revamp-plan.md): ranged weapons
--- (bows -> flintlocks -> firearms) arrive with the ranged engine in Session 2,
--- as an optional `ranged` block on this same row shape.
+-- Melee AND ranged: the old "never a ranged row here" rule was overturned by
+-- the user on 2026-08-24 (docs/revamp-plan.md), and the ranged engine is live
+-- (revamp Session 2). A row with a `ranged` block shoots (CombatService's shot
+-- pipeline: hitscan at fire time, damage after the flight delay); a row
+-- without one is pure melee, exactly as before. Flavor arc: fantasy early
+-- (bow / crossbow / flintlock), modern firearms from the volcano island on.
 --
 -- THINNED 2026-08-25 (docs/revamp-plan.md): every island carries exactly five
 -- craftable weapons, the fists apart, and each island's Legendary is gated on
@@ -93,18 +95,38 @@ export type Perk = {
 	lifesteal: boolean?, -- heals the attacker for a share of the damage dealt (LIFESTEAL)
 }
 
+-- Makes a row a GUN (or bow): present = the row shoots through CombatService's
+-- shot pipeline instead of swinging; nil = pure melee. `damage` on the row is
+-- then per SHOT (per PELLET for a scattergun) and `cooldown` the time between
+-- shots; `reach` and `swing` are unused for a ranged row. Balance rule
+-- (docs/revamp-plan.md): ranged sustained DPS sits 10-20% under same-tier
+-- melee (the safety premium), burst above it. Ranged rows use knockback 0-4
+-- and never `launch`.
+export type Ranged = {
+	projectileSpeed: number, -- studs/second; sets the cosmetic flight delay (damage lands at distance/speed)
+	range: number, -- the hitscan ray goes no further than this, studs
+	fireMode: string, -- "single" | "scoped" | "auto" (auto = fires while the button is held)
+	magazine: number, -- shots before a reload; the server tracks the count
+	reloadTime: number, -- seconds the empty-mag reload takes (server-enforced); 0 = the cooldown IS the reload (bows)
+	spread: number?, -- radians of random cone per pellet (shotguns)
+	pellets: number?, -- pellets per shot, each its own ray (shotguns)
+	arc: boolean?, -- bows: ballistic draw + a landing re-check, so a dodged arrow misses
+	zoomFov: number?, -- scoped: FOV while aiming (default Tuning.Ranged.DEFAULT_ZOOM_FOV)
+}
+
 export type Weapon = {
 	id: string,
 	name: string,
 	description: string,
 	rarity: string, -- Common | Uncommon | Rare | Epic | Legendary
 	icon: string, -- inventory image asset id ("rbxassetid://..."); "" shows the blank placeholder
-	damage: { number }, -- { min, max } per hit
-	cooldown: number, -- seconds between swings (server-enforced)
-	reach: number, -- studs from the player a creature can be hit
+	damage: { number }, -- { min, max } per hit (per shot / pellet for a ranged row)
+	cooldown: number, -- seconds between swings or shots (server-enforced)
+	reach: number, -- studs from the player a creature can be hit (melee only)
 	knockback: number, -- shove speed on a non-killing hit, studs/sec (see Tuning.Combat.KNOCKBACK_SPEED)
-	swing: string?, -- WeaponSwingAnim clip name; nil = the fist punch clips
+	swing: string?, -- WeaponSwingAnim clip name; nil = the fist punch clips (melee only)
 	model: WeaponModel?, -- nil = bare hands
+	ranged: Ranged?, -- present = this row shoots; nil = pure melee
 	recipe: Recipe?,
 	perk: Perk?,
 }

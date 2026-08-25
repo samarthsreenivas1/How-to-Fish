@@ -161,6 +161,8 @@ Tuning.Creature = {
 		pulser = 0.25,
 		boss = 0, -- an island boss does not get shoved
 		companion = 0, -- your own hatchling isn't yours to punt around
+		flyer = 0.15, -- a diving bird barely notices a shove (docs/revamp-plan.md §2)
+		skythief = 0.15,
 		-- Volcano hostiles, same principle as the ocean ones: they hold ground.
 		crust = 0.1, -- a slag golem barely notices
 		splitter = 0.7, -- a blob of magma sloshes
@@ -191,6 +193,8 @@ Tuning.Creature = {
 		pulser = 0,
 		boss = 0,
 		companion = 0, -- a pet juggled into the air is a pet that can't help
+		flyer = 0, -- already airborne; a launch would fight its own height track
+		skythief = 0,
 		-- Volcano hostiles stay on the ground, same rule as the ocean ones: a
 		-- creature held in the air can't fight back, which removes the fight.
 		crust = 0,
@@ -425,6 +429,41 @@ Tuning.Creature = {
 	MAG_RANGE = 55, -- studs it can pull from
 	MAG_STRENGTH = 22, -- force per unit mass; the boss lure uses 25
 	MAG_DURATION = 1.1, -- seconds each drag lasts
+
+	-- ---- Flyers (revamp Session 2, docs/revamp-plan.md Systems §2) ----
+	-- "flyer": circles overhead out of melee reach, telegraphs, dives at where
+	-- you WERE when the dive began (the dodge window, same rule as spitter
+	-- landings), then spends a recovery window ON THE GROUND - the deliberate
+	-- melee counterplay. Height rides the pose's hop term while `pos` stays
+	-- ground-clamped, so bounds / knockback / LINGER all work untouched.
+	FLY_HEIGHT = 16, -- cruise height above the ground, studs (out of melee reach)
+	FLY_AGGRO = 90, -- circles / dives players within this, studs
+	FLY_SPEED = 22, -- orbit speed, studs/second
+	FLY_TURN_RATE = math.rad(240), -- how fast it can bank to track, per second
+	FLY_ORBIT_RADIUS = 18, -- preferred horizontal ring around the player, studs
+	FLY_BOB = 0.6, -- hover bob amplitude while circling, studs
+	FLY_BOB_RATE = 3.2, -- radians/second
+	FLY_CIRCLE_MIN = 2.0, -- seconds circling before it considers a dive
+	FLY_CIRCLE_MAX = 3.6,
+	FLY_WINDUP = 0.7, -- the hover tell before the dive, seconds
+	FLY_DIVE_SPEED = 55, -- studs/second along the dive line
+	FLY_DIVE_RADIUS = 5, -- players within this of the impact take the hit
+	FLY_DIVE_DAMAGE_MIN = 12,
+	FLY_DIVE_DAMAGE_MAX = 18,
+	FLY_GROUNDED_MIN = 1.2, -- recovery on the deck after a dive - the melee window
+	FLY_GROUNDED_MAX = 2.0,
+	FLY_CLIMB_SPEED = 18, -- studs/second back up to cruise height
+
+	-- "skythief": the aerial thief - circles like a flyer, but what it dives on
+	-- is your RESTING CATCH: it snatches a passive fish off the ground, carries
+	-- it up, and flies out to sea. Kill it to drop the cargo; let it escape and
+	-- you lose both. With nothing to steal it dive-bombs like a plain flyer.
+	SKYTHIEF_SEEK = 70, -- looks for a resting passive catch within this, studs
+	SKYTHIEF_SWOOP_SPEED = 50, -- studs/second down at the fish
+	SKYTHIEF_GRAB_RADIUS = 4, -- close enough to snatch, studs
+	SKYTHIEF_CARRY_DROP = 2.4, -- the cargo hangs this far under the bird, studs
+	SKYTHIEF_FLEE_SPEED = 26, -- studs/second while carrying
+	SKYTHIEF_ESCAPE = 160, -- studs of flight before bird and cargo are gone for good
 }
 
 -- ============================================================ Player
@@ -493,6 +532,37 @@ Tuning.Combat = {
 	-- override this with its own `launch` field, so a heavy club can juggle
 	-- harder than a blade; no row sets it yet, so every weapon uses this.
 	LAUNCH_SPEED = 11,
+}
+
+-- ============================================================ Ranged weapons
+
+-- The ranged engine (revamp Session 2, docs/revamp-plan.md Systems §1):
+-- server-authoritative hitscan at fire time with a cosmetic flight delay.
+-- Per-weapon numbers (damage, cooldown, magazine, reload, spread, speed)
+-- live on the Weapons row's `ranged` block; these are the engine's own knobs.
+Tuning.Ranged = {
+	-- The client reports the ray's origin (its camera); the server accepts it
+	-- only within this of the character's head, so a hacked client can't shoot
+	-- from across the map. Generous enough for camera offset + a moving character.
+	ORIGIN_SLACK = 6,
+
+	-- Token bucket per player: bucket = min(CAP, bucket + elapsed/cooldown),
+	-- one token per shot. A client spamming RequestShoot lands exactly
+	-- 1/cooldown shots per second; the cap absorbs one queued shot of jitter.
+	BUCKET_CAP = 2,
+
+	-- Arc weapons (bows): the shot is re-checked at landing - a sphere this
+	-- big at the predicted impact against live creatures - so a dodged arrow
+	-- misses. Guns apply the fire-time hit verbatim.
+	ARC_RECHECK_RADIUS = 3,
+
+	-- A flight delay is never longer than this, however slow the projectile
+	-- (keeps a mis-tuned row from queueing damage seconds into the future).
+	MAX_FLIGHT = 2.0,
+
+	-- Scoped weapons: the FOV the client zooms to while aiming (a row's
+	-- `zoomFov` overrides). The default camera FOV is 70.
+	DEFAULT_ZOOM_FOV = 30,
 }
 
 -- ============================================================ Gear perks

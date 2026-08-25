@@ -2367,9 +2367,230 @@ local function updateCompanion(creature, now: number, dt: number)
 	creature.model:PivotTo(poseCFrame(creature, bob, 0, 0))
 end
 
+-- ============================================================ flyer archetypes (revamp Session 2)
+-- docs/revamp-plan.md Systems §2. A flyer's HEIGHT rides the pose's hop term
+-- while `pos` stays the ground-clamped point underneath it, so every existing
+-- rule - the bounds clamp, the knockback slide, LINGER, the stun and juggle
+-- pre-emptions - keeps working untouched. Melee reach is measured to the
+-- model's pivot, so a bird at cruise height is simply out of reach; the
+-- grounded recovery after every dive is the deliberate melee window (ranged
+-- reaches it any time). Launch mult 0 (already airborne), knockback 0.15.
+
+-- One frame of circling the player: tangential motion around the preferred
+-- ring plus a gentle correction toward it. Shared by the flyer and the
+-- skythief's nothing-to-steal behaviour.
+local function flyOrbit(creature, root: BasePart, dt: number)
+	local center = root.Position
+	local offset = Vector3.new(creature.pos.X - center.X, 0, creature.pos.Z - center.Z)
+	local r = offset.Magnitude
+	local radial = if r > 0.01 then offset / r else Vector3.xAxis
+	local tangent = Vector3.new(-radial.Z, 0, radial.X)
+	local toward = math.clamp((r - C.FLY_ORBIT_RADIUS) * 0.15, -1, 1)
+	local dir = (tangent - radial * toward).Unit
+	creature.yaw0 = approachAngle(creature.yaw0, yawToward(dir), C.FLY_TURN_RATE * dt)
+	creature.pos = resolveHorizontal(creature, dir * C.FLY_SPEED * dt)
+end
+
+-- The flyer's whole machine, WITHOUT the knockback slide (the registry
+-- wrappers below own that), so the skythief can delegate its shared modes
+-- here without sliding twice in one frame.
+local function updateFlyerCore(creature, now: number, dt: number)
+	local model = creature.model
+	if not creature.mode then
+		creature.flyHeight = 0
+		setMode(creature, "climb", 0, now)
+	end
+	local root, _player, dist = nearestPlayerRoot(creature.pos)
+
+	if creature.mode == "grounded" then
+		-- Downed after a dive: the melee window. It flops like a catch.
+		local hop, yaw, pitch = flop(creature, now)
+		model:PivotTo(poseCFrame(creature, hop, yaw, pitch))
+		if now >= creature.modeUntil then
+			setMode(creature, "climb", 0, now)
+		end
+	elseif creature.mode == "climb" then
+		creature.flyHeight = math.min(C.FLY_HEIGHT, (creature.flyHeight or 0) + C.FLY_CLIMB_SPEED * dt)
+		if root then
+			creature.yaw0 = approachAngle(creature.yaw0, yawToward(root.Position - creature.pos), C.FLY_TURN_RATE * dt)
+		end
+		model:PivotTo(poseCFrame(creature, creature.flyHeight, 0, math.rad(-16)))
+		if creature.flyHeight >= C.FLY_HEIGHT then
+			setMode(creature, "circle", randomBetween(C.FLY_CIRCLE_MIN, C.FLY_CIRCLE_MAX), now)
+		end
+	elseif creature.mode == "windup" then
+		-- The hover tell: it stalls in the air over you, quivering, rearing.
+		if root then
+			creature.yaw0 = yawToward(root.Position - creature.pos)
+		end
+		local u = modeProgress(creature, now)
+		local quiver = math.sin(now * 30) * 0.25 * u
+		model:PivotTo(
+			poseCFrame(creature, (creature.flyHeight or C.FLY_HEIGHT) + 0.8 * u + quiver, 0, math.rad(24) * u)
+		)
+		if now >= creature.modeUntil then
+			-- The dive line is locked NOW, at the player's current position -
+			-- moving during the flight is the dodge (the spitter-landing rule).
+			local target = if root then root.Position else creature.pos
+			creature.diveFrom = Vector3.new(creature.pos.X, 0, creature.pos.Z)
+			creature.diveTarget = Vector3.new(target.X, 0, target.Z)
+			creature.diveHeight = creature.flyHeight or C.FLY_HEIGHT
+			local run = (creature.diveTarget - creature.diveFrom).Magnitude
+			local length = math.sqrt(run * run + creature.diveHeight * creature.diveHeight)
+			local flight = math.max(0.25, length / C.FLY_DIVE_SPEED)
+			creature.diveRun = run / flight -- horizontal studs/second down the line
+			setMode(creature, "dive", flight, now)
+			fireEvent(
+				"telegraph",
+				groundedPos(target, 0),
+				{ kind = "burst", duration = flight, radius = C.FLY_DIVE_RADIUS }
+			)
+		end
+	elseif creature.mode == "dive" then
+		local u = modeProgress(creature, now)
+		local to = creature.diveTarget - Vector3.new(creature.pos.X, 0, creature.pos.Z)
+		if to.Magnitude > 0.1 then
+			creature.yaw0 = yawToward(to)
+			creature.pos = resolveHorizontal(creature, flatUnit(to) * math.min(creature.diveRun * dt, to.Magnitude))
+		end
+		creature.flyHeight = creature.diveHeight * (1 - u)
+		model:PivotTo(poseCFrame(creature, creature.flyHeight, 0, math.rad(38)))
+		if u >= 1 then
+			-- Impact: everyone near where it struck takes the hit, then it's
+			-- down on the deck - hittable - until it climbs out again.
+			creature.flyHeight = 0
+			creature.pos = groundedPos(creature.pos, creature.halfThickness)
+			damagePlayersInRadius(
+				creature.pos,
+				C.FLY_DIVE_RADIUS,
+				C.FLY_DIVE_DAMAGE_MIN,
+				C.FLY_DIVE_DAMAGE_MAX,
+				creature,
+				0.7
+			)
+			fireEvent("splash", creature.pos, { radius = C.FLY_DIVE_RADIUS })
+			model:SetAttribute(ATTR_FLOPS, (model:GetAttribute(ATTR_FLOPS) or 0) + 1)
+			setMode(creature, "grounded", randomBetween(C.FLY_GROUNDED_MIN, C.FLY_GROUNDED_MAX), now)
+		end
+	else -- circle
+		local bob = math.sin(now * C.FLY_BOB_RATE + creature.spawnedAt) * C.FLY_BOB
+		if root and dist <= C.FLY_AGGRO then
+			flyOrbit(creature, root, dt)
+			if now >= creature.modeUntil then
+				setMode(creature, "windup", C.FLY_WINDUP, now)
+			end
+		elseif now >= creature.modeUntil then
+			setMode(creature, "circle", randomBetween(C.FLY_CIRCLE_MIN, C.FLY_CIRCLE_MAX), now)
+		end
+		model:PivotTo(poseCFrame(creature, (creature.flyHeight or C.FLY_HEIGHT) + bob, 0, 0))
+	end
+end
+
+local function updateFlyer(creature, now: number, dt: number)
+	slideKnockback(creature, dt)
+	updateFlyerCore(creature, now, dt)
+end
+
+-- The nearest resting PASSIVE catch worth stealing: alive, targetable, on the
+-- ground, nobody's companion, not already in someone's claws, and a flopper -
+-- the skythief takes your loot, not your fight.
+local function nearestStealable(pos: Vector3, radius: number)
+	local best, bestDist = nil, radius
+	for _, other in creatures do
+		if
+			not other.dead
+			and other.row.archetype == "flopper"
+			and not other.friendly
+			and not other.untargetable
+			and not other.carriedBy
+			and other.state == "resting"
+			and other.pos
+		then
+			local d = (Vector3.new(other.pos.X, 0, other.pos.Z) - Vector3.new(pos.X, 0, pos.Z)).Magnitude
+			if d < bestDist then
+				best, bestDist = other, d
+			end
+		end
+	end
+	return best
+end
+
+-- The aerial thief: circles like a flyer, but what it dives on is your
+-- resting catch - it snatches the fish, carries it up, and makes for open
+-- water. Kill the bird to drop the cargo where it falls; let it cover
+-- SKYTHIEF_ESCAPE studs and bird and fish are both gone (the expiry path -
+-- nothing died, you just lost it). With nothing to steal it dive-bombs like
+-- a plain flyer.
+local function updateSkythief(creature, now: number, dt: number)
+	slideKnockback(creature, dt)
+	local model = creature.model
+
+	if creature.mode == "swoop" then
+		local victim = creature.stealTarget
+		if not victim or victim.dead or victim.carriedBy or victim.state ~= "resting" then
+			creature.stealTarget = nil
+			setMode(creature, "climb", 0, now)
+			return
+		end
+		local to = Vector3.new(victim.pos.X - creature.pos.X, 0, victim.pos.Z - creature.pos.Z)
+		creature.yaw0 = approachAngle(creature.yaw0, yawToward(to), C.FLY_TURN_RATE * dt)
+		creature.pos = resolveHorizontal(creature, flatUnit(to) * C.SKYTHIEF_SWOOP_SPEED * dt)
+		creature.flyHeight = math.max(1.2, (creature.flyHeight or C.FLY_HEIGHT) - C.SKYTHIEF_SWOOP_SPEED * 0.6 * dt)
+		model:PivotTo(poseCFrame(creature, creature.flyHeight, 0, math.rad(30)))
+		if to.Magnitude <= C.SKYTHIEF_GRAB_RADIUS and creature.flyHeight <= 3 then
+			-- Snatched. The cargo is posed under the bird by the carried
+			-- branch in update(); its own loop is suspended until it drops.
+			victim.carriedBy = creature
+			victim.knockVel = nil
+			creature.cargo = victim
+			creature.fleeDistance = 0
+			fireEvent("steal", victim.model:GetPivot().Position, {})
+			setMode(creature, "flee", 0, now)
+		end
+	elseif creature.mode == "flee" then
+		local cargo = creature.cargo
+		if not cargo or cargo.dead then
+			-- The cargo was shot out of its claws; back to hunting.
+			creature.cargo = nil
+			setMode(creature, "climb", 0, now)
+			return
+		end
+		-- Out to sea: straight away from the nearest player, climbing.
+		local root = nearestPlayerRoot(creature.pos)
+		local away = if root
+			then flatUnit(creature.pos - root.Position)
+			else Vector3.new(math.cos(creature.yaw0), 0, -math.sin(creature.yaw0))
+		creature.yaw0 = approachAngle(creature.yaw0, yawToward(away), C.FLY_TURN_RATE * dt)
+		local step = away * C.SKYTHIEF_FLEE_SPEED * dt
+		creature.pos = resolveHorizontal(creature, step)
+		creature.fleeDistance = (creature.fleeDistance or 0) + step.Magnitude
+		creature.flyHeight = math.min(C.FLY_HEIGHT, (creature.flyHeight or 0) + C.FLY_CLIMB_SPEED * dt)
+		model:PivotTo(poseCFrame(creature, creature.flyHeight, 0, math.rad(-10)))
+		if creature.fleeDistance >= C.SKYTHIEF_ESCAPE then
+			cargo.expiresAt = now
+			creature.expiresAt = now
+		end
+	elseif creature.mode == "circle" then
+		-- Before each dive decision, look for something better: your catch.
+		if now >= creature.modeUntil then
+			local victim = nearestStealable(creature.pos, C.SKYTHIEF_SEEK)
+			if victim then
+				creature.stealTarget = victim
+				setMode(creature, "swoop", 0, now)
+				return
+			end
+		end
+		updateFlyerCore(creature, now, dt)
+	else
+		updateFlyerCore(creature, now, dt)
+	end
+end
+
 local ARCHETYPE_UPDATERS = {
 	boss = updateBoss,
 	companion = updateCompanion,
+	flyer = updateFlyer,
+	skythief = updateSkythief,
 	rusher = updateRusher,
 	shambler = updateShambler,
 	charger = updateCharger,
@@ -2506,6 +2727,22 @@ local function update(dt: number)
 				creature.model:PivotTo(restCFrame(creature))
 			else
 				creature.model:PivotTo(creature.settleFrom:Lerp(restCFrame(creature), smoothstep(t)))
+			end
+		elseif creature.carriedBy then
+			-- Snatched by a skythief: its own behaviour is suspended and it
+			-- rides under the bird. Kept "fought" so LINGER can't reap it out
+			-- of the claws; the moment the carrier dies or vanishes it drops
+			-- right here and goes back to being an ordinary resting catch.
+			local carrier = creature.carriedBy
+			if carrier.dead or not carrier.model.Parent then
+				creature.carriedBy = nil
+				creature.pos = groundedPos(creature.pos, creature.halfThickness)
+				creature.model:SetAttribute(ATTR_FLOPS, (creature.model:GetAttribute(ATTR_FLOPS) or 0) + 1)
+			else
+				creature.lastFoughtAt = now
+				creature.pos = carrier.pos
+				local hang = math.max(0.5, (carrier.flyHeight or 0) - C.SKYTHIEF_CARRY_DROP)
+				creature.model:PivotTo(poseCFrame(creature, hang, 0, 0))
 			end
 		elseif isAirborne(creature) then
 			-- Juggled: hanging in the air from a hit. Suspends whatever the
