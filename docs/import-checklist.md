@@ -16,7 +16,7 @@ commit the .rbxm).
 
 | # | File | Replaces / adds under Assets | Notes |
 |---|---|---|---|
-| 1 | `assets/island_pack.glb` | `IslandPack` (or per-island models) | Now bundles ALL SIX islands: Island, Volcano, **Swamp, Frostmaw, Gloomtrench, Wreckwater**. One import covers every island. WorldService clones each child group by model name. |
+| 1 | `assets/island_pack.glb` | `IslandPack` (or per-island models) | Now bundles ALL SIX islands: Island, Volcano, **Swamp, Frostmaw, Gloomtrench, Wreckwater**. One import covers every island. WorldService clones each child group by model name. Use PreciseConvexDecomposition collision fidelity on the `<Name>_Base` landforms and solid props (players walk them); water/foam slabs can stay default. |
 | 2 | `assets/weapon.glb` | `WeaponPack` | Regenerated with the six ranged variants: BogwoodBow, GatorjawCrossbow, MireFlintlock, CinderlockCarbine, BasaltScattergun, VulkanRepeater. |
 | 3 | `assets/boat.glb` | `BoatPack` (new) | Six tier hulls + Helm seat markers + trophy-shelf sterns (variant names in boat_gen.py). On first import, sanity-check the bow orientation in Studio (authored bow = Blender -y, same convention gotcha as the rod pack). |
 | 4 | `assets/creatures.glb` | `CreaturePack` | Regenerated with the new boss/flyer species (Gnashroot, Pyrelisk, Rimefang, Noctyss, AdmiralWrack, Kraken + tentacle, flyers...). |
