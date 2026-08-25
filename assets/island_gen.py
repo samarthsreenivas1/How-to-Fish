@@ -1430,6 +1430,612 @@ def build_volcano():
     return objects
 
 
+# ---------------------------------------------------------------- revamp islands (2026-08-25)
+#
+# The four new islands of the 7-island saga (docs/revamp-plan.md): Blackmire
+# Fen (swamp), Frostmaw Reach (ice), Gloomtrench (abyss shelf) and Wreckwater
+# (ghost-fleet lagoon). Same machinery as the volcano: a configured base, a
+# ground BVH, pooled interior water (the fishable-surface contract names:
+# Swamp_Water / Frostmaw_IceHoles / Gloomtrench_DarkWater / Wreckwater_Bay),
+# prop scatter seated on the real faceted surface, the standard +Z sea dock
+# and shoreline foam. Interior pools are recorded in LAVA_PONDS (despite the
+# name - it is simply "keep-clear circles for the scatter").
+
+
+def _pool_disc(bm, cx, cy, r, z_top, thickness, salt, squash=None):
+    """One ragged interior pool, recorded for the prop scatter."""
+    _jagged_disc(bm, cx, cy, r, r * (squash or random.uniform(0.72, 0.95)), z_top, thickness, salt)
+    LAVA_PONDS.append((cx, cy, r))
+
+
+def _interior_spot(ground, u_lo, u_hi, pad=3.0, tries=40):
+    """A raycast-verified ground point in the walkable band, clear of the dock
+    corridor and every recorded pool. The generic apron_spot, island-neutral."""
+    for _ in range(tries):
+        theta = random.uniform(0, math.tau)
+        u = random.uniform(u_lo, u_hi)
+        if _near_dock_corridor(theta, u):
+            continue
+        r = ring_radius(u, theta)
+        x, z = math.cos(theta) * r, math.sin(theta) * r
+        if not _clear_of_ponds(x, z, pad):
+            continue
+        surface = _drop_to_ground(ground, x, z)
+        if surface is not None:
+            return x, z, surface
+    return None
+
+
+# ---- Blackmire Fen --------------------------------------------------------
+
+
+def build_swamp_water(ground):
+    """The fen's murky pools - the island's fishable water (waters="swamp").
+    A dozen broad, ragged peat pools threaded through the interior, plus a few
+    narrow joining channels, all ONE object: Swamp_Water is the contract name
+    World.FISHABLE_NAMES keys on."""
+    bm = bmesh.new()
+    LAVA_PONDS.clear()
+    chains = 5
+    for c in range(chains):
+        theta = (c / chains) * math.tau + random.uniform(-0.25, 0.25)
+        u = random.uniform(0.18, 0.34)
+        prev = None
+        for k in range(random.randint(2, 3)):
+            if _near_dock_corridor(theta, u):
+                theta += 0.35
+            r = ring_radius(u, theta)
+            x, z = math.cos(theta) * r, math.sin(theta) * r
+            ground_h = _drop_to_ground(ground, x, z)
+            if ground_h is None:
+                ground_h = height_at(x, z)
+            # The pool surface floats just over the peat it drowned.
+            top = ground_h + 0.45
+            pr = random.uniform(14.0, 24.0)
+            _pool_disc(bm, x, z, pr, top, 3.0, salt=theta * 3 + k)
+            if prev is not None:
+                px, pz, ph = prev
+                seg = Vector((x - px, z - pz, 0))
+                if seg.length > 1:
+                    perp = Vector((-seg.y, seg.x, 0)).normalized() * random.uniform(3.0, 5.0)
+                    a_pt = Vector((px, pz, ph - 0.1))
+                    b_pt = Vector((x, z, top - 0.1))
+                    add_strip_slab(bm, [a_pt + perp, b_pt + perp], [a_pt - perp, b_pt - perp], 2.0)
+            prev = (x, z, top)
+            theta += random.uniform(-0.2, 0.2)
+            u += random.uniform(0.1, 0.16)
+    print(f"[island_gen] swamp water: {len(LAVA_PONDS)} pools")
+    return object_from_bmesh("Swamp_Water", bm, ["M_SwampWater"])
+
+
+def build_swamp_trees(ground):
+    """Bald-cypress stands: a tapered trunk flaring at the foot, knee roots
+    breaking the mud around it, and a wide flat moss canopy in two greens.
+    Trunks/knees and canopies are separate objects so each keeps one material."""
+    trunk_bm = bmesh.new()
+    canopy_bm = bmesh.new()
+    placed = 0
+    for _ in range(60):
+        spot = _interior_spot(ground, 0.10, 0.60, pad=2.0)
+        if spot is None:
+            continue
+        x, z, surface = spot
+        h = random.uniform(20.0, 34.0)
+        yaw = random.uniform(0, math.tau)
+        tilt = (random.uniform(-0.06, 0.06), random.uniform(-0.06, 0.06))
+        add_cone(trunk_bm, (x, z, surface - 1.2), random.uniform(2.4, 3.2), 0.8, h, sides=7, tilt=tilt, yaw=yaw)
+        for _ in range(random.randint(3, 5)):  # the knees
+            a = random.uniform(0, math.tau)
+            d = random.uniform(2.2, 5.0)
+            kx, kz = x + math.cos(a) * d, z + math.sin(a) * d
+            ks = _drop_to_ground(ground, kx, kz)
+            if ks is None:
+                continue
+            add_cone(trunk_bm, (kx, kz, ks - 0.4), random.uniform(0.5, 0.9), 0.2, random.uniform(1.4, 2.8), sides=5)
+        axis = cone_axis(tilt, yaw)
+        crown = Vector((x, z, surface - 1.2)) + axis * h
+        # Two stacked, flattened canopy pads - the classic cypress table-top.
+        s = random.uniform(9.0, 14.0)
+        add_blob(canopy_bm, (crown.x, crown.y, crown.z - 1.0), (s, s * 0.85, s * 0.30), 0.35, 40 + placed * 3.1, yaw)
+        add_blob(
+            canopy_bm,
+            (crown.x + random.uniform(-2, 2), crown.y + random.uniform(-2, 2), crown.z + s * 0.16),
+            (s * 0.62, s * 0.55, s * 0.24),
+            0.35,
+            41 + placed * 3.1,
+            yaw,
+        )
+        placed += 1
+        if placed >= 26:
+            break
+    print(f"[island_gen] swamp trees: {placed} cypress")
+    return (
+        object_from_bmesh("Swamp_Trunks", trunk_bm, ["M_Cypress"]),
+        object_from_bmesh("Swamp_Canopy", canopy_bm, ["M_Moss"]),
+    )
+
+
+def build_swamp_props(ground):
+    """Reed brakes around the pools, half-sunk root snags, and mud hummocks."""
+    reed_bm = bmesh.new()
+    for px, py, pr in list(LAVA_PONDS):
+        for _ in range(random.randint(6, 10)):
+            a = random.uniform(0, math.tau)
+            d = pr + random.uniform(1.0, 5.0)
+            x, z = px + math.cos(a) * d, py + math.sin(a) * d
+            surface = _drop_to_ground(ground, x, z)
+            if surface is None:
+                continue
+            for _ in range(random.randint(3, 6)):  # one brake = a few stems
+                ox, oz = x + random.uniform(-1.6, 1.6), z + random.uniform(-1.6, 1.6)
+                add_post(reed_bm, ox, oz, surface - 0.3, surface + random.uniform(2.4, 4.6), 0.16, sides=4)
+
+    snag_bm = bmesh.new()
+    for _ in range(16):
+        spot = _interior_spot(ground, 0.12, 0.72, pad=1.0)
+        if spot is None:
+            continue
+        x, z, surface = spot
+        yaw = random.uniform(0, math.tau)
+        tilt = (random.uniform(0.5, 1.1), 0.0)  # mostly toppled
+        add_cone(snag_bm, (x, z, surface - 0.8), random.uniform(1.2, 2.0), 0.4, random.uniform(9.0, 17.0), sides=6, tilt=tilt, yaw=yaw)
+
+    hummock_bm = bmesh.new()
+    for i in range(46):
+        spot = _interior_spot(ground, 0.08, 0.85, pad=1.0, tries=12)
+        if spot is None:
+            continue
+        x, z, surface = spot
+        s = random.uniform(2.0, 5.0)
+        add_blob(hummock_bm, (x, z, surface - s * 0.35), (s, s * 0.8, s * 0.5), 0.4, 700 + i * 4.7, yaw=random.uniform(0, math.tau))
+
+    return (
+        object_from_bmesh("Swamp_Reeds", reed_bm, ["M_Reed"]),
+        object_from_bmesh("Swamp_Snags", snag_bm, ["M_RootWood"]),
+        object_from_bmesh("Swamp_Hummocks", hummock_bm, ["M_MudMound"]),
+    )
+
+
+def build_swamp():
+    base = build_island_base("Swamp_Base", ["M_Peat", "M_Mud", "M_WetMud"])
+    ground = _ground_bvh(base)
+    objects = [
+        base,
+        build_swamp_water(ground),  # first: records the keep-clear pools
+        *build_swamp_trees(ground),
+        *build_swamp_props(ground),
+        *build_dock("Swamp_Dock_Planks", "Swamp_Dock_Posts", "M_SwampPlank", "M_SwampPost"),
+        build_foam("Swamp_Foam", "M_SwampFoam"),
+    ]
+    a = math.radians(DOCK_ANGLE_DEG)
+    start_r = ring_radius(DOCK_START_U, a)
+    print(f"[island_gen] HANDOFF swamp: dock start (Roblox rel) X=0 Z={start_r:.0f}, spawn suggestion X=0 Z={start_r - 18:.0f} ground Y~{height_at(0, -(start_r - 18)):.1f}")
+    return objects
+
+
+# ---- Frostmaw Reach -------------------------------------------------------
+
+
+def build_ice_holes(ground):
+    """The frozen shelf's fishing holes - fixed, pre-cut discs of black-blue
+    water in the ice, each collared by chunked rim ice. One object,
+    Frostmaw_IceHoles: the fishable-surface contract name (waters="ice")."""
+    bm = bmesh.new()
+    LAVA_PONDS.clear()
+    placed = 0
+    for _ in range(140):
+        if placed >= 13:
+            break
+        theta = random.uniform(0, math.tau)
+        u = random.uniform(0.58, 0.90)
+        if _near_dock_corridor(theta, u):
+            continue
+        r = ring_radius(u, theta)
+        x, z = math.cos(theta) * r, math.sin(theta) * r
+        if not _clear_of_ponds(x, z, 14.0):  # holes keep well apart
+            continue
+        surface = _drop_to_ground(ground, x, z)
+        if surface is None:
+            continue
+        hr = random.uniform(5.0, 8.5)
+        _pool_disc(bm, x, z, hr, surface + 0.25, 2.2, salt=x * 0.13 + z * 0.07, squash=random.uniform(0.85, 1.0))
+        placed += 1
+    print(f"[island_gen] ice holes: {placed}")
+    return object_from_bmesh("Frostmaw_IceHoles", bm, ["M_IceWater"])
+
+
+def build_ice_rims(ground):
+    """Chunked ice collars around every hole + scattered sheet debris."""
+    bm = bmesh.new()
+    for px, py, pr in list(LAVA_PONDS):
+        for i in range(random.randint(5, 8)):
+            a = random.uniform(0, math.tau)
+            d = pr + random.uniform(0.6, 2.2)
+            x, z = px + math.cos(a) * d, py + math.sin(a) * d
+            surface = _drop_to_ground(ground, x, z)
+            if surface is None:
+                continue
+            s = random.uniform(1.0, 2.4)
+            add_blob(bm, (x, z, surface - s * 0.2), (s, s * 0.7, s * 0.6), 0.42, 300 + i * 3.3 + px * 0.1, yaw=random.uniform(0, math.tau))
+    for i in range(60):
+        spot = _interior_spot(ground, 0.56, 0.95, pad=2.0, tries=12)
+        if spot is None:
+            continue
+        x, z, surface = spot
+        s = random.uniform(0.8, 2.0)
+        add_blob(bm, (x, z, surface - s * 0.3), (s, s * 0.8, s * 0.5), 0.45, 900 + i * 5.1, yaw=random.uniform(0, math.tau))
+    return object_from_bmesh("Frostmaw_RimIce", bm, ["M_GlacialIce"])
+
+
+def build_ice_seracs(ground):
+    """The glacial heart: a crown of leaning blue seracs on the central ridge,
+    big shattered bergs at its skirts, and tall shard pairs out on the sheet
+    marking the horizon. All pale glacial ice."""
+    bm = bmesh.new()
+    for i in range(16):
+        theta = (i / 16) * math.tau + random.uniform(-0.15, 0.15)
+        u = random.uniform(0.06, 0.30)
+        r = ring_radius(u, theta)
+        x, z = math.cos(theta) * r, math.sin(theta) * r
+        surface = _drop_to_ground(ground, x, z)
+        if surface is None:
+            continue
+        s = random.uniform(4.5, 9.0)
+        h = s * random.uniform(2.0, 3.2)
+        add_blob(bm, (x, z, surface + h * 0.1), (s, s * 0.65, h), 0.4, 100 + i * 6.1, yaw=random.uniform(0, math.tau))
+    for i in range(20):
+        spot = _interior_spot(ground, 0.30, 0.52, pad=3.0, tries=15)
+        if spot is None:
+            continue
+        x, z, surface = spot
+        s = random.uniform(3.5, 8.0)
+        add_blob(bm, (x, z, surface - s * 0.3), (s, s * 0.75, s * random.uniform(0.7, 1.1)), 0.45, 400 + i * 4.9, yaw=random.uniform(0, math.tau))
+    for i in range(10):
+        spot = _interior_spot(ground, 0.60, 0.88, pad=6.0, tries=15)
+        if spot is None:
+            continue
+        x, z, surface = spot
+        s = random.uniform(1.6, 3.0)
+        h = s * random.uniform(2.6, 4.0)
+        add_blob(bm, (x, z, surface + h * 0.12), (s, s * 0.6, h), 0.4, 800 + i * 7.7, yaw=random.uniform(0, math.tau))
+        add_blob(bm, (x + s * 1.6, z + s * 0.8, surface + h * 0.05), (s * 0.6, s * 0.5, h * 0.6), 0.4, 801 + i * 7.7)
+    return object_from_bmesh("Frostmaw_Seracs", bm, ["M_GlacialIce"])
+
+
+def build_ice_rocks(ground):
+    """Frost-dark rock breaking the white: outcrops near the ridge and a few
+    snow-dusted boulders on the sheet, plus stark dead trees by the shore."""
+    rock_bm = bmesh.new()
+    for i in range(30):
+        spot = _interior_spot(ground, 0.16, 0.60, pad=2.0, tries=15)
+        if spot is None:
+            continue
+        x, z, surface = spot
+        s = random.uniform(2.5, 7.0)
+        add_blob(rock_bm, (x, z, surface - s * 0.35), (s, s * 0.8, s * 0.7), 0.48, 600 + i * 3.9, yaw=random.uniform(0, math.tau))
+
+    snag_bm = bmesh.new()
+    for _ in range(9):
+        spot = _interior_spot(ground, 0.86, 0.97, pad=1.0, tries=15)
+        if spot is None:
+            continue
+        x, z, surface = spot
+        yaw = random.uniform(0, math.tau)
+        tilt = (random.uniform(-0.12, 0.12), random.uniform(-0.12, 0.12))
+        h = random.uniform(12.0, 22.0)
+        base = Vector((x, z, surface - 1.0))
+        add_cone(snag_bm, base, random.uniform(1.0, 1.6), 0.35, h, sides=5, tilt=tilt, yaw=yaw)
+        axis = cone_axis(tilt, yaw)
+        for _ in range(random.randint(1, 3)):
+            joint = base + axis * (h * random.uniform(0.5, 0.85))
+            add_cone(snag_bm, joint, 0.4, 0.12, random.uniform(4.0, 9.0), sides=4, tilt=(random.uniform(0.9, 1.3), 0.0), yaw=random.uniform(0, math.tau))
+    return (
+        object_from_bmesh("Frostmaw_Rocks", rock_bm, ["M_FrostRock"]),
+        object_from_bmesh("Frostmaw_Snags", snag_bm, ["M_FrostWood"]),
+    )
+
+
+def build_frostmaw():
+    base = build_island_base("Frostmaw_Base", ["M_Snow", "M_IceSheet", "M_IceWet"])
+    ground = _ground_bvh(base)
+    objects = [
+        base,
+        build_ice_holes(ground),  # first: records keep-clear circles
+        build_ice_rims(ground),
+        build_ice_seracs(ground),
+        *build_ice_rocks(ground),
+        *build_dock("Frostmaw_Dock_Planks", "Frostmaw_Dock_Posts", "M_FrostPlank", "M_FrostPost"),
+        build_foam("Frostmaw_Foam", "M_FrostFoam"),
+    ]
+    a = math.radians(DOCK_ANGLE_DEG)
+    start_r = ring_radius(DOCK_START_U, a)
+    print(f"[island_gen] HANDOFF frostmaw: dock start (Roblox rel) X=0 Z={start_r:.0f}, spawn suggestion X=0 Z={start_r - 18:.0f} ground Y~{height_at(0, -(start_r - 18)):.1f}")
+    return objects
+
+
+# ---- Gloomtrench ----------------------------------------------------------
+
+
+def build_gloom_water(ground):
+    """The trench shelf's lightless pools (waters="gloom"): near-black water
+    sunk between the basalt shelves. One object, Gloomtrench_DarkWater."""
+    bm = bmesh.new()
+    LAVA_PONDS.clear()
+    placed = 0
+    for _ in range(120):
+        if placed >= 8:
+            break
+        theta = random.uniform(0, math.tau)
+        u = random.uniform(0.22, 0.62)
+        if _near_dock_corridor(theta, u):
+            continue
+        r = ring_radius(u, theta)
+        x, z = math.cos(theta) * r, math.sin(theta) * r
+        if not _clear_of_ponds(x, z, 10.0):
+            continue
+        ground_h = _drop_to_ground(ground, x, z)
+        if ground_h is None:
+            continue
+        pr = random.uniform(13.0, 22.0)
+        _pool_disc(bm, x, z, pr, ground_h + 0.4, 3.4, salt=x * 0.11 + placed)
+        placed += 1
+    print(f"[island_gen] gloom water: {placed} pools")
+    return object_from_bmesh("Gloomtrench_DarkWater", bm, ["M_DarkWater"])
+
+
+def build_gloom_spires(ground):
+    """The trench-rock skyline: a ring of tall black fins around the crown and
+    clusters of leaning shards over the shelf."""
+    bm = bmesh.new()
+    for i in range(14):
+        theta = (i / 14) * math.tau + random.uniform(-0.14, 0.14)
+        u = random.uniform(0.05, 0.22)
+        r = ring_radius(u, theta)
+        x, z = math.cos(theta) * r, math.sin(theta) * r
+        surface = _drop_to_ground(ground, x, z)
+        if surface is None:
+            continue
+        s = random.uniform(3.5, 7.0)
+        h = s * random.uniform(2.4, 3.8)
+        add_blob(bm, (x, z, surface + h * 0.1), (s, s * 0.55, h), 0.42, 150 + i * 6.3, yaw=random.uniform(0, math.tau))
+    for i in range(26):
+        spot = _interior_spot(ground, 0.24, 0.80, pad=2.5, tries=14)
+        if spot is None:
+            continue
+        x, z, surface = spot
+        s = random.uniform(1.6, 4.6)
+        h = s * random.uniform(1.4, 2.6)
+        add_blob(bm, (x, z, surface - s * 0.2), (s, s * 0.7, h), 0.46, 500 + i * 4.1, yaw=random.uniform(0, math.tau))
+    return object_from_bmesh("Gloomtrench_Spires", bm, ["M_GloomRock"])
+
+
+def build_gloom_glow(ground):
+    """The bioluminescence that carries the island's identity: lantern stalks
+    (a thin stem with a glowing bulb), glow-anemone clusters at the pool rims,
+    and drifting glow kelp fronds. Bulbs/anemones in cyan, kelp in violet -
+    two objects so each keeps one flat glow colour."""
+    stalk_bm = bmesh.new()
+    cyan_bm = bmesh.new()
+    violet_bm = bmesh.new()
+
+    for px, py, pr in list(LAVA_PONDS):
+        for _ in range(random.randint(3, 5)):
+            a = random.uniform(0, math.tau)
+            d = pr + random.uniform(1.0, 4.0)
+            x, z = px + math.cos(a) * d, py + math.sin(a) * d
+            surface = _drop_to_ground(ground, x, z)
+            if surface is None:
+                continue
+            s = random.uniform(0.8, 1.8)
+            add_blob(cyan_bm, (x, z, surface + s * 0.2), (s, s, s * 0.9), 0.35, 60 + x * 0.1, yaw=random.uniform(0, math.tau))
+
+    stalks = 0
+    for _ in range(40):
+        spot = _interior_spot(ground, 0.18, 0.82, pad=1.5, tries=12)
+        if spot is None:
+            continue
+        x, z, surface = spot
+        h = random.uniform(7.0, 14.0)
+        add_post(stalk_bm, x, z, surface - 0.4, surface + h, 0.28, sides=5)
+        add_blob(cyan_bm, (x, z, surface + h + 0.8), (1.2, 1.2, 1.5), 0.3, 70 + stalks * 2.9)
+        stalks += 1
+        if stalks >= 22:
+            break
+
+    for i in range(30):
+        spot = _interior_spot(ground, 0.20, 0.86, pad=1.0, tries=10)
+        if spot is None:
+            continue
+        x, z, surface = spot
+        for _ in range(random.randint(2, 4)):
+            ox, oz = x + random.uniform(-2.0, 2.0), z + random.uniform(-2.0, 2.0)
+            add_cone(violet_bm, (ox, oz, surface - 0.3), 0.35, 0.08, random.uniform(3.2, 6.4), sides=4, tilt=(random.uniform(-0.2, 0.2), random.uniform(-0.2, 0.2)), yaw=random.uniform(0, math.tau))
+
+    return (
+        object_from_bmesh("Gloomtrench_Stalks", stalk_bm, ["M_GloomStalk"]),
+        object_from_bmesh("Gloomtrench_GlowCyan", cyan_bm, ["M_GlowCyan"]),
+        object_from_bmesh("Gloomtrench_GlowViolet", violet_bm, ["M_GlowViolet"]),
+    )
+
+
+def build_gloomtrench():
+    base = build_island_base("Gloomtrench_Base", ["M_GloomRock", "M_GloomSand", "M_GloomWet"])
+    ground = _ground_bvh(base)
+    objects = [
+        base,
+        build_gloom_water(ground),
+        build_gloom_spires(ground),
+        *build_gloom_glow(ground),
+        *build_dock("Gloomtrench_Dock_Planks", "Gloomtrench_Dock_Posts", "M_GloomPlank", "M_GloomPost"),
+        build_foam("Gloomtrench_Foam", "M_GloomFoam"),
+    ]
+    a = math.radians(DOCK_ANGLE_DEG)
+    start_r = ring_radius(DOCK_START_U, a)
+    print(f"[island_gen] HANDOFF gloomtrench: dock start (Roblox rel) X=0 Z={start_r:.0f}, spawn suggestion X=0 Z={start_r - 18:.0f} ground Y~{height_at(0, -(start_r - 18)):.1f}")
+    return objects
+
+
+# ---- Wreckwater -----------------------------------------------------------
+
+
+def build_wreck_bay(ground):
+    """The drowned lagoon at the island's heart (waters="wreck"): one broad
+    sheet of deep-teal bay water over the sunken bowl, plus the entrance
+    channel the rim notch carves toward the dock. One object, Wreckwater_Bay."""
+    bm = bmesh.new()
+    LAVA_PONDS.clear()
+
+    seg = 40
+    points = []
+    for s in range(seg):
+        theta = (s / seg) * math.tau
+        r = ring_radius(0.46, theta) * (1 + 0.05 * math.sin(3 * theta + 0.7) + 0.03 * math.sin(7 * theta))
+        points.append((math.cos(theta) * r, math.sin(theta) * r))
+    add_disc_slab(bm, points, 0.22, 3.0)
+    bay_r = sum(ring_radius(0.46, (s / 24) * math.tau) for s in range(24)) / 24
+    LAVA_PONDS.append((0.0, 0.0, bay_r))  # scatter keeps out of the water
+
+    # The channel: from the bay edge out through the notched rim to the shore
+    # on the dock side, so the lagoon visibly opens to the sea.
+    a = math.radians(DOCK_ANGLE_DEG)
+    d = Vector((math.cos(a), math.sin(a), 0))
+    inner = d * (bay_r * 0.9)
+    outer = d * ring_radius(1.02, a)
+    perp = Vector((-d.y, d.x, 0)) * 9.0
+    a_pt = Vector((inner.x, inner.y, 0.20))
+    b_pt = Vector((outer.x, outer.y, 0.16))
+    add_strip_slab(bm, [a_pt + perp, b_pt + perp], [a_pt - perp, b_pt - perp], 2.6)
+    return object_from_bmesh("Wreckwater_Bay", bm, ["M_BayWater"])
+
+
+def _wreck_hull(wood_bm, glow_bm, cx, cy, yaw, length, beam, deck_h, ghost=False):
+    """One broken galleon: keel slab, two flank walls, an angled bow pair, a
+    stern board, a leaning snapped mast with a yard, and (for the ghost ships)
+    a pale glow strip along the gunwale."""
+    d = Vector((math.cos(yaw), math.sin(yaw), 0))
+    p = Vector((-d.y, d.x, 0))
+    half = length / 2
+    wall_h = random.uniform(4.5, 6.5)
+    # Keel / sunken deck.
+    add_box(wood_bm, (cx, cy, deck_h - 0.6), (length * 0.9, beam * 0.8, 1.2), yaw)
+    # Flank walls.
+    for side in (1, -1):
+        wx = cx + p.x * (beam / 2) * side
+        wy = cy + p.y * (beam / 2) * side
+        add_box(wood_bm, (wx, wy, deck_h + wall_h / 2), (length * random.uniform(0.62, 0.8), 1.0, wall_h), yaw)
+        if ghost:
+            add_box(glow_bm, (wx, wy, deck_h + wall_h + 0.25), (length * 0.6, 0.5, 0.35), yaw)
+    # Bow: two short walls angling to a point.
+    bow = Vector((cx, cy, 0)) + d * half
+    for side in (1, -1):
+        ba = yaw + side * 0.5
+        bd = Vector((math.cos(ba), math.sin(ba), 0))
+        bx = bow.x - bd.x * length * 0.12
+        by = bow.y - bd.y * length * 0.12
+        add_box(wood_bm, (bx, by, deck_h + wall_h * 0.45), (length * 0.26, 0.9, wall_h * 0.9), ba)
+    # Stern board.
+    stern = Vector((cx, cy, 0)) - d * half * 0.86
+    add_box(wood_bm, (stern.x, stern.y, deck_h + wall_h * 0.55), (1.1, beam * 0.9, wall_h * 1.1), yaw)
+    # Snapped mast + yard.
+    mast_h = random.uniform(14.0, 24.0)
+    tilt = (random.uniform(0.08, 0.3), 0.0)
+    m_yaw = yaw + random.uniform(-0.6, 0.6)
+    base = Vector((cx, cy, deck_h - 0.5)) - d * length * 0.1
+    add_cone(wood_bm, base, 0.8, 0.3, mast_h, sides=6, tilt=tilt, yaw=m_yaw)
+    axis = cone_axis(tilt, m_yaw)
+    joint = base + axis * (mast_h * 0.7)
+    add_cone(wood_bm, joint, 0.35, 0.15, random.uniform(7.0, 12.0), sides=4, tilt=(1.35, 0.0), yaw=yaw + random.uniform(0, math.tau))
+
+
+def build_wrecks(ground):
+    """The fleet: hulks foundered in the bay (half-drowned), one heeled on the
+    rim beach, and drift-plank litter. The two ghost ships carry the pale
+    gunwale glow the island is named for."""
+    wood_bm = bmesh.new()
+    glow_bm = bmesh.new()
+
+    bay_r = LAVA_PONDS[0][2] if LAVA_PONDS else 60.0
+    dock_a = math.radians(DOCK_ANGLE_DEG)
+    placed = 0
+    for i in range(10):
+        if placed >= 5:
+            break
+        a = random.uniform(0, math.tau)
+        if abs(((a - dock_a + math.pi) % math.tau) - math.pi) < 0.5:
+            continue  # keep the channel open
+        d = random.uniform(bay_r * 0.25, bay_r * 0.8)
+        x, z = math.cos(a) * d, math.sin(a) * d
+        floor_h = _drop_to_ground(ground, x, z)
+        if floor_h is None:
+            continue
+        deck_h = max(floor_h + 0.8, random.uniform(-1.6, 0.6))  # half-drowned
+        _wreck_hull(wood_bm, glow_bm, x, z, random.uniform(0, math.tau), random.uniform(26.0, 40.0), random.uniform(8.0, 12.0), deck_h, ghost=placed < 2)
+        placed += 1
+
+    # One hulk heeled over on the rim beach.
+    spot = _interior_spot(ground, 0.78, 0.9, pad=2.0, tries=30)
+    if spot is not None:
+        x, z, surface = spot
+        _wreck_hull(wood_bm, glow_bm, x, z, random.uniform(0, math.tau), 30.0, 9.0, surface + 0.6)
+
+    # Drift-plank litter on the rim and beach.
+    for i in range(70):
+        spot = _interior_spot(ground, 0.5, 0.97, pad=0.5, tries=8)
+        if spot is None:
+            continue
+        x, z, surface = spot
+        add_box(wood_bm, (x, z, surface + 0.15), (random.uniform(2.4, 5.0), random.uniform(0.7, 1.2), 0.35), random.uniform(0, math.tau))
+
+    print(f"[island_gen] wrecks: {placed} in the bay + 1 beached")
+    return (
+        object_from_bmesh("Wreckwater_Hulks", wood_bm, ["M_HullWood"]),
+        object_from_bmesh("Wreckwater_GhostGlow", glow_bm, ["M_GhostGlow"]),
+    )
+
+
+def build_wreck_rocks(ground):
+    """Grave-grey sea stacks on the rim + shore boulders."""
+    bm = bmesh.new()
+    for i in range(12):
+        theta = (i / 12) * math.tau + random.uniform(-0.2, 0.2)
+        if abs(((theta - math.radians(DOCK_ANGLE_DEG) + math.pi) % math.tau) - math.pi) < 0.35:
+            continue
+        u = random.uniform(0.55, 0.7)
+        r = ring_radius(u, theta)
+        x, z = math.cos(theta) * r, math.sin(theta) * r
+        surface = _drop_to_ground(ground, x, z)
+        if surface is None:
+            continue
+        s = random.uniform(3.0, 6.0)
+        h = s * random.uniform(1.6, 2.6)
+        add_blob(bm, (x, z, surface + h * 0.05), (s, s * 0.7, h), 0.44, 210 + i * 5.9, yaw=random.uniform(0, math.tau))
+    for i in range(28):
+        spot = _interior_spot(ground, 0.6, 0.96, pad=1.5, tries=10)
+        if spot is None:
+            continue
+        x, z, surface = spot
+        s = random.uniform(1.4, 3.6)
+        add_blob(bm, (x, z, surface - s * 0.3), (s, s * 0.8, s * 0.6), 0.46, 640 + i * 4.3, yaw=random.uniform(0, math.tau))
+    return object_from_bmesh("Wreckwater_Rocks", bm, ["M_GraveRock"])
+
+
+def build_wreckwater():
+    base = build_island_base("Wreckwater_Base", ["M_BayFloor", "M_WreckSand", "M_WreckWet"])
+    ground = _ground_bvh(base)
+    objects = [
+        base,
+        build_wreck_bay(ground),  # first: records the bay keep-clear circle
+        *build_wrecks(ground),
+        build_wreck_rocks(ground),
+        *build_dock("Wreckwater_Dock_Planks", "Wreckwater_Dock_Posts", "M_WreckPlank", "M_WreckPost"),
+        build_foam("Wreckwater_Foam", "M_WreckFoam"),
+    ]
+    a = math.radians(DOCK_ANGLE_DEG)
+    start_r = ring_radius(DOCK_START_U, a)
+    print(f"[island_gen] HANDOFF wreckwater: dock start (Roblox rel) X=0 Z={start_r:.0f}, spawn suggestion X=0 Z={start_r - 18:.0f} ground Y~{height_at(0, -(start_r - 18)):.1f}")
+    return objects
+
+
 # ---------------------------------------------------------------- island config
 #
 # Each entry overrides the shape-state globals for its island (an empty
@@ -1439,7 +2045,7 @@ def build_volcano():
 # Islands to bundle into the one importable pack (assets/island_pack.glb), in
 # order. Adding an island: give it an ISLANDS entry (with a "model" name) and
 # add its id here.
-ISLAND_ORDER = ["tropical", "volcano"]
+ISLAND_ORDER = ["tropical", "volcano", "swamp", "ice", "gloom", "wreck"]
 
 ISLANDS = {
     "tropical": {"model": "Island", "overrides": {}, "build": build_tropical},
@@ -1552,6 +2158,232 @@ ISLANDS = {
             },
         },
         "build": build_volcano,
+    },
+    # ---- Blackmire Fen (revamp island 2). A low, waterlogged peat fen:
+    # barely any rise, lobed muddy coastline, murky pool chains inland
+    # (Swamp_Water - the fishable "swamp" surface), bald-cypress stands,
+    # reed brakes and toppled root snags. The dock is the standard +Z sea
+    # jetty; the ocean off it fishes as plain ocean.
+    "swamp": {
+        "model": "Swamp",
+        "overrides": {
+            "ISLAND_RADIUS": 180,
+            "SEGMENTS": 72,
+            "GRASS_U": 0.66,
+            "RINGS": [0.0, 0.10, 0.20, 0.30, 0.40, 0.52, 0.66, 0.78, 0.88, 0.95, 1.0, 1.09, 1.28],
+            # Flat as standing water allows: the whole interior is ~2-5 studs
+            # up, so the pools sit IN the ground rather than perched on it.
+            "PROFILE": [
+                (0.00, 5.2),
+                (0.25, 4.6),
+                (0.40, 4.0),
+                (0.52, 3.4),
+                (0.66, 2.4),
+                (0.78, 1.6),
+                (0.88, 1.1),
+                (1.00, 0.6),
+                (1.09, -1.8),
+                (1.28, SKIRT_BOTTOM),
+            ],
+            # A heavily lobed, creeky coastline - fingers of mud and water.
+            "COAST_TERMS": [(2, 0.7, 0.13), (3, 2.9, 0.10), (5, 1.6, 0.08), (9, 0.4, 0.045)],
+            "GRASS_TERMS": [(2, 1.1, 0.05), (4, 2.3, 0.04)],
+            "DOCK_ANGLE_DEG": 270,
+            "DOCK_START_U": 0.90,
+            "DOCK_LENGTH": 42.0,
+            "DOCK_WIDTH": 10.0,
+            "DOCK_END_LENGTH": 13.0,
+            "DOCK_END_WIDTH": 20.0,
+            "DOCK_MIN_TOP": 2.4,
+            "DOCK_POST_SPACING": 7.0,
+            "DOCK_POST_BOTTOM": -6.0,
+            "COLORS": {
+                "M_Peat": (0.239, 0.302, 0.196),  # dark waterlogged moss-peat
+                "M_Mud": (0.396, 0.333, 0.235),  # the mud "beach"
+                "M_WetMud": (0.290, 0.247, 0.184),
+                "M_SwampWater": (0.216, 0.302, 0.235),  # opaque murk - you can't see what's biting
+                "M_Cypress": (0.357, 0.278, 0.196),
+                "M_Moss": (0.325, 0.451, 0.243),
+                "M_Reed": (0.545, 0.529, 0.302),
+                "M_RootWood": (0.259, 0.208, 0.157),
+                "M_MudMound": (0.337, 0.294, 0.216),
+                "M_SwampPlank": (0.451, 0.369, 0.251),  # slick, darker planks than the starter's
+                "M_SwampPost": (0.310, 0.251, 0.176),
+                "M_SwampFoam": (0.851, 0.878, 0.831),  # scummy pale rim, not white surf
+            },
+        },
+        "build": build_swamp,
+    },
+    # ---- Frostmaw Reach (revamp island 3). A glacial shelf: a blue serac
+    # ridge at the heart, a flat white ice sheet the player walks - punched
+    # with fixed fishing holes (Frostmaw_IceHoles, the "ice" surface) - and
+    # frost-dark rock breaking through. RIM_FLAT keeps the sheet walkable
+    # while the ridge keeps its crags.
+    "ice": {
+        "model": "Frostmaw",
+        "overrides": {
+            "ISLAND_RADIUS": 230,
+            "SEGMENTS": 72,
+            "GRASS_U": 0.52,
+            "RINGS": [0.0, 0.08, 0.16, 0.26, 0.38, 0.52, 0.64, 0.76, 0.86, 0.94, 1.0, 1.09, 1.28],
+            "PROFILE": [
+                (0.00, 26.0),  # the glacial ridge
+                (0.12, 22.0),
+                (0.26, 14.0),
+                (0.38, 8.6),
+                (0.52, 6.2),  # ridge foot -> the sheet
+                (0.64, 5.4),
+                (0.76, 4.8),
+                (0.86, 3.6),
+                (0.94, 2.2),
+                (1.00, 1.0),
+                (1.09, -1.8),
+                (1.28, SKIRT_BOTTOM),
+            ],
+            # Sheared berg-like coast: long straight-ish faces, few lobes.
+            "COAST_TERMS": [(2, 0.4, 0.10), (3, 1.9, 0.07), (7, 3.3, 0.05)],
+            "GRASS_TERMS": [(2, 0.6, 0.05), (5, 1.4, 0.03)],
+            # Crags on the ridge only; the sheet the player fights on is flat.
+            "CRAG": 7.0,
+            "CRAG_FREQ": 0.03,
+            "CRAG_RADIAL": 0.05,
+            "RIM_FLAT": (0.52, 1.0),
+            "DOCK_ANGLE_DEG": 270,
+            "DOCK_START_U": 0.92,
+            "DOCK_LENGTH": 46.0,
+            "DOCK_WIDTH": 10.0,
+            "DOCK_END_LENGTH": 14.0,
+            "DOCK_END_WIDTH": 20.0,
+            "DOCK_MIN_TOP": 2.4,
+            "DOCK_POST_SPACING": 7.5,
+            "DOCK_POST_BOTTOM": -6.0,
+            "COLORS": {
+                "M_Snow": (0.918, 0.937, 0.957),
+                "M_IceSheet": (0.780, 0.851, 0.902),  # the walked (and fished) shelf
+                "M_IceWet": (0.639, 0.729, 0.812),
+                "M_IceWater": (0.071, 0.129, 0.216),  # the black-blue water in the holes
+                "M_GlacialIce": (0.588, 0.749, 0.878),  # seracs / bergs / hole collars
+                "M_FrostRock": (0.267, 0.290, 0.329),
+                "M_FrostWood": (0.518, 0.494, 0.463),  # bleached dead shore trees
+                "M_FrostPlank": (0.557, 0.478, 0.376),
+                "M_FrostPost": (0.404, 0.337, 0.263),
+                "M_FrostFoam": (0.941, 0.965, 0.980),
+            },
+        },
+        "build": build_frostmaw,
+    },
+    # ---- Gloomtrench (revamp island 5). The lip of an abyssal trench hauled
+    # above the waterline: near-black basalt shelves, lightless pools
+    # (Gloomtrench_DarkWater, the "gloom" surface), and the bioluminescence
+    # that is the island's whole identity - lantern stalks, glow anemones,
+    # violet kelp. The glow objects are flat bright colours in the mesh; if a
+    # Neon override is wanted later it's one WorldService MESH_MATERIAL entry.
+    "gloom": {
+        "model": "Gloomtrench",
+        "overrides": {
+            "ISLAND_RADIUS": 200,
+            "SEGMENTS": 72,
+            "GRASS_U": 0.60,
+            "RINGS": [0.0, 0.10, 0.20, 0.32, 0.46, 0.60, 0.72, 0.82, 0.90, 0.96, 1.0, 1.09, 1.28],
+            "PROFILE": [
+                (0.00, 16.0),
+                (0.20, 12.0),
+                (0.32, 8.6),
+                (0.46, 6.0),
+                (0.60, 4.2),
+                (0.72, 3.0),
+                (0.82, 2.2),
+                (0.90, 1.5),
+                (1.00, 0.7),
+                (1.09, -1.8),
+                (1.28, SKIRT_BOTTOM),
+            ],
+            "COAST_TERMS": [(2, 1.7, 0.11), (4, 0.6, 0.08), (6, 2.8, 0.06)],
+            "GRASS_TERMS": [(3, 0.8, 0.05)],
+            "CRAG": 4.5,
+            "CRAG_FREQ": 0.04,
+            "CRAG_RADIAL": 0.06,
+            "RIM_FLAT": (0.46, 0.96),  # the walkable shelf band
+            "DOCK_ANGLE_DEG": 270,
+            "DOCK_START_U": 0.90,
+            "DOCK_LENGTH": 44.0,
+            "DOCK_WIDTH": 10.0,
+            "DOCK_END_LENGTH": 13.0,
+            "DOCK_END_WIDTH": 20.0,
+            "DOCK_MIN_TOP": 2.4,
+            "DOCK_POST_SPACING": 7.0,
+            "DOCK_POST_BOTTOM": -6.0,
+            "COLORS": {
+                "M_GloomRock": (0.129, 0.125, 0.165),  # near-black basalt
+                "M_GloomSand": (0.204, 0.196, 0.243),  # ashen violet-grey shore
+                "M_GloomWet": (0.157, 0.153, 0.196),
+                "M_DarkWater": (0.024, 0.043, 0.086),  # all but black
+                "M_GloomStalk": (0.231, 0.243, 0.298),
+                "M_GlowCyan": (0.290, 0.937, 0.878),  # the lantern bulbs / anemones
+                "M_GlowViolet": (0.663, 0.416, 0.937),  # the kelp fronds
+                "M_GloomPlank": (0.278, 0.259, 0.322),
+                "M_GloomPost": (0.196, 0.180, 0.235),
+                "M_GloomFoam": (0.671, 0.702, 0.780),
+            },
+        },
+        "build": build_gloomtrench,
+    },
+    # ---- Wreckwater (revamp island 6). A drowned lagoon ringed by a grassy
+    # grave-rim: the bay (Wreckwater_Bay, the "wreck" surface) fills the
+    # sunken bowl, foundered hulks stand half out of it, and a notch in the
+    # rim opens the harbor mouth toward the dock so the lagoon reads as open
+    # to the sea. Ghost ships carry a pale gunwale glow.
+    "wreck": {
+        "model": "Wreckwater",
+        "overrides": {
+            "ISLAND_RADIUS": 210,
+            "SEGMENTS": 72,
+            "GRASS_U": 0.62,
+            "RINGS": [0.0, 0.12, 0.24, 0.34, 0.42, 0.52, 0.62, 0.75, 0.85, 0.93, 1.0, 1.09, 1.28],
+            "PROFILE": [
+                (0.00, -5.5),  # the drowned bowl
+                (0.24, -4.6),
+                (0.34, -2.8),
+                (0.42, -0.8),
+                (0.52, 3.2),  # the rim rises
+                (0.62, 4.6),
+                (0.75, 3.2),
+                (0.85, 1.9),
+                (0.93, 1.2),
+                (1.00, 0.7),
+                (1.09, -1.8),
+                (1.28, SKIRT_BOTTOM),
+            ],
+            "COAST_TERMS": [(2, 2.1, 0.12), (3, 0.3, 0.08), (5, 1.8, 0.06)],
+            "GRASS_TERMS": [(2, 1.5, 0.05), (4, 0.2, 0.04)],
+            # The harbor mouth: one notch carved through the rim on the dock
+            # side, deep enough to drop the 4.6-stud rim below the waterline.
+            "NOTCH_BAND": (0.42, 0.75),
+            "NOTCHES": [(math.radians(270), math.radians(8), 8.5)],
+            "DOCK_ANGLE_DEG": 270,
+            "DOCK_START_U": 0.90,
+            "DOCK_LENGTH": 46.0,
+            "DOCK_WIDTH": 10.0,
+            "DOCK_END_LENGTH": 14.0,
+            "DOCK_END_WIDTH": 20.0,
+            "DOCK_MIN_TOP": 2.4,
+            "DOCK_POST_SPACING": 7.0,
+            "DOCK_POST_BOTTOM": -6.0,
+            "COLORS": {
+                "M_BayFloor": (0.235, 0.243, 0.235),  # drowned grey-green silt
+                "M_WreckSand": (0.667, 0.639, 0.557),  # bone-grey sand
+                "M_WreckWet": (0.518, 0.494, 0.427),
+                "M_BayWater": (0.086, 0.196, 0.216),  # deep still teal
+                "M_HullWood": (0.216, 0.180, 0.145),  # rotten black-brown timbers
+                "M_GhostGlow": (0.678, 0.945, 0.769),  # the pale sea-fire on the ghost ships
+                "M_GraveRock": (0.353, 0.361, 0.376),
+                "M_WreckGrass": (0.443, 0.502, 0.373),  # dull sage rim grass
+                "M_WreckPlank": (0.475, 0.404, 0.310),
+                "M_WreckPost": (0.329, 0.271, 0.204),
+                "M_WreckFoam": (0.882, 0.906, 0.894),
+            },
+        },
+        "build": build_wreckwater,
     },
 }
 
