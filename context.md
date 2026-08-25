@@ -23,8 +23,13 @@ The plan's slice order was island → rod → fishing → everything the catch
 leads to. Slices 1–5 are built and most of 6–8 is in place in reduced form
 (see "Where things stand"); the plan has been amended in place for the
 design pivots listed under "Design decisions". Persistence (Slice 9) landed
-2026-08-25 as `DataService`; the game is now mid-way through the 7-island
-progression revamp (`docs/revamp-plan.md` — the master design, four sessions).
+2026-08-25 as `DataService`; the 7-island progression revamp
+(`docs/revamp-plan.md` — the master design) was then **completed in full
+overnight 2026-08-25→26 by five concurrent sessions** — all seven islands,
+all seven bosses and hearts, the ranged engine, the boat, spawner/raids/
+events, and the Kraken finale are in the tree. What remains is the USER's
+morning pass: the batched Studio imports (every new `.glb` → `Assets.rbxm`)
+and the first in-Studio review of everything marked unreviewed.
 
 ## Working style — read this before starting any slice
 
@@ -91,6 +96,10 @@ between sessions.
 | Persistence | **built 2026-08-25**, unreviewed | `DataService` (first in ORDER): UpdateAsync session locking, 60s autosave, BindToClose; slices from Progression/Inventory/Material/Bait services + `Cleared_*`/`Heart_*` attributes |
 | **Drivable boat + tier ladder** (revamp S3, 2026-08-25) | built, **unreviewed** | `Boats.luau` 6 tiers, `BoatModel` (procedural + BoatPack mesh path, TrophyShelf mounts), `BoatService`/`BoatController` (R to summon, driver-owned physics, seaworthiness DoT), Boat tab in `C` menu, `mayEnter` travel gates + containment sweep — see "The boat" |
 | **Ambient spawner + raids + island events** (revamp S3, 2026-08-25) | built, **unreviewed** | `SpawnerService`/`RaidService`/`RaidHudController`/`EruptionService` + `Hazards` extraction + `noLinger`; rosters on the tropical/swamp/volcano Islands entries — see "Spawner, raids, island events" |
+| **Ranged engine + flyers + Blackmire Fen** (revamp S2, 2026-08-25) | built, **unreviewed / imports pending** | server-authoritative hitscan (`ShotAim`, `RequestShoot`/`ShotFired`, token bucket + mags/reloads), `ranged` Weapon block, `RangedController`/`RangedFxController`, `flyer`+`skythief` archetypes, swamp kit + Old Gnashroot; the final 6-island `Islands.order` |
+| **Islands 3/5/6 + volcano final re-gate** (revamp S4, 2026-08-26) | built, **unreviewed / imports pending** | Frostmaw Reach (`ice`), Gloomtrench (`gloom`), Wreckwater (`wreck`): full 5/5/3/4 kits, 38 creatures + Rimefang/Noctyss/Admiral Wrack, ambient+raid rosters; volcano re-gated L22-28 rewards ×6, Pyrelisk 40k/gate 28 — see "The S4 islands" |
+| **The Maelstrom + the Kraken** (revamp S4, 2026-08-26) | built, **unreviewed** | procedural site (no mesh), `Maelstrom_Water` roster, six-hearts+final-boat gates, Kraken 130k with tentacle ring/exposure windows/`rangedOnly` head, finale banner — see "The finale" |
+| **Trophy Hall + boat shelf + weather** (revamp S4, 2026-08-26) | built, **unreviewed** | `TrophyController` (H), `TrophyShelfController` (heart orbs on the boat), `WeatherService`/`WeatherController` (ice blizzards + gloom perpetual dark w/ lantern rods) |
 | More archetypes (charger/spitter), style/juggle, arena | not started | see Known gaps |
 
 ### Manual Studio steps — check these first
@@ -431,10 +440,87 @@ make sure users can't leave the rim and the lava itself."
   `WorldEvent` remote ({ kind, islandId, active }), client fog/snow +
   spawner flyer bias; the gloom island's perpetual dark is client-only (no
   remote — standing there IS the event).
-- **S2/S4 status**: the ranged engine, flyers and Blackmire Fen (S2) are
-  committed; Frostmaw/Gloomtrench/Wreckwater, the volcano's final re-gate,
-  the Maelstrom and the Kraken (S4) are landing in parallel sessions — the
-  ledger of record is `docs/revamp-plan.md`, don't duplicate it here.
+### The S4 islands: Frostmaw Reach, Gloomtrench, Wreckwater (2026-08-26, unreviewed)
+
+All three shipped as pure data on the S2/S3 machinery — no new engine for
+the islands themselves. Numbers and rosters follow `docs/revamp-plan.md`'s
+island tables verbatim; the ledger of record stays that file.
+
+- **Fishable surfaces** (the `World.FISHABLE_NAMES`/`WATERS_BY_PART`
+  contract, one object each, never split): `Frostmaw_IceHoles` → `"ice"`
+  (fixed pre-cut holes in the sheet — drilling/refreezing deliberately NOT
+  built), `Gloomtrench_DarkWater` → `"gloom"`, `Wreckwater_Bay` →
+  `"wreck"`. The sea off every dock stays plain ocean.
+- **Kits**: 5 rods / 5 weapons / 3 baits / 4 signature materials each, gates
+  at L15-21 / L29-35 / L36-42, rewards ×3.5 / ×10 / ×16. Each Legendary
+  rod+weapon is heart-gated (`requiresHearts`); each island's third bait
+  summons its boss (Glacier's Call / Trench Mother's Call / Admiral's
+  Summons). **Every rod sits on the RodPack's shared 7.0-length/0.95-grip
+  frame** — the generator builds all variants on one frame, so a row that
+  deviates puts the mesh wrong in the hand and breaks the tip tracker.
+- **Bosses**: Rimefang (26k, dives UNDER the ice sheet — weighted double in
+  phase 2), Noctyss (60k, opens with the pull — her lure is the only light;
+  enrage douses it client-side), Admiral Wrack (85k, brood = a boarding
+  party, weighted double; volley is a 7-glob broadside). All three arenas
+  sit off the dock end (the Pyrelisk stable-spot precedent — inland pools
+  move with every mesh regen) except Wrack's, in the island's stable
+  central bay at offset (0,0,-20).
+- **Ambient + raid rosters** ride the Islands entries (5a's S3 shape);
+  Wreckwater's raids are the plan's boarding raids.
+- **Volcano final re-gate**: rods L22/23/25/26/28, baits L23/25/28, kept
+  melee pair re-damaged to sit with the guns, creature healths ×2.7 (≈×6
+  the island-1 baseline), rewards ×6, Phoenix 6k HP as the Legendary chase,
+  Pyrelisk 40k HP / gate L28. The interim-band comments are struck.
+- **Weather** (see the S3 bullet above for the plumbing): blizzards bias
+  the ice spawner toward `flyer`+`skythief` ×3; the gloom dark gives the
+  character a personal lamp, and holding a lantern rod (`lanternline_rod` /
+  `gloomheart_rod`) doubles both the lamp and the fog distance —
+  the island's light-management mechanic in its simplest playable form.
+
+### The finale: the Maelstrom and the Kraken (2026-08-26, unreviewed)
+
+- **The site** (`WorldService.buildMaelstromSite`): `Islands.items
+  .maelstrom` is `site = true`, OUT of `Islands.order` (the linear
+  `Cleared_` chain never sees it), and has NO mesh — the arena is parts,
+  deterministically seeded: the `Maelstrom_Water` whirlpool disc
+  (fishable, `"maelstrom"` roster), nine jagged platforms at r 38-52
+  (inside tentacle reach by design), the +Z spawn platform, outer spires.
+  It is marked `placed` so the shared ocean spans to (18000,0,0) and 5a's
+  containment sweep doesn't eject the raid.
+- **Gates, three layers deep**: the travel menu veils the site card until
+  all six `Heart_*` attrs (IslandsController); `WorldService.mayEnter`'s
+  site branch demands the six hearts AND the final boat tier (Stormbreaker
+  Keel); Kraken's Call itself is L48 + `requiresHearts` all six (checked,
+  never spent), and `BossService.qualifies` re-checks `gate.hearts` at the
+  summon. `Tuning.Rarity` never rolls the kraken rows (rarity "Boss").
+- **The fight** (engine in `CreatureService`): the Bosses entry's `parts`
+  block plants a ring of 6 `kraken_tentacle` rows (`archetype "tentacle"` —
+  planted, swaying, slamming a telegraphed 12-stud ring; knockback/launch
+  0; `noLinger` + suppressed drops + 0.5 bounty) as the boss finishes
+  rising. The head is `rangedOnly` (the MELEE target pick passes
+  `inRange`'s new `opts.skipRangedOnly`; guns/`raycastNearest` still
+  connect) and `vulnerableWhen = "partsDown"` (`damage()` refuses while
+  `partsAlive > 0`; Brine Rot's `ignoreUntargetable` burns through, same
+  ruling as a dive). `kill()` counts the ring down and fires `"exposed"`
+  on the last arm ("THE MAW IS EXPOSED" card); `parts.regrow` (24s) later
+  the ring re-plants with a `"regrow"` card; a dying boss takes its
+  surviving arms with it. Killing the head sets `Heart_kraken` +
+  `Cleared_maelstrom` and fires `bossDown` with `finale = true` — the
+  gold "THE MAELSTROM FALLS SILENT" card, no next-island line (the
+  `unlocks` lookup is nil-safe for out-of-order islands).
+- **Trophy Hall** (`TrophyController`, `H` / the bottom-left HALL button):
+  one card per boss in saga order (derived from `Islands.order` + gate
+  level, so the Kraken appended itself when its entry landed), lit heart
+  tile vs dimmed silhouette off the `Heart_*` attrs, heart-count subtitle.
+  Pure reader, no remotes. **Boat shelf** (`TrophyShelfController`):
+  decorates any boat's `TrophyShelf` mounts (`HeartMount1..6`, bow→stern)
+  with neon heart orbs for the boat OWNER's hearts (`OwnerUserId` attr,
+  stamped by `BoatService.summon`). The kraken heart has no mount — it IS
+  the run's end.
+- **Deliberate scope calls**: no maelstrom ambient/raid blocks (the finale
+  stays a boss site); the whirlpool doesn't spin (a LavaController-style
+  swirl is the one cosmetic TODO); tentacle ring/aggro numbers are first
+  guesses — expect a tuning round.
 
 ### First person, arms, and the viewmodels
 
@@ -1948,7 +2034,10 @@ src/
       CreatureVfxController.luau   breach/land/flop effects off creature attributes
       CreatureEventController.luau enemy states off Dashing/Exposed/Buried/Open/Charging/Enraged attrs + moments off CreatureEvent (spit glob, explosion, emerge, snap, steal, pulse,
                                    + the boss's bossRise/telegraph/bossSnap/sweep/slam/pull (VectorForce on the local root)/spine/spineHit/summon/bossDive/enrage/bossDown)
-      BossHudController.luau       top-centre boss name + health bar off BossName/Health/Enraged; rise + ISLAND CLEARED cards off CreatureEvent
+      BossHudController.luau       top-centre boss name + health bar off BossName/Health/Enraged; rise/CLEARED/EXPOSED/REGROW/finale cards off CreatureEvent
+      TrophyController.luau        (S4) H / HALL button: the Trophy Hall - one card per boss in saga order off the Heart_* attributes
+      TrophyShelfController.luau   (S4) decorates any boat's TrophyShelf HeartMount1..6 with the owner's heart orbs (OwnerUserId attr)
+      WeatherController.luau       (S4) ice blizzard fog/snow off WorldEvent + the gloom island's perpetual dark / personal lamp (lantern rods double it)
       BoatController.luau          (S3) R/touch-button summon; drives the owner's hull (Boat_Move/Boat_Align, Y held at WATER_Y); BoatMessage banners
       RaidHudController.luau       (S3) raid countdown/wave/remaining line + cards off RaidState, filtered to the local island (Islands.islandAt)
       EquipController.luau         1 (rod) / 2 (weapon) hotkeys → RequestEquip
@@ -2032,11 +2121,11 @@ The pre-reset build was mined on the old Windows machine; its path there
   the reel grade (the multipliers apply; the visible state doesn't).
   Creatures despawn after `LINGER` (30 s) of not being fought — the timer
   resets on every hit, so nothing vanishes mid-fight (bosses never linger).
-- **Bosses:** the revamp is filling the whole ladder — Brinejaw, Pyrelisk
-  and Old Gnashroot are in, with Rimefang/Noctyss/Admiral Wrack/the Kraken
-  landing in the parallel S4 session (`docs/revamp-plan.md` is the ledger).
-  Still true for all of them: attack numbers untuned, no death animation,
-  no per-player "what you're missing" readout for the gate.
+- **Bosses:** the full ladder is in — Brinejaw, Old Gnashroot, Rimefang,
+  Pyrelisk, Noctyss, Admiral Wrack and the Kraken, each bait-summoned, each
+  leaving its heart. Still true for all seven: attack numbers untuned, no
+  death animation, no per-player "what you're missing" readout for the
+  gate.
 - **Weapons / targeting:** two craftable weapons exist (see Combat); more
   are a row each. Still proximity targeting — the plan's screen-space
   targeting is unbuilt. Hit VFX/SFX are shared across weapons (a heavier
