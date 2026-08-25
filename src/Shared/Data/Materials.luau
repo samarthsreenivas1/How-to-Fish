@@ -339,6 +339,48 @@ Materials.items.wraith_essence = {
 	color = Color3.fromRGB(160, 255, 210),
 }
 
+-- ============================================================ Materials
+
+Materials.items.storm_glass = {
+	id = "storm_glass",
+	name = "Storm Glass",
+	description = "Sea-glass fused by lightning strikes. It hums before thunder.",
+	tier = "rare",
+	rarity = "Uncommon",
+	icon = "",
+	color = Color3.fromRGB(140, 190, 230),
+}
+
+Materials.items.riptide_scale = {
+	id = "riptide_scale",
+	name = "Riptide Scale",
+	description = "A scale off something that swims AGAINST the maelstrom, for fun.",
+	tier = "rare",
+	rarity = "Uncommon",
+	icon = "",
+	color = Color3.fromRGB(90, 150, 190),
+}
+
+Materials.items.thunder_pearl = {
+	id = "thunder_pearl",
+	name = "Thunder Pearl",
+	description = "A pearl grown around a trapped spark. It jumps in your hand.",
+	tier = "rare",
+	rarity = "Rare",
+	icon = "",
+	color = Color3.fromRGB(220, 230, 255),
+}
+
+Materials.items.maelstrom_core = {
+	id = "maelstrom_core",
+	name = "Maelstrom Core",
+	description = "A knot of the storm itself, still turning. Do not stop watching it.",
+	tier = "rare",
+	rarity = "Epic",
+	icon = "",
+	color = Color3.fromRGB(90, 130, 255),
+}
+
 -- Stable display order for the HUD / crafting list (table iteration order
 -- isn't guaranteed). Basic first, then rare, then the creature drops by island.
 Materials.order = {
@@ -370,6 +412,10 @@ Materials.order = {
 	"tarnished_doubloon",
 	"spectral_sailcloth",
 	"wraith_essence",
+	"storm_glass",
+	"riptide_scale",
+	"thunder_pearl",
+	"maelstrom_core",
 }
 
 return Materials

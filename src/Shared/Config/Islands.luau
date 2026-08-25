@@ -142,6 +142,34 @@ Islands.items = {
 		radius = 230,
 		spawn = Vector3.new(6000, 5, 174), -- X/Z: shore before the dock (planks run Z=192..238); Y is the probe's fallback
 		unlockLevel = 15,
+		boss = "rimefang",
+		ambient = {
+			rows = {
+				{ id = "frostbite_pup", weight = 4 },
+				{ id = "iceshard_crab", weight = 3 },
+				{ id = "hailfin_skua", weight = 3 },
+				{ id = "aurora_jelly", weight = 2 },
+				{ id = "frozen_mariner", weight = 2 },
+				{ id = "glacial_lurker", weight = 1 },
+				{ id = "icevein_pike", weight = 1 },
+			},
+			maxAlive = 7,
+			interval = 6,
+		},
+		raid = {
+			interval = { 600, 900 },
+			announce = 45,
+			waves = {
+				{ { id = "frostbite_pup", count = 4 }, { id = "iceshard_crab", count = 2 } },
+				{ { id = "hailfin_skua", count = 3 }, { id = "frozen_mariner", count = 2 } },
+				{
+					{ id = "icevein_pike", count = 2 },
+					{ id = "blizzard_wraith", count = 2 },
+					{ id = "glacial_lurker", count = 2 },
+				},
+			},
+			reward = { coins = { 700, 1000 }, xp = 550 },
+		},
 	},
 
 	-- Ashfall Caldera - FINAL slot 4 (L22-28; revamp Session 2 moved it from
@@ -210,6 +238,34 @@ Islands.items = {
 		radius = 200,
 		spawn = Vector3.new(12000, 4, 154), -- X/Z: shore before the dock (planks run Z=172..216); Y is the probe's fallback
 		unlockLevel = 29,
+		boss = "noctyss",
+		ambient = {
+			rows = {
+				{ id = "trench_skitterer", weight = 4 },
+				{ id = "gulper_eel", weight = 3 },
+				{ id = "flashbulb_squid", weight = 3 },
+				{ id = "vampire_squid", weight = 2 },
+				{ id = "pressure_crab", weight = 2 },
+				{ id = "lanternjaw_angler", weight = 1 },
+				{ id = "silt_stalker", weight = 1 },
+			},
+			maxAlive = 7,
+			interval = 6,
+		},
+		raid = {
+			interval = { 600, 900 },
+			announce = 45,
+			waves = {
+				{ { id = "trench_skitterer", count = 4 }, { id = "gulper_eel", count = 2 } },
+				{ { id = "flashbulb_squid", count = 3 }, { id = "pressure_crab", count = 2 } },
+				{
+					{ id = "void_ray", count = 2 },
+					{ id = "silt_stalker", count = 2 },
+					{ id = "vampire_squid", count = 2 },
+				},
+			},
+			reward = { coins = { 2000, 2800 }, xp = 1400 },
+		},
 	},
 
 	-- Wreckwater (slot 6, L36-42). Skeleton: b8 fills the boss
@@ -222,6 +278,53 @@ Islands.items = {
 		radius = 210,
 		spawn = Vector3.new(15000, 4, 167), -- X/Z: shore before the dock (planks run Z=185..231); Y is the probe's fallback
 		unlockLevel = 36,
+		boss = "admiral_wrack",
+		ambient = {
+			rows = {
+				{ id = "cannonball_crab", weight = 4 },
+				{ id = "rigging_wraith", weight = 3 },
+				{ id = "drowned_boatswain", weight = 3 },
+				{ id = "plunder_sprite", weight = 2 },
+				{ id = "phantom_moray", weight = 2 },
+				{ id = "cursed_chest", weight = 1 },
+				{ id = "wailing_gunner", weight = 1 },
+			},
+			maxAlive = 8,
+			interval = 6,
+		},
+		-- BOARDING raids - the island's signature: the fleet's dead come over
+		-- the rail in waves.
+		raid = {
+			interval = { 540, 840 },
+			announce = 45,
+			waves = {
+				{ { id = "drowned_boatswain", count = 3 }, { id = "cannonball_crab", count = 3 } },
+				{ { id = "rigging_wraith", count = 3 }, { id = "wailing_gunner", count = 2 } },
+				{
+					{ id = "phantom_moray", count = 2 },
+					{ id = "ghostfire_jelly", count = 2 },
+					{ id = "drowned_boatswain", count = 2 },
+				},
+			},
+			reward = { coins = { 3200, 4500 }, xp = 2200 },
+		},
+	},
+
+	-- The Maelstrom (finale SITE, L43-50): not an island and not in
+	-- Islands.order - the linear Cleared_ chain skips it, the travel menu
+	-- veils it until all six island hearts are in hand, and WorldService
+	-- builds it procedurally (site = true -> no mesh; buildMaelstromSite).
+	-- Casting into its whirlpool (Maelstrom_Water -> waters "maelstrom")
+	-- rolls the storm roster; Kraken's Call summons the Maw itself.
+	maelstrom = {
+		name = "The Maelstrom",
+		blurb = "The storm at the end of the sea. It is waiting for you.",
+		site = true,
+		worldPosition = Vector3.new(18000, 0, 0),
+		radius = 260,
+		spawn = Vector3.new(18000, 6, 44), -- the big rock platform on +Z (buildMaelstromSite)
+		unlockLevel = 43,
+		boss = "kraken",
 	},
 }
 

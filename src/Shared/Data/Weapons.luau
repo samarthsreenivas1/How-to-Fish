@@ -1277,6 +1277,179 @@ Weapons.items.admirals_saber = {
 	},
 }
 
+-- ============================================================ Weapons
+
+Weapons.items.galecleaver = {
+	id = "galecleaver",
+	name = "Galecleaver",
+	description = "A broad blade that swings with the wind behind it, whichever way you face.",
+	rarity = "Uncommon",
+	icon = "",
+	damage = { 118, 158 },
+	cooldown = 0.45,
+	reach = 15,
+	knockback = 18,
+	swing = "chop",
+	model = {
+		shape = "club",
+		model = "WeaponPack",
+		variant = "Galecleaver",
+		length = 3.8,
+		grip = 0.7,
+		color = Color3.fromRGB(110, 124, 140),
+		accent = Color3.fromRGB(200, 214, 228),
+		wrap = Color3.fromRGB(76, 86, 100),
+	},
+	recipe = {
+		requiresLevel = 43,
+		coins = 13000,
+		materials = { storm_glass = 12, riptide_scale = 10, bog_iron = 12 },
+	},
+}
+
+Weapons.items.cyclone_assault_rifle = {
+	id = "cyclone_assault_rifle",
+	name = "Cyclone Assault Rifle",
+	description = "The storm taught someone automatic fire, and this is what they built. It does not stop to think.",
+	rarity = "Rare",
+	icon = "",
+	damage = { 34, 46 },
+	cooldown = 0.125,
+	reach = 14,
+	knockback = 1,
+	model = {
+		shape = "gun",
+		model = "WeaponPack",
+		variant = "CycloneRifle",
+		length = 3.3,
+		grip = 0.85,
+		color = Color3.fromRGB(76, 86, 104),
+		accent = Color3.fromRGB(140, 200, 255),
+		wrap = Color3.fromRGB(54, 62, 78),
+	},
+	ranged = {
+		projectileSpeed = 340,
+		range = 130,
+		fireMode = "auto",
+		magazine = 30,
+		reloadTime = 2.0,
+	},
+	recipe = {
+		requiresLevel = 44,
+		coins = 17000,
+		materials = { storm_glass = 12, riptide_scale = 12, bog_iron = 14 },
+	},
+}
+
+Weapons.items.thunderhead_hand_cannon = {
+	id = "thunderhead_hand_cannon",
+	name = "Thunderhead Hand Cannon",
+	description = "Five chambers, each loaded with a small argument about thunder. It wins all five.",
+	rarity = "Rare",
+	icon = "",
+	damage = { 210, 280 },
+	cooldown = 0.75,
+	reach = 14,
+	knockback = 4,
+	model = {
+		shape = "gun",
+		model = "WeaponPack",
+		variant = "ThunderheadCannon",
+		length = 2.0,
+		grip = 0.5,
+		color = Color3.fromRGB(70, 80, 100),
+		accent = Color3.fromRGB(220, 230, 255),
+		wrap = Color3.fromRGB(50, 58, 74),
+		glow = Color3.fromRGB(220, 230, 255),
+		neon = { "Weapon_Glow" },
+	},
+	ranged = {
+		projectileSpeed = 360,
+		range = 120,
+		fireMode = "single",
+		magazine = 5,
+		reloadTime = 2.4,
+	},
+	recipe = {
+		requiresLevel = 46,
+		coins = 24000,
+		materials = { thunder_pearl = 6, storm_glass = 14, bog_iron = 12 },
+	},
+}
+
+Weapons.items.stormlance = {
+	id = "stormlance",
+	name = "Stormlance",
+	description = "A lance with a live current down the haft. What it wounds keeps burning with the charge.",
+	rarity = "Epic",
+	icon = "",
+	damage = { 165, 220 },
+	cooldown = 0.45,
+	reach = 16,
+	knockback = 16,
+	swing = "slash",
+	model = {
+		shape = "blade",
+		model = "WeaponPack",
+		variant = "Stormlance",
+		length = 4.6,
+		grip = 0.9,
+		color = Color3.fromRGB(90, 110, 150),
+		accent = Color3.fromRGB(220, 230, 255),
+		wrap = Color3.fromRGB(62, 76, 104),
+		glow = Color3.fromRGB(140, 200, 255),
+		neon = { "Weapon_Glow" },
+	},
+	recipe = {
+		requiresLevel = 47,
+		coins = 32000,
+		materials = { maelstrom_core = 5, thunder_pearl = 8, riptide_scale = 12 },
+	},
+	perk = {
+		id = "static_charge",
+		name = "Static Charge",
+		description = "The current stays in the wound, burning on for seconds after every hit.",
+		poison = { damage = 60, duration = 4 },
+	},
+}
+
+Weapons.items.krakenfang = {
+	id = "krakenfang",
+	name = "Krakenfang",
+	description = "A fang of the Maw itself, still hungry. Every cut feeds you what it takes - it is the last blade the sea will ever owe you.",
+	rarity = "Legendary",
+	icon = "",
+	damage = { 195, 262 },
+	cooldown = 0.42,
+	reach = 16,
+	knockback = 18,
+	swing = "slash",
+	model = {
+		shape = "blade",
+		model = "WeaponPack",
+		variant = "Krakenfang",
+		length = 4.4,
+		grip = 0.75,
+		color = Color3.fromRGB(60, 44, 84),
+		accent = Color3.fromRGB(220, 210, 240),
+		wrap = Color3.fromRGB(44, 34, 60),
+		glow = Color3.fromRGB(150, 120, 255),
+		neon = { "Weapon_Glow" },
+	},
+	recipe = {
+		requiresLevel = 50,
+		coins = 55000,
+		materials = { maelstrom_core = 8, thunder_pearl = 10, riptide_scale = 14 },
+		requiresHearts = { "kraken" },
+	},
+	perk = {
+		id = "devour_the_storm",
+		name = "Devour the Storm",
+		description = "The fang still feeds - every cut heals you a share of what it takes.",
+		lifesteal = true,
+	},
+}
+
 -- Stable display order for the inventory / crafting menus (table iteration
 -- order isn't guaranteed). Starter first, then by island and level gate.
 Weapons.order = {
@@ -1311,6 +1484,11 @@ Weapons.order = {
 	"phantom_repeater",
 	"cutlass_of_the_fleet",
 	"admirals_saber",
+	"galecleaver",
+	"cyclone_assault_rifle",
+	"thunderhead_hand_cannon",
+	"stormlance",
+	"krakenfang",
 }
 
 -- Every player starts with (and can't lose) this one.

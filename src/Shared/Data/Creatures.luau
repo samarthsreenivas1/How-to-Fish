@@ -2188,6 +2188,318 @@ Creatures.items.admiral_wrack = {
 	},
 }
 
+-- ============================================================ Creatures (13 + tentacle + boss)
+
+Creatures.items.squall_sprat = {
+	id = "squall_sprat",
+	name = "Squall Sprat",
+	rarity = "Common",
+	archetype = "flopper",
+	health = 1900,
+	waters = "maelstrom",
+	rewards = { coins = { 100, 200 }, xp = 300 },
+	drops = { materials = { storm_glass = { 1, 2 } } },
+	body = {
+		model = "FishPack",
+		species = "SquallSprat",
+		scale = 0.65,
+		color = Color3.fromRGB(150, 176, 196),
+		finColor = Color3.fromRGB(110, 134, 156),
+		markColor = Color3.fromRGB(220, 235, 246),
+	},
+}
+
+Creatures.items.rainfin_mackerel = {
+	id = "rainfin_mackerel",
+	name = "Rainfin Mackerel",
+	rarity = "Common",
+	archetype = "flopper",
+	health = 2000,
+	waters = "maelstrom",
+	rewards = { coins = { 100, 200 }, xp = 300 },
+	drops = { materials = { storm_glass = { 1, 2 } } },
+	body = {
+		model = "FishPack",
+		species = "RainfinMackerel",
+		scale = 0.85,
+		color = Color3.fromRGB(96, 130, 160),
+		finColor = Color3.fromRGB(160, 200, 230),
+		markColor = Color3.fromRGB(50, 70, 96),
+	},
+}
+
+Creatures.items.foamchaser_mullet = {
+	id = "foamchaser_mullet",
+	name = "Foamchaser Mullet",
+	rarity = "Common",
+	archetype = "flopper",
+	health = 2100,
+	waters = "maelstrom",
+	rewards = { coins = { 100, 200 }, xp = 300 },
+	drops = { materials = { riptide_scale = { 1, 2 } } },
+	body = {
+		model = "FishPack",
+		species = "FoamchaserMullet",
+		scale = 0.8,
+		color = Color3.fromRGB(176, 190, 198),
+		finColor = Color3.fromRGB(220, 232, 238),
+		markColor = Color3.fromRGB(130, 146, 158),
+	},
+}
+
+Creatures.items.stormpetrel = {
+	id = "stormpetrel",
+	name = "Stormpetrel",
+	rarity = "Uncommon",
+	archetype = "flyer",
+	health = 4600,
+	waters = "maelstrom",
+	rewards = { coins = { 300, 500 }, xp = 875 },
+	drops = { materials = { storm_glass = { 2, 3 } } },
+	body = {
+		model = "CreaturePack",
+		species = "Stormpetrel",
+		shape = "ray",
+		scale = 1.0,
+		color = Color3.fromRGB(70, 76, 92),
+		finColor = Color3.fromRGB(110, 118, 138),
+		markColor = Color3.fromRGB(220, 230, 246),
+	},
+}
+
+Creatures.items.galestreak_flyingfish = {
+	id = "galestreak_flyingfish",
+	name = "Galestreak Flyingfish",
+	rarity = "Uncommon",
+	archetype = "flyer",
+	health = 4400,
+	waters = "maelstrom",
+	rewards = { coins = { 300, 500 }, xp = 875 },
+	drops = { materials = { riptide_scale = { 2, 3 } } },
+	body = {
+		model = "CreaturePack",
+		species = "GalestreakFlyingfish",
+		shape = "ray",
+		scale = 1.05,
+		color = Color3.fromRGB(110, 160, 200),
+		finColor = Color3.fromRGB(190, 220, 244),
+		markColor = Color3.fromRGB(240, 250, 255),
+	},
+}
+
+Creatures.items.riptide_barracuda = {
+	id = "riptide_barracuda",
+	name = "Riptide Barracuda",
+	rarity = "Uncommon",
+	archetype = "charger",
+	health = 5400,
+	waters = "maelstrom",
+	rewards = { coins = { 300, 500 }, xp = 875 },
+	drops = { materials = { riptide_scale = { 2, 3 } } },
+	body = {
+		model = "CreaturePack",
+		species = "RiptideBarracuda",
+		shape = "skipper",
+		scale = 1.5,
+		color = Color3.fromRGB(120, 150, 176),
+		finColor = Color3.fromRGB(90, 116, 140),
+		markColor = Color3.fromRGB(50, 66, 84),
+	},
+}
+
+Creatures.items.cyclone_ray = {
+	id = "cyclone_ray",
+	name = "Cyclone Ray",
+	rarity = "Rare",
+	archetype = "pulser",
+	health = 8800,
+	waters = "maelstrom",
+	rewards = { coins = { 875, 1375 }, xp = 2250 },
+	drops = { materials = { thunder_pearl = { 1, 2 } } },
+	body = {
+		model = "CreaturePack",
+		species = "CycloneRay",
+		shape = "ray",
+		scale = 1.6,
+		color = Color3.fromRGB(80, 100, 140),
+		finColor = Color3.fromRGB(120, 146, 190),
+		markColor = Color3.fromRGB(140, 200, 255),
+	},
+}
+
+Creatures.items.whirlpool_horror = {
+	id = "whirlpool_horror",
+	name = "Whirlpool Horror",
+	rarity = "Rare",
+	archetype = "burrower",
+	health = 9400,
+	waters = "maelstrom",
+	rewards = { coins = { 875, 1375 }, xp = 2250 },
+	drops = { materials = { thunder_pearl = { 1, 2 }, riptide_scale = { 2, 3 } } },
+	body = {
+		model = "CreaturePack",
+		species = "WhirlpoolHorror",
+		shape = "lurker",
+		scale = 1.5,
+		color = Color3.fromRGB(60, 80, 110),
+		finColor = Color3.fromRGB(90, 116, 150),
+		markColor = Color3.fromRGB(170, 210, 250),
+	},
+}
+
+Creatures.items.tempest_revenant = {
+	id = "tempest_revenant",
+	name = "Tempest Revenant",
+	rarity = "Rare",
+	archetype = "shambler",
+	health = 9000,
+	waters = "maelstrom",
+	rewards = { coins = { 875, 1375 }, xp = 2250 },
+	drops = { materials = { thunder_pearl = { 1, 2 }, storm_glass = { 2, 3 } } },
+	body = {
+		model = "CreaturePack",
+		species = "TempestRevenant",
+		shape = "zombie",
+		stance = "upright",
+		scale = 1.2,
+		color = Color3.fromRGB(100, 116, 140),
+		finColor = Color3.fromRGB(70, 84, 106),
+		markColor = Color3.fromRGB(180, 220, 255),
+	},
+}
+
+Creatures.items.thunderlance_marlin = {
+	id = "thunderlance_marlin",
+	name = "Thunderlance Marlin",
+	rarity = "Epic",
+	archetype = "charger",
+	health = 15000,
+	waters = "maelstrom",
+	rewards = { coins = { 2250, 3500 }, xp = 5500 },
+	drops = { materials = { maelstrom_core = { 1, 2 } } },
+	body = {
+		model = "CreaturePack",
+		species = "ThunderlanceMarlin",
+		shape = "skipper",
+		scale = 1.9,
+		color = Color3.fromRGB(70, 110, 170),
+		finColor = Color3.fromRGB(120, 170, 230),
+		markColor = Color3.fromRGB(255, 240, 150),
+	},
+}
+
+Creatures.items.stormcaller_djinn = {
+	id = "stormcaller_djinn",
+	name = "Stormcaller Djinn",
+	rarity = "Epic",
+	archetype = "gascloud",
+	health = 14000,
+	waters = "maelstrom",
+	rewards = { coins = { 2250, 3500 }, xp = 5500 },
+	drops = { materials = { maelstrom_core = { 1, 2 }, thunder_pearl = { 1, 2 } } },
+	body = {
+		model = "CreaturePack",
+		species = "StormcallerDjinn",
+		shape = "zombie",
+		stance = "upright",
+		scale = 1.35,
+		color = Color3.fromRGB(90, 110, 150),
+		finColor = Color3.fromRGB(130, 156, 200),
+		markColor = Color3.fromRGB(255, 250, 200),
+	},
+}
+
+Creatures.items.kraken_spawn = {
+	id = "kraken_spawn",
+	name = "Kraken Spawn",
+	rarity = "Epic",
+	archetype = "splitter",
+	health = 13000,
+	waters = "maelstrom",
+	rewards = { coins = { 2250, 3500 }, xp = 5500 },
+	drops = { materials = { maelstrom_core = { 1, 2 } } },
+	body = {
+		model = "CreaturePack",
+		species = "KrakenSpawn",
+		shape = "urchin",
+		scale = 1.3,
+		color = Color3.fromRGB(70, 60, 100),
+		finColor = Color3.fromRGB(100, 86, 140),
+		markColor = Color3.fromRGB(150, 120, 255),
+	},
+}
+
+Creatures.items.stormking_tuna = {
+	id = "stormking_tuna",
+	name = "The Stormking Tuna",
+	rarity = "Legendary",
+	archetype = "flopper",
+	health = 26000,
+	waters = "maelstrom",
+	rewards = { coins = { 6250, 10000 }, xp = 15000 },
+	drops = { materials = { maelstrom_core = { 2, 3 }, thunder_pearl = { 2, 3 } } },
+	body = {
+		model = "FishPack",
+		species = "StormkingTuna",
+		scale = 2.3,
+		color = Color3.fromRGB(60, 90, 140),
+		finColor = Color3.fromRGB(255, 240, 150),
+		markColor = Color3.fromRGB(140, 200, 255),
+	},
+}
+
+-- The Kraken's arms: planted AoE attackers ringing the arena. Spawned by
+-- the Bosses entry's `parts` block, never by a cast (rarity "Boss") -
+-- noLinger, modest bounty (they respawn; they must not out-earn fishing).
+Creatures.items.kraken_tentacle = {
+	id = "kraken_tentacle",
+	name = "Kraken Tentacle",
+	rarity = "Boss",
+	archetype = "tentacle",
+	health = 6000,
+	waters = "maelstrom",
+	rewards = { coins = { 150, 250 }, xp = 400 },
+	body = {
+		model = "CreaturePack",
+		species = "KrakenTentacle",
+		shape = "gulletcod",
+		stance = "upright",
+		scale = 1.8,
+		color = Color3.fromRGB(70, 50, 90),
+		finColor = Color3.fromRGB(100, 70, 130),
+		markColor = Color3.fromRGB(150, 120, 255),
+	},
+}
+
+-- The final boss. rangedOnly: melee target-picking skips the head entirely
+-- (the tentacles are the melee fight); vulnerableWhen = "partsDown": the
+-- head takes damage only in the window after every tentacle is dead, until
+-- they regrow. Killing it sets Heart_kraken and the finale banner - there
+-- is no next island to unlock.
+Creatures.items.kraken = {
+	id = "kraken",
+	name = "The Kraken, Maw of the Maelstrom",
+	rarity = "Boss",
+	archetype = "boss",
+	boss = "kraken",
+	health = 130000,
+	waters = "maelstrom",
+	rangedOnly = true,
+	vulnerableWhen = "partsDown",
+	rewards = { coins = { 90000, 120000 }, xp = 80000 },
+	drops = { materials = { maelstrom_core = { 4, 6 }, thunder_pearl = { 6, 8 }, storm_glass = { 8, 12 } } },
+	body = {
+		model = "CreaturePack",
+		species = "Kraken",
+		shape = "leviathan",
+		stance = "upright",
+		scale = 2.6,
+		color = Color3.fromRGB(60, 44, 84),
+		finColor = Color3.fromRGB(92, 66, 128),
+		markColor = Color3.fromRGB(150, 120, 255), -- storm-lit eyes and suckers
+	},
+}
+
 -- Rarity -> list of rows, so a rarity roll can pick uniformly within the
 -- tier. Built once here rather than rescanned per cast.
 Creatures.byRarity = {} :: { [string]: { Creature } }

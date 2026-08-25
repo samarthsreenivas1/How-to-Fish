@@ -754,6 +754,133 @@ Bosses.items.admiral_wrack = {
 	},
 }
 
+-- ============================================================ The Maelstrom
+-- The Kraken, Maw of the Maelstrom: the saga's finale. The head is
+-- rangedOnly and invulnerable while any tentacle stands (vulnerableWhen =
+-- "partsDown"): the fight loops melee-the-tentacles -> guns-on-the-head
+-- exposure windows -> regrow. Every prior boss's signature returns - the
+-- pull is Noctyss's, the dive is Rimefang's, the splitter brood is
+-- Pyrelisk's, and the spines are Wrack's grapeshot as a thrown-wreckage
+-- storm. Killing it sets Heart_kraken and the finale banner; it unlocks
+-- nothing, because there is nothing left to unlock.
+Bosses.items.kraken = {
+	id = "kraken",
+	name = "The Kraken, Maw of the Maelstrom",
+	shortName = "The Kraken",
+	creature = "kraken",
+	islandId = "maelstrom",
+	-- Level 48 AND all six island hearts - owned, never spent. The bait's
+	-- recipe checks the same six, so this is the belt to that braces.
+	gate = { level = 48, hearts = { "brinejaw", "old_gnashroot", "rimefang", "pyrelisk", "noctyss", "admiral_wrack" } },
+	-- The centre of the whirlpool at the site's heart; the rock platforms
+	-- ring it at ~34-55 studs, inside tentacle reach by design.
+	arena = { offset = Vector3.new(0, 0, 0), radius = 34 },
+	-- The tentacle ring: `count` kraken_tentacle rows planted evenly on
+	-- `ring` studs around the arena centre. While any lives, the head is
+	-- untouchable; `regrow` seconds after the last one dies, they respawn
+	-- (if the boss still lives). CreatureService.updateBoss owns this.
+	parts = {
+		row = "kraken_tentacle",
+		count = 6,
+		ring = 26,
+		regrow = 24,
+	},
+	aggro = 120,
+	standoff = 18,
+	hitRadius = 8, -- x2.6 = ~21: the mantle is a fortress
+	submerge = 3.0,
+	riseDepth = 26,
+	riseTime = 5.0,
+	speed = 6,
+	turnRate = math.rad(60),
+	attackGapMin = 0.55,
+	attackGapMax = 1.1,
+	enrageBelow = 0.25,
+	enrageCooldownMult = 0.5,
+	enrageDamageMult = 1.4,
+	phases = {
+		{ below = 1.0, attacks = { "snap", "tail", "slam", "volley" } },
+		{ below = 0.65, attacks = { "snap", "tail", "slam", "volley", "pull", "dive", "brood" } },
+		{ below = 0.4, attacks = { "snap", "tail", "slam", "volley", "pull", "dive", "brood", "spines", "spines" } },
+	},
+	attacks = {
+		snap = {
+			windup = 0.7,
+			duration = 0.35,
+			recover = 0.55,
+			cooldown = 1.8,
+			lunge = 15,
+			radius = 19,
+			cone = math.rad(70),
+			damage = { 70, 95 },
+		},
+		tail = {
+			windup = 0.9,
+			duration = 0.45,
+			recover = 0.65,
+			cooldown = 2.4,
+			radius = 24,
+			damage = { 55, 75 },
+		},
+		slam = { windup = 1.55, duration = 0.3, recover = 0.85, cooldown = 4.0, radius = 27, damage = { 70, 95 } },
+		-- Ink-and-brine broadside.
+		volley = {
+			windup = 0.7,
+			duration = 1.0,
+			recover = 0.5,
+			cooldown = 2.8,
+			count = 8,
+			spread = 14,
+			flight = 1.0,
+			stagger = 0.11,
+			radius = 8,
+			damage = { 30, 40 },
+		},
+		-- Noctyss's pull, from a maw the size of a harbor mouth.
+		pull = {
+			windup = 0.5,
+			duration = 2.4,
+			recover = 0.2,
+			cooldown = 5.5,
+			radius = 70,
+			strength = 42,
+			follow = "snap",
+		},
+		-- Rimefang's dive, under the whirlpool floor.
+		dive = {
+			windup = 0.7,
+			duration = 2.6,
+			lock = 0.9,
+			recover = 0.9,
+			cooldown = 6.5,
+			speed = 34,
+			radius = 14,
+			damage = { 70, 95 },
+		},
+		-- Pyrelisk's splitter brood plus the storm's own wings.
+		brood = {
+			windup = 0.8,
+			duration = 0.4,
+			recover = 0.6,
+			cooldown = 9.0,
+			count = 4,
+			rows = { "kraken_spawn", "stormpetrel", "galestreak_flyingfish" },
+		},
+		-- Wrack's grapeshot as a thrown-wreckage storm.
+		spines = {
+			windup = 0.8,
+			duration = 1.8,
+			recover = 0.5,
+			cooldown = 4.5,
+			count = 13,
+			spread = 16,
+			flight = 0.8,
+			radius = 7,
+			damage = { 34, 46 },
+		},
+	},
+}
+
 -- islandId -> boss, so the travel gate and BossService can look up "the
 -- boss of this island" directly.
 Bosses.byIsland = {} :: { [string]: Boss }

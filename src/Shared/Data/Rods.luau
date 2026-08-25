@@ -1452,6 +1452,193 @@ Rods.items.wraithheart_rod = {
 	},
 }
 
+-- ============================================================ Rods
+
+Rods.items.squallcaster_rod = {
+	id = "squallcaster_rod",
+	name = "Squallcaster Rod",
+	description = "Cut from a mast that sailed into the Maelstrom and came back alone. It has no fear left.",
+	rarity = "Uncommon",
+	icon = "",
+	model = {
+		model = "RodPack",
+		variant = "Squallcaster",
+		grip = 0.9,
+		length = 7.0,
+		colors = {
+			twig = Color3.fromRGB(110, 124, 140),
+			grip = Color3.fromRGB(76, 86, 100),
+			trim = Color3.fromRGB(190, 210, 230),
+			line = Color3.fromRGB(200, 214, 228),
+			bobberTop = Color3.fromRGB(140, 190, 230),
+			bobberBottom = Color3.fromRGB(90, 102, 118),
+		},
+	},
+	stats = { luck = 2.2, power = 1.6, control = 1.6 },
+	reel = { clicksRequired = 3, barSpeed = 0.66, redWidth = 0.058, greenWidth = 0.18 },
+	recipe = {
+		requiresLevel = 43,
+		coins = 12000,
+		materials = { storm_glass = 10, driftwood = 16 },
+	},
+	perk = {
+		id = "no_fear_left",
+		name = "No Fear Left",
+		description = "It has already seen the worst - your first two misses never shrink the zones.",
+		freeMisses = 2,
+	},
+}
+
+Rods.items.riptide_rod = {
+	id = "riptide_rod",
+	name = "Riptide Rod",
+	description = "Strung with riptide sinew, it throws the line clean across the storm's shoulder and scorns anything small.",
+	rarity = "Rare",
+	icon = "",
+	model = {
+		model = "RodPack",
+		variant = "Riptide",
+		grip = 0.9,
+		length = 7.2,
+		colors = {
+			twig = Color3.fromRGB(80, 110, 140),
+			grip = Color3.fromRGB(56, 76, 98),
+			trim = Color3.fromRGB(140, 200, 255),
+			line = Color3.fromRGB(170, 200, 230),
+			bobberTop = Color3.fromRGB(140, 200, 255),
+			bobberBottom = Color3.fromRGB(60, 82, 106),
+		},
+		neon = { "Rod_Trim" },
+	},
+	stats = { luck = 2.35, power = 1.65, control = 1.6 },
+	reel = { clicksRequired = 3, barSpeed = 0.64, redWidth = 0.055, greenWidth = 0.17 },
+	recipe = {
+		requiresLevel = 44,
+		coins = 16000,
+		materials = { riptide_scale = 12, storm_glass = 10, pearl = 4 },
+	},
+	perk = {
+		id = "against_the_current",
+		name = "Against the Current",
+		description = "Long casts across the storm - and nothing under Rare fights the riptide to reach them.",
+		minRarity = "Rare",
+		castRange = 1.6,
+	},
+}
+
+Rods.items.thunderhead_rod = {
+	id = "thunderhead_rod",
+	name = "Thunderhead Rod",
+	description = "A thunder pearl rides the tip, counting your patience. The storm pays the ones who stay out in it.",
+	rarity = "Rare",
+	icon = "",
+	model = {
+		model = "RodPack",
+		variant = "Thunderhead",
+		grip = 0.9,
+		length = 7.3,
+		colors = {
+			twig = Color3.fromRGB(70, 80, 100),
+			grip = Color3.fromRGB(50, 58, 74),
+			trim = Color3.fromRGB(220, 230, 255),
+			line = Color3.fromRGB(190, 200, 226),
+			bobberTop = Color3.fromRGB(220, 230, 255),
+			bobberBottom = Color3.fromRGB(56, 64, 84),
+		},
+		neon = { "Rod_Trim", "Rod_BobberTop" },
+	},
+	stats = { luck = 2.5, power = 1.65, control = 1.65 },
+	reel = { clicksRequired = 3, barSpeed = 0.62, redWidth = 0.052, greenWidth = 0.165 },
+	recipe = {
+		requiresLevel = 46,
+		coins = 22000,
+		materials = { thunder_pearl = 8, storm_glass = 12, riptide_scale = 10 },
+	},
+	perk = {
+		id = "count_the_thunder",
+		name = "Count the Thunder",
+		description = "Every cast seen through charges the pearl - the strongest streak luck a rod has carried.",
+		streakLuck = 0.2,
+		streakMax = 1.0,
+	},
+}
+
+Rods.items.eyewall_rod = {
+	id = "eyewall_rod",
+	name = "Eyewall Rod",
+	description = "Bent once around the storm's still centre and never straightened. Its zones are as calm as the eye, always.",
+	rarity = "Epic",
+	icon = "",
+	model = {
+		model = "RodPack",
+		variant = "Eyewall",
+		grip = 0.95,
+		length = 7.4,
+		colors = {
+			twig = Color3.fromRGB(90, 110, 150),
+			grip = Color3.fromRGB(62, 76, 104),
+			trim = Color3.fromRGB(90, 130, 255),
+			line = Color3.fromRGB(170, 190, 240),
+			bobberTop = Color3.fromRGB(90, 130, 255),
+			bobberBottom = Color3.fromRGB(66, 80, 112),
+		},
+		neon = { "Rod_Trim", "Rod_BobberTop" },
+	},
+	stats = { luck = 2.6, power = 1.7, control = 1.65 },
+	reel = { clicksRequired = 3, barSpeed = 0.61, redWidth = 0.05, greenWidth = 0.16 },
+	recipe = {
+		requiresLevel = 47,
+		coins = 30000,
+		materials = { maelstrom_core = 5, thunder_pearl = 8, riptide_scale = 12 },
+	},
+	perk = {
+		id = "the_still_centre",
+		name = "The Still Centre",
+		description = "Zones never shrink, and nothing under Rare enters the eye.",
+		minRarity = "Rare",
+		noShrink = true,
+	},
+}
+
+Rods.items.krakenheart_rod = {
+	id = "krakenheart_rod",
+	name = "Krakenheart Rod",
+	description = "The Maw's own heart, caged in storm-glass at the reel seat. The sea has no better rod to give.",
+	rarity = "Legendary",
+	icon = "",
+	model = {
+		model = "RodPack",
+		variant = "Krakenheart",
+		grip = 0.95,
+		length = 7.6,
+		colors = {
+			twig = Color3.fromRGB(60, 44, 84),
+			grip = Color3.fromRGB(44, 34, 60),
+			trim = Color3.fromRGB(150, 120, 255),
+			line = Color3.fromRGB(200, 190, 240),
+			bobberTop = Color3.fromRGB(150, 120, 255),
+			bobberBottom = Color3.fromRGB(52, 40, 72),
+		},
+		neon = { "Rod_Trim", "Rod_BobberTop" },
+	},
+	stats = { luck = 2.70, power = 1.80, control = 1.70 },
+	reel = { clicksRequired = 3, barSpeed = 0.6, redWidth = 0.05, greenWidth = 0.16 },
+	recipe = {
+		requiresLevel = 50,
+		coins = 45000,
+		materials = { maelstrom_core = 8, thunder_pearl = 10, storm_glass = 14 },
+		requiresHearts = { "kraken" },
+	},
+	perk = {
+		id = "the_sea_itself",
+		name = "The Sea Itself",
+		description = "The Maw's heart casts to the horizon, never yields a zone, and answers to nothing under Epic.",
+		minRarity = "Epic",
+		noShrink = true,
+		castRange = 2.2,
+	},
+}
+
 -- Every new player starts holding this one. See InventoryService.
 Rods.STARTER_ROD_ID = "twig_rod"
 
@@ -1489,6 +1676,11 @@ Rods.order = {
 	"doubloon_rod",
 	"sailcloth_rod",
 	"wraithheart_rod",
+	"squallcaster_rod",
+	"riptide_rod",
+	"thunderhead_rod",
+	"eyewall_rod",
+	"krakenheart_rod",
 }
 
 return Rods

@@ -450,6 +450,65 @@ Bait.items.admirals_summons = {
 	},
 }
 
+-- ============================================================ Bait
+
+Bait.items.stormbait = {
+	id = "stormbait",
+	name = "Stormbait",
+	description = "Chum whipped through with storm-glass dust. The whole squall's worth of fish comes up with the catch, and none of it calm.",
+	rarity = "Epic",
+	icon = "",
+	color = Color3.fromRGB(140, 190, 230),
+	effect = { shoal = 3, enrage = true },
+	recipe = {
+		requiresLevel = 44,
+		coins = 9000,
+		materials = { storm_glass = 8, riptide_scale = 6 },
+		yield = 3,
+	},
+}
+
+Bait.items.deepcall_roe = {
+	id = "deepcall_roe",
+	name = "Deepcall Roe",
+	description = "Roe from the storm's still centre. What answers it is carrying its very best, and gives up all of it.",
+	rarity = "Epic",
+	icon = "",
+	color = Color3.fromRGB(90, 130, 255),
+	effect = { guaranteedDrop = true, luck = 1.5 },
+	recipe = {
+		requiresLevel = 46,
+		coins = 14000,
+		materials = { maelstrom_core = 2, thunder_pearl = 4 },
+		yield = 2,
+	},
+}
+
+-- The saga's capstone. The recipe is gated on ALL SIX island hearts -
+-- checked as Heart_* attributes, never spent - and BossService re-checks
+-- the same gate at the summon.
+Bait.items.krakens_call = {
+	id = "krakens_call",
+	name = "Kraken's Call",
+	description = "Six hearts' worth of proof, knotted around a maelstrom core. Cast it into the storm, and the Maw itself answers. One use.",
+	rarity = "Legendary",
+	icon = "",
+	color = Color3.fromRGB(150, 120, 255),
+	effect = { summonsBoss = "kraken" },
+	recipe = {
+		requiresLevel = 48,
+		coins = 50000,
+		materials = {
+			maelstrom_core = 6,
+			thunder_pearl = 8,
+			storm_glass = 10,
+			riptide_scale = 10,
+		},
+		requiresHearts = { "brinejaw", "old_gnashroot", "rimefang", "pyrelisk", "noctyss", "admiral_wrack" },
+		yield = 1,
+	},
+}
+
 -- Stable display order for the crafting / inventory bait tabs (table iteration
 -- order isn't guaranteed). By island, then by tier.
 Bait.order = {
@@ -471,6 +530,9 @@ Bait.order = {
 	"corpse_chum",
 	"plunder_lure",
 	"admirals_summons",
+	"stormbait",
+	"deepcall_roe",
+	"krakens_call",
 }
 
 return Bait
