@@ -31,6 +31,7 @@ local ORDER = {
 	"PlayerHudController", -- no dependencies; top-right health bar + damage flash off the character Humanoid
 	"AdminController", -- after CameraController: P cheat panel (only shown to admins), borrows the cursor while open
 	"IslandsController", -- after CameraController: the Islands travel menu (borrows the cursor while open)
+	"TrophyController", -- after CameraController: H opens the Trophy Hall (boss hearts off the Heart_* attributes)
 	"DropController", -- no dependencies; "You found: X!" banner off the ItemDropped remote
 	-- A name here with no matching module fails the assert below and kills the
 	-- whole client boot (first person, viewmodels, every menu) - so only ever add

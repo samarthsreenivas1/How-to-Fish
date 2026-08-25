@@ -31,6 +31,7 @@ local CameraController = require(script.Parent.CameraController)
 local CraftingController = require(script.Parent.CraftingController)
 local InventoryController = require(script.Parent.InventoryController)
 local IslandsController = require(script.Parent.IslandsController)
+local TrophyController = require(script.Parent.TrophyController)
 
 local player = Players.LocalPlayer
 
@@ -63,6 +64,14 @@ local BUTTONS = {
 		hint = "T",
 		color = Color3.fromRGB(40, 120, 110),
 		controller = IslandsController,
+	},
+	{
+		id = "trophies",
+		label = "Hall",
+		token = "HALL",
+		hint = "H",
+		color = C.violet,
+		controller = TrophyController,
 	},
 	{
 		id = "admin",
