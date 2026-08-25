@@ -87,6 +87,20 @@ function BossService.qualifies(player: Player, boss): boolean
 	if boss.gate.weapon and not InventoryService.ownsItem(player, boss.gate.weapon) then
 		return false
 	end
+	if boss.gate.hearts and not BossService.hasHearts(player, boss.gate.hearts) then
+		return false
+	end
+	return true
+end
+
+-- Every heart in the list - the Kraken's gate (all six island hearts,
+-- owned, never spent).
+function BossService.hasHearts(player: Player, bossIds: { string }): boolean
+	for _, bossId in bossIds do
+		if not BossService.hasHeart(player, bossId) then
+			return false
+		end
+	end
 	return true
 end
 
@@ -158,6 +172,9 @@ function BossService.summonFor(player: Player, bossId: string?): (boolean, strin
 	if level < boss.gate.level then
 		return false, string.format("Reach level %d", boss.gate.level)
 	end
+	if boss.gate.hearts and not BossService.hasHearts(player, boss.gate.hearts) then
+		return false, "It ignores the call. Bring every island's heart."
+	end
 	if not BossService.qualifies(player, boss) then
 		return false, "You're not ready for this" -- only reachable for a boss whose gate names gear
 	end
@@ -200,12 +217,16 @@ local function onKilled(row, _grade: string, killer: Player?, extra)
 		player:SetAttribute(BossService.heartAttribute(boss.id), true)
 	end
 
-	-- What just opened up, for the banner.
+	-- What just opened up, for the banner. A site's boss (the Maelstrom - out
+	-- of Islands.order, nothing after it) is the FINALE: the client shows the
+	-- saga-complete card instead of an unlock line.
+	local island = Islands.items[boss.islandId]
 	local index = table.find(Islands.order, boss.islandId)
 	local nextEntry = index and Islands.items[Islands.order[index + 1] or ""]
 	Remotes.CreatureEvent:FireAllClients("bossDown", arenaPosition(boss), {
 		name = boss.name,
 		unlocks = nextEntry and nextEntry.name or nil,
+		finale = (island and island.site) == true or nil,
 	})
 end
 
