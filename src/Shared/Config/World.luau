@@ -32,6 +32,14 @@ World.FISHABLE_NAMES = {
 	-- sea around the fen is the ordinary ocean; these are the still black
 	-- pools inland that fish the swamp roster.
 	Swamp_Water = true,
+	-- Frostmaw Reach's pre-cut fishing holes in the ice sheet (one object).
+	Frostmaw_IceHoles = true,
+	-- Gloomtrench's black pools; Wreckwater's central bay among the hulks.
+	Gloomtrench_DarkWater = true,
+	Wreckwater_Bay = true,
+	-- The Maelstrom site's whirlpool disc (built procedurally by
+	-- WorldService, not imported - the name is the contract all the same).
+	Maelstrom_Water = true,
 }
 
 -- Which POOL of creatures a fishable surface draws from, by part name. This is
@@ -45,6 +53,10 @@ World.WATERS_BY_PART = {
 	[World.OCEAN_NAME] = World.WATERS_OCEAN,
 	Volcano_Lava = "volcano",
 	Swamp_Water = "swamp",
+	Frostmaw_IceHoles = "ice",
+	Gloomtrench_DarkWater = "gloom",
+	Wreckwater_Bay = "wreck",
+	Maelstrom_Water = "maelstrom",
 }
 
 -- The two collision groups that make the world's invisible barriers ONE-WAY

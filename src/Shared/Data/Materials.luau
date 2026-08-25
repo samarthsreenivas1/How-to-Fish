@@ -213,6 +213,132 @@ Materials.items.fen_venom = {
 	color = Color3.fromRGB(178, 210, 90),
 }
 
+-- ============================================================ Frostmaw Reach
+
+Materials.items.glacier_shard = {
+	id = "glacier_shard",
+	name = "Glacier Shard",
+	description = "A splinter of the reach's blue ice. It never quite melts.",
+	tier = "rare",
+	rarity = "Uncommon",
+	icon = "",
+	color = Color3.fromRGB(150, 196, 224),
+}
+
+Materials.items.rime_pelt = {
+	id = "rime_pelt",
+	name = "Rime Pelt",
+	description = "A frost-stiffened hide off something the cold couldn't kill. You managed.",
+	tier = "rare",
+	rarity = "Uncommon",
+	icon = "",
+	color = Color3.fromRGB(214, 224, 234),
+}
+
+Materials.items.everice = {
+	id = "everice",
+	name = "Everice",
+	description = "Ice older than the reach itself. It stays frozen in a forge.",
+	tier = "rare",
+	rarity = "Rare",
+	icon = "",
+	color = Color3.fromRGB(120, 190, 255),
+}
+
+Materials.items.aurora_essence = {
+	id = "aurora_essence",
+	name = "Aurora Essence",
+	description = "A bottled ribbon of the southern lights. It moves when nobody watches.",
+	tier = "rare",
+	rarity = "Epic",
+	icon = "",
+	color = Color3.fromRGB(150, 230, 200),
+}
+
+-- ============================================================ Gloomtrench
+
+Materials.items.gloom_scale = {
+	id = "gloom_scale",
+	name = "Gloom Scale",
+	description = "A scale that drinks the light around it. Hold it and your hand goes dim.",
+	tier = "rare",
+	rarity = "Uncommon",
+	icon = "",
+	color = Color3.fromRGB(90, 82, 110),
+}
+
+Materials.items.trench_chitin = {
+	id = "trench_chitin",
+	name = "Trench Chitin",
+	description = "Shell plate forged by the crush of the deep. Pressure-proof, and then some.",
+	tier = "rare",
+	rarity = "Uncommon",
+	icon = "",
+	color = Color3.fromRGB(100, 110, 128),
+}
+
+Materials.items.lantern_gland = {
+	id = "lantern_gland",
+	name = "Lantern Gland",
+	description = "The light off a thing that lied with it. Still warm, still lying.",
+	tier = "rare",
+	rarity = "Rare",
+	icon = "",
+	color = Color3.fromRGB(255, 226, 130),
+}
+
+Materials.items.abyss_ichor = {
+	id = "abyss_ichor",
+	name = "Abyss Ichor",
+	description = "What passes for blood at the bottom of everything. It runs uphill.",
+	tier = "rare",
+	rarity = "Epic",
+	icon = "",
+	color = Color3.fromRGB(170, 120, 255),
+}
+
+-- ============================================================ Wreckwater
+
+Materials.items.ghost_plank = {
+	id = "ghost_plank",
+	name = "Ghost Plank",
+	description = "Hull timber off the drowned fleet. It creaks in a swell it still remembers.",
+	tier = "rare",
+	rarity = "Uncommon",
+	icon = "",
+	color = Color3.fromRGB(130, 144, 132),
+}
+
+Materials.items.tarnished_doubloon = {
+	id = "tarnished_doubloon",
+	name = "Tarnished Doubloon",
+	description = "The fleet's pay, black with the sea. Still spends, somehow.",
+	tier = "rare",
+	rarity = "Uncommon",
+	icon = "",
+	color = Color3.fromRGB(180, 150, 80),
+}
+
+Materials.items.spectral_sailcloth = {
+	id = "spectral_sailcloth",
+	name = "Spectral Sailcloth",
+	description = "Canvas that still holds a wind nobody living has felt.",
+	tier = "rare",
+	rarity = "Rare",
+	icon = "",
+	color = Color3.fromRGB(220, 250, 236),
+}
+
+Materials.items.wraith_essence = {
+	id = "wraith_essence",
+	name = "Wraith Essence",
+	description = "What's left of a sailor who won't leave. Cold to the touch, and it watches.",
+	tier = "rare",
+	rarity = "Epic",
+	icon = "",
+	color = Color3.fromRGB(160, 255, 210),
+}
+
 -- Stable display order for the HUD / crafting list (table iteration order
 -- isn't guaranteed). Basic first, then rare, then the creature drops by island.
 Materials.order = {
@@ -228,10 +354,22 @@ Materials.order = {
 	"gator_scute",
 	"wisp_light",
 	"fen_venom",
+	"glacier_shard",
+	"rime_pelt",
+	"everice",
+	"aurora_essence",
 	"ember",
 	"sulfur",
 	"obsidian_shard",
 	"magma_core",
+	"gloom_scale",
+	"trench_chitin",
+	"lantern_gland",
+	"abyss_ichor",
+	"ghost_plank",
+	"tarnished_doubloon",
+	"spectral_sailcloth",
+	"wraith_essence",
 }
 
 return Materials

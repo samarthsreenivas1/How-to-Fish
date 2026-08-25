@@ -433,6 +433,328 @@ Bosses.items.old_gnashroot = {
 	},
 }
 
+-- ============================================================ Frostmaw Reach
+-- Rimefang, the Glacier Serpent: a white serpent that hunts UNDER the ice
+-- sheet - its dive is the island's own ice-hole fishing turned against you.
+-- Summoned by casting Glacier's Call. Three phases: bites and ice-shard
+-- volleys, then it tunnels under the sheet and calls the cold's brood, then
+-- the sky whites out and icicles come down with the slams.
+Bosses.items.rimefang = {
+	id = "rimefang",
+	name = "Rimefang, the Glacier Serpent",
+	shortName = "Rimefang",
+	creature = "rimefang",
+	islandId = "ice",
+	-- Bait-gated like every boss: level only, matching Glacier's Call (the
+	-- ice band's end).
+	gate = { level = 21 },
+	-- Open water off the end of the fishing dock (planks end at Z=238): it
+	-- rises from the sea and hauls itself toward the sheet's edge, so the
+	-- fight happens off the planks and the shorefast ice.
+	arena = { offset = Vector3.new(0, 0, 268), radius = 28 },
+	aggro = 90,
+	standoff = 14,
+	hitRadius = 6, -- x1.6 scale = 9.6, Brinejaw's frame
+	submerge = 2.4,
+	riseDepth = 18,
+	riseTime = 3.8,
+	speed = 8,
+	turnRate = math.rad(80),
+	attackGapMin = 0.65,
+	attackGapMax = 1.25,
+	enrageBelow = 0.3,
+	enrageCooldownMult = 0.55,
+	enrageDamageMult = 1.4,
+	phases = {
+		{ below = 1.0, attacks = { "snap", "tail", "volley" } },
+		{ below = 0.65, attacks = { "snap", "tail", "volley", "dive", "dive", "brood" } },
+		{ below = 0.3, attacks = { "snap", "volley", "dive", "brood", "slam", "spines", "spines" } },
+	},
+	attacks = {
+		snap = {
+			windup = 0.7,
+			duration = 0.35,
+			recover = 0.55,
+			cooldown = 1.8,
+			lunge = 14,
+			radius = 17,
+			cone = math.rad(65),
+			damage = { 58, 82 },
+		},
+		tail = {
+			windup = 0.9,
+			duration = 0.45,
+			recover = 0.65,
+			cooldown = 2.4,
+			radius = 21,
+			damage = { 48, 68 },
+		},
+		-- Ice-shard volley: frozen spray that lands around the player.
+		volley = {
+			windup = 0.7,
+			duration = 0.9,
+			recover = 0.5,
+			cooldown = 3.0,
+			count = 6,
+			spread = 12,
+			flight = 1.0,
+			stagger = 0.13,
+			radius = 8,
+			damage = { 24, 34 },
+		},
+		-- THE signature: it tunnels under the ice sheet after your live
+		-- position and bursts up through it - weighted double in phase 2.
+		dive = {
+			windup = 0.6,
+			duration = 2.6,
+			lock = 0.9,
+			recover = 0.9,
+			cooldown = 6.0,
+			speed = 34,
+			radius = 13,
+			damage = { 58, 82 },
+		},
+		brood = {
+			windup = 0.8,
+			duration = 0.4,
+			recover = 0.6,
+			cooldown = 10.0,
+			count = 3,
+			rows = { "frostbite_pup", "iceshard_crab", "aurora_jelly" },
+		},
+		slam = { windup = 1.6, duration = 0.3, recover = 0.85, cooldown = 4.2, radius = 26, damage = { 58, 82 } },
+		-- Icicle rain: the phase-3 whiteout answers every slam.
+		spines = {
+			windup = 0.8,
+			duration = 1.6,
+			recover = 0.5,
+			cooldown = 5.0,
+			count = 10,
+			spread = 14,
+			flight = 0.8,
+			radius = 6,
+			damage = { 30, 42 },
+		},
+	},
+}
+
+-- ============================================================ Gloomtrench
+-- Noctyss, the Trench Mother: an abyssal angler-queen whose lure is the only
+-- light in the arena. She opens with the pull - the lure flares and drags
+-- you toward the maw - and in deep phases she dives the black water and
+-- calls her brood. Enrage is the dark itself: the client douses her lure
+-- between attacks so every tell starts from nothing.
+Bosses.items.noctyss = {
+	id = "noctyss",
+	name = "Noctyss, the Trench Mother",
+	shortName = "Noctyss",
+	creature = "noctyss",
+	islandId = "gloom",
+	gate = { level = 35 },
+	-- Open water off the end of the dock (planks end at Z=216) - the stable
+	-- spot; the dark pools inland shift with every mesh regen.
+	arena = { offset = Vector3.new(0, 0, 246), radius = 28 },
+	aggro = 90,
+	standoff = 14,
+	hitRadius = 6, -- x1.8 scale = 10.8
+	submerge = 2.6,
+	riseDepth = 20,
+	riseTime = 4.0,
+	speed = 8,
+	turnRate = math.rad(80),
+	attackGapMin = 0.6,
+	attackGapMax = 1.2,
+	enrageBelow = 0.3,
+	enrageCooldownMult = 0.55,
+	enrageDamageMult = 1.4,
+	phases = {
+		{ below = 1.0, attacks = { "pull", "snap", "volley" } },
+		{ below = 0.6, attacks = { "pull", "snap", "volley", "dive", "brood" } },
+		{ below = 0.3, attacks = { "pull", "snap", "volley", "dive", "brood", "spines", "slam", "slam" } },
+	},
+	attacks = {
+		-- The signature, and her OPENER: the lure flares - the one light in
+		-- the water - and drags you toward the maw, then the jaws follow.
+		pull = {
+			windup = 0.5,
+			duration = 2.4,
+			recover = 0.2,
+			cooldown = 5.5,
+			radius = 65,
+			strength = 40,
+			follow = "snap",
+		},
+		snap = {
+			windup = 0.65,
+			duration = 0.35,
+			recover = 0.55,
+			cooldown = 1.8,
+			lunge = 14,
+			radius = 17,
+			cone = math.rad(65),
+			damage = { 62, 88 },
+		},
+		-- Ink volley: blots of freezing dark that land around the player.
+		volley = {
+			windup = 0.7,
+			duration = 0.9,
+			recover = 0.5,
+			cooldown = 3.0,
+			count = 6,
+			spread = 12,
+			flight = 1.0,
+			stagger = 0.13,
+			radius = 8,
+			damage = { 26, 36 },
+		},
+		dive = {
+			windup = 0.7,
+			duration = 2.6,
+			lock = 0.9,
+			recover = 0.9,
+			cooldown = 7.0,
+			speed = 34,
+			radius = 13,
+			damage = { 62, 88 },
+		},
+		brood = {
+			windup = 0.8,
+			duration = 0.4,
+			recover = 0.6,
+			cooldown = 10.0,
+			count = 3,
+			rows = { "gulper_eel", "flashbulb_squid", "trench_skitterer" },
+		},
+		spines = {
+			windup = 0.8,
+			duration = 1.6,
+			recover = 0.5,
+			cooldown = 5.0,
+			count = 10,
+			spread = 14,
+			flight = 0.8,
+			radius = 6,
+			damage = { 32, 44 },
+		},
+		slam = { windup = 1.55, duration = 0.3, recover = 0.85, cooldown = 4.2, radius = 26, damage = { 62, 88 } },
+	},
+}
+
+-- ============================================================ Wreckwater
+-- Admiral Wrack, the Fleet-Eater: the drowned admiral fused into his
+-- flagship's bow. Opens with cannon broadsides and the anchor-bite; his
+-- brood is a BOARDING PARTY - the island's raid mechanic pointed back at
+-- you - and in the last phase the whole wreck surfaces under your feet.
+Bosses.items.admiral_wrack = {
+	id = "admiral_wrack",
+	name = "Admiral Wrack, the Fleet-Eater",
+	shortName = "Admiral Wrack",
+	creature = "admiral_wrack",
+	islandId = "wreck",
+	gate = { level = 42 },
+	-- The bay at the island's centre: a single stable water sheet (unlike
+	-- the shifting pools elsewhere), kept clear of the harbor channel that
+	-- opens toward +Z.
+	arena = { offset = Vector3.new(0, 0, -20), radius = 30 },
+	aggro = 95,
+	standoff = 15,
+	hitRadius = 7, -- x2.0 scale = 14: half ship, after all
+	submerge = 2.8,
+	riseDepth = 22,
+	riseTime = 4.2,
+	speed = 7,
+	turnRate = math.rad(70),
+	attackGapMin = 0.6,
+	attackGapMax = 1.2,
+	enrageBelow = 0.3,
+	enrageCooldownMult = 0.55,
+	enrageDamageMult = 1.4,
+	phases = {
+		{ below = 1.0, attacks = { "volley", "snap", "tail" } },
+		{ below = 0.6, attacks = { "volley", "snap", "tail", "brood", "brood", "pull" } },
+		{ below = 0.3, attacks = { "volley", "snap", "brood", "pull", "spines", "dive", "dive" } },
+	},
+	attacks = {
+		-- The broadside: a heavier, wider volley than any serpent's spit.
+		volley = {
+			windup = 0.8,
+			duration = 1.0,
+			recover = 0.5,
+			cooldown = 2.8,
+			count = 7,
+			spread = 13,
+			flight = 1.0,
+			stagger = 0.12,
+			radius = 8,
+			damage = { 28, 38 },
+		},
+		-- The anchor-bite: he swings the fouled anchor like a jaw.
+		snap = {
+			windup = 0.7,
+			duration = 0.35,
+			recover = 0.55,
+			cooldown = 1.8,
+			lunge = 14,
+			radius = 18,
+			cone = math.rad(65),
+			damage = { 66, 92 },
+		},
+		-- The boom sweep: the flagship's spar comes round full circle.
+		tail = {
+			windup = 0.9,
+			duration = 0.45,
+			recover = 0.65,
+			cooldown = 2.4,
+			radius = 22,
+			damage = { 52, 72 },
+		},
+		-- The boarding party - the raid inverted: his dead crew comes over
+		-- YOUR rail. Weighted double in phase 2; count above every other
+		-- boss's brood.
+		brood = {
+			windup = 0.8,
+			duration = 0.4,
+			recover = 0.6,
+			cooldown = 9.0,
+			count = 4,
+			rows = { "drowned_boatswain", "cannonball_crab", "wailing_gunner" },
+		},
+		-- Grappling chains off the bow.
+		pull = {
+			windup = 0.5,
+			duration = 2.4,
+			recover = 0.2,
+			cooldown = 6.0,
+			radius = 65,
+			strength = 38,
+			follow = "snap",
+		},
+		-- Grapeshot rain.
+		spines = {
+			windup = 0.8,
+			duration = 1.6,
+			recover = 0.5,
+			cooldown = 5.0,
+			count = 12,
+			spread = 15,
+			flight = 0.8,
+			radius = 6,
+			damage = { 32, 44 },
+		},
+		-- The wreck surfaces under you: his dive, phase 3 only, twice-listed.
+		dive = {
+			windup = 0.7,
+			duration = 2.6,
+			lock = 0.9,
+			recover = 0.9,
+			cooldown = 6.5,
+			speed = 32,
+			radius = 14,
+			damage = { 66, 92 },
+		},
+	},
+}
+
 -- islandId -> boss, so the travel gate and BossService can look up "the
 -- boss of this island" directly.
 Bosses.byIsland = {} :: { [string]: Boss }

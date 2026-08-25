@@ -708,6 +708,575 @@ Weapons.items.vulkan_repeater = {
 	},
 }
 
+-- ============================================================ Frostmaw Reach
+
+-- Melee U: fast one-hander, the ice-fisher's sidearm. ~140 dps + frenzy ramp.
+Weapons.items.icepick_hatchet = {
+	id = "icepick_hatchet",
+	name = "Icepick Hatchet",
+	description = "Half tool, half temper. Light enough to swing all day, and it likes a rhythm.",
+	rarity = "Uncommon",
+	icon = "",
+	damage = { 26, 36 },
+	cooldown = 0.22,
+	reach = 14,
+	knockback = 12,
+	swing = "slash",
+	model = {
+		shape = "blade",
+		model = "WeaponPack",
+		variant = "IcepickHatchet",
+		length = 2.6,
+		grip = 0.5,
+		color = Color3.fromRGB(120, 134, 150),
+		accent = Color3.fromRGB(210, 228, 240),
+		wrap = Color3.fromRGB(90, 104, 120),
+	},
+	recipe = {
+		requiresLevel = 15,
+		coins = 550,
+		materials = { glacier_shard = 8, rime_pelt = 6, driftwood = 8 },
+	},
+	perk = {
+		id = "cold_rhythm",
+		name = "Cold Rhythm",
+		description = "It likes a beat - consecutive landed hits ramp the damage higher and higher.",
+		frenzy = true,
+	},
+}
+
+-- Ranged R: the scoped precision piece that introduces the tier. One round,
+-- a long bolt-throw between shots, and an execute that deletes the wounded.
+Weapons.items.frostbore_long_rifle = {
+	id = "frostbore_long_rifle",
+	name = "Frostbore Long Rifle",
+	description = "A whaler's long gun rebored for the reach. One round, one breath, one kill - if you've softened them first.",
+	rarity = "Rare",
+	icon = "",
+	damage = { 160, 210 },
+	cooldown = 2.6,
+	reach = 14,
+	knockback = 4,
+	model = {
+		shape = "gun",
+		model = "WeaponPack",
+		variant = "FrostboreRifle",
+		length = 3.6,
+		grip = 0.9,
+		color = Color3.fromRGB(104, 96, 84),
+		accent = Color3.fromRGB(170, 186, 202),
+		wrap = Color3.fromRGB(70, 64, 56),
+	},
+	ranged = {
+		projectileSpeed = 400,
+		range = 220,
+		fireMode = "scoped",
+		magazine = 1,
+		reloadTime = 1.2,
+		zoomFov = 30,
+	},
+	recipe = {
+		requiresLevel = 16,
+		coins = 1100,
+		materials = { glacier_shard = 10, everice = 4, bog_iron = 6 },
+	},
+	perk = {
+		id = "one_breath",
+		name = "One Breath",
+		description = "A wounded target caught in the glass doesn't get to be wounded for long - heavy bonus damage low.",
+		execute = true,
+	},
+}
+
+-- Melee R: the two-handed slab. Slow, enormous, and it launches the pinned.
+Weapons.items.glacier_maul = {
+	id = "glacier_maul",
+	name = "Glacier Maul",
+	description = "A blue-hearted slab of everice on a whalebone haft. What it hits leaves the ground, whether it meant to or not.",
+	rarity = "Rare",
+	icon = "",
+	damage = { 100, 138 },
+	cooldown = 0.7,
+	reach = 15,
+	knockback = 30,
+	swing = "chop",
+	model = {
+		shape = "club",
+		model = "WeaponPack",
+		variant = "GlacierMaul",
+		length = 4.2,
+		grip = 0.8,
+		color = Color3.fromRGB(150, 140, 124),
+		accent = Color3.fromRGB(150, 196, 224),
+		wrap = Color3.fromRGB(104, 96, 84),
+		glow = Color3.fromRGB(120, 200, 255),
+		neon = { "Weapon_Glow" },
+	},
+	recipe = {
+		requiresLevel = 18,
+		coins = 1700,
+		materials = { everice = 8, glacier_shard = 12, rime_pelt = 8 },
+	},
+	perk = {
+		id = "break_the_shelf",
+		name = "Break the Shelf",
+		description = "Hits launch even the things that cling to the ground - nothing stays planted in front of it.",
+		uproot = true,
+	},
+}
+
+-- Ranged E: six chambers of frostbite. Fast cylinder, brutal poison rounds.
+Weapons.items.frostbite_revolver = {
+	id = "frostbite_revolver",
+	name = "Frostbite Revolver",
+	description = "Six chambers packed with rime. What it doesn't kill outright, the cold finishes.",
+	rarity = "Epic",
+	icon = "",
+	damage = { 38, 52 },
+	cooldown = 0.45,
+	reach = 14,
+	knockback = 2,
+	model = {
+		shape = "gun",
+		model = "WeaponPack",
+		variant = "FrostbiteRevolver",
+		length = 1.7,
+		grip = 0.45,
+		color = Color3.fromRGB(90, 100, 116),
+		accent = Color3.fromRGB(200, 224, 240),
+		wrap = Color3.fromRGB(60, 68, 82),
+		glow = Color3.fromRGB(120, 200, 255),
+		neon = { "Weapon_Glow" },
+	},
+	ranged = {
+		projectileSpeed = 320,
+		range = 110,
+		fireMode = "single",
+		magazine = 6,
+		reloadTime = 1.8,
+	},
+	recipe = {
+		requiresLevel = 19,
+		coins = 2600,
+		materials = { everice = 8, aurora_essence = 4, glacier_shard = 10 },
+	},
+	perk = {
+		id = "deep_frost",
+		name = "Deep Frost",
+		description = "Every round leaves the cold in the wound, biting on for seconds after the hit.",
+		poison = { damage = 30, duration = 4 },
+	},
+}
+
+-- Melee L: the boss piece. ~204 dps, long reach, and an execute worthy of
+-- the serpent whose fang it is.
+Weapons.items.rimefang_lance = {
+	id = "rimefang_lance",
+	name = "Rimefang Lance",
+	description = "The serpent's own fang, socketed on a spar of frozen keel. It ends fights the way winter ends things - all at once.",
+	rarity = "Legendary",
+	icon = "",
+	damage = { 75, 96 },
+	cooldown = 0.42,
+	reach = 16,
+	knockback = 18,
+	swing = "slash",
+	model = {
+		shape = "blade",
+		model = "WeaponPack",
+		variant = "RimefangLance",
+		length = 4.6,
+		grip = 0.9,
+		color = Color3.fromRGB(140, 180, 210),
+		accent = Color3.fromRGB(236, 246, 252),
+		wrap = Color3.fromRGB(80, 100, 126),
+		glow = Color3.fromRGB(80, 220, 255),
+		neon = { "Weapon_Glow" },
+	},
+	recipe = {
+		requiresLevel = 21,
+		coins = 3000,
+		materials = { everice = 10, aurora_essence = 6, rime_pelt = 12 },
+		requiresHearts = { "rimefang" },
+	},
+	perk = {
+		id = "winters_end",
+		name = "Winter's End",
+		description = "The fang remembers how the serpent fed - heavy bonus damage to anything already wounded.",
+		execute = true,
+	},
+}
+
+-- ============================================================ Gloomtrench
+
+-- Melee U: a pressure-forged pick of trench chitin. Plain, fast, dependable.
+Weapons.items.trenchspike = {
+	id = "trenchspike",
+	name = "Trenchspike",
+	description = "Chitin from the crush of the deep, ground to a point. It has no tricks. It doesn't need one.",
+	rarity = "Uncommon",
+	icon = "",
+	damage = { 62, 82 },
+	cooldown = 0.42,
+	reach = 14,
+	knockback = 14,
+	swing = "slash",
+	model = {
+		shape = "blade",
+		model = "WeaponPack",
+		variant = "Trenchspike",
+		length = 3.0,
+		grip = 0.6,
+		color = Color3.fromRGB(70, 78, 92),
+		accent = Color3.fromRGB(130, 124, 142),
+		wrap = Color3.fromRGB(48, 54, 66),
+	},
+	recipe = {
+		requiresLevel = 29,
+		coins = 3600,
+		materials = { trench_chitin = 10, gloom_scale = 8, driftwood = 10 },
+	},
+}
+
+-- Ranged R: a whaling gun for the dark. One heavy iron, punched deep.
+Weapons.items.abyssal_harpooner = {
+	id = "abyssal_harpooner",
+	name = "Abyssal Harpooner",
+	description = "A whaling gun re-rigged for things whales are scared of. One iron, thrown hard enough to matter.",
+	rarity = "Rare",
+	icon = "",
+	damage = { 140, 190 },
+	cooldown = 1.2,
+	reach = 14,
+	knockback = 4,
+	model = {
+		shape = "gun",
+		model = "WeaponPack",
+		variant = "AbyssalHarpooner",
+		length = 3.4,
+		grip = 0.95,
+		color = Color3.fromRGB(60, 66, 84),
+		accent = Color3.fromRGB(140, 150, 170),
+		wrap = Color3.fromRGB(44, 48, 62),
+	},
+	ranged = {
+		projectileSpeed = 260,
+		range = 140,
+		fireMode = "single",
+		magazine = 1,
+		reloadTime = 1.0,
+		arc = true,
+	},
+	recipe = {
+		requiresLevel = 30,
+		coins = 4800,
+		materials = { trench_chitin = 12, gloom_scale = 10, bog_iron = 8 },
+	},
+}
+
+-- Ranged R: the trench's chattergun. Full-auto, mag 30, ~160 sustained.
+Weapons.items.riptide_smg = {
+	id = "riptide_smg",
+	name = "Riptide SMG",
+	description = "Salvaged off a wreck that had no business carrying it. It talks fast and the dark talks back.",
+	rarity = "Rare",
+	icon = "",
+	damage = { 17, 23 },
+	cooldown = 0.125,
+	reach = 14,
+	knockback = 1,
+	model = {
+		shape = "gun",
+		model = "WeaponPack",
+		variant = "RiptideSmg",
+		length = 2.4,
+		grip = 0.6,
+		color = Color3.fromRGB(76, 84, 100),
+		accent = Color3.fromRGB(140, 220, 255),
+		wrap = Color3.fromRGB(52, 58, 72),
+	},
+	ranged = {
+		projectileSpeed = 300,
+		range = 100,
+		fireMode = "auto",
+		magazine = 30,
+		reloadTime = 1.9,
+	},
+	recipe = {
+		requiresLevel = 32,
+		coins = 6500,
+		materials = { trench_chitin = 12, lantern_gland = 5, bog_iron = 10 },
+	},
+}
+
+-- Melee E: a saber of polished voidglass that drinks what it cuts.
+Weapons.items.voidglass_saber = {
+	id = "voidglass_saber",
+	name = "Voidglass Saber",
+	description = "Glass from the trench floor, black past black, edged. What it takes from them it hands to you.",
+	rarity = "Epic",
+	icon = "",
+	damage = { 88, 118 },
+	cooldown = 0.45,
+	reach = 15,
+	knockback = 14,
+	swing = "slash",
+	model = {
+		shape = "blade",
+		model = "WeaponPack",
+		variant = "VoidglassSaber",
+		length = 3.8,
+		grip = 0.7,
+		color = Color3.fromRGB(40, 36, 56),
+		accent = Color3.fromRGB(66, 58, 90),
+		wrap = Color3.fromRGB(30, 26, 42),
+		glow = Color3.fromRGB(170, 120, 255),
+		neon = { "Weapon_Glow" },
+	},
+	recipe = {
+		requiresLevel = 33,
+		coins = 8500,
+		materials = { abyss_ichor = 4, trench_chitin = 12, gloom_scale = 12 },
+	},
+	perk = {
+		id = "drink_the_dark",
+		name = "Drink the Dark",
+		description = "Every cut feeds you a share of what it took.",
+		lifesteal = true,
+	},
+}
+
+-- Ranged L: the boss piece. Scoped battle rifle; "Lights Out" execute.
+Weapons.items.gloomcaller_dmr = {
+	id = "gloomcaller_dmr",
+	name = "Gloomcaller DMR",
+	description = "Built around a lens of Noctyss's own lure-glass. It finds the wounded in the dark, and then there is no more dark to hide in.",
+	rarity = "Legendary",
+	icon = "",
+	damage = { 180, 240 },
+	cooldown = 0.8,
+	reach = 14,
+	knockback = 3,
+	model = {
+		shape = "gun",
+		model = "WeaponPack",
+		variant = "GloomcallerDmr",
+		length = 3.5,
+		grip = 0.85,
+		color = Color3.fromRGB(56, 50, 72),
+		accent = Color3.fromRGB(255, 226, 130),
+		wrap = Color3.fromRGB(40, 36, 54),
+		glow = Color3.fromRGB(255, 226, 130),
+		neon = { "Weapon_Glow" },
+	},
+	ranged = {
+		projectileSpeed = 420,
+		range = 200,
+		fireMode = "scoped",
+		magazine = 8,
+		reloadTime = 2.0,
+		zoomFov = 34,
+	},
+	recipe = {
+		requiresLevel = 35,
+		coins = 12000,
+		materials = { abyss_ichor = 6, lantern_gland = 8, trench_chitin = 14 },
+		requiresHearts = { "noctyss" },
+	},
+	perk = {
+		id = "lights_out",
+		name = "Lights Out",
+		description = "The lure-glass marks the faltering - heavy bonus damage to anything already wounded.",
+		execute = true,
+	},
+}
+
+-- ============================================================ Wreckwater
+
+-- Melee U: the boarder's opener. Wide, mean, hits everything in reach.
+Weapons.items.boarding_axe = {
+	id = "boarding_axe",
+	name = "Boarding Axe",
+	description = "The fleet's own pattern, barnacled but keen. Made for clearing a deck, not duelling on one.",
+	rarity = "Uncommon",
+	icon = "",
+	damage = { 90, 120 },
+	cooldown = 0.5,
+	reach = 15,
+	knockback = 18,
+	swing = "chop",
+	model = {
+		shape = "club",
+		model = "WeaponPack",
+		variant = "BoardingAxe",
+		length = 3.4,
+		grip = 0.7,
+		color = Color3.fromRGB(110, 96, 76),
+		accent = Color3.fromRGB(160, 168, 176),
+		wrap = Color3.fromRGB(76, 66, 54),
+	},
+	recipe = {
+		requiresLevel = 36,
+		coins = 7000,
+		materials = { ghost_plank = 12, tarnished_doubloon = 8, bog_iron = 10 },
+	},
+	perk = {
+		id = "clear_the_deck",
+		name = "Clear the Deck",
+		description = "A full swing catches everything in reach, not just the one in front.",
+		cleave = true,
+	},
+}
+
+-- Ranged R: eight pellets of grave-iron. Ruinous up close, mist at range.
+Weapons.items.grave_blunderbuss = {
+	id = "grave_blunderbuss",
+	name = "Grave Blunderbuss",
+	description = "Loaded with grave-iron scrap and worse opinions. Step in close and it settles arguments whole.",
+	rarity = "Rare",
+	icon = "",
+	damage = { 16, 24 },
+	cooldown = 0.7,
+	reach = 14,
+	knockback = 3,
+	model = {
+		shape = "gun",
+		model = "WeaponPack",
+		variant = "GraveBlunderbuss",
+		length = 2.9,
+		grip = 0.75,
+		color = Color3.fromRGB(104, 88, 66),
+		accent = Color3.fromRGB(150, 156, 164),
+		wrap = Color3.fromRGB(70, 60, 48),
+	},
+	ranged = {
+		projectileSpeed = 240,
+		range = 55,
+		fireMode = "single",
+		magazine = 2,
+		reloadTime = 2.2,
+		pellets = 8,
+		spread = 7,
+	},
+	recipe = {
+		requiresLevel = 37,
+		coins = 9000,
+		materials = { ghost_plank = 10, tarnished_doubloon = 10, bog_iron = 12 },
+	},
+}
+
+-- Ranged R: the ghost-fleet's full-auto. Mag 32, ~240 sustained.
+Weapons.items.phantom_repeater = {
+	id = "phantom_repeater",
+	name = "Phantom Repeater",
+	description = "It was never made; it is remembered, by enough dead gunners to keep it firing.",
+	rarity = "Rare",
+	icon = "",
+	damage = { 25, 35 },
+	cooldown = 0.125,
+	reach = 14,
+	knockback = 1,
+	model = {
+		shape = "gun",
+		model = "WeaponPack",
+		variant = "PhantomRepeater",
+		length = 3.1,
+		grip = 0.8,
+		color = Color3.fromRGB(96, 116, 108),
+		accent = Color3.fromRGB(160, 255, 210),
+		wrap = Color3.fromRGB(64, 78, 72),
+		glow = Color3.fromRGB(160, 255, 210),
+		neon = { "Weapon_Glow" },
+	},
+	ranged = {
+		projectileSpeed = 320,
+		range = 120,
+		fireMode = "auto",
+		magazine = 32,
+		reloadTime = 2.0,
+	},
+	recipe = {
+		requiresLevel = 39,
+		coins = 12000,
+		materials = { spectral_sailcloth = 6, tarnished_doubloon = 12, ghost_plank = 10 },
+	},
+}
+
+-- Melee E: the duellist's answer. Fast, hungry, ramps with the rhythm.
+Weapons.items.cutlass_of_the_fleet = {
+	id = "cutlass_of_the_fleet",
+	name = "Cutlass of the Fleet",
+	description = "Every officer of the fleet carried one; this is all of them at once. It fights faster the longer you let it.",
+	rarity = "Epic",
+	icon = "",
+	damage = { 105, 140 },
+	cooldown = 0.42,
+	reach = 15,
+	knockback = 14,
+	swing = "slash",
+	model = {
+		shape = "blade",
+		model = "WeaponPack",
+		variant = "CutlassOfTheFleet",
+		length = 3.6,
+		grip = 0.65,
+		color = Color3.fromRGB(120, 134, 124),
+		accent = Color3.fromRGB(200, 214, 206),
+		wrap = Color3.fromRGB(84, 94, 88),
+		glow = Color3.fromRGB(160, 255, 210),
+		neon = { "Weapon_Glow" },
+	},
+	recipe = {
+		requiresLevel = 40,
+		coins = 16000,
+		materials = { spectral_sailcloth = 8, wraith_essence = 3, tarnished_doubloon = 12 },
+	},
+	perk = {
+		id = "fleet_tempo",
+		name = "Fleet Tempo",
+		description = "A drowned crew keeps the beat - consecutive landed hits ramp the damage.",
+		frenzy = true,
+	},
+}
+
+-- Melee L: the boss piece. ~360 dps and "Strike the Colors".
+Weapons.items.admirals_saber = {
+	id = "admirals_saber",
+	name = "Admiral's Saber",
+	description = "Wrack's own blade, surrendered only with his heart. When it lands on the faltering, the battle is simply over.",
+	rarity = "Legendary",
+	icon = "",
+	damage = { 130, 172 },
+	cooldown = 0.42,
+	reach = 16,
+	knockback = 16,
+	swing = "slash",
+	model = {
+		shape = "blade",
+		model = "WeaponPack",
+		variant = "AdmiralsSaber",
+		length = 4.0,
+		grip = 0.7,
+		color = Color3.fromRGB(96, 116, 108),
+		accent = Color3.fromRGB(230, 190, 100),
+		wrap = Color3.fromRGB(66, 80, 76),
+		glow = Color3.fromRGB(160, 255, 210),
+		neon = { "Weapon_Glow" },
+	},
+	recipe = {
+		requiresLevel = 42,
+		coins = 20000,
+		materials = { wraith_essence = 6, spectral_sailcloth = 10, ghost_plank = 14 },
+		requiresHearts = { "admiral_wrack" },
+	},
+	perk = {
+		id = "strike_the_colors",
+		name = "Strike the Colors",
+		description = "The wounded see the blade and know the engagement is decided - heavy bonus damage low.",
+		execute = true,
+	},
+}
+
 -- Stable display order for the inventory / crafting menus (table iteration
 -- order isn't guaranteed). Starter first, then by island and level gate.
 Weapons.order = {
@@ -722,11 +1291,26 @@ Weapons.order = {
 	"gatorjaw_crossbow",
 	"mire_flintlock",
 	"fenreaver",
+	"icepick_hatchet",
+	"frostbore_long_rifle",
+	"glacier_maul",
+	"frostbite_revolver",
+	"rimefang_lance",
 	"cinderlock_carbine",
 	"obsidian_piercer",
 	"basalt_scattergun",
 	"magma_gauntlets",
 	"vulkan_repeater",
+	"trenchspike",
+	"abyssal_harpooner",
+	"riptide_smg",
+	"voidglass_saber",
+	"gloomcaller_dmr",
+	"boarding_axe",
+	"grave_blunderbuss",
+	"phantom_repeater",
+	"cutlass_of_the_fleet",
+	"admirals_saber",
 }
 
 -- Every player starts with (and can't lose) this one.

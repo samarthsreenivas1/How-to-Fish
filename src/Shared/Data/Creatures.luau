@@ -1324,6 +1324,871 @@ Creatures.items.old_gnashroot = {
 	},
 }
 
+-- ============================================================ Frostmaw Reach
+-- The frozen reach (island 3, L15-21). Casts land in the pre-cut ice holes
+-- (Frostmaw_IceHoles -> waters "ice"). Rewards x3.5 the island-1 baseline.
+
+Creatures.items.icemelt_smelt = {
+	id = "icemelt_smelt",
+	name = "Icemelt Smelt",
+	rarity = "Common",
+	archetype = "flopper",
+	health = 220,
+	waters = "ice",
+	rewards = { coins = { 14, 28 }, xp = 42 },
+	drops = { materials = { glacier_shard = { 1, 2 } } },
+	body = {
+		model = "FishPack",
+		species = "IcemeltSmelt",
+		scale = 0.65,
+		color = Color3.fromRGB(196, 224, 236),
+		finColor = Color3.fromRGB(150, 190, 214),
+		markColor = Color3.fromRGB(240, 250, 255),
+	},
+}
+
+Creatures.items.frostfin_char = {
+	id = "frostfin_char",
+	name = "Frostfin Char",
+	rarity = "Common",
+	archetype = "flopper",
+	health = 250,
+	waters = "ice",
+	rewards = { coins = { 14, 28 }, xp = 42 },
+	drops = { materials = { glacier_shard = { 1, 2 } } },
+	body = {
+		model = "FishPack",
+		species = "FrostfinChar",
+		scale = 0.85,
+		color = Color3.fromRGB(120, 150, 170),
+		finColor = Color3.fromRGB(210, 234, 246),
+		markColor = Color3.fromRGB(236, 130, 120),
+	},
+}
+
+Creatures.items.snowdrift_sculpin = {
+	id = "snowdrift_sculpin",
+	name = "Snowdrift Sculpin",
+	rarity = "Common",
+	archetype = "flopper",
+	health = 240,
+	waters = "ice",
+	rewards = { coins = { 14, 28 }, xp = 42 },
+	drops = { materials = { rime_pelt = { 1, 1 }, glacier_shard = { 1, 1 } } },
+	body = {
+		model = "FishPack",
+		species = "SnowdriftSculpin",
+		scale = 0.75,
+		color = Color3.fromRGB(168, 174, 186),
+		finColor = Color3.fromRGB(120, 126, 142),
+		markColor = Color3.fromRGB(228, 234, 244),
+	},
+}
+
+Creatures.items.rime_herring = {
+	id = "rime_herring",
+	name = "Rime Herring",
+	rarity = "Uncommon",
+	archetype = "flopper",
+	health = 620,
+	waters = "ice",
+	rewards = { coins = { 42, 70 }, xp = 122 },
+	drops = { materials = { rime_pelt = { 1, 2 } } },
+	body = {
+		model = "FishPack",
+		species = "RimeHerring",
+		scale = 1.0,
+		color = Color3.fromRGB(178, 198, 216),
+		finColor = Color3.fromRGB(140, 160, 186),
+		markColor = Color3.fromRGB(244, 250, 255),
+	},
+}
+
+-- Rusher: a shivering little seal-thing that bolts across the ice at you.
+Creatures.items.frostbite_pup = {
+	id = "frostbite_pup",
+	name = "Frostbite Pup",
+	rarity = "Uncommon",
+	archetype = "rusher",
+	health = 580,
+	waters = "ice",
+	rewards = { coins = { 42, 70 }, xp = 122 },
+	drops = { materials = { rime_pelt = { 1, 2 } } },
+	body = {
+		model = "CreaturePack",
+		species = "FrostbitePup",
+		shape = "crab",
+		scale = 1.1,
+		color = Color3.fromRGB(214, 224, 234),
+		finColor = Color3.fromRGB(170, 186, 202),
+		markColor = Color3.fromRGB(90, 140, 190),
+	},
+}
+
+-- Skythief: a screaming gull that circles the holes - and steals a resting
+-- catch clean off the ice if you leave one lying (kill it to get it back).
+Creatures.items.hailfin_skua = {
+	id = "hailfin_skua",
+	name = "Hailfin Skua",
+	rarity = "Uncommon",
+	archetype = "skythief",
+	health = 540,
+	waters = "ice",
+	rewards = { coins = { 42, 70 }, xp = 122 },
+	drops = { materials = { rime_pelt = { 1, 2 }, glacier_shard = { 1, 1 } } },
+	body = {
+		model = "CreaturePack",
+		species = "HailfinSkua",
+		shape = "ray",
+		scale = 1.0,
+		color = Color3.fromRGB(200, 208, 220),
+		finColor = Color3.fromRGB(146, 156, 172),
+		markColor = Color3.fromRGB(60, 70, 84),
+	},
+}
+
+Creatures.items.iceshard_crab = {
+	id = "iceshard_crab",
+	name = "Iceshard Crab",
+	rarity = "Uncommon",
+	archetype = "rusher",
+	health = 660,
+	waters = "ice",
+	rewards = { coins = { 42, 70 }, xp = 122 },
+	drops = { materials = { glacier_shard = { 2, 3 } } },
+	body = {
+		model = "CreaturePack",
+		species = "IceshardCrab",
+		shape = "crab",
+		scale = 1.15,
+		color = Color3.fromRGB(150, 196, 224),
+		finColor = Color3.fromRGB(200, 234, 250),
+		markColor = Color3.fromRGB(96, 140, 176),
+	},
+}
+
+-- Burrower: tunnels UNDER the ice sheet, bursts up through it.
+Creatures.items.glacial_lurker = {
+	id = "glacial_lurker",
+	name = "Glacial Lurker",
+	rarity = "Rare",
+	archetype = "burrower",
+	health = 1150,
+	waters = "ice",
+	rewards = { coins = { 122, 192 }, xp = 315 },
+	drops = { materials = { everice = { 1, 2 } } },
+	body = {
+		model = "CreaturePack",
+		species = "GlacialLurker",
+		shape = "lurker",
+		scale = 1.3,
+		color = Color3.fromRGB(174, 208, 224),
+		finColor = Color3.fromRGB(120, 160, 186),
+		markColor = Color3.fromRGB(230, 245, 255),
+	},
+}
+
+-- Shambler: a sailor the reach kept. Walks out of the whiteout at you.
+Creatures.items.frozen_mariner = {
+	id = "frozen_mariner",
+	name = "Frozen Mariner",
+	rarity = "Rare",
+	archetype = "shambler",
+	health = 1250,
+	waters = "ice",
+	rewards = { coins = { 122, 192 }, xp = 315 },
+	drops = { materials = { everice = { 1, 2 }, rime_pelt = { 1, 2 } } },
+	body = {
+		model = "CreaturePack",
+		species = "FrozenMariner",
+		shape = "zombie",
+		stance = "upright",
+		scale = 1.1,
+		color = Color3.fromRGB(160, 180, 196),
+		finColor = Color3.fromRGB(104, 124, 144),
+		markColor = Color3.fromRGB(210, 236, 250),
+	},
+}
+
+-- Drifter: hovers off the holes glowing with the aurora, stings on contact.
+Creatures.items.aurora_jelly = {
+	id = "aurora_jelly",
+	name = "Aurora Jelly",
+	rarity = "Rare",
+	archetype = "drifter",
+	health = 1050,
+	waters = "ice",
+	rewards = { coins = { 122, 192 }, xp = 315 },
+	drops = { materials = { aurora_essence = { 1, 1 }, everice = { 1, 1 } } },
+	body = {
+		model = "CreaturePack",
+		species = "AuroraJelly",
+		shape = "jelly",
+		stance = "upright",
+		scale = 1.2,
+		color = Color3.fromRGB(150, 230, 200),
+		finColor = Color3.fromRGB(140, 170, 250),
+		markColor = Color3.fromRGB(230, 150, 230),
+	},
+}
+
+-- Charger: a spear of a fish that dashes clean past you across the ice.
+Creatures.items.icevein_pike = {
+	id = "icevein_pike",
+	name = "Icevein Pike",
+	rarity = "Epic",
+	archetype = "charger",
+	health = 1900,
+	waters = "ice",
+	rewards = { coins = { 315, 490 }, xp = 770 },
+	drops = { materials = { aurora_essence = { 1, 2 } } },
+	body = {
+		model = "CreaturePack",
+		species = "IceveinPike",
+		shape = "skipper",
+		scale = 1.5,
+		color = Color3.fromRGB(140, 180, 204),
+		finColor = Color3.fromRGB(200, 230, 246),
+		markColor = Color3.fromRGB(80, 200, 255),
+	},
+}
+
+-- Gascloud: a blizzard given a grudge; trails a freezing whiteout.
+Creatures.items.blizzard_wraith = {
+	id = "blizzard_wraith",
+	name = "Blizzard Wraith",
+	rarity = "Epic",
+	archetype = "gascloud",
+	health = 1750,
+	waters = "ice",
+	rewards = { coins = { 315, 490 }, xp = 770 },
+	drops = { materials = { aurora_essence = { 1, 2 }, everice = { 1, 2 } } },
+	body = {
+		model = "CreaturePack",
+		species = "BlizzardWraith",
+		shape = "zombie",
+		stance = "upright",
+		scale = 1.25,
+		color = Color3.fromRGB(224, 236, 248),
+		finColor = Color3.fromRGB(170, 196, 220),
+		markColor = Color3.fromRGB(120, 200, 255),
+	},
+}
+
+-- The Legendary chase fish: seen once a season, sworn about forever.
+Creatures.items.aurorafin_marlin = {
+	id = "aurorafin_marlin",
+	name = "Aurorafin Marlin",
+	rarity = "Legendary",
+	archetype = "flopper",
+	health = 3200,
+	waters = "ice",
+	rewards = { coins = { 875, 1400 }, xp = 2100 },
+	drops = { materials = { aurora_essence = { 2, 3 }, pearl = { 1, 2 } } },
+	body = {
+		model = "FishPack",
+		species = "AurorafinMarlin",
+		scale = 1.9,
+		color = Color3.fromRGB(96, 140, 190),
+		finColor = Color3.fromRGB(150, 230, 200),
+		markColor = Color3.fromRGB(230, 150, 230),
+	},
+}
+
+-- The boss. Rises out of the big fishing hole; dives back UNDER the sheet
+-- and bursts up through it - the island's own ice holes turned against you.
+Creatures.items.rimefang = {
+	id = "rimefang",
+	name = "Rimefang, the Glacier Serpent",
+	rarity = "Boss",
+	archetype = "boss",
+	boss = "rimefang",
+	health = 26000,
+	waters = "ice",
+	rewards = { coins = { 4200, 6000 }, xp = 6500 },
+	drops = { materials = { aurora_essence = { 3, 4 }, everice = { 4, 6 }, glacier_shard = { 6, 8 } } },
+	body = {
+		model = "CreaturePack",
+		species = "Rimefang",
+		shape = "leviathan",
+		stance = "upright",
+		scale = 1.6,
+		color = Color3.fromRGB(190, 220, 240),
+		finColor = Color3.fromRGB(120, 170, 210),
+		markColor = Color3.fromRGB(80, 220, 255), -- ice-light lure and gills
+	},
+}
+
+-- ============================================================ Gloomtrench
+-- The abyss (island 5, L29-35). Perpetual dark; casts land in the black
+-- water (Gloomtrench_DarkWater -> waters "gloom"). Rewards x10 baseline.
+
+Creatures.items.pale_dace = {
+	id = "pale_dace",
+	name = "Pale Dace",
+	rarity = "Common",
+	archetype = "flopper",
+	health = 780,
+	waters = "gloom",
+	rewards = { coins = { 40, 80 }, xp = 120 },
+	drops = { materials = { gloom_scale = { 1, 2 } } },
+	body = {
+		model = "FishPack",
+		species = "PaleDace",
+		scale = 0.75,
+		color = Color3.fromRGB(216, 214, 224),
+		finColor = Color3.fromRGB(170, 168, 184),
+		markColor = Color3.fromRGB(140, 140, 158),
+	},
+}
+
+Creatures.items.blindcave_sardine = {
+	id = "blindcave_sardine",
+	name = "Blindcave Sardine",
+	rarity = "Common",
+	archetype = "flopper",
+	health = 720,
+	waters = "gloom",
+	rewards = { coins = { 40, 80 }, xp = 120 },
+	drops = { materials = { gloom_scale = { 1, 2 } } },
+	body = {
+		model = "FishPack",
+		species = "BlindcaveSardine",
+		scale = 0.6,
+		color = Color3.fromRGB(232, 226, 218),
+		finColor = Color3.fromRGB(190, 182, 176),
+		markColor = Color3.fromRGB(255, 246, 236),
+	},
+}
+
+Creatures.items.sootgill_hagfish = {
+	id = "sootgill_hagfish",
+	name = "Sootgill Hagfish",
+	rarity = "Common",
+	archetype = "flopper",
+	health = 850,
+	waters = "gloom",
+	rewards = { coins = { 40, 80 }, xp = 120 },
+	drops = { materials = { gloom_scale = { 1, 1 }, trench_chitin = { 1, 1 } } },
+	body = {
+		model = "FishPack",
+		species = "SootgillHagfish",
+		scale = 0.9,
+		color = Color3.fromRGB(70, 66, 78),
+		finColor = Color3.fromRGB(50, 46, 58),
+		markColor = Color3.fromRGB(120, 110, 130),
+	},
+}
+
+-- Spitter: a gullet with a tail. Lobs bile from the dark.
+Creatures.items.gulper_eel = {
+	id = "gulper_eel",
+	name = "Gulper Eel",
+	rarity = "Uncommon",
+	archetype = "spitter",
+	health = 2000,
+	waters = "gloom",
+	rewards = { coins = { 120, 200 }, xp = 350 },
+	drops = { materials = { gloom_scale = { 2, 3 } } },
+	body = {
+		model = "CreaturePack",
+		species = "GulperEel",
+		shape = "gulletcod",
+		scale = 1.4,
+		color = Color3.fromRGB(48, 44, 60),
+		finColor = Color3.fromRGB(70, 62, 86),
+		markColor = Color3.fromRGB(140, 220, 255),
+	},
+}
+
+-- Drifter: hovers dark, then pops a blinding flash on contact.
+Creatures.items.flashbulb_squid = {
+	id = "flashbulb_squid",
+	name = "Flashbulb Squid",
+	rarity = "Uncommon",
+	archetype = "drifter",
+	health = 1850,
+	waters = "gloom",
+	rewards = { coins = { 120, 200 }, xp = 350 },
+	drops = { materials = { lantern_gland = { 1, 1 }, gloom_scale = { 1, 2 } } },
+	body = {
+		model = "CreaturePack",
+		species = "FlashbulbSquid",
+		shape = "jelly",
+		stance = "upright",
+		scale = 1.15,
+		color = Color3.fromRGB(90, 70, 110),
+		finColor = Color3.fromRGB(130, 100, 160),
+		markColor = Color3.fromRGB(255, 240, 180),
+	},
+}
+
+-- Charger: all legs and hunger, skitters at you along the trench floor.
+Creatures.items.trench_skitterer = {
+	id = "trench_skitterer",
+	name = "Trench Skitterer",
+	rarity = "Uncommon",
+	archetype = "charger",
+	health = 2200,
+	waters = "gloom",
+	rewards = { coins = { 120, 200 }, xp = 350 },
+	drops = { materials = { trench_chitin = { 2, 3 } } },
+	body = {
+		model = "CreaturePack",
+		species = "TrenchSkitterer",
+		shape = "crab",
+		scale = 1.2,
+		color = Color3.fromRGB(70, 78, 92),
+		finColor = Color3.fromRGB(100, 110, 128),
+		markColor = Color3.fromRGB(150, 220, 240),
+	},
+}
+
+-- Mimic: a warm hanging light in the perpetual dark. It is not a lantern.
+Creatures.items.lanternjaw_angler = {
+	id = "lanternjaw_angler",
+	name = "Lanternjaw Angler",
+	rarity = "Rare",
+	archetype = "mimic",
+	health = 3400,
+	waters = "gloom",
+	rewards = { coins = { 350, 550 }, xp = 900 },
+	drops = { materials = { lantern_gland = { 1, 2 } } },
+	body = {
+		model = "CreaturePack",
+		species = "LanternjawAngler",
+		shape = "mimic",
+		stance = "upright",
+		scale = 1.3,
+		color = Color3.fromRGB(60, 54, 72),
+		finColor = Color3.fromRGB(90, 80, 104),
+		markColor = Color3.fromRGB(255, 226, 130), -- the lure - the only warmth down here
+	},
+}
+
+-- Thief: wraps the catch of your coins in webbed arms and jets off.
+Creatures.items.vampire_squid = {
+	id = "vampire_squid",
+	name = "Vampire Squid",
+	rarity = "Rare",
+	archetype = "thief",
+	health = 3100,
+	waters = "gloom",
+	rewards = { coins = { 350, 550 }, xp = 900 },
+	drops = { materials = { lantern_gland = { 1, 2 }, gloom_scale = { 2, 3 } } },
+	body = {
+		model = "CreaturePack",
+		species = "VampireSquid",
+		shape = "hermit",
+		scale = 1.2,
+		color = Color3.fromRGB(120, 40, 60),
+		finColor = Color3.fromRGB(80, 26, 44),
+		markColor = Color3.fromRGB(255, 120, 120),
+	},
+}
+
+-- Thornback: armoured for the crush of the deep. Soft only from behind.
+Creatures.items.pressure_crab = {
+	id = "pressure_crab",
+	name = "Pressure Crab",
+	rarity = "Rare",
+	archetype = "thornback",
+	health = 3800,
+	waters = "gloom",
+	rewards = { coins = { 350, 550 }, xp = 900 },
+	drops = { materials = { trench_chitin = { 2, 4 } } },
+	body = {
+		model = "CreaturePack",
+		species = "PressureCrab",
+		shape = "crab",
+		scale = 1.35,
+		color = Color3.fromRGB(90, 86, 100),
+		finColor = Color3.fromRGB(130, 124, 142),
+		markColor = Color3.fromRGB(200, 190, 220),
+	},
+}
+
+-- Pulser: a silent wing of the abyss that charges and detonates the dark.
+Creatures.items.void_ray = {
+	id = "void_ray",
+	name = "Void Ray",
+	rarity = "Epic",
+	archetype = "pulser",
+	health = 5800,
+	waters = "gloom",
+	rewards = { coins = { 900, 1400 }, xp = 2200 },
+	drops = { materials = { abyss_ichor = { 1, 2 } } },
+	body = {
+		model = "CreaturePack",
+		species = "VoidRay",
+		shape = "ray",
+		scale = 1.6,
+		color = Color3.fromRGB(40, 36, 56),
+		finColor = Color3.fromRGB(66, 58, 90),
+		markColor = Color3.fromRGB(170, 120, 255),
+	},
+}
+
+-- Burrower: the silt itself stands up and takes you.
+Creatures.items.silt_stalker = {
+	id = "silt_stalker",
+	name = "Silt Stalker",
+	rarity = "Epic",
+	archetype = "burrower",
+	health = 6200,
+	waters = "gloom",
+	rewards = { coins = { 900, 1400 }, xp = 2200 },
+	drops = { materials = { abyss_ichor = { 1, 2 }, trench_chitin = { 2, 3 } } },
+	body = {
+		model = "CreaturePack",
+		species = "SiltStalker",
+		shape = "lurker",
+		scale = 1.5,
+		color = Color3.fromRGB(66, 60, 54),
+		finColor = Color3.fromRGB(90, 82, 72),
+		markColor = Color3.fromRGB(140, 128, 110),
+	},
+}
+
+-- The Legendary chase: a ribbon of pale light that shouldn't be down here.
+Creatures.items.ghostlight_oarfish = {
+	id = "ghostlight_oarfish",
+	name = "Ghostlight Oarfish",
+	rarity = "Legendary",
+	archetype = "flopper",
+	health = 10000,
+	waters = "gloom",
+	rewards = { coins = { 2500, 4000 }, xp = 6000 },
+	drops = { materials = { abyss_ichor = { 2, 3 }, lantern_gland = { 2, 3 } } },
+	body = {
+		model = "FishPack",
+		species = "GhostlightOarfish",
+		scale = 2.2,
+		color = Color3.fromRGB(224, 228, 240),
+		finColor = Color3.fromRGB(255, 120, 120),
+		markColor = Color3.fromRGB(180, 240, 255),
+	},
+}
+
+-- The boss. Her lure is the only light in the arena; enrage douses it.
+Creatures.items.noctyss = {
+	id = "noctyss",
+	name = "Noctyss, the Trench Mother",
+	rarity = "Boss",
+	archetype = "boss",
+	boss = "noctyss",
+	health = 60000,
+	waters = "gloom",
+	rewards = { coins = { 18000, 26000 }, xp = 16000 },
+	drops = { materials = { abyss_ichor = { 3, 4 }, lantern_gland = { 4, 6 }, trench_chitin = { 6, 8 } } },
+	body = {
+		model = "CreaturePack",
+		species = "Noctyss",
+		shape = "leviathan",
+		stance = "upright",
+		scale = 1.8,
+		color = Color3.fromRGB(44, 38, 58),
+		finColor = Color3.fromRGB(70, 58, 92),
+		markColor = Color3.fromRGB(255, 226, 130), -- the lure
+	},
+}
+
+-- ============================================================ Wreckwater
+-- The ghost-fleet graveyard (island 6, L36-42). Casts land in the bay water
+-- threading the wrecks (Wreckwater_Bay -> waters "wreck"). Rewards x16.
+
+Creatures.items.wreck_herring = {
+	id = "wreck_herring",
+	name = "Wreck Herring",
+	rarity = "Common",
+	archetype = "flopper",
+	health = 1250,
+	waters = "wreck",
+	rewards = { coins = { 64, 128 }, xp = 192 },
+	drops = { materials = { ghost_plank = { 1, 2 } } },
+	body = {
+		model = "FishPack",
+		species = "WreckHerring",
+		scale = 0.8,
+		color = Color3.fromRGB(150, 168, 160),
+		finColor = Color3.fromRGB(110, 128, 122),
+		markColor = Color3.fromRGB(200, 220, 210),
+	},
+}
+
+Creatures.items.rustscale_snapper = {
+	id = "rustscale_snapper",
+	name = "Rustscale Snapper",
+	rarity = "Common",
+	archetype = "flopper",
+	health = 1350,
+	waters = "wreck",
+	rewards = { coins = { 64, 128 }, xp = 192 },
+	drops = { materials = { tarnished_doubloon = { 1, 1 }, ghost_plank = { 1, 1 } } },
+	body = {
+		model = "FishPack",
+		species = "RustscaleSnapper",
+		scale = 0.95,
+		color = Color3.fromRGB(164, 106, 72),
+		finColor = Color3.fromRGB(120, 74, 52),
+		markColor = Color3.fromRGB(220, 160, 90),
+	},
+}
+
+Creatures.items.barnacle_blenny = {
+	id = "barnacle_blenny",
+	name = "Barnacle Blenny",
+	rarity = "Common",
+	archetype = "flopper",
+	health = 1300,
+	waters = "wreck",
+	rewards = { coins = { 64, 128 }, xp = 192 },
+	drops = { materials = { ghost_plank = { 1, 2 } } },
+	body = {
+		model = "FishPack",
+		species = "BarnacleBlenny",
+		scale = 0.7,
+		color = Color3.fromRGB(120, 130, 110),
+		finColor = Color3.fromRGB(90, 100, 84),
+		markColor = Color3.fromRGB(190, 196, 180),
+	},
+}
+
+Creatures.items.ghost_carp = {
+	id = "ghost_carp",
+	name = "Ghost Carp",
+	rarity = "Uncommon",
+	archetype = "flopper",
+	health = 3300,
+	waters = "wreck",
+	rewards = { coins = { 192, 320 }, xp = 560 },
+	drops = { materials = { ghost_plank = { 2, 3 } } },
+	body = {
+		model = "FishPack",
+		species = "GhostCarp",
+		scale = 1.2,
+		color = Color3.fromRGB(210, 224, 218),
+		finColor = Color3.fromRGB(160, 180, 172),
+		markColor = Color3.fromRGB(140, 220, 190),
+	},
+}
+
+-- Flyer: a knot of rope and grave-cold air off the rigging, dive-bombs.
+Creatures.items.rigging_wraith = {
+	id = "rigging_wraith",
+	name = "Rigging Wraith",
+	rarity = "Uncommon",
+	archetype = "flyer",
+	health = 3000,
+	waters = "wreck",
+	rewards = { coins = { 192, 320 }, xp = 560 },
+	drops = { materials = { spectral_sailcloth = { 1, 1 }, ghost_plank = { 1, 2 } } },
+	body = {
+		model = "CreaturePack",
+		species = "RiggingWraith",
+		shape = "ray",
+		scale = 1.15,
+		color = Color3.fromRGB(150, 190, 170),
+		finColor = Color3.fromRGB(110, 150, 134),
+		markColor = Color3.fromRGB(220, 250, 236),
+	},
+}
+
+-- Rusher: an iron ball with legs and a temper.
+Creatures.items.cannonball_crab = {
+	id = "cannonball_crab",
+	name = "Cannonball Crab",
+	rarity = "Uncommon",
+	archetype = "rusher",
+	health = 3600,
+	waters = "wreck",
+	rewards = { coins = { 192, 320 }, xp = 560 },
+	drops = { materials = { tarnished_doubloon = { 2, 3 } } },
+	body = {
+		model = "CreaturePack",
+		species = "CannonballCrab",
+		shape = "crab",
+		scale = 1.25,
+		color = Color3.fromRGB(60, 62, 68),
+		finColor = Color3.fromRGB(90, 92, 100),
+		markColor = Color3.fromRGB(180, 140, 80),
+	},
+}
+
+-- Shambler: still keeping his watch, hauling a fouled anchor line.
+Creatures.items.drowned_boatswain = {
+	id = "drowned_boatswain",
+	name = "Drowned Boatswain",
+	rarity = "Rare",
+	archetype = "shambler",
+	health = 5600,
+	waters = "wreck",
+	rewards = { coins = { 560, 880 }, xp = 1440 },
+	drops = { materials = { spectral_sailcloth = { 1, 2 }, tarnished_doubloon = { 2, 3 } } },
+	body = {
+		model = "CreaturePack",
+		species = "DrownedBoatswain",
+		shape = "zombie",
+		stance = "upright",
+		scale = 1.15,
+		color = Color3.fromRGB(110, 130, 122),
+		finColor = Color3.fromRGB(80, 96, 90),
+		markColor = Color3.fromRGB(190, 214, 200),
+	},
+}
+
+-- Charger: a moray the length of a longboat, all lunge.
+Creatures.items.phantom_moray = {
+	id = "phantom_moray",
+	name = "Phantom Moray",
+	rarity = "Rare",
+	archetype = "charger",
+	health = 5200,
+	waters = "wreck",
+	rewards = { coins = { 560, 880 }, xp = 1440 },
+	drops = { materials = { spectral_sailcloth = { 1, 2 } } },
+	body = {
+		model = "CreaturePack",
+		species = "PhantomMoray",
+		shape = "skipper",
+		scale = 1.6,
+		color = Color3.fromRGB(140, 164, 158),
+		finColor = Color3.fromRGB(100, 122, 118),
+		markColor = Color3.fromRGB(200, 240, 224),
+	},
+}
+
+-- Mimic: sits on the seabed looking exactly like salvage. It is not salvage.
+Creatures.items.cursed_chest = {
+	id = "cursed_chest",
+	name = "Cursed Chest",
+	rarity = "Rare",
+	archetype = "mimic",
+	health = 6000,
+	waters = "wreck",
+	rewards = { coins = { 560, 880 }, xp = 1440 },
+	drops = { materials = { tarnished_doubloon = { 3, 5 } } },
+	body = {
+		model = "CreaturePack",
+		species = "CursedChest",
+		shape = "mimic",
+		stance = "upright",
+		scale = 1.3,
+		color = Color3.fromRGB(104, 78, 50),
+		finColor = Color3.fromRGB(140, 108, 70),
+		markColor = Color3.fromRGB(230, 190, 100), -- the gold spilling out of the lid
+	},
+}
+
+-- Thief: a cackling scrap of ghost-light that pockets your coins.
+Creatures.items.plunder_sprite = {
+	id = "plunder_sprite",
+	name = "Plunder Sprite",
+	rarity = "Rare",
+	archetype = "thief",
+	health = 4800,
+	waters = "wreck",
+	rewards = { coins = { 560, 880 }, xp = 1440 },
+	drops = { materials = { tarnished_doubloon = { 3, 5 }, spectral_sailcloth = { 1, 1 } } },
+	body = {
+		model = "CreaturePack",
+		species = "PlunderSprite",
+		shape = "hermit",
+		scale = 1.0,
+		color = Color3.fromRGB(170, 220, 190),
+		finColor = Color3.fromRGB(120, 170, 146),
+		markColor = Color3.fromRGB(240, 210, 120),
+	},
+}
+
+-- Gascloud: burning ghost-fire off a powder wreck that never went out.
+Creatures.items.ghostfire_jelly = {
+	id = "ghostfire_jelly",
+	name = "Ghostfire Jelly",
+	rarity = "Epic",
+	archetype = "gascloud",
+	health = 9000,
+	waters = "wreck",
+	rewards = { coins = { 1440, 2240 }, xp = 3520 },
+	drops = { materials = { wraith_essence = { 1, 2 } } },
+	body = {
+		model = "CreaturePack",
+		species = "GhostfireJelly",
+		shape = "jelly",
+		stance = "upright",
+		scale = 1.4,
+		color = Color3.fromRGB(120, 200, 170),
+		finColor = Color3.fromRGB(90, 160, 136),
+		markColor = Color3.fromRGB(160, 255, 210),
+	},
+}
+
+-- Spitter: a gunner fused to his carronade, still firing spectral grapeshot.
+Creatures.items.wailing_gunner = {
+	id = "wailing_gunner",
+	name = "Wailing Gunner",
+	rarity = "Epic",
+	archetype = "spitter",
+	health = 9800,
+	waters = "wreck",
+	rewards = { coins = { 1440, 2240 }, xp = 3520 },
+	drops = { materials = { wraith_essence = { 1, 2 }, tarnished_doubloon = { 3, 4 } } },
+	body = {
+		model = "CreaturePack",
+		species = "WailingGunner",
+		shape = "zombie",
+		stance = "upright",
+		scale = 1.3,
+		color = Color3.fromRGB(120, 140, 132),
+		finColor = Color3.fromRGB(86, 102, 96),
+		markColor = Color3.fromRGB(200, 240, 220),
+	},
+}
+
+-- The Legendary chase: a sail of light running before a wind nobody feels.
+Creatures.items.spectral_sailfish = {
+	id = "spectral_sailfish",
+	name = "Spectral Sailfish",
+	rarity = "Legendary",
+	archetype = "flopper",
+	health = 16000,
+	waters = "wreck",
+	rewards = { coins = { 4000, 6400 }, xp = 9600 },
+	drops = { materials = { wraith_essence = { 2, 3 }, spectral_sailcloth = { 2, 3 } } },
+	body = {
+		model = "FishPack",
+		species = "SpectralSailfish",
+		scale = 2.1,
+		color = Color3.fromRGB(190, 226, 210),
+		finColor = Color3.fromRGB(150, 255, 210),
+		markColor = Color3.fromRGB(240, 255, 248),
+	},
+}
+
+-- The boss. The drowned admiral fused into his flagship's bow; his brood is
+-- a boarding party - the island's raid mechanic pointed back at you.
+Creatures.items.admiral_wrack = {
+	id = "admiral_wrack",
+	name = "Admiral Wrack, the Fleet-Eater",
+	rarity = "Boss",
+	archetype = "boss",
+	boss = "admiral_wrack",
+	health = 85000,
+	waters = "wreck",
+	rewards = { coins = { 40000, 55000 }, xp = 30000 },
+	drops = { materials = { wraith_essence = { 3, 4 }, spectral_sailcloth = { 5, 7 }, tarnished_doubloon = { 8, 12 } } },
+	body = {
+		model = "CreaturePack",
+		species = "AdmiralWrack",
+		shape = "leviathan",
+		stance = "upright",
+		scale = 2.0,
+		color = Color3.fromRGB(96, 116, 108),
+		finColor = Color3.fromRGB(70, 86, 82),
+		markColor = Color3.fromRGB(160, 255, 210), -- the ghost-fire riding the bow
+	},
+}
+
 -- Rarity -> list of rows, so a rarity roll can pick uniformly within the
 -- tier. Built once here rather than rescanned per cast.
 Creatures.byRarity = {} :: { [string]: { Creature } }

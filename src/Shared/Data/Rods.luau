@@ -897,6 +897,563 @@ Rods.items.mireheart_rod = {
 	},
 }
 
+-- ============================================================ Frostmaw Reach
+
+Rods.items.auger_rod = {
+	id = "auger_rod",
+	name = "Auger Rod",
+	description = "A stout drill-handled rod for working the ice holes. Forgiving when the cold stiffens your fingers.",
+	rarity = "Uncommon",
+	icon = "",
+	model = {
+		model = "RodPack",
+		variant = "Auger",
+		grip = 0.9,
+		length = 6.4,
+		colors = {
+			twig = Color3.fromRGB(150, 170, 186),
+			grip = Color3.fromRGB(90, 104, 120),
+			trim = Color3.fromRGB(210, 228, 240),
+			line = Color3.fromRGB(220, 232, 240),
+			bobberTop = Color3.fromRGB(120, 190, 255),
+			bobberBottom = Color3.fromRGB(236, 244, 250),
+		},
+	},
+	stats = { luck = 1.35, power = 1.15, control = 1.35 },
+	reel = { clicksRequired = 3, barSpeed = 0.72, redWidth = 0.065, greenWidth = 0.2 },
+	recipe = {
+		requiresLevel = 15,
+		coins = 500,
+		materials = { glacier_shard = 8, driftwood = 10 },
+	},
+	perk = {
+		id = "steady_hands",
+		name = "Steady Hands",
+		description = "The drill grip holds the line true - your first two misses never shrink the zones.",
+		freeMisses = 2,
+	},
+}
+
+Rods.items.rimebound_rod = {
+	id = "rimebound_rod",
+	name = "Rimebound Rod",
+	description = "Frozen solid and all the stronger for it. The rime locks the zones where they stand - they never shrink at all.",
+	rarity = "Rare",
+	icon = "",
+	model = {
+		model = "RodPack",
+		variant = "Rimebound",
+		grip = 0.9,
+		length = 6.6,
+		colors = {
+			twig = Color3.fromRGB(178, 208, 226),
+			grip = Color3.fromRGB(120, 140, 160),
+			trim = Color3.fromRGB(240, 250, 255),
+			line = Color3.fromRGB(210, 230, 244),
+			bobberTop = Color3.fromRGB(240, 250, 255),
+			bobberBottom = Color3.fromRGB(120, 160, 200),
+		},
+		neon = { "Rod_Trim" },
+	},
+	stats = { luck = 1.5, power = 1.3, control = 1.35 },
+	reel = { clicksRequired = 3, barSpeed = 0.68, redWidth = 0.06, greenWidth = 0.19 },
+	recipe = {
+		requiresLevel = 16,
+		coins = 900,
+		materials = { glacier_shard = 10, rime_pelt = 8, fish_scale = 6 },
+	},
+	perk = {
+		id = "locked_in_ice",
+		name = "Locked in Ice",
+		description = "The rime holds the zones where they stand - misses never shrink them.",
+		noShrink = true,
+	},
+}
+
+Rods.items.silverscale_rod = {
+	id = "silverscale_rod",
+	name = "Silverscale Rod",
+	description = "Wrapped in herring silver that flashes under the ice. Every cast seen through draws the next catch in luckier.",
+	rarity = "Rare",
+	icon = "",
+	model = {
+		model = "RodPack",
+		variant = "Silverscale",
+		grip = 0.9,
+		length = 6.8,
+		colors = {
+			twig = Color3.fromRGB(200, 212, 224),
+			grip = Color3.fromRGB(140, 150, 164),
+			trim = Color3.fromRGB(230, 240, 250),
+			line = Color3.fromRGB(224, 234, 244),
+			bobberTop = Color3.fromRGB(196, 220, 244),
+			bobberBottom = Color3.fromRGB(255, 255, 255),
+		},
+	},
+	stats = { luck = 1.65, power = 1.3, control = 1.3 },
+	reel = { clicksRequired = 3, barSpeed = 0.66, redWidth = 0.06, greenWidth = 0.18 },
+	recipe = {
+		requiresLevel = 18,
+		coins = 1400,
+		materials = { rime_pelt = 12, everice = 5, pearl = 2 },
+	},
+	perk = {
+		id = "silver_run",
+		name = "Silver Run",
+		description = "Each cast seen through to the catch flashes the silver brighter - luck grows with the streak.",
+		streakLuck = 0.14,
+		streakMax = 0.7,
+	},
+}
+
+Rods.items.aurora_rod = {
+	id = "aurora_rod",
+	name = "Aurora Rod",
+	description = "Strung with a thread of the southern lights. Small fish don't interest it - nothing under Rare takes the hook.",
+	rarity = "Epic",
+	icon = "",
+	model = {
+		model = "RodPack",
+		variant = "Aurora",
+		grip = 0.95,
+		length = 7.0,
+		colors = {
+			twig = Color3.fromRGB(96, 140, 190),
+			grip = Color3.fromRGB(60, 80, 110),
+			trim = Color3.fromRGB(150, 230, 200),
+			line = Color3.fromRGB(190, 240, 220),
+			bobberTop = Color3.fromRGB(230, 150, 230),
+			bobberBottom = Color3.fromRGB(150, 230, 200),
+		},
+		neon = { "Rod_Trim", "Rod_BobberTop" },
+	},
+	stats = { luck = 1.85, power = 1.45, control = 1.35 },
+	reel = { clicksRequired = 3, barSpeed = 0.62, redWidth = 0.055, greenWidth = 0.17 },
+	recipe = {
+		requiresLevel = 19,
+		coins = 2200,
+		materials = { everice = 8, aurora_essence = 4, glacier_shard = 10 },
+	},
+	perk = {
+		id = "southern_lights",
+		name = "Southern Lights",
+		description = "The lights in the line call to the deep reach - nothing under Rare takes the hook.",
+		minRarity = "Rare",
+	},
+}
+
+Rods.items.frostheart_rod = {
+	id = "frostheart_rod",
+	name = "Frostheart Rod",
+	description = "Forged around a sliver of Rimefang's heart, still beating cold. The line reaches far under the sheet and never gives an inch.",
+	rarity = "Legendary",
+	icon = "",
+	model = {
+		model = "RodPack",
+		variant = "Frostheart",
+		grip = 0.95,
+		length = 7.2,
+		colors = {
+			twig = Color3.fromRGB(140, 180, 210),
+			grip = Color3.fromRGB(80, 100, 126),
+			trim = Color3.fromRGB(80, 220, 255),
+			line = Color3.fromRGB(200, 240, 255),
+			bobberTop = Color3.fromRGB(80, 220, 255),
+			bobberBottom = Color3.fromRGB(236, 246, 252),
+		},
+		neon = { "Rod_Trim", "Rod_BobberTop" },
+	},
+	stats = { luck = 2.10, power = 1.50, control = 1.45 },
+	reel = { clicksRequired = 3, barSpeed = 0.6, redWidth = 0.05, greenWidth = 0.16 },
+	recipe = {
+		requiresLevel = 21,
+		coins = 2600,
+		materials = { everice = 10, aurora_essence = 6, glacier_shard = 12 },
+		requiresHearts = { "rimefang" },
+	},
+	perk = {
+		id = "glacier_heart",
+		name = "Glacier's Heart",
+		description = "A sliver of the serpent's heart casts far under the sheet, never gives on a miss, and hooks nothing under Rare.",
+		minRarity = "Rare",
+		noShrink = true,
+		castRange = 1.5,
+	},
+}
+
+-- ============================================================ Gloomtrench
+
+Rods.items.lanternline_rod = {
+	id = "lanternline_rod",
+	name = "Lanternline Rod",
+	description = "A lantern gland hangs at the tip, the only light you get down here. Kind to numb hands in the dark.",
+	rarity = "Uncommon",
+	icon = "",
+	model = {
+		model = "RodPack",
+		variant = "Lanternline",
+		grip = 0.9,
+		length = 6.6,
+		colors = {
+			twig = Color3.fromRGB(80, 74, 96),
+			grip = Color3.fromRGB(56, 50, 68),
+			trim = Color3.fromRGB(255, 226, 130),
+			line = Color3.fromRGB(150, 140, 170),
+			bobberTop = Color3.fromRGB(255, 226, 130),
+			bobberBottom = Color3.fromRGB(70, 62, 86),
+		},
+		neon = { "Rod_Trim", "Rod_BobberTop" },
+	},
+	stats = { luck = 1.6, power = 1.35, control = 1.4 },
+	reel = { clicksRequired = 3, barSpeed = 0.7, redWidth = 0.06, greenWidth = 0.19 },
+	recipe = {
+		requiresLevel = 29,
+		coins = 3200,
+		materials = { gloom_scale = 10, lantern_gland = 3, driftwood = 12 },
+	},
+	perk = {
+		id = "little_light",
+		name = "A Little Light",
+		description = "The lantern steadies you in the dark - your first two misses never shrink the zones.",
+		freeMisses = 2,
+	},
+}
+
+Rods.items.trenchglass_rod = {
+	id = "trenchglass_rod",
+	name = "Trenchglass Rod",
+	description = "Blown from sand that has never seen the sun. It casts far out over the black water and bores small fish.",
+	rarity = "Rare",
+	icon = "",
+	model = {
+		model = "RodPack",
+		variant = "Trenchglass",
+		grip = 0.9,
+		length = 6.9,
+		colors = {
+			twig = Color3.fromRGB(70, 84, 110),
+			grip = Color3.fromRGB(48, 56, 76),
+			trim = Color3.fromRGB(140, 220, 255),
+			line = Color3.fromRGB(120, 150, 190),
+			bobberTop = Color3.fromRGB(140, 220, 255),
+			bobberBottom = Color3.fromRGB(52, 60, 84),
+		},
+		neon = { "Rod_Trim" },
+	},
+	stats = { luck = 1.75, power = 1.4, control = 1.4 },
+	reel = { clicksRequired = 3, barSpeed = 0.66, redWidth = 0.06, greenWidth = 0.18 },
+	recipe = {
+		requiresLevel = 30,
+		coins = 4200,
+		materials = { gloom_scale = 12, trench_chitin = 8, pearl = 3 },
+	},
+	perk = {
+		id = "deep_glass",
+		name = "Deep Glass",
+		description = "Casts far out over the black water, and nothing under Uncommon bothers it.",
+		minRarity = "Uncommon",
+		castRange = 1.5,
+	},
+}
+
+Rods.items.inkveil_rod = {
+	id = "inkveil_rod",
+	name = "Inkveil Rod",
+	description = "Dyed through with vampire-squid ink. The longer you fish the dark unbroken, the more it gives back.",
+	rarity = "Rare",
+	icon = "",
+	model = {
+		model = "RodPack",
+		variant = "Inkveil",
+		grip = 0.9,
+		length = 7.0,
+		colors = {
+			twig = Color3.fromRGB(56, 48, 72),
+			grip = Color3.fromRGB(40, 34, 52),
+			trim = Color3.fromRGB(170, 120, 255),
+			line = Color3.fromRGB(110, 90, 150),
+			bobberTop = Color3.fromRGB(170, 120, 255),
+			bobberBottom = Color3.fromRGB(44, 38, 58),
+		},
+		neon = { "Rod_Trim", "Rod_BobberTop" },
+	},
+	stats = { luck = 1.9, power = 1.45, control = 1.45 },
+	reel = { clicksRequired = 3, barSpeed = 0.64, redWidth = 0.055, greenWidth = 0.17 },
+	recipe = {
+		requiresLevel = 32,
+		coins = 6000,
+		materials = { lantern_gland = 6, gloom_scale = 14, trench_chitin = 8 },
+	},
+	perk = {
+		id = "ink_run",
+		name = "Ink Run",
+		description = "Every cast seen through deepens the veil - luck grows with the streak, further than any silver.",
+		streakLuck = 0.16,
+		streakMax = 0.8,
+	},
+}
+
+Rods.items.voidline_rod = {
+	id = "voidline_rod",
+	name = "Voidline Rod",
+	description = "The line is a thread of the trench's own dark. It holds its zones forever and hooks nothing common.",
+	rarity = "Epic",
+	icon = "",
+	model = {
+		model = "RodPack",
+		variant = "Voidline",
+		grip = 0.95,
+		length = 7.2,
+		colors = {
+			twig = Color3.fromRGB(40, 36, 56),
+			grip = Color3.fromRGB(30, 26, 42),
+			trim = Color3.fromRGB(170, 120, 255),
+			line = Color3.fromRGB(90, 70, 130),
+			bobberTop = Color3.fromRGB(120, 80, 220),
+			bobberBottom = Color3.fromRGB(36, 32, 50),
+		},
+		neon = { "Rod_Trim", "Rod_BobberTop" },
+	},
+	stats = { luck = 2.1, power = 1.5, control = 1.45 },
+	reel = { clicksRequired = 3, barSpeed = 0.62, redWidth = 0.05, greenWidth = 0.165 },
+	recipe = {
+		requiresLevel = 33,
+		coins = 8000,
+		materials = { abyss_ichor = 4, trench_chitin = 10, lantern_gland = 5 },
+	},
+	perk = {
+		id = "the_void_holds",
+		name = "The Void Holds",
+		description = "Zones never shrink, and nothing under Rare dares the dark of this line.",
+		minRarity = "Rare",
+		noShrink = true,
+	},
+}
+
+Rods.items.gloomheart_rod = {
+	id = "gloomheart_rod",
+	name = "Gloomheart Rod",
+	description = "Bound around the Trench Mother's heart, which still remembers being the only light below. It reaches water no lantern finds and takes only the deep's best.",
+	rarity = "Legendary",
+	icon = "",
+	model = {
+		model = "RodPack",
+		variant = "Gloomheart",
+		grip = 0.95,
+		length = 7.4,
+		colors = {
+			twig = Color3.fromRGB(58, 50, 78),
+			grip = Color3.fromRGB(40, 34, 54),
+			trim = Color3.fromRGB(255, 226, 130),
+			line = Color3.fromRGB(200, 180, 240),
+			bobberTop = Color3.fromRGB(255, 226, 130),
+			bobberBottom = Color3.fromRGB(44, 38, 58),
+		},
+		neon = { "Rod_Trim", "Rod_BobberTop" },
+	},
+	stats = { luck = 2.35, power = 1.60, control = 1.50 },
+	reel = { clicksRequired = 3, barSpeed = 0.6, redWidth = 0.05, greenWidth = 0.16 },
+	recipe = {
+		requiresLevel = 35,
+		coins = 10000,
+		materials = { abyss_ichor = 6, lantern_gland = 8, gloom_scale = 16 },
+		requiresHearts = { "noctyss" },
+	},
+	perk = {
+		id = "the_only_light",
+		name = "The Only Light",
+		description = "Her heart calls the trench's best from water no lantern finds - long casts, and nothing under Epic.",
+		minRarity = "Epic",
+		castRange = 1.8,
+	},
+}
+
+-- ============================================================ Wreckwater
+
+Rods.items.ghostplank_rod = {
+	id = "ghostplank_rod",
+	name = "Ghostplank Rod",
+	description = "Sawn from a hull that still remembers floating. Forgiving, the way old wood is.",
+	rarity = "Uncommon",
+	icon = "",
+	model = {
+		model = "RodPack",
+		variant = "Ghostplank",
+		grip = 0.9,
+		length = 6.8,
+		colors = {
+			twig = Color3.fromRGB(130, 144, 132),
+			grip = Color3.fromRGB(92, 102, 94),
+			trim = Color3.fromRGB(190, 214, 200),
+			line = Color3.fromRGB(180, 196, 186),
+			bobberTop = Color3.fromRGB(160, 255, 210),
+			bobberBottom = Color3.fromRGB(104, 118, 108),
+		},
+	},
+	stats = { luck = 1.9, power = 1.5, control = 1.5 },
+	reel = { clicksRequired = 3, barSpeed = 0.68, redWidth = 0.06, greenWidth = 0.19 },
+	recipe = {
+		requiresLevel = 36,
+		coins = 6500,
+		materials = { ghost_plank = 10, kelp_fiber = 14 },
+	},
+	perk = {
+		id = "old_wood",
+		name = "Old Wood",
+		description = "The plank has forgiven worse than you - your first two misses never shrink the zones.",
+		freeMisses = 2,
+	},
+}
+
+Rods.items.riggingline_rod = {
+	id = "riggingline_rod",
+	name = "Riggingline Rod",
+	description = "Strung with rigging off the fleet, tarred and eternal. It does not shrink, and it hardly minds a miss.",
+	rarity = "Rare",
+	icon = "",
+	model = {
+		model = "RodPack",
+		variant = "Riggingline",
+		grip = 0.9,
+		length = 7.0,
+		colors = {
+			twig = Color3.fromRGB(110, 122, 112),
+			grip = Color3.fromRGB(78, 86, 80),
+			trim = Color3.fromRGB(180, 140, 80),
+			line = Color3.fromRGB(150, 140, 120),
+			bobberTop = Color3.fromRGB(220, 250, 236),
+			bobberBottom = Color3.fromRGB(86, 96, 88),
+		},
+	},
+	stats = { luck = 2.05, power = 1.55, control = 1.5 },
+	reel = { clicksRequired = 3, barSpeed = 0.65, redWidth = 0.058, greenWidth = 0.18 },
+	recipe = {
+		requiresLevel = 37,
+		coins = 8500,
+		materials = { ghost_plank = 12, spectral_sailcloth = 5, fish_scale = 10 },
+	},
+	perk = {
+		id = "tarred_line",
+		name = "Tarred Line",
+		description = "Rigging that outlasted its fleet - zones never shrink, and the first miss is free besides.",
+		noShrink = true,
+		freeMisses = 1,
+	},
+}
+
+Rods.items.doubloon_rod = {
+	id = "doubloon_rod",
+	name = "Doubloon Rod",
+	description = "Its guides are punched coins off the fleet's pay chest. Fortune loves a long run.",
+	rarity = "Rare",
+	icon = "",
+	model = {
+		model = "RodPack",
+		variant = "Doubloon",
+		grip = 0.9,
+		length = 7.1,
+		colors = {
+			twig = Color3.fromRGB(120, 104, 78),
+			grip = Color3.fromRGB(86, 74, 56),
+			trim = Color3.fromRGB(230, 190, 100),
+			line = Color3.fromRGB(200, 180, 140),
+			bobberTop = Color3.fromRGB(230, 190, 100),
+			bobberBottom = Color3.fromRGB(96, 84, 62),
+		},
+		neon = { "Rod_Trim" },
+	},
+	stats = { luck = 2.2, power = 1.55, control = 1.55 },
+	reel = { clicksRequired = 3, barSpeed = 0.63, redWidth = 0.055, greenWidth = 0.17 },
+	recipe = {
+		requiresLevel = 39,
+		coins = 12000,
+		materials = { tarnished_doubloon = 14, ghost_plank = 10, pearl = 4 },
+	},
+	perk = {
+		id = "dead_mans_luck",
+		name = "Dead Man's Luck",
+		description = "Every cast seen through pays fortune forward - the strongest streak luck there is.",
+		streakLuck = 0.18,
+		streakMax = 0.9,
+	},
+}
+
+Rods.items.sailcloth_rod = {
+	id = "sailcloth_rod",
+	name = "Sailcloth Rod",
+	description = "A spar wrapped in spectral canvas that still holds a wind. It carries the cast far out among the wrecks and scorns small fish.",
+	rarity = "Epic",
+	icon = "",
+	model = {
+		model = "RodPack",
+		variant = "Sailcloth",
+		grip = 0.95,
+		length = 7.3,
+		colors = {
+			twig = Color3.fromRGB(150, 168, 158),
+			grip = Color3.fromRGB(104, 116, 108),
+			trim = Color3.fromRGB(220, 250, 236),
+			line = Color3.fromRGB(200, 220, 210),
+			bobberTop = Color3.fromRGB(160, 255, 210),
+			bobberBottom = Color3.fromRGB(120, 134, 124),
+		},
+		neon = { "Rod_Trim", "Rod_BobberTop" },
+	},
+	stats = { luck = 2.35, power = 1.6, control = 1.55 },
+	reel = { clicksRequired = 3, barSpeed = 0.61, redWidth = 0.05, greenWidth = 0.165 },
+	recipe = {
+		requiresLevel = 40,
+		coins = 16000,
+		materials = { spectral_sailcloth = 8, wraith_essence = 3, tarnished_doubloon = 10 },
+	},
+	perk = {
+		id = "ghost_wind",
+		name = "Ghost Wind",
+		description = "A wind nobody feels carries the cast far out among the wrecks - and nothing under Rare rides it back.",
+		minRarity = "Rare",
+		castRange = 1.7,
+	},
+}
+
+Rods.items.wraithheart_rod = {
+	id = "wraithheart_rod",
+	name = "Wraithheart Rod",
+	description = "The Admiral's heart is lashed to the reel seat, still giving orders. The whole drowned fleet answers it.",
+	rarity = "Legendary",
+	icon = "",
+	model = {
+		model = "RodPack",
+		variant = "Wraithheart",
+		grip = 0.95,
+		length = 7.5,
+		colors = {
+			twig = Color3.fromRGB(96, 116, 108),
+			grip = Color3.fromRGB(66, 80, 76),
+			trim = Color3.fromRGB(160, 255, 210),
+			line = Color3.fromRGB(190, 230, 210),
+			bobberTop = Color3.fromRGB(160, 255, 210),
+			bobberBottom = Color3.fromRGB(70, 86, 82),
+		},
+		neon = { "Rod_Trim", "Rod_BobberTop" },
+	},
+	stats = { luck = 2.50, power = 1.65, control = 1.55 },
+	reel = { clicksRequired = 3, barSpeed = 0.6, redWidth = 0.05, greenWidth = 0.16 },
+	recipe = {
+		requiresLevel = 42,
+		coins = 20000,
+		materials = { wraith_essence = 6, spectral_sailcloth = 10, tarnished_doubloon = 16 },
+		requiresHearts = { "admiral_wrack" },
+	},
+	perk = {
+		id = "the_fleet_answers",
+		name = "The Fleet Answers",
+		description = "His heart still commands the graveyard - long casts, zones that never give, and nothing under Epic.",
+		minRarity = "Epic",
+		noShrink = true,
+		castRange = 1.8,
+	},
+}
+
 -- Every new player starts holding this one. See InventoryService.
 Rods.STARTER_ROD_ID = "twig_rod"
 
@@ -914,11 +1471,26 @@ Rods.order = {
 	"wisplight_rod",
 	"fenpiercer_rod",
 	"mireheart_rod",
+	"auger_rod",
+	"rimebound_rod",
+	"silverscale_rod",
+	"aurora_rod",
+	"frostheart_rod",
 	"cinderline_rod",
 	"obsidian_rod",
 	"cinderglass_rod",
 	"magma_core_rod",
 	"phoenix_ash_rod",
+	"lanternline_rod",
+	"trenchglass_rod",
+	"inkveil_rod",
+	"voidline_rod",
+	"gloomheart_rod",
+	"ghostplank_rod",
+	"riggingline_rod",
+	"doubloon_rod",
+	"sailcloth_rod",
+	"wraithheart_rod",
 }
 
 return Rods

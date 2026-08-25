@@ -279,6 +279,177 @@ Bait.items.calderas_call = {
 	},
 }
 
+-- ============================================================ Frostmaw Reach
+
+Bait.items.frostgrub = {
+	id = "frostgrub",
+	name = "Frostgrub",
+	description = "A grub packed in rime. Whatever swallows it comes up numb to the bone - hardly able to fight at all, for a while.",
+	rarity = "Uncommon",
+	icon = "",
+	color = Color3.fromRGB(190, 220, 240),
+	-- The longest stun in the game so far: the ice does the fighting for you.
+	effect = { stun = 8 },
+	recipe = {
+		requiresLevel = 16,
+		coins = 350,
+		materials = { rime_pelt = 4, kelp_fiber = 6 },
+		yield = 4,
+	},
+}
+
+Bait.items.gilded_herring = {
+	id = "gilded_herring",
+	name = "Gilded Herring",
+	description = "A rime herring dipped in melted doubloon-gold. What takes it is carrying a rich man's share.",
+	rarity = "Rare",
+	icon = "",
+	color = Color3.fromRGB(230, 190, 100),
+	effect = { rewardMult = 1.6 },
+	recipe = {
+		requiresLevel = 18,
+		coins = 800,
+		materials = { glacier_shard = 6, fish_scale = 8, pearl = 1 },
+		yield = 3,
+	},
+}
+
+Bait.items.glaciers_call = {
+	id = "glaciers_call",
+	name = "Glacier's Call",
+	description = "A lure of everice and aurora-light, cold enough to wake what sleeps under the sheet. Cast it, and Rimefang answers. One use.",
+	rarity = "Legendary",
+	icon = "",
+	color = Color3.fromRGB(80, 220, 255), -- the serpent's ice-light
+	effect = { summonsBoss = "rimefang" },
+	recipe = {
+		requiresLevel = 21,
+		coins = 2500,
+		materials = {
+			glacier_shard = 12,
+			rime_pelt = 10,
+			everice = 8,
+			aurora_essence = 4,
+		},
+		yield = 1,
+	},
+}
+
+-- ============================================================ Gloomtrench
+
+Bait.items.lanternbait = {
+	id = "lanternbait",
+	name = "Lanternbait",
+	description = "A lantern gland, still warm, still lying. Down here light is the rarest thing there is - everything comes to see.",
+	rarity = "Rare",
+	icon = "",
+	color = Color3.fromRGB(255, 226, 130),
+	-- The biggest flat luck bonus in the game: the dark is starving for light.
+	effect = { luck = 1.8 },
+	recipe = {
+		requiresLevel = 30,
+		coins = 1800,
+		materials = { lantern_gland = 2, gloom_scale = 8 },
+		yield = 3,
+	},
+}
+
+Bait.items.duskbrood_roe = {
+	id = "duskbrood_roe",
+	name = "Duskbrood Roe",
+	description = "Roe of something that guards its young. One hatches on the hook and fights beside you, and its kin come looking.",
+	rarity = "Epic",
+	icon = "",
+	color = Color3.fromRGB(170, 120, 255),
+	-- A companion for a minute and a half, plus a luck kick - the trench's
+	-- version of Split Roe, grown up.
+	effect = { hatchling = 90, luck = 1.3 },
+	recipe = {
+		requiresLevel = 32,
+		coins = 3200,
+		materials = { abyss_ichor = 2, gloom_scale = 10, trench_chitin = 6 },
+		yield = 2,
+	},
+}
+
+Bait.items.trench_mothers_call = {
+	id = "trench_mothers_call",
+	name = "Trench Mother's Call",
+	description = "A false lure built from her own stolen light. She does not forgive that. Cast it, and Noctyss rises. One use.",
+	rarity = "Legendary",
+	icon = "",
+	color = Color3.fromRGB(255, 226, 130), -- her lure's warmth
+	effect = { summonsBoss = "noctyss" },
+	recipe = {
+		requiresLevel = 35,
+		coins = 10000,
+		materials = {
+			lantern_gland = 8,
+			gloom_scale = 14,
+			trench_chitin = 10,
+			abyss_ichor = 5,
+		},
+		yield = 1,
+	},
+}
+
+-- ============================================================ Wreckwater
+
+Bait.items.corpse_chum = {
+	id = "corpse_chum",
+	name = "Corpse Chum",
+	description = "Chum for a crueller sea. Only the fleet's dead answer it, and they answer in twos.",
+	rarity = "Rare",
+	icon = "",
+	color = Color3.fromRGB(140, 160, 150),
+	effect = { hostileOnly = true, chain = 2 },
+	recipe = {
+		requiresLevel = 37,
+		coins = 3500,
+		materials = { ghost_plank = 6, tarnished_doubloon = 6 },
+		yield = 3,
+	},
+}
+
+Bait.items.plunder_lure = {
+	id = "plunder_lure",
+	name = "Plunder Lure",
+	description = "A doubloon on a hook, the oldest trick in any navy. Nothing bites - the line drags the seabed's plunder up instead.",
+	rarity = "Epic",
+	icon = "",
+	color = Color3.fromRGB(230, 190, 100),
+	-- The salvage cast: no fight at all, materials and coins straight out of
+	-- the graveyard floor, scaled by the minigame grade.
+	effect = { salvage = true, rewardMult = 1.6 },
+	recipe = {
+		requiresLevel = 39,
+		coins = 6000,
+		materials = { tarnished_doubloon = 8, spectral_sailcloth = 3 },
+		yield = 2,
+	},
+}
+
+Bait.items.admirals_summons = {
+	id = "admirals_summons",
+	name = "Admiral's Summons",
+	description = "Written orders in the fleet's own cipher, weighted with doubloons: ALL HANDS. He comes to deliver the reprimand himself. One use.",
+	rarity = "Legendary",
+	icon = "",
+	color = Color3.fromRGB(160, 255, 210), -- ghost-fire green
+	effect = { summonsBoss = "admiral_wrack" },
+	recipe = {
+		requiresLevel = 42,
+		coins = 20000,
+		materials = {
+			ghost_plank = 12,
+			tarnished_doubloon = 16,
+			spectral_sailcloth = 8,
+			wraith_essence = 5,
+		},
+		yield = 1,
+	},
+}
+
 -- Stable display order for the crafting / inventory bait tabs (table iteration
 -- order isn't guaranteed). By island, then by tier.
 Bait.order = {
@@ -288,9 +459,18 @@ Bait.order = {
 	"glowgrub",
 	"dredge_lure",
 	"tyrants_call",
+	"frostgrub",
+	"gilded_herring",
+	"glaciers_call",
 	"ember_roe",
 	"magma_chum",
 	"calderas_call",
+	"lanternbait",
+	"duskbrood_roe",
+	"trench_mothers_call",
+	"corpse_chum",
+	"plunder_lure",
+	"admirals_summons",
 }
 
 return Bait
