@@ -248,6 +248,15 @@ local function onCreatureEvent(kind, _position, extra)
 	if kind == "bossRise" then
 		showCard(string.upper(tostring(extra.name or "THE BOSS")), "rises from the deep", BAR_COLOR)
 	elseif kind == "bossDown" then
+		if extra.finale then
+			-- The Kraken. There is no next island; this is the saga's end.
+			showCard(
+				"THE MAELSTROM FALLS SILENT",
+				string.format("%s is slain - the saga is complete", tostring(extra.name)),
+				Theme.Color.gold
+			)
+			return
+		end
 		local sub = if extra.unlocks
 			then string.format("%s defeated - %s is open", tostring(extra.name), tostring(extra.unlocks))
 			else string.format("%s defeated", tostring(extra.name))
