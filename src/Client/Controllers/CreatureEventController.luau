@@ -802,6 +802,29 @@ EVENTS.bossDown = function(position: Vector3)
 	feelBlast(at, 80, SHAKE_SLAM, 0.7, Color3.fromRGB(200, 255, 235))
 end
 
+-- The Kraken's exposure window opens: the last tentacle is down and the
+-- head can be hurt (BossHudController shows the card).
+EVENTS.exposed = function(position: Vector3)
+	local at = position + Vector3.new(0, 3, 0)
+	Vfx.flash(at, Color3.fromRGB(255, 210, 110), 9, 0.5)
+	Vfx.burst(at, Color3.fromRGB(255, 210, 110), 50)
+	Sfx.play("bossRoar", position)
+end
+
+-- ...and closes: the tentacle ring re-plants around the arena.
+EVENTS.regrow = function(position: Vector3, extra)
+	local count = tonumber(extra.count) or 6
+	for i = 1, count do
+		local angle = (i / count) * math.pi * 2
+		local at = position + Vector3.new(math.cos(angle) * 26, 0, math.sin(angle) * 26)
+		task.delay(i * 0.08, function()
+			Vfx.splash(at, 4)
+			Vfx.ring(at, 2, 8, 0.5)
+		end)
+	end
+	Sfx.play("bossRise", position)
+end
+
 local warnedKinds = {}
 
 local function onCreatureEvent(kind, position, extra)
