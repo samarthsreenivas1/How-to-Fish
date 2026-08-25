@@ -18,13 +18,15 @@ Frostmaw was being written the same night.
 - [x] Art: six ranged weapon meshes in WeaponPack (8253923)
 - [x] Art: Swamp / Frostmaw / Gloomtrench / Wreckwater island meshes + 6-island pack (8a15622)
 - [x] S2 shapes milestone: ranged remotes/type/Tuning + flyer & skythief archetypes (d855af6)
-- [ ] S2 full: shot pipeline, controllers, swamp data, volcano final slot + guns — f4
-- [ ] S3 boat: BoatService/Controller, tiers, mayEnter + containment sweep — 5a
-- [ ] S3 raids: SpawnerService, RaidService, Hazards, eruption, WeatherController — 5a (after S2)
-- [ ] S4a: Frostmaw/Gloomtrench/Wreckwater data + volcano final re-gate + blizzard — b8
-- [ ] S4b: Maelstrom site, Kraken, TrophyController, trophy shelf — b8 (after S3)
-- [ ] Art: BoatPack, boss/flyer creature meshes, fish species — 16
-- [ ] Final integration review + verification sweep — 81
+- [x] S2 full: ranged engine (ea8b6de) + Blackmire Fen, final 6-island table, volcano guns (c3dfb98)
+- [x] S3 boat: BoatService/Controller, 6-tier ladder, mayEnter + containment sweep (bb3f2e3)
+- [x] Trophy Hall (7d1d04d) · WeatherService dormant (52b48e2) · shelf renderer dormant (232a521) · site-entry travel menu (4497935)
+- [x] Art: BoatPack (66bb2a3) · six boss meshes + Kraken tentacle (30d78a3) · six flyer meshes (a1dd6a7)
+- [ ] S3 raids: SpawnerService, RaidService, Hazards, eruption wiring — 5a (in flight)
+- [ ] S4a data: Frostmaw/Gloomtrench/Wreckwater kits + volcano final re-gate + blizzard wiring — b8 (in flight)
+- [ ] S4b: Maelstrom site, Kraken, shelf/weather wiring — b8 (after 5a's raids)
+- [ ] Art: S4 hostile/fish species + S4 weapon variants — 16 (in flight)
+- [ ] Final integration review + verification sweep — 81 (adversarial review fleet running)
 - [ ] **Manual (user, in Studio): imports per docs/import-checklist.md**
 
 ## Context
