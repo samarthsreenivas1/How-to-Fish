@@ -21,7 +21,7 @@ commit the .rbxm).
 | 3 | `assets/boat.glb` | `BoatPack` (new) | Six tier hulls + Helm seat markers + trophy-shelf sterns (variant names in boat_gen.py). On first import, sanity-check the bow orientation in Studio (authored bow = Blender -y, same convention gotcha as the rod pack). |
 | 4 | `assets/creatures.glb` | `CreaturePack` | Regenerated with the new boss/flyer species (Gnashroot, Pyrelisk, Rimefang, Noctyss, AdmiralWrack, Kraken + tentacle, flyers...). |
 | 5 | `assets/fish.glb` | `FishPack` | Regenerated with 18 new species (34 total), including the four Legendary chase fish. |
-| 6 | `assets/rod.glb` | `RodPack` | Regenerated with all 31 rod variants (cut rods pruned, every S2/S4 island's five added). Replace the old RodPack, keep the exact name. |
+| 6 | `assets/rod.glb` | `RodPack` | Regenerated with all 36 rod variants (cut rods pruned; every island's five added, the Maelstrom five included). Replace the old RodPack, keep the exact name. |
 
 ## After importing
 
