@@ -57,24 +57,10 @@ FRAME = {
     "Scaleblade": {"length": 3.1, "grip": 0.6},
     "Shellcrusher": {"length": 3.6, "grip": 0.8},
     "Drowncleaver": {"length": 3.7, "grip": 0.7},
-    "TidebombMaul": {"length": 3.7, "grip": 0.7},
-    "Voltfang": {"length": 3.5, "grip": 0.7},
     "Heartrender": {"length": 3.9, "grip": 0.72},
     # Volcano weapons (Weapons.luau "Volcano (lava island mats)").
-    "EmberCudgel": {"length": 3.4, "grip": 0.7},
-    "Cinderclub": {"length": 3.5, "grip": 0.72},
-    "SulfurKnuckles": {"length": 3.1, "grip": 0.6},
-    "PumiceFists": {"length": 3.1, "grip": 0.6},
-    "Cinderlash": {"length": 3.3, "grip": 0.62},
     "ObsidianPiercer": {"length": 3.5, "grip": 0.64},
-    "RidgebackPike": {"length": 3.8, "grip": 0.76},
-    "SlagfistGauntlet": {"length": 3.6, "grip": 0.78},
-    "CinderSpear": {"length": 3.7, "grip": 0.74},
-    "LodestoneMaul": {"length": 3.9, "grip": 0.8},
     "MagmaGauntlets": {"length": 3.2, "grip": 0.62},
-    "Riftcleaver": {"length": 3.6, "grip": 0.68},
-    "SootveilBlade": {"length": 3.4, "grip": 0.66},
-    "SlagheartWarhammer": {"length": 3.9, "grip": 0.8},
     # Ranged (revamp S2): swamp tier-1 fantasy pieces + volcano gunpowder-tech.
     # Same frame rule as everything above - butt at z = 0, muzzle / upper limb
     # tip at z = LENGTH, _Grip centred on the hand point. The Weapons.luau
@@ -85,6 +71,30 @@ FRAME = {
     "CinderlockCarbine": {"length": 3.2, "grip": 0.9},
     "BasaltScattergun": {"length": 3.0, "grip": 0.85},
     "VulkanRepeater": {"length": 3.6, "grip": 0.95},
+    # Revamp S4 melee + ranged (islands 3/5/6 + Maelstrom) - f4's pass; the
+    # Weapons.luau rows already carry these numbers (16's frame contract).
+    "RustfangMachete": {"length": 3.3, "grip": 0.62},
+    "Fenreaver": {"length": 3.8, "grip": 0.7},
+    "IcepickHatchet": {"length": 2.6, "grip": 0.5},
+    "FrostboreRifle": {"length": 3.6, "grip": 0.9},
+    "GlacierMaul": {"length": 4.2, "grip": 0.8},
+    "FrostbiteRevolver": {"length": 1.7, "grip": 0.45},
+    "RimefangLance": {"length": 4.6, "grip": 0.9},
+    "Trenchspike": {"length": 3.0, "grip": 0.6},
+    "AbyssalHarpooner": {"length": 3.4, "grip": 0.95},
+    "RiptideSmg": {"length": 2.4, "grip": 0.6},
+    "VoidglassSaber": {"length": 3.8, "grip": 0.7},
+    "GloomcallerDmr": {"length": 3.5, "grip": 0.85},
+    "BoardingAxe": {"length": 3.4, "grip": 0.7},
+    "GraveBlunderbuss": {"length": 2.9, "grip": 0.75},
+    "PhantomRepeater": {"length": 3.1, "grip": 0.8},
+    "CutlassOfTheFleet": {"length": 3.6, "grip": 0.65},
+    "AdmiralsSaber": {"length": 4.0, "grip": 0.7},
+    "Galecleaver": {"length": 3.8, "grip": 0.7},
+    "CycloneRifle": {"length": 3.3, "grip": 0.85},
+    "ThunderheadCannon": {"length": 2.0, "grip": 0.5},
+    "Stormlance": {"length": 4.6, "grip": 0.9},
+    "Krakenfang": {"length": 4.4, "grip": 0.75},
 }
 
 # Preview-only colours, per part object (r,g,b 0..1), mirroring the game rows.
@@ -108,18 +118,6 @@ COLORS = {
     "Drowncleaver_Guard": (0.55, 0.52, 0.42),  # jawbone guard
     "Drowncleaver_Spike": (0.82, 0.80, 0.70),
     "Drowncleaver_Glow": (0.45, 0.95, 0.55),  # brine-green runes
-    "TidebombMaul_Haft": (0.47, 0.42, 0.38),  # driftwood haft
-    "TidebombMaul_Grip": (0.23, 0.20, 0.25),
-    "TidebombMaul_Head": (0.34, 0.29, 0.43),  # urchin shell
-    "TidebombMaul_Spike": (0.28, 0.24, 0.36),  # the spines
-    "TidebombMaul_Guard": (0.47, 0.42, 0.38),
-    "TidebombMaul_Glow": (1.0, 0.58, 0.36),  # the humming tips
-    "Voltfang_Haft": (0.25, 0.27, 0.34),
-    "Voltfang_Grip": (0.17, 0.19, 0.24),
-    "Voltfang_Guard": (0.25, 0.27, 0.34),
-    "Voltfang_Edge": (0.84, 0.89, 0.93),  # nacre blade
-    "Voltfang_Spike": (0.84, 0.89, 0.93),
-    "Voltfang_Glow": (0.49, 0.84, 1.0),  # the arc
     "Heartrender_Haft": (0.36, 0.24, 0.26),
     "Heartrender_Grip": (0.23, 0.16, 0.17),
     "Heartrender_Guard": (0.36, 0.24, 0.26),
@@ -128,83 +126,18 @@ COLORS = {
     "Heartrender_Glow": (1.0, 0.38, 0.41),  # the beat
     # Volcano weapons (Weapons.luau "Volcano (lava island mats)"). Colours
     # mirror the game rows' color/accent/wrap/glow.
-    "EmberCudgel_Haft": (0.59, 0.44, 0.28),  # driftwood
-    "EmberCudgel_Grip": (0.27, 0.23, 0.19),  # charred binding
-    "EmberCudgel_Head": (0.94, 0.52, 0.20),  # ember-scorched head
-    "EmberCudgel_Spike": (0.94, 0.52, 0.20),
-    "Cinderclub_Haft": (0.51, 0.38, 0.25),  # ash-darkened driftwood
-    "Cinderclub_Grip": (0.24, 0.20, 0.17),  # charred binding
-    "Cinderclub_Head": (0.78, 0.43, 0.25),  # cinder-crusted head
-    "Cinderclub_Spike": (0.78, 0.43, 0.25),
-    "SulfurKnuckles_Haft": (0.55, 0.42, 0.27),  # driftwood
-    "SulfurKnuckles_Grip": (0.34, 0.55, 0.33),  # kelp binding
-    "SulfurKnuckles_Guard": (0.55, 0.42, 0.27),
-    "SulfurKnuckles_Edge": (0.89, 0.81, 0.35),  # sulfur crust
-    "SulfurKnuckles_Spike": (0.89, 0.81, 0.35),
-    "PumiceFists_Haft": (0.67, 0.64, 0.59),  # pale pumice
-    "PumiceFists_Grip": (0.34, 0.55, 0.33),  # kelp binding
-    "PumiceFists_Guard": (0.67, 0.64, 0.59),
-    "PumiceFists_Edge": (0.89, 0.81, 0.35),  # sulfur-dusted knuckles
-    "PumiceFists_Spike": (0.89, 0.81, 0.35),
-    "Cinderlash_Haft": (0.59, 0.44, 0.28),  # driftwood
-    "Cinderlash_Grip": (0.34, 0.55, 0.33),  # kelp binding
-    "Cinderlash_Guard": (0.59, 0.44, 0.28),
-    "Cinderlash_Edge": (0.94, 0.52, 0.20),  # the ember cord
-    "Cinderlash_Spike": (0.94, 0.52, 0.20),
     "ObsidianPiercer_Haft": (0.55, 0.42, 0.27),  # driftwood
     "ObsidianPiercer_Grip": (0.24, 0.20, 0.18),  # dark binding
     "ObsidianPiercer_Guard": (0.55, 0.42, 0.27),
     "ObsidianPiercer_Edge": (0.19, 0.17, 0.24),  # glass-black obsidian
     "ObsidianPiercer_Spike": (0.19, 0.17, 0.24),
     "ObsidianPiercer_Glow": (0.94, 0.52, 0.20),  # the hairline crack of heat
-    "RidgebackPike_Haft": (0.59, 0.46, 0.30),  # driftwood
-    "RidgebackPike_Grip": (0.59, 0.73, 0.82),  # fish-scale binding
-    "RidgebackPike_Guard": (0.59, 0.46, 0.30),
-    "RidgebackPike_Head": (0.19, 0.17, 0.24),  # obsidian hook base
-    "RidgebackPike_Spike": (0.19, 0.17, 0.24),
-    "RidgebackPike_Glow": (0.94, 0.52, 0.20),  # ember veins in the hook
-    "SlagfistGauntlet_Haft": (0.19, 0.17, 0.24),  # obsidian
-    "SlagfistGauntlet_Grip": (0.27, 0.26, 0.31),  # dark binding
-    "SlagfistGauntlet_Guard": (0.19, 0.17, 0.24),
-    "SlagfistGauntlet_Head": (0.89, 0.81, 0.35),  # sulfur-crusted knob
-    "SlagfistGauntlet_Spike": (0.89, 0.81, 0.35),
-    "SlagfistGauntlet_Glow": (0.96, 0.38, 0.16),  # molten cracks
-    "CinderSpear_Haft": (0.59, 0.44, 0.28),  # driftwood shaft
-    "CinderSpear_Grip": (0.78, 0.43, 0.24),  # ember cord
-    "CinderSpear_Guard": (0.59, 0.44, 0.28),
-    "CinderSpear_Head": (0.89, 0.81, 0.35),  # sulfur-crusted head
-    "CinderSpear_Spike": (0.89, 0.81, 0.35),
-    "CinderSpear_Glow": (0.94, 0.52, 0.20),  # the cord's smoulder
-    "LodestoneMaul_Haft": (0.55, 0.42, 0.27),  # driftwood
-    "LodestoneMaul_Grip": (0.24, 0.22, 0.27),  # obsidian-dark binding
-    "LodestoneMaul_Guard": (0.55, 0.42, 0.27),
-    "LodestoneMaul_Head": (0.38, 0.42, 0.52),  # lodestone
-    "LodestoneMaul_Spike": (0.19, 0.17, 0.24),  # obsidian braces
-    "LodestoneMaul_Glow": (0.59, 0.67, 0.82),  # the pull, arcing off the head
     "MagmaGauntlets_Haft": (0.27, 0.23, 0.22),  # dark vent-metal
     "MagmaGauntlets_Grip": (0.59, 0.73, 0.82),  # fish-scale binding
     "MagmaGauntlets_Guard": (0.27, 0.23, 0.22),
     "MagmaGauntlets_Edge": (0.89, 0.81, 0.35),  # sulfur-cured claws
     "MagmaGauntlets_Spike": (0.89, 0.81, 0.35),
     "MagmaGauntlets_Glow": (0.96, 0.38, 0.16),  # the magma vein
-    "Riftcleaver_Haft": (0.38, 0.42, 0.52),  # lodestone
-    "Riftcleaver_Grip": (0.22, 0.23, 0.26),  # dark binding
-    "Riftcleaver_Guard": (0.38, 0.42, 0.52),
-    "Riftcleaver_Edge": (0.31, 0.35, 0.43),  # grey-blue cleaver blade
-    "Riftcleaver_Spike": (0.31, 0.35, 0.43),
-    "Riftcleaver_Glow": (0.96, 0.38, 0.16),  # the rift of magma down its centre
-    "SootveilBlade_Haft": (0.19, 0.17, 0.24),  # obsidian-dark
-    "SootveilBlade_Grip": (0.59, 0.73, 0.82),  # fish-scale binding
-    "SootveilBlade_Guard": (0.19, 0.17, 0.24),
-    "SootveilBlade_Edge": (0.16, 0.15, 0.17),  # soot-blackened blade
-    "SootveilBlade_Spike": (0.16, 0.15, 0.17),
-    "SootveilBlade_Glow": (0.59, 0.16, 0.16),  # the drain, dim and red
-    "SlagheartWarhammer_Haft": (0.38, 0.42, 0.52),  # lodestone-braced haft
-    "SlagheartWarhammer_Grip": (0.24, 0.22, 0.27),  # dark binding
-    "SlagheartWarhammer_Guard": (0.38, 0.42, 0.52),
-    "SlagheartWarhammer_Head": (0.19, 0.17, 0.24),  # obsidian head
-    "SlagheartWarhammer_Spike": (0.19, 0.17, 0.24),
-    "SlagheartWarhammer_Glow": (0.96, 0.38, 0.16),  # the molten core
     # Ranged - swamp (bogwood / bog iron / gator scute fantasy tier).
     "BogwoodBow_Haft": (0.4, 0.31, 0.2),  # dark bogwood stave + arrow shaft
     "BogwoodBow_Grip": (0.3, 0.36, 0.28),  # gator-hide binding
@@ -250,26 +183,197 @@ COLORS = {
     "VulkanRepeater_Edge": (0.33, 0.32, 0.36),  # gunmetal shroud + barrel
     "VulkanRepeater_Spike": (0.33, 0.32, 0.36),  # muzzle brake + vents
     "VulkanRepeater_Glow": (0.96, 0.38, 0.16),  # incendiary core + veins
+    # Revamp S4 weapons (f4's pass): Haft/Guard/Pommel = row color, Grip =
+    # wrap, Head/Edge/Spike = accent, Glow = row glow.
+    "RustfangMachete_Haft": (0.38, 0.31, 0.21),
+    "RustfangMachete_Guard": (0.38, 0.31, 0.21),
+    "RustfangMachete_Pommel": (0.38, 0.31, 0.21),
+    "RustfangMachete_Grip": (0.25, 0.27, 0.20),
+    "RustfangMachete_Head": (0.64, 0.38, 0.24),
+    "RustfangMachete_Edge": (0.64, 0.38, 0.24),
+    "RustfangMachete_Spike": (0.64, 0.38, 0.24),
+    "Fenreaver_Haft": (0.23, 0.26, 0.18),
+    "Fenreaver_Guard": (0.23, 0.26, 0.18),
+    "Fenreaver_Pommel": (0.23, 0.26, 0.18),
+    "Fenreaver_Grip": (0.17, 0.19, 0.14),
+    "Fenreaver_Head": (0.59, 0.92, 0.78),
+    "Fenreaver_Edge": (0.59, 0.92, 0.78),
+    "Fenreaver_Spike": (0.59, 0.92, 0.78),
+    "Fenreaver_Glow": (0.59, 0.92, 0.78),
+    "IcepickHatchet_Haft": (0.47, 0.53, 0.59),
+    "IcepickHatchet_Guard": (0.47, 0.53, 0.59),
+    "IcepickHatchet_Pommel": (0.47, 0.53, 0.59),
+    "IcepickHatchet_Grip": (0.35, 0.41, 0.47),
+    "IcepickHatchet_Head": (0.82, 0.89, 0.94),
+    "IcepickHatchet_Edge": (0.82, 0.89, 0.94),
+    "IcepickHatchet_Spike": (0.82, 0.89, 0.94),
+    "FrostboreRifle_Haft": (0.41, 0.38, 0.33),
+    "FrostboreRifle_Guard": (0.41, 0.38, 0.33),
+    "FrostboreRifle_Pommel": (0.41, 0.38, 0.33),
+    "FrostboreRifle_Grip": (0.27, 0.25, 0.22),
+    "FrostboreRifle_Head": (0.67, 0.73, 0.79),
+    "FrostboreRifle_Edge": (0.67, 0.73, 0.79),
+    "FrostboreRifle_Spike": (0.67, 0.73, 0.79),
+    "GlacierMaul_Haft": (0.59, 0.55, 0.49),
+    "GlacierMaul_Guard": (0.59, 0.55, 0.49),
+    "GlacierMaul_Pommel": (0.59, 0.55, 0.49),
+    "GlacierMaul_Grip": (0.41, 0.38, 0.33),
+    "GlacierMaul_Head": (0.59, 0.77, 0.88),
+    "GlacierMaul_Edge": (0.59, 0.77, 0.88),
+    "GlacierMaul_Spike": (0.59, 0.77, 0.88),
+    "GlacierMaul_Glow": (0.47, 0.78, 1.00),
+    "FrostbiteRevolver_Haft": (0.35, 0.39, 0.45),
+    "FrostbiteRevolver_Guard": (0.35, 0.39, 0.45),
+    "FrostbiteRevolver_Pommel": (0.35, 0.39, 0.45),
+    "FrostbiteRevolver_Grip": (0.24, 0.27, 0.32),
+    "FrostbiteRevolver_Head": (0.78, 0.88, 0.94),
+    "FrostbiteRevolver_Edge": (0.78, 0.88, 0.94),
+    "FrostbiteRevolver_Spike": (0.78, 0.88, 0.94),
+    "FrostbiteRevolver_Glow": (0.47, 0.78, 1.00),
+    "RimefangLance_Haft": (0.55, 0.71, 0.82),
+    "RimefangLance_Guard": (0.55, 0.71, 0.82),
+    "RimefangLance_Pommel": (0.55, 0.71, 0.82),
+    "RimefangLance_Grip": (0.31, 0.39, 0.49),
+    "RimefangLance_Head": (0.93, 0.96, 0.99),
+    "RimefangLance_Edge": (0.93, 0.96, 0.99),
+    "RimefangLance_Spike": (0.93, 0.96, 0.99),
+    "RimefangLance_Glow": (0.31, 0.86, 1.00),
+    "Trenchspike_Haft": (0.27, 0.31, 0.36),
+    "Trenchspike_Guard": (0.27, 0.31, 0.36),
+    "Trenchspike_Pommel": (0.27, 0.31, 0.36),
+    "Trenchspike_Grip": (0.19, 0.21, 0.26),
+    "Trenchspike_Head": (0.51, 0.49, 0.56),
+    "Trenchspike_Edge": (0.51, 0.49, 0.56),
+    "Trenchspike_Spike": (0.51, 0.49, 0.56),
+    "AbyssalHarpooner_Haft": (0.24, 0.26, 0.33),
+    "AbyssalHarpooner_Guard": (0.24, 0.26, 0.33),
+    "AbyssalHarpooner_Pommel": (0.24, 0.26, 0.33),
+    "AbyssalHarpooner_Grip": (0.17, 0.19, 0.24),
+    "AbyssalHarpooner_Head": (0.55, 0.59, 0.67),
+    "AbyssalHarpooner_Edge": (0.55, 0.59, 0.67),
+    "AbyssalHarpooner_Spike": (0.55, 0.59, 0.67),
+    "RiptideSmg_Haft": (0.30, 0.33, 0.39),
+    "RiptideSmg_Guard": (0.30, 0.33, 0.39),
+    "RiptideSmg_Pommel": (0.30, 0.33, 0.39),
+    "RiptideSmg_Grip": (0.20, 0.23, 0.28),
+    "RiptideSmg_Head": (0.55, 0.86, 1.00),
+    "RiptideSmg_Edge": (0.55, 0.86, 1.00),
+    "RiptideSmg_Spike": (0.55, 0.86, 1.00),
+    "VoidglassSaber_Haft": (0.16, 0.14, 0.22),
+    "VoidglassSaber_Guard": (0.16, 0.14, 0.22),
+    "VoidglassSaber_Pommel": (0.16, 0.14, 0.22),
+    "VoidglassSaber_Grip": (0.12, 0.10, 0.16),
+    "VoidglassSaber_Head": (0.26, 0.23, 0.35),
+    "VoidglassSaber_Edge": (0.26, 0.23, 0.35),
+    "VoidglassSaber_Spike": (0.26, 0.23, 0.35),
+    "VoidglassSaber_Glow": (0.67, 0.47, 1.00),
+    "GloomcallerDmr_Haft": (0.22, 0.20, 0.28),
+    "GloomcallerDmr_Guard": (0.22, 0.20, 0.28),
+    "GloomcallerDmr_Pommel": (0.22, 0.20, 0.28),
+    "GloomcallerDmr_Grip": (0.16, 0.14, 0.21),
+    "GloomcallerDmr_Head": (1.00, 0.89, 0.51),
+    "GloomcallerDmr_Edge": (1.00, 0.89, 0.51),
+    "GloomcallerDmr_Spike": (1.00, 0.89, 0.51),
+    "GloomcallerDmr_Glow": (1.00, 0.89, 0.51),
+    "BoardingAxe_Haft": (0.43, 0.38, 0.30),
+    "BoardingAxe_Guard": (0.43, 0.38, 0.30),
+    "BoardingAxe_Pommel": (0.43, 0.38, 0.30),
+    "BoardingAxe_Grip": (0.30, 0.26, 0.21),
+    "BoardingAxe_Head": (0.63, 0.66, 0.69),
+    "BoardingAxe_Edge": (0.63, 0.66, 0.69),
+    "BoardingAxe_Spike": (0.63, 0.66, 0.69),
+    "GraveBlunderbuss_Haft": (0.41, 0.35, 0.26),
+    "GraveBlunderbuss_Guard": (0.41, 0.35, 0.26),
+    "GraveBlunderbuss_Pommel": (0.41, 0.35, 0.26),
+    "GraveBlunderbuss_Grip": (0.27, 0.24, 0.19),
+    "GraveBlunderbuss_Head": (0.59, 0.61, 0.64),
+    "GraveBlunderbuss_Edge": (0.59, 0.61, 0.64),
+    "GraveBlunderbuss_Spike": (0.59, 0.61, 0.64),
+    "PhantomRepeater_Haft": (0.38, 0.45, 0.42),
+    "PhantomRepeater_Guard": (0.38, 0.45, 0.42),
+    "PhantomRepeater_Pommel": (0.38, 0.45, 0.42),
+    "PhantomRepeater_Grip": (0.25, 0.31, 0.28),
+    "PhantomRepeater_Head": (0.63, 1.00, 0.82),
+    "PhantomRepeater_Edge": (0.63, 1.00, 0.82),
+    "PhantomRepeater_Spike": (0.63, 1.00, 0.82),
+    "PhantomRepeater_Glow": (0.63, 1.00, 0.82),
+    "CutlassOfTheFleet_Haft": (0.47, 0.53, 0.49),
+    "CutlassOfTheFleet_Guard": (0.47, 0.53, 0.49),
+    "CutlassOfTheFleet_Pommel": (0.47, 0.53, 0.49),
+    "CutlassOfTheFleet_Grip": (0.33, 0.37, 0.35),
+    "CutlassOfTheFleet_Head": (0.78, 0.84, 0.81),
+    "CutlassOfTheFleet_Edge": (0.78, 0.84, 0.81),
+    "CutlassOfTheFleet_Spike": (0.78, 0.84, 0.81),
+    "CutlassOfTheFleet_Glow": (0.63, 1.00, 0.82),
+    "AdmiralsSaber_Haft": (0.38, 0.45, 0.42),
+    "AdmiralsSaber_Guard": (0.38, 0.45, 0.42),
+    "AdmiralsSaber_Pommel": (0.38, 0.45, 0.42),
+    "AdmiralsSaber_Grip": (0.26, 0.31, 0.30),
+    "AdmiralsSaber_Head": (0.90, 0.75, 0.39),
+    "AdmiralsSaber_Edge": (0.90, 0.75, 0.39),
+    "AdmiralsSaber_Spike": (0.90, 0.75, 0.39),
+    "AdmiralsSaber_Glow": (0.63, 1.00, 0.82),
+    "Galecleaver_Haft": (0.43, 0.49, 0.55),
+    "Galecleaver_Guard": (0.43, 0.49, 0.55),
+    "Galecleaver_Pommel": (0.43, 0.49, 0.55),
+    "Galecleaver_Grip": (0.30, 0.34, 0.39),
+    "Galecleaver_Head": (0.78, 0.84, 0.89),
+    "Galecleaver_Edge": (0.78, 0.84, 0.89),
+    "Galecleaver_Spike": (0.78, 0.84, 0.89),
+    "CycloneRifle_Haft": (0.30, 0.34, 0.41),
+    "CycloneRifle_Guard": (0.30, 0.34, 0.41),
+    "CycloneRifle_Pommel": (0.30, 0.34, 0.41),
+    "CycloneRifle_Grip": (0.21, 0.24, 0.31),
+    "CycloneRifle_Head": (0.55, 0.78, 1.00),
+    "CycloneRifle_Edge": (0.55, 0.78, 1.00),
+    "CycloneRifle_Spike": (0.55, 0.78, 1.00),
+    "ThunderheadCannon_Haft": (0.27, 0.31, 0.39),
+    "ThunderheadCannon_Guard": (0.27, 0.31, 0.39),
+    "ThunderheadCannon_Pommel": (0.27, 0.31, 0.39),
+    "ThunderheadCannon_Grip": (0.20, 0.23, 0.29),
+    "ThunderheadCannon_Head": (0.86, 0.90, 1.00),
+    "ThunderheadCannon_Edge": (0.86, 0.90, 1.00),
+    "ThunderheadCannon_Spike": (0.86, 0.90, 1.00),
+    "ThunderheadCannon_Glow": (0.86, 0.90, 1.00),
+    "Stormlance_Haft": (0.35, 0.43, 0.59),
+    "Stormlance_Guard": (0.35, 0.43, 0.59),
+    "Stormlance_Pommel": (0.35, 0.43, 0.59),
+    "Stormlance_Grip": (0.24, 0.30, 0.41),
+    "Stormlance_Head": (0.86, 0.90, 1.00),
+    "Stormlance_Edge": (0.86, 0.90, 1.00),
+    "Stormlance_Spike": (0.86, 0.90, 1.00),
+    "Stormlance_Glow": (0.55, 0.78, 1.00),
+    "Krakenfang_Haft": (0.24, 0.17, 0.33),
+    "Krakenfang_Guard": (0.24, 0.17, 0.33),
+    "Krakenfang_Pommel": (0.24, 0.17, 0.33),
+    "Krakenfang_Grip": (0.17, 0.13, 0.24),
+    "Krakenfang_Head": (0.86, 0.82, 0.94),
+    "Krakenfang_Edge": (0.86, 0.82, 0.94),
+    "Krakenfang_Spike": (0.86, 0.82, 0.94),
+    "Krakenfang_Glow": (0.59, 0.47, 1.00),
 }
 
 GLOW_PARTS = {  # emissive in the preview only
     "Drowncleaver_Glow",
-    "TidebombMaul_Glow",
-    "Voltfang_Glow",
     "Heartrender_Glow",
     "ObsidianPiercer_Glow",
-    "RidgebackPike_Glow",
-    "SlagfistGauntlet_Glow",
-    "CinderSpear_Glow",
-    "LodestoneMaul_Glow",
     "MagmaGauntlets_Glow",
-    "Riftcleaver_Glow",
-    "SootveilBlade_Glow",
-    "SlagheartWarhammer_Glow",
     "GatorjawCrossbow_Glow",
     "MireFlintlock_Glow",
     "BasaltScattergun_Glow",
     "VulkanRepeater_Glow",
+    "Fenreaver_Glow",
+    "GlacierMaul_Glow",
+    "FrostbiteRevolver_Glow",
+    "RimefangLance_Glow",
+    "VoidglassSaber_Glow",
+    "GloomcallerDmr_Glow",
+    "PhantomRepeater_Glow",
+    "CutlassOfTheFleet_Glow",
+    "AdmiralsSaber_Glow",
+    "ThunderheadCannon_Glow",
+    "Stormlance_Glow",
+    "Krakenfang_Glow",
 }
 
 
@@ -579,101 +683,6 @@ def guard_bm_ring(bm, z):
     limb(bm, (0, 0, z - 0.08), (0, 0, z + 0.08), 0.28, 0.28, 8)
 
 
-# ---------------------------------------------------------------- Tidebomb Maul (urchin maul)
-# A driftwood haft under a whole urchin: a round shell with long spines
-# radiating in every direction, the tips still humming. Reads as a spiked ball
-# on a stick - deliberately nothing like the Shellcrusher's flat shell lump.
-
-
-def build_tidebombmaul():
-    f = FRAME["TidebombMaul"]
-    length, grip = f["length"], f["grip"]
-    haft = bmesh.new()
-    grip_bm = bmesh.new()
-    head = bmesh.new()
-    spike = bmesh.new()
-    glow = bmesh.new()
-    guard = bmesh.new()
-
-    limb(haft, (0, 0, 0.0), (0, 0, 2.5), 0.15, 0.11, 6)
-    limb(grip_bm, (0, 0, grip - 0.6), (0, 0, grip + 0.6), 0.25, 0.23, 8)
-    guard_bm_ring(guard, 2.55)
-
-    # The urchin: a near-sphere at the top of the haft.
-    centre = Vector((0, 0, 3.02))
-    ellipsoid(head, centre, (0.5, 0.5, 0.48), subdiv=1)
-
-    # Spines out of it, on three latitude rings so it bristles from any angle.
-    # The last third of each spine is its own glowing tip.
-    for lat_deg, count in ((-32, 6), (6, 7), (44, 5)):
-        lat = math.radians(lat_deg)
-        for i in range(count):
-            lon = (i / count) * TAU + (0.0 if lat_deg == 6 else math.pi / count)
-            d = Vector((math.cos(lat) * math.cos(lon), math.cos(lat) * math.sin(lon), math.sin(lat)))
-            base = centre + d * 0.44
-            tip = centre + d * 0.95
-            cone(spike, base, tip, 0.075, sides=4)
-            cone(glow, centre + d * 0.82, tip, 0.045, sides=4)
-
-    # A blunt crown spine straight up, so the silhouette has a point.
-    cone(spike, centre + Vector((0, 0, 0.42)), centre + Vector((0, 0, 1.05)), 0.1, sides=5)
-    cone(glow, centre + Vector((0, 0, 0.9)), centre + Vector((0, 0, 1.05)), 0.055, sides=5)
-
-    return [
-        finish("TidebombMaul_Haft", haft),
-        finish("TidebombMaul_Grip", grip_bm),
-        finish("TidebombMaul_Guard", guard),
-        finish("TidebombMaul_Head", head),
-        finish("TidebombMaul_Spike", spike),
-        finish("TidebombMaul_Glow", glow),
-    ]
-
-
-# ---------------------------------------------------------------- Voltfang (nacre fang)
-# A narrow nacre blade that splits into two prongs near the tip, with an arc
-# of light bridging the gap - a tuning fork made into a weapon. Slim and fast,
-# the opposite silhouette to the Drowncleaver's broad slab.
-
-
-def build_voltfang():
-    f = FRAME["Voltfang"]
-    length, grip = f["length"], f["grip"]
-    haft = bmesh.new()
-    grip_bm = bmesh.new()
-    guard = bmesh.new()
-    edge = bmesh.new()
-    spike = bmesh.new()
-    glow = bmesh.new()
-
-    limb(haft, (0, 0, 0.0), (0, 0, 1.5), 0.12, 0.1, 6)
-    limb(grip_bm, (0, 0, grip - 0.5), (0, 0, grip + 0.5), 0.21, 0.2, 8)
-    box(guard, (0, 0, 1.55), (0.66, 0.2, 0.16))
-
-    # The blade proper: a slim tapering slab from the guard up to the fork.
-    fork_z = 2.75
-    box(edge, (0, 0, (1.62 + fork_z) / 2), (0.34, 0.09, fork_z - 1.62))
-
-    # Two prongs, splitting outward and forward to the tip.
-    for side in (-1, 1):
-        cone(spike, (side * 0.11, 0, fork_z), (side * 0.2, 0, length), 0.075, sides=4)
-
-    # The arc between the prongs: three rungs climbing the gap.
-    for i, z in enumerate((fork_z + 0.14, fork_z + 0.4, fork_z + 0.66)):
-        w = 0.30 - i * 0.045
-        box(glow, (0, 0, z), (w, 0.05, 0.05))
-    # A thin bright spine up the middle of the blade.
-    box(glow, (0, 0, (1.7 + fork_z) / 2), (0.07, 0.055, fork_z - 1.7))
-
-    return [
-        finish("Voltfang_Haft", haft),
-        finish("Voltfang_Grip", grip_bm),
-        finish("Voltfang_Guard", guard),
-        finish("Voltfang_Edge", edge),
-        finish("Voltfang_Spike", spike),
-        finish("Voltfang_Glow", glow),
-    ]
-
-
 # ---------------------------------------------------------------- Heartrender (brineheart blade)
 # The capstone: a broad leaf-shaped blade with a hollow down its centre and a
 # slow-pulsing core of Brinejaw's heart set into it, plus a heavy horned
@@ -800,163 +809,6 @@ def build_drowncleaver():
     ]
 
 
-# ---------------------------------------------------------------- Ember Cudgel / Cinderclub (volcano starters)
-# Plain scorched driftwood clubs, same silhouette family as the Driftwood
-# Club - a tapered haft, a knotted head, knots poking out. No glow: these are
-# Common tier, same rule as the starter club/blade.
-
-
-def build_embercudgel():
-    f = FRAME["EmberCudgel"]
-    length, grip = f["length"], f["grip"]
-    haft = bmesh.new()
-    grip_bm = bmesh.new()
-    head = bmesh.new()
-    spike = bmesh.new()
-
-    limb(haft, (0, 0, 0.0), (-0.03, 0, length - 1.1), 0.16, 0.12, 6)
-    limb(grip_bm, (0, 0, grip - 0.55), (0, 0, grip + 0.55), 0.22, 0.2, 7)
-    ellipsoid(head, (-0.02, 0, length - 0.48), (0.4, 0.4, 0.6), subdiv=1)
-    box(head, (0, 0, length - 0.9), (0.5, 0.5, 0.45))
-    for cx, cy, cz, r in ((0.36, 0.12, length - 0.5, 0.16), (-0.3, -0.1, length - 0.3, 0.14), (0.05, -0.32, length - 0.7, 0.15)):
-        ellipsoid(spike, (cx, cy, cz), (r, r, r), subdiv=0)
-
-    return [
-        finish("EmberCudgel_Haft", haft),
-        finish("EmberCudgel_Grip", grip_bm),
-        finish("EmberCudgel_Head", head),
-        finish("EmberCudgel_Spike", spike),
-    ]
-
-
-def build_cinderclub():
-    f = FRAME["Cinderclub"]
-    length, grip = f["length"], f["grip"]
-    haft = bmesh.new()
-    grip_bm = bmesh.new()
-    head = bmesh.new()
-    spike = bmesh.new()
-
-    limb(haft, (0, 0, 0.0), (0.02, 0, length - 1.0), 0.14, 0.1, 6)
-    limb(grip_bm, (0, 0, grip - 0.5), (0, 0, grip + 0.5), 0.19, 0.17, 7)
-    box(head, (0, 0, length - 0.55), (0.42, 0.4, 0.5))
-    box(head, (0.05, 0.05, length - 0.2), (0.28, 0.26, 0.22), Matrix.Rotation(math.radians(18), 4, "Z"))
-    for cx, cy, cz, r in ((0.3, 0.16, length - 0.7, 0.11), (-0.26, -0.14, length - 0.45, 0.1), (0.1, -0.28, length - 0.85, 0.09)):
-        ellipsoid(spike, (cx, cy, cz), (r, r, r), subdiv=0)
-
-    return [
-        finish("Cinderclub_Haft", haft),
-        finish("Cinderclub_Grip", grip_bm),
-        finish("Cinderclub_Head", head),
-        finish("Cinderclub_Spike", spike),
-    ]
-
-
-# ---------------------------------------------------------------- Sulfur Knuckles / Pumice Fists (volcano uncommons)
-# Short knuckle-duster blades - a compact crossguard, a stubby blade, and
-# crusted knobs standing in for scale plates. Uncommon tier: no glow yet.
-
-
-def build_sulfurknuckles():
-    f = FRAME["SulfurKnuckles"]
-    length, grip = f["length"], f["grip"]
-    haft = bmesh.new()
-    grip_bm = bmesh.new()
-    guard = bmesh.new()
-    edge = bmesh.new()
-    spike = bmesh.new()
-
-    limb(haft, (0, 0, 0.05), (0, 0, 1.1), 0.09, 0.12, 6)
-    limb(grip_bm, (0, 0, grip - 0.35), (0, 0, grip + 0.35), 0.14, 0.15, 7)
-    box(guard, (0, 0, 1.16), (0.62, 0.18, 0.13))
-    for sign in (-1, 1):
-        box(guard, (sign * 0.36, 0, 1.2), (0.22, 0.16, 0.11), Matrix.Rotation(math.radians(-sign * 16), 4, "Y"))
-
-    profile = [(-0.11, 1.22), (0.11, 1.22), (0.16, 1.7), (0.0, length), (-0.16, 1.7)]
-    slab(edge, profile, 0.045)
-
-    for cx, cy, cz, r in ((0.34, 0.1, 1.24, 0.08), (-0.3, -0.08, 1.24, 0.07), (0.1, 0.14, 1.5, 0.06), (-0.14, -0.12, 1.55, 0.06)):
-        ellipsoid(spike, (cx, cy, cz), (r, r, r), subdiv=0)
-
-    return [
-        finish("SulfurKnuckles_Haft", haft),
-        finish("SulfurKnuckles_Grip", grip_bm),
-        finish("SulfurKnuckles_Guard", guard),
-        finish("SulfurKnuckles_Edge", edge),
-        finish("SulfurKnuckles_Spike", spike),
-    ]
-
-
-def build_pumicefists():
-    f = FRAME["PumiceFists"]
-    length, grip = f["length"], f["grip"]
-    haft = bmesh.new()
-    grip_bm = bmesh.new()
-    guard = bmesh.new()
-    edge = bmesh.new()
-    spike = bmesh.new()
-
-    limb(haft, (0, 0, 0.05), (0, 0, 1.0), 0.08, 0.1, 6)
-    limb(grip_bm, (0, 0, grip - 0.32), (0, 0, grip + 0.32), 0.13, 0.14, 7)
-    box(guard, (0, 0, 1.05), (0.5, 0.16, 0.11))
-
-    for x in (-0.3, -0.1, 0.1, 0.3):
-        ellipsoid(spike, (x, 0.05, 1.16), (0.13, 0.11, 0.13), subdiv=0)
-
-    profile = [(-0.14, 1.24), (0.14, 1.24), (0.1, 1.5), (0.0, length), (-0.1, 1.5)]
-    slab(edge, profile, 0.04)
-
-    return [
-        finish("PumiceFists_Haft", haft),
-        finish("PumiceFists_Grip", grip_bm),
-        finish("PumiceFists_Guard", guard),
-        finish("PumiceFists_Edge", edge),
-        finish("PumiceFists_Spike", spike),
-    ]
-
-
-# ---------------------------------------------------------------- Cinderlash (volcano uncommon)
-# A whip-like blade: a chain of tapering limb segments curving as it climbs,
-# ending in a smouldering knot. Uncommon tier: no glow yet.
-
-
-def build_cinderlash():
-    f = FRAME["Cinderlash"]
-    length, grip = f["length"], f["grip"]
-    haft = bmesh.new()
-    grip_bm = bmesh.new()
-    guard = bmesh.new()
-    edge = bmesh.new()
-    spike = bmesh.new()
-
-    limb(haft, (0, 0, 0.0), (0, 0, 1.1), 0.1, 0.13, 6)
-    limb(grip_bm, (0, 0, grip - 0.38), (0, 0, grip + 0.38), 0.15, 0.16, 7)
-    box(guard, (0, 0, 1.16), (0.3, 0.24, 0.12))
-
-    segs = 7
-    prev = Vector((0, 0, 1.2))
-    for i in range(1, segs + 1):
-        t = i / segs
-        z = 1.2 + t * (length - 1.2)
-        x = math.sin(t * 2.2) * 0.5
-        y = math.cos(t * 1.3) * 0.12
-        cur = Vector((x, y, z))
-        r0 = max(0.09 * (1 - t) + 0.02, 0.02)
-        r1 = max(0.09 * (1 - t * 1.05) + 0.015, 0.015)
-        limb(edge, prev, cur, r0, r1, sides=5)
-        prev = cur
-
-    ellipsoid(spike, prev, (0.09, 0.09, 0.09), subdiv=0)
-
-    return [
-        finish("Cinderlash_Haft", haft),
-        finish("Cinderlash_Grip", grip_bm),
-        finish("Cinderlash_Guard", guard),
-        finish("Cinderlash_Edge", edge),
-        finish("Cinderlash_Spike", spike),
-    ]
-
-
 # ---------------------------------------------------------------- Obsidian Piercer (volcano rare)
 # A thin tapering rapier of glass-black obsidian with a hairline crack of
 # heat running its length. Rare tier: glow.
@@ -992,163 +844,6 @@ def build_obsidianpiercer():
     ]
 
 
-# ---------------------------------------------------------------- Ridgeback Pike (volcano rare)
-# A long haft crowned with a hooked obsidian ridgeback barb, ember veins
-# glowing along it. Rare tier: glow.
-
-
-def build_ridgebackpike():
-    f = FRAME["RidgebackPike"]
-    length, grip = f["length"], f["grip"]
-    haft = bmesh.new()
-    grip_bm = bmesh.new()
-    guard = bmesh.new()
-    head = bmesh.new()
-    spike = bmesh.new()
-    glow = bmesh.new()
-
-    limb(haft, (0, 0, 0.0), (0, 0, 2.6), 0.13, 0.09, 6)
-    limb(grip_bm, (0, 0, grip - 0.6), (0, 0, grip + 0.6), 0.2, 0.18, 8)
-    guard_bm_ring(guard, 2.65)
-
-    ellipsoid(head, (0, 0, 2.85), (0.24, 0.22, 0.3), subdiv=1)
-    limb(head, (0, 0.05, 2.95), (0.06, 0.4, length - 0.1), 0.13, 0.04, 5)
-    cone(spike, (0.06, 0.4, length - 0.1), (0.1, 0.55, length), 0.05, sides=4)
-    for cz, dy, dz in ((3.05, 0.24, 0.06), (3.3, -0.2, 0.18)):
-        base = Vector((0, 0.08, cz))
-        tip = base + Vector((0, dy, dz))
-        cone(spike, base, tip, 0.06, sides=4)
-
-    box(glow, (0.03, 0.22, 3.25), (0.02, 0.03, 0.5))
-
-    return [
-        finish("RidgebackPike_Haft", haft),
-        finish("RidgebackPike_Grip", grip_bm),
-        finish("RidgebackPike_Guard", guard),
-        finish("RidgebackPike_Head", head),
-        finish("RidgebackPike_Spike", spike),
-        finish("RidgebackPike_Glow", glow),
-    ]
-
-
-# ---------------------------------------------------------------- Slagfist Gauntlet (volcano rare)
-# A heavy faceted knob of obsidian and sulfur with knuckle ridges and molten
-# cracks running across it. Rare tier: glow.
-
-
-def build_slagfistgauntlet():
-    f = FRAME["SlagfistGauntlet"]
-    length, grip = f["length"], f["grip"]
-    haft = bmesh.new()
-    grip_bm = bmesh.new()
-    guard = bmesh.new()
-    head = bmesh.new()
-    spike = bmesh.new()
-    glow = bmesh.new()
-
-    limb(haft, (0, 0, 0.0), (0, 0, 2.3), 0.16, 0.12, 6)
-    limb(grip_bm, (0, 0, grip - 0.6), (0, 0, grip + 0.6), 0.25, 0.23, 8)
-    guard_bm_ring(guard, 2.35)
-
-    ellipsoid(head, (0, 0, 2.75), (0.55, 0.5, 0.55), subdiv=1)
-    box(head, (0, 0, 2.55), (0.62, 0.58, 0.4))
-
-    for x in (-0.3, -0.1, 0.1, 0.3):
-        box(spike, (x, 0.42, 2.9), (0.08, 0.08, 0.18))
-
-    for cx, cz, ln, ang in ((0.0, 2.9, 0.5, 25), (-0.18, 2.62, 0.35, -35), (0.2, 2.68, 0.32, 50)):
-        box(glow, (cx, 0.3, cz), (ln, 0.035, 0.05), Matrix.Rotation(math.radians(ang), 4, "Y"))
-
-    return [
-        finish("SlagfistGauntlet_Haft", haft),
-        finish("SlagfistGauntlet_Grip", grip_bm),
-        finish("SlagfistGauntlet_Guard", guard),
-        finish("SlagfistGauntlet_Head", head),
-        finish("SlagfistGauntlet_Spike", spike),
-        finish("SlagfistGauntlet_Glow", glow),
-    ]
-
-
-# ---------------------------------------------------------------- Cinder Spear (volcano rare)
-# A leaf-shaped sulfur-crusted spearhead on a driftwood shaft, glowing ember
-# cord wrapped just below it. Rare tier: glow.
-
-
-def build_cinderspear():
-    f = FRAME["CinderSpear"]
-    length, grip = f["length"], f["grip"]
-    haft = bmesh.new()
-    grip_bm = bmesh.new()
-    guard = bmesh.new()
-    head = bmesh.new()
-    spike = bmesh.new()
-    glow = bmesh.new()
-
-    limb(haft, (0, 0, 0.0), (0, 0, 2.5), 0.12, 0.09, 6)
-    limb(grip_bm, (0, 0, grip - 0.55), (0, 0, grip + 0.55), 0.18, 0.16, 7)
-    guard_bm_ring(guard, 2.55)
-
-    profile = [(-0.16, 2.6), (0.16, 2.6), (0.24, 3.0), (0.0, length), (-0.24, 3.0)]
-    slab(head, profile, 0.05)
-    for side in (-1, 1):
-        cone(spike, (side * 0.14, 0, 2.62), (side * 0.34, 0, 2.85), 0.06, sides=4)
-
-    for cz in (2.1, 2.3, 2.5):
-        limb(glow, (0, 0, cz - 0.03), (0, 0, cz + 0.03), 0.14, 0.14, 8)
-
-    return [
-        finish("CinderSpear_Haft", haft),
-        finish("CinderSpear_Grip", grip_bm),
-        finish("CinderSpear_Guard", guard),
-        finish("CinderSpear_Head", head),
-        finish("CinderSpear_Spike", spike),
-        finish("CinderSpear_Glow", glow),
-    ]
-
-
-# ---------------------------------------------------------------- Lodestone Maul (volcano epic)
-# A large faceted lodestone head braced in obsidian, magnetic pull-lines
-# radiating off it. Epic tier: glow.
-
-
-def build_lodestonemaul():
-    f = FRAME["LodestoneMaul"]
-    length, grip = f["length"], f["grip"]
-    haft = bmesh.new()
-    grip_bm = bmesh.new()
-    guard = bmesh.new()
-    head = bmesh.new()
-    spike = bmesh.new()
-    glow = bmesh.new()
-
-    limb(haft, (0, 0, 0.0), (0, 0, 2.5), 0.18, 0.13, 6)
-    limb(grip_bm, (0, 0, grip - 0.65), (0, 0, grip + 0.65), 0.28, 0.26, 8)
-    guard_bm_ring(guard, 2.55)
-
-    ellipsoid(head, (0, 0, 3.15), (0.62, 0.6, 0.62), subdiv=1)
-    box(head, (0, 0, 2.85), (0.7, 0.68, 0.42))
-
-    for side in (-1, 1):
-        box(spike, (side * 0.5, 0, 3.1), (0.14, 0.5, 0.16))
-    box(spike, (0, 0, 3.7), (0.3, 0.3, 0.12))
-
-    for i in range(5):
-        a = (i / 5) * TAU
-        d = Vector((math.cos(a), math.sin(a) * 0.8, 0.0))
-        base = Vector((0, 0, 3.15)) + d * 0.66
-        tip = base + d * 0.3
-        limb(glow, base, tip, 0.035, 0.01, 4)
-
-    return [
-        finish("LodestoneMaul_Haft", haft),
-        finish("LodestoneMaul_Grip", grip_bm),
-        finish("LodestoneMaul_Guard", guard),
-        finish("LodestoneMaul_Head", head),
-        finish("LodestoneMaul_Spike", spike),
-        finish("LodestoneMaul_Glow", glow),
-    ]
-
-
 # ---------------------------------------------------------------- Magma Gauntlets (volcano epic)
 # Three sulfur-crusted claw blades fanning off a short guard, a magma vein
 # glowing up the centre claw. Epic tier: glow.
@@ -1181,132 +876,6 @@ def build_magmagauntlets():
         finish("MagmaGauntlets_Edge", edge),
         finish("MagmaGauntlets_Spike", spike),
         finish("MagmaGauntlets_Glow", glow),
-    ]
-
-
-# ---------------------------------------------------------------- Riftcleaver (volcano epic)
-# A broad lodestone-grey cleaver slab split by a glowing rift of magma down
-# its centre. Epic tier: glow.
-
-
-def build_riftcleaver():
-    f = FRAME["Riftcleaver"]
-    length, grip = f["length"], f["grip"]
-    haft = bmesh.new()
-    grip_bm = bmesh.new()
-    guard = bmesh.new()
-    edge = bmesh.new()
-    spike = bmesh.new()
-    glow = bmesh.new()
-
-    limb(haft, (0, 0, 0.0), (0, 0, 1.3), 0.13, 0.1, 6)
-    limb(grip_bm, (0, 0, grip - 0.42), (0, 0, grip + 0.42), 0.2, 0.19, 8)
-    box(guard, (0.1, 0, 1.38), (0.9, 0.22, 0.16))
-
-    profile = [
-        (-0.3, 1.44),
-        (0.62, 1.44),
-        (0.74, 2.1),
-        (0.7, 2.9),
-        (0.5, length),
-        (-0.34, length - 0.2),
-        (-0.32, 2.2),
-    ]
-    slab(edge, profile, 0.06)
-
-    cone(spike, (0.6, 0, 1.5), (0.86, 0, 1.66), 0.06, sides=4)
-
-    box(glow, (0.15, 0, (1.7 + length - 0.3) / 2), (0.035, 0.075, (length - 0.3 - 1.7) / 2))
-    for cz, ang in ((2.3, 35), (2.9, -30)):
-        box(glow, (0.15, 0, cz), (0.28, 0.07, 0.03), Matrix.Rotation(math.radians(ang), 4, "Y"))
-
-    return [
-        finish("Riftcleaver_Haft", haft),
-        finish("Riftcleaver_Grip", grip_bm),
-        finish("Riftcleaver_Guard", guard),
-        finish("Riftcleaver_Edge", edge),
-        finish("Riftcleaver_Spike", spike),
-        finish("Riftcleaver_Glow", glow),
-    ]
-
-
-# ---------------------------------------------------------------- Sootveil Blade (volcano epic)
-# A slim soot-blackened blade with a small hooked guard tip, a dim red
-# draining glow running up the edge. Epic tier: glow.
-
-
-def build_sootveilblade():
-    f = FRAME["SootveilBlade"]
-    length, grip = f["length"], f["grip"]
-    haft = bmesh.new()
-    grip_bm = bmesh.new()
-    guard = bmesh.new()
-    edge = bmesh.new()
-    spike = bmesh.new()
-    glow = bmesh.new()
-
-    limb(haft, (0, 0, 0.05), (0, 0, 1.25), 0.1, 0.12, 6)
-    limb(grip_bm, (0, 0, grip - 0.4), (0, 0, grip + 0.4), 0.15, 0.16, 7)
-    box(guard, (0, 0, 1.3), (0.56, 0.16, 0.13))
-    cone(spike, (0.3, 0, 1.32), (0.46, 0, 1.5), 0.06, sides=4)
-
-    profile = [(-0.12, 1.36), (0.12, 1.36), (0.15, 2.1), (0.0, length), (-0.15, 2.1)]
-    slab(edge, profile, 0.045)
-
-    box(glow, (0.1, 0, (1.5 + length) / 2), (0.02, 0.05, (length - 1.5) / 2))
-
-    return [
-        finish("SootveilBlade_Haft", haft),
-        finish("SootveilBlade_Grip", grip_bm),
-        finish("SootveilBlade_Guard", guard),
-        finish("SootveilBlade_Edge", edge),
-        finish("SootveilBlade_Spike", spike),
-        finish("SootveilBlade_Glow", glow),
-    ]
-
-
-# ---------------------------------------------------------------- Slagheart Warhammer (volcano legendary)
-# The capstone: a broad faceted warhammer head with two striking faces, a
-# molten magma core set in its centre with veins running to both faces and
-# down toward the haft, obsidian braces down each side and a back horn
-# spike. The richest build in the pack, matching Heartrender's role as the
-# other capstone.
-
-
-def build_slagheartwarhammer():
-    f = FRAME["SlagheartWarhammer"]
-    length, grip = f["length"], f["grip"]
-    haft = bmesh.new()
-    grip_bm = bmesh.new()
-    guard = bmesh.new()
-    head = bmesh.new()
-    spike = bmesh.new()
-    glow = bmesh.new()
-
-    limb(haft, (0, 0, 0.0), (0, 0, 2.6), 0.19, 0.14, 6)
-    limb(grip_bm, (0, 0, grip - 0.68), (0, 0, grip + 0.68), 0.3, 0.28, 8)
-    guard_bm_ring(guard, 2.65)
-
-    box(head, (0, 0, 3.15), (0.5, 0.78, 0.62))
-    ellipsoid(head, (0, 0.42, 3.15), (0.32, 0.22, 0.34), subdiv=1)
-    ellipsoid(head, (0, -0.42, 3.15), (0.32, 0.22, 0.34), subdiv=1)
-
-    for side in (-1, 1):
-        box(spike, (side * 0.28, 0, 2.85), (0.1, 0.7, 0.14))
-    cone(spike, (0, 0, 3.5), (0, 0, 3.85), 0.16, sides=5)
-
-    ellipsoid(glow, (0, 0, 3.15), (0.15, 0.22, 0.16), subdiv=1)
-    box(glow, (0, 0.2, 3.15), (0.06, 0.24, 0.06))
-    box(glow, (0, -0.2, 3.15), (0.06, 0.24, 0.06))
-    box(glow, (0, 0, 2.9), (0.05, 0.05, 0.3))
-
-    return [
-        finish("SlagheartWarhammer_Haft", haft),
-        finish("SlagheartWarhammer_Grip", grip_bm),
-        finish("SlagheartWarhammer_Guard", guard),
-        finish("SlagheartWarhammer_Head", head),
-        finish("SlagheartWarhammer_Spike", spike),
-        finish("SlagheartWarhammer_Glow", glow),
     ]
 
 
@@ -1645,6 +1214,326 @@ def build_vulkanrepeater():
     ]
 
 
+# ---------------------------------------------------------------- S4 families (f4's pass)
+# Twenty-two more weapons across islands 3/5/6 and the Maelstrom. Rather than
+# twenty-two bespoke geometry passes, three parameterised families cover them
+# - blades/sabers, hafted arms (axes, mauls, lances, spikes), and firearms -
+# with the character per weapon coming from the knobs and the palette. Same
+# frame rules as everything above: butt at z = 0, tip / muzzle at z = length,
+# _Grip centred on the hand point, up is +y.
+
+
+def _blade_family(name, curve=0.0, width=0.34, guard="cross", glow_edge=False, barbs=0, notch=False):
+    """A one-hand-and-a-half blade: wrapped grip, pommel, a guard, then a
+    tapering (optionally curved) blade of stepped segments to a cone tip.
+    `curve` bows the blade toward +x; `barbs` hangs swept fangs off its back
+    edge; `glow_edge` lays a lit strip down the flat; `notch` bites ragged
+    gaps out of the edge (the rust-eaten look)."""
+    f = FRAME[name]
+    length, grip = f["length"], f["grip"]
+    grip_bm, guard_bm, pommel_bm, edge, spike, glow = (bmesh.new() for _ in range(6))
+
+    limb(grip_bm, (0, 0, max(0.02, grip - 0.5)), (0, 0, grip + 0.5), 0.14, 0.13, 7)
+    box(pommel_bm, (0, 0, 0.08), (0.24, 0.24, 0.16))
+
+    gz = grip + 0.55
+    if guard == "cross":
+        box(guard_bm, (0, 0, gz), (0.72, 0.14, 0.12))
+    elif guard == "basket":
+        box(guard_bm, (0, 0, gz), (0.58, 0.16, 0.12))
+        limb(guard_bm, (0.27, 0, gz - 0.02), (0.2, 0, max(0.1, grip - 0.35)), 0.045, 0.045, 5)
+    elif guard == "disc":
+        limb(guard_bm, (0, 0, gz - 0.04), (0, 0, gz + 0.04), 0.34, 0.34, 8)
+
+    z0 = gz + 0.08
+    tip_z = length - 0.32
+    segments = 6
+    for k in range(segments):
+        t0, t1 = k / segments, (k + 1) / segments
+        za, zb = z0 + (tip_z - z0) * t0, z0 + (tip_z - z0) * t1
+        w = width * (1 - 0.5 * (t0 + t1) / 2)
+        x = curve * ((t0 + t1) / 2) ** 2
+        box(edge, (x, 0, (za + zb) / 2), (w, 0.09, (zb - za) + 0.02))
+        if notch and k % 2 == 1:
+            box(edge, (x + w * 0.42, 0, za + (zb - za) * 0.5), (0.1, 0.1, 0.08))
+    cone(spike, (curve * 0.95, 0, tip_z), (curve * 1.05, 0, length), width * 0.28, 6)
+
+    for k in range(barbs):
+        t = 0.3 + 0.5 * k / max(1, barbs - 1)
+        bx = curve * t * t - width * 0.45
+        bz = z0 + (tip_z - z0) * t
+        cone(spike, (bx, 0, bz), (bx - 0.3, 0, bz - 0.24), 0.07, 5)
+
+    if glow_edge:
+        for k in range(segments):
+            t0, t1 = k / segments, (k + 1) / segments
+            za, zb = z0 + (tip_z - z0) * t0, z0 + (tip_z - z0) * t1
+            w = width * (1 - 0.5 * (t0 + t1) / 2)
+            x = curve * ((t0 + t1) / 2) ** 2
+            box(glow, (x + w * 0.5, 0, (za + zb) / 2), (0.05, 0.05, (zb - za) - 0.06))
+
+    return [
+        finish(f"{name}_Grip", grip_bm),
+        finish(f"{name}_Guard", guard_bm),
+        finish(f"{name}_Pommel", pommel_bm),
+        finish(f"{name}_Edge", edge),
+        finish(f"{name}_Spike", spike),
+        finish(f"{name}_Glow", glow),
+    ]
+
+
+def _hafted_family(name, head="axe", double=False, back_pick=False, glow_head=False, collar=False):
+    """A weapon on a pole: long haft, wrapped grip, butt cap, and a business
+    end - `axe` (a broad wedge plate off +x), `maul` (a massive block),
+    `lance` (a long cone from a collared socket), or `spike` (a slim
+    square-section pike). `back_pick` hangs a reversed pick off -x; `double`
+    mirrors an axe head to both sides."""
+    f = FRAME[name]
+    length, grip = f["length"], f["grip"]
+    haft, grip_bm, pommel_bm, head_bm, spike, glow = (bmesh.new() for _ in range(6))
+
+    head_z = length - (0.55 if head in ("axe", "maul") else 1.2)
+    limb(haft, (0, 0, 0.06), (0, 0, head_z + 0.15), 0.09, 0.075, 6)
+    limb(grip_bm, (0, 0, max(0.02, grip - 0.45)), (0, 0, grip + 0.45), 0.12, 0.11, 7)
+    box(pommel_bm, (0, 0, 0.06), (0.2, 0.2, 0.14))
+
+    if head == "axe":
+        sides = (1, -1) if double else (1,)
+        for s in sides:
+            box(head_bm, (s * 0.34, 0, head_z), (0.5, 0.1, 0.62))
+            box(head_bm, (s * 0.62, 0, head_z), (0.12, 0.12, 0.86))  # the edge's flare
+        if back_pick and not double:
+            cone(spike, (-0.12, 0, head_z), (-0.62, 0, head_z - 0.12), 0.09, 5)
+        cone(spike, (0, 0, head_z + 0.28), (0, 0, length), 0.07, 5)
+    elif head == "maul":
+        box(head_bm, (0, 0, head_z), (0.72, 0.5, 0.66))
+        for s in (1, -1):
+            box(spike, (s * 0.4, 0, head_z + 0.2), (0.14, 0.14, 0.14))
+        cone(spike, (0, 0, head_z + 0.33), (0, 0, length), 0.09, 5)
+    elif head == "lance":
+        limb(head_bm, (0, 0, head_z), (0, 0, head_z + 0.5), 0.14, 0.12, 7)
+        cone(head_bm, (0, 0, head_z + 0.5), (0, 0, length), 0.13, 7)
+        for s in (1, -1):
+            cone(spike, (s * 0.1, 0, head_z + 0.35), (s * 0.4, 0, head_z + 0.05), 0.06, 5)
+    else:  # spike
+        box(head_bm, (0, 0, head_z + 0.2), (0.14, 0.14, 1.0))
+        cone(head_bm, (0, 0, head_z + 0.75), (0, 0, length), 0.09, 4)
+
+    if collar:
+        limb(spike, (0, 0, head_z - 0.05), (0, 0, head_z + 0.07), 0.12, 0.12, 7)
+    if glow_head:
+        if head == "maul":
+            box(glow, (0, 0, head_z), (0.76, 0.2, 0.2))
+        else:
+            limb(glow, (0, 0, head_z - 0.16), (0, 0, head_z - 0.02), 0.1, 0.1, 6)
+
+    return [
+        finish(f"{name}_Haft", haft),
+        finish(f"{name}_Grip", grip_bm),
+        finish(f"{name}_Pommel", pommel_bm),
+        finish(f"{name}_Head", head_bm),
+        finish(f"{name}_Spike", spike),
+        finish(f"{name}_Glow", glow),
+    ]
+
+
+def _gun_family(
+    name,
+    barrel_r=0.085,
+    stock="full",
+    scope=False,
+    mag="box",
+    drum=False,
+    flare=False,
+    cylinder=False,
+    harpoon=False,
+    heavy=False,
+    glow_core=False,
+):
+    """A firearm on the carbine's layout: stock (or just a pistol grip),
+    receiver, barrel to the muzzle, trigger guard, a magazine (`box`, `drum`,
+    `tube` or None), iron sight. `scope` mounts a tube on top; `flare` opens
+    the muzzle into a blunderbuss bell; `cylinder` swaps the receiver for a
+    revolver's drum; `harpoon` racks a barbed spear over the barrel; `heavy`
+    thickens everything (the hand cannon)."""
+    f = FRAME[name]
+    length, grip = f["length"], f["grip"]
+    haft, grip_bm, pommel_bm, guard_bm, head_bm, edge, spike, glow = (bmesh.new() for _ in range(8))
+
+    k = 1.35 if heavy else 1.0
+    rec_z = grip + 0.55
+    rec_len = 0.44 if length > 2.2 else 0.3
+
+    if stock == "full":
+        box(haft, (0.1, 0, 0.18), (0.32, 0.22, 0.36))
+        limb(haft, (0.12, 0, 0.34), (0, 0, rec_z - 0.1), 0.16, 0.11, 6)
+        box(pommel_bm, (0.13, 0, 0.03), (0.28, 0.22, 0.08))
+    else:  # pistol: the grip IS the stock
+        box(pommel_bm, (0.08, 0, grip - 0.42), (0.2, 0.2, 0.1))
+    limb(grip_bm, (0, 0, max(0.02, grip - 0.38)), (0, 0, grip + 0.38), 0.15 * k, 0.14 * k, 7)
+
+    if cylinder:
+        # The revolver's drum sits where a receiver would, axis along z.
+        limb(head_bm, (0, 0, rec_z - 0.1), (0, 0, rec_z + 0.26), 0.17, 0.17, 8)
+        box(head_bm, (0, 0, rec_z + 0.4), (0.16, 0.16, 0.2))
+    else:
+        box(head_bm, (0, 0, rec_z + rec_len / 2 - 0.1), (0.28 * k, 0.24 * k, rec_len + 0.1))
+        box(head_bm, (0, 0.15 * k, rec_z + 0.08), (0.1, 0.09, 0.08))  # charging handle
+
+    barrel_start = rec_z + (0.5 if cylinder else rec_len)
+    limb(edge, (0, 0, barrel_start), (0, 0, length - (0.28 if flare else 0.0)), barrel_r * k, barrel_r * 0.85 * k, 8)
+    if flare:
+        limb(edge, (0, 0, length - 0.3), (0, 0, length), barrel_r, barrel_r * 2.6, 8)
+    if heavy:
+        limb(spike, (0, 0, barrel_start + 0.05), (0, 0, barrel_start + 0.2), barrel_r * 1.7, barrel_r * 1.7, 8)
+
+    # Trigger guard.
+    box(guard_bm, (-0.16, 0, rec_z - 0.28), (0.06, 0.1, 0.26))
+
+    if mag == "box":
+        box(guard_bm, (-0.24, 0, rec_z + 0.12), (0.14, 0.13, 0.36), Matrix.Rotation(math.radians(18), 4, "Y"))
+    elif mag == "drum" or drum:
+        limb(guard_bm, (-0.2, 0, rec_z + 0.1), (-0.2, 0, rec_z + 0.24), 0.16, 0.16, 8)
+    elif mag == "tube":
+        limb(guard_bm, (0, -0.12, barrel_start + 0.1), (0, -0.12, length - 0.5), 0.05, 0.05, 6)
+
+    if scope:
+        limb(spike, (0, 0.16, rec_z - 0.15), (0, 0.16, rec_z + 0.55), 0.07, 0.07, 8)
+        box(spike, (0, 0.11, rec_z), (0.04, 0.06, 0.06))
+        box(spike, (0, 0.11, rec_z + 0.4), (0.04, 0.06, 0.06))
+    else:
+        box(spike, (0, 0.1 * k, length - 0.14), (0.04, 0.08, 0.1))
+
+    if harpoon:
+        # The spear racked over the barrel, barbed, with the line ring aft.
+        limb(spike, (0, 0.14, rec_z - 0.3), (0, 0.14, length + 0.28), 0.045, 0.045, 6)
+        cone(spike, (0, 0.14, length + 0.28), (0, 0.14, length + 0.55), 0.08, 5)
+        cone(spike, (0, 0.14, length + 0.18), (0, 0.24, length - 0.02), 0.045, 4)
+        limb(spike, (0, 0.14, rec_z - 0.38), (0, 0.14, rec_z - 0.3), 0.09, 0.09, 6)
+
+    if glow_core:
+        box(glow, (0, -0.14 * k, rec_z + rec_len / 2 - 0.1), (0.08, 0.05, rec_len * 0.7))
+        limb(glow, (0, 0, length - 0.06), (0, 0, length + 0.01), barrel_r * 0.6, barrel_r * 0.6, 6)
+
+    return [
+        finish(f"{name}_Haft", haft),
+        finish(f"{name}_Grip", grip_bm),
+        finish(f"{name}_Pommel", pommel_bm),
+        finish(f"{name}_Guard", guard_bm),
+        finish(f"{name}_Head", head_bm),
+        finish(f"{name}_Edge", edge),
+        finish(f"{name}_Spike", spike),
+        finish(f"{name}_Glow", glow),
+    ]
+
+
+# ---- island 2 melee (f4's swamp rows) ----
+
+
+def build_rustfangmachete():
+    # A broad working blade eaten ragged by bog water.
+    return _blade_family("RustfangMachete", curve=0.1, width=0.44, guard="cross", notch=True)
+
+
+def build_fenreaver():
+    # The fen's capstone glaive: long, swept, its edge lit wisp-green.
+    return _blade_family("Fenreaver", curve=0.16, width=0.4, guard="disc", glow_edge=True, barbs=3)
+
+
+# ---- Frostmaw Reach ----
+
+
+def build_icepickhatchet():
+    return _hafted_family("IcepickHatchet", head="axe", back_pick=True)
+
+
+def build_frostborerifle():
+    return _gun_family("FrostboreRifle", stock="full", scope=True, mag=None)
+
+
+def build_glaciermaul():
+    return _hafted_family("GlacierMaul", head="maul", glow_head=True, collar=True)
+
+
+def build_frostbiterevolver():
+    return _gun_family("FrostbiteRevolver", stock="pistol", cylinder=True, mag=None, glow_core=True)
+
+
+def build_rimefanglance():
+    return _hafted_family("RimefangLance", head="lance", glow_head=True, collar=True)
+
+
+# ---- Gloomtrench ----
+
+
+def build_trenchspike():
+    return _hafted_family("Trenchspike", head="spike")
+
+
+def build_abyssalharpooner():
+    return _gun_family("AbyssalHarpooner", stock="full", mag=None, harpoon=True)
+
+
+def build_riptidesmg():
+    return _gun_family("RiptideSmg", stock="pistol", mag="box")
+
+
+def build_voidglasssaber():
+    return _blade_family("VoidglassSaber", curve=0.2, width=0.34, guard="basket", glow_edge=True)
+
+
+def build_gloomcallerdmr():
+    return _gun_family("GloomcallerDmr", stock="full", scope=True, mag="box", glow_core=True)
+
+
+# ---- Wreckwater ----
+
+
+def build_boardingaxe():
+    return _hafted_family("BoardingAxe", head="axe", back_pick=True)
+
+
+def build_graveblunderbuss():
+    return _gun_family("GraveBlunderbuss", stock="full", mag=None, flare=True)
+
+
+def build_phantomrepeater():
+    return _gun_family("PhantomRepeater", stock="full", mag="drum", glow_core=True)
+
+
+def build_cutlassofthefleet():
+    return _blade_family("CutlassOfTheFleet", curve=0.26, width=0.36, guard="basket", glow_edge=True)
+
+
+def build_admiralssaber():
+    # The fleet's capstone: a long gilt saber, spectral fire down the edge.
+    return _blade_family("AdmiralsSaber", curve=0.24, width=0.34, guard="basket", glow_edge=True)
+
+
+# ---- The Maelstrom ----
+
+
+def build_galecleaver():
+    return _hafted_family("Galecleaver", head="axe", double=True)
+
+
+def build_cyclonerifle():
+    return _gun_family("CycloneRifle", stock="full", mag="box")
+
+
+def build_thunderheadcannon():
+    return _gun_family("ThunderheadCannon", stock="pistol", mag=None, heavy=True, glow_core=True)
+
+
+def build_stormlance():
+    return _hafted_family("Stormlance", head="lance", glow_head=True, collar=True)
+
+
+def build_krakenfang():
+    # The endgame blade: a fang of the Maw itself, curled and barbed.
+    return _blade_family("Krakenfang", curve=0.3, width=0.42, guard="disc", glow_edge=True, barbs=4)
+
+
 # ---------------------------------------------------------------- preview
 
 
@@ -1717,29 +1606,37 @@ def main():
         build_scaleblade(),
         build_shellcrusher(),
         build_drowncleaver(),
-        build_tidebombmaul(),
-        build_voltfang(),
         build_heartrender(),
-        build_embercudgel(),
-        build_cinderclub(),
-        build_sulfurknuckles(),
-        build_pumicefists(),
-        build_cinderlash(),
         build_obsidianpiercer(),
-        build_ridgebackpike(),
-        build_slagfistgauntlet(),
-        build_cinderspear(),
-        build_lodestonemaul(),
         build_magmagauntlets(),
-        build_riftcleaver(),
-        build_sootveilblade(),
-        build_slagheartwarhammer(),
         build_bogwoodbow(),
         build_gatorjawcrossbow(),
         build_mireflintlock(),
         build_cinderlockcarbine(),
         build_basaltscattergun(),
         build_vulkanrepeater(),
+        build_rustfangmachete(),
+        build_fenreaver(),
+        build_icepickhatchet(),
+        build_frostborerifle(),
+        build_glaciermaul(),
+        build_frostbiterevolver(),
+        build_rimefanglance(),
+        build_trenchspike(),
+        build_abyssalharpooner(),
+        build_riptidesmg(),
+        build_voidglasssaber(),
+        build_gloomcallerdmr(),
+        build_boardingaxe(),
+        build_graveblunderbuss(),
+        build_phantomrepeater(),
+        build_cutlassofthefleet(),
+        build_admiralssaber(),
+        build_galecleaver(),
+        build_cyclonerifle(),
+        build_thunderheadcannon(),
+        build_stormlance(),
+        build_krakenfang(),
     ]
 
     bpy.ops.object.select_all(action="SELECT")
