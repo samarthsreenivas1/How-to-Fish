@@ -609,10 +609,9 @@ Creatures.items.hatchling = {
 -- ocean rows, having no `waters`, never roll there and these never roll in the
 -- ocean). They drop the volcano material chain (Materials.luau).
 --
--- REBALANCED 2026-08-25 (docs/revamp-plan.md): health x2.2 and explicit
--- `rewards` at x2 the Tuning.Rewards.BY_RARITY baseline - the volcano is the
--- second island now and pays like it. The rewards blocks re-scale to x6 when
--- the island slides to slot 4 (Session 4).
+-- REBALANCED for the FINAL slot-4 band (revamp Session 4): health at ~x6 the
+-- island-1 baseline and explicit `rewards` at x6 Tuning.Rewards.BY_RARITY -
+-- the L22-28 island between Frostmaw Reach (x3.5) and Gloomtrench (x10).
 --
 -- Meshes are a later pass (83's *_gen.py): the fish reuse a recolored FishPack
 -- species and the hostiles a procedural `shape` stand-in, so all are testable
@@ -627,9 +626,9 @@ Creatures.items.emberfin_perch = {
 	name = "Emberfin Perch",
 	rarity = "Common",
 	archetype = "flopper",
-	health = 155,
+	health = 420,
 	waters = "volcano",
-	rewards = { coins = { 8, 16 }, xp = 24 },
+	rewards = { coins = { 24, 48 }, xp = 72 },
 	drops = { materials = { ember = { 1, 2 } } },
 	body = {
 		model = "FishPack",
@@ -646,9 +645,9 @@ Creatures.items.ashgill_minnow = {
 	name = "Ashgill Minnow",
 	rarity = "Common",
 	archetype = "flopper",
-	health = 145,
+	health = 390,
 	waters = "volcano",
-	rewards = { coins = { 8, 16 }, xp = 24 },
+	rewards = { coins = { 24, 48 }, xp = 72 },
 	drops = { materials = { ember = { 1, 1 }, sulfur = { 1, 1 } } },
 	body = {
 		model = "FishPack",
@@ -665,9 +664,9 @@ Creatures.items.magma_guppy = {
 	name = "Magma Guppy",
 	rarity = "Common",
 	archetype = "flopper",
-	health = 175,
+	health = 470,
 	waters = "volcano",
-	rewards = { coins = { 8, 16 }, xp = 24 },
+	rewards = { coins = { 24, 48 }, xp = 72 },
 	drops = { materials = { ember = { 1, 2 } } },
 	body = {
 		model = "FishPack",
@@ -684,9 +683,9 @@ Creatures.items.obsidian_bass = {
 	name = "Obsidian Bass",
 	rarity = "Uncommon",
 	archetype = "flopper",
-	health = 460,
+	health = 1250,
 	waters = "volcano",
-	rewards = { coins = { 24, 40 }, xp = 70 },
+	rewards = { coins = { 72, 120 }, xp = 210 },
 	drops = { materials = { obsidian_shard = { 1, 2 } } },
 	body = {
 		model = "FishPack",
@@ -703,9 +702,9 @@ Creatures.items.basalt_cod = {
 	name = "Basalt Cod",
 	rarity = "Uncommon",
 	archetype = "flopper",
-	health = 550,
+	health = 1480,
 	waters = "volcano",
-	rewards = { coins = { 24, 40 }, xp = 70 },
+	rewards = { coins = { 72, 120 }, xp = 210 },
 	drops = { materials = { obsidian_shard = { 1, 2 }, sulfur = { 1, 1 } } },
 	body = {
 		model = "FishPack",
@@ -722,9 +721,9 @@ Creatures.items.pyre_salmon = {
 	name = "Pyre Salmon",
 	rarity = "Rare",
 	archetype = "flopper",
-	health = 790,
+	health = 2130,
 	waters = "volcano",
-	rewards = { coins = { 70, 110 }, xp = 180 },
+	rewards = { coins = { 210, 330 }, xp = 540 },
 	drops = { materials = { magma_core = { 1, 1 }, obsidian_shard = { 1, 2 } } },
 	body = {
 		model = "FishPack",
@@ -741,9 +740,9 @@ Creatures.items.magmafin_tuna = {
 	name = "Magmafin Tuna",
 	rarity = "Epic",
 	archetype = "flopper",
-	health = 1450,
+	health = 3900,
 	waters = "volcano",
-	rewards = { coins = { 180, 280 }, xp = 440 },
+	rewards = { coins = { 540, 840 }, xp = 1320 },
 	drops = { materials = { magma_core = { 1, 2 }, obsidian_shard = { 2, 3 } } },
 	body = {
 		model = "FishPack",
@@ -767,9 +766,9 @@ Creatures.items.fumarole = {
 	name = "Fumarole",
 	rarity = "Uncommon",
 	archetype = "spitter",
-	health = 420,
+	health = 1130,
 	waters = "volcano",
-	rewards = { coins = { 24, 40 }, xp = 70 },
+	rewards = { coins = { 72, 120 }, xp = 210 },
 	drops = { materials = { sulfur = { 1, 2 }, ember = { 1, 2 } } },
 	body = {
 		model = "CreaturePack",
@@ -789,9 +788,9 @@ Creatures.items.ember_swarm = {
 	name = "Ember Swarm",
 	rarity = "Uncommon",
 	archetype = "drifter",
-	health = 330,
+	health = 890,
 	waters = "volcano",
-	rewards = { coins = { 24, 40 }, xp = 70 },
+	rewards = { coins = { 72, 120 }, xp = 210 },
 	drops = { materials = { ember = { 2, 3 } } },
 	body = {
 		model = "CreaturePack",
@@ -812,9 +811,9 @@ Creatures.items.magma_ooze = {
 	name = "Magma Ooze",
 	rarity = "Rare",
 	archetype = "splitter",
-	health = 530,
+	health = 1430,
 	waters = "volcano",
-	rewards = { coins = { 70, 110 }, xp = 180 },
+	rewards = { coins = { 210, 330 }, xp = 540 },
 	drops = { materials = { magma_core = { 1, 1 }, sulfur = { 1, 2 } } },
 	body = {
 		model = "CreaturePack",
@@ -837,9 +836,9 @@ Creatures.items.obsidian_shardback = {
 	name = "Obsidian Shardback",
 	rarity = "Rare",
 	archetype = "thornback",
-	health = 700,
+	health = 1890,
 	waters = "volcano",
-	rewards = { coins = { 70, 110 }, xp = 180 },
+	rewards = { coins = { 210, 330 }, xp = 540 },
 	drops = { materials = { obsidian_shard = { 2, 3 } } },
 	body = {
 		model = "CreaturePack",
@@ -859,9 +858,9 @@ Creatures.items.cinder_djinn = {
 	name = "Cinder Djinn",
 	rarity = "Rare",
 	archetype = "gascloud",
-	health = 570,
+	health = 1540,
 	waters = "volcano",
-	rewards = { coins = { 70, 110 }, xp = 180 },
+	rewards = { coins = { 210, 330 }, xp = 540 },
 	drops = { materials = { sulfur = { 1, 2 }, ember = { 2, 3 } } },
 	body = {
 		model = "CreaturePack",
@@ -882,9 +881,9 @@ Creatures.items.lodestone_eel = {
 	name = "Lodestone Eel",
 	rarity = "Epic",
 	archetype = "magnetize",
-	health = 1050,
+	health = 2840,
 	waters = "volcano",
-	rewards = { coins = { 180, 280 }, xp = 440 },
+	rewards = { coins = { 540, 840 }, xp = 1320 },
 	drops = { materials = { magma_core = { 1, 1 }, obsidian_shard = { 1, 2 } } },
 	body = {
 		model = "CreaturePack",
@@ -905,9 +904,9 @@ Creatures.items.slagheart_golem = {
 	name = "Slagheart Golem",
 	rarity = "Epic",
 	archetype = "crust",
-	health = 1010,
+	health = 2730,
 	waters = "volcano",
-	rewards = { coins = { 180, 280 }, xp = 440 },
+	rewards = { coins = { 540, 840 }, xp = 1320 },
 	drops = { materials = { magma_core = { 1, 2 }, obsidian_shard = { 2, 3 } } },
 	body = {
 		model = "CreaturePack",
@@ -930,9 +929,9 @@ Creatures.items.ashfeather_phoenix = {
 	name = "Ashfeather Phoenix",
 	rarity = "Legendary",
 	archetype = "reborn",
-	health = 1100,
+	health = 6000,
 	waters = "volcano",
-	rewards = { coins = { 500, 800 }, xp = 1200 },
+	rewards = { coins = { 1500, 2400 }, xp = 3600 },
 	drops = { materials = { magma_core = { 2, 3 }, obsidian_shard = { 2, 3 } } },
 	body = {
 		model = "CreaturePack",
@@ -962,8 +961,8 @@ Creatures.items.pyrelisk = {
 	-- Interim tuning for the volcano's slot-2 band (L8-14): a wall the way
 	-- Brinejaw is for L7, against island-2 gear (~130-180 dps). Re-tunes to
 	-- ~40,000 when the island slides to slot 4 (docs/revamp-plan.md).
-	health = 16000,
-	rewards = { coins = { 2000, 2800 }, xp = 5000 },
+	health = 40000,
+	rewards = { coins = { 9000, 13000 }, xp = 10000 },
 	drops = {
 		materials = {
 			magma_core = { 2, 3 },

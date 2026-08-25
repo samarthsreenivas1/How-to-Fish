@@ -233,8 +233,8 @@ Bait.items.ember_roe = {
 	-- The one bait that makes the fight itself harder.
 	effect = { enrage = true, rewardMult = 1.35 },
 	recipe = {
-		requiresLevel = 9,
-		coins = 260,
+		requiresLevel = 23,
+		coins = 1500,
 		materials = { ember = 8, sulfur = 6 },
 		yield = 3,
 	},
@@ -251,8 +251,8 @@ Bait.items.magma_chum = {
 	-- to give up the top of every material range, so this is how you farm one.
 	effect = { guaranteedDrop = true, rewardMult = 1.3 },
 	recipe = {
-		requiresLevel = 11,
-		coins = 450,
+		requiresLevel = 25,
+		coins = 2800,
 		materials = { magma_core = 3, obsidian_shard = 6 },
 		yield = 2,
 	},
@@ -267,8 +267,8 @@ Bait.items.calderas_call = {
 	color = Color3.fromRGB(255, 96, 16), -- the wyrm's molten glow
 	effect = { summonsBoss = "pyrelisk" },
 	recipe = {
-		requiresLevel = 14,
-		coins = 1200,
+		requiresLevel = 28,
+		coins = 5000,
 		materials = {
 			ember = 15,
 			sulfur = 12,

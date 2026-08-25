@@ -408,12 +408,10 @@ Rods.items.brineheart_rod = {
 	},
 }
 
--- ============================================================ Ashfall Caldera (interim L8-14)
+-- ============================================================ Ashfall Caldera (L22-28)
 -- The volcano's five, built from its material chain (ember / sulfur /
--- obsidian shard / magma core). INTERIM GATES: the volcano is still island 2
--- while the swamp and ice islands are built, so this band sits at L8-14 with
--- island-2-scale costs; when it slides to slot 4 (Session 4,
--- docs/revamp-plan.md) these re-gate to L22-28 and re-cost. Same twig frame;
+-- obsidian shard / magma core), gated for its FINAL slot-4 band (revamp
+-- Session 4 re-gate; the interim island-2 gates are gone). Same twig frame;
 -- each is its own RodPack variant in rod_gen.py.
 
 Rods.items.cinderline_rod = {
@@ -450,8 +448,8 @@ Rods.items.cinderline_rod = {
 		greenWidth = 0.16,
 	},
 	recipe = {
-		requiresLevel = 8,
-		coins = 250,
+		requiresLevel = 22,
+		coins = 600,
 		materials = { ember = 10, sulfur = 6, driftwood = 8 },
 	},
 	perk = {
@@ -497,8 +495,8 @@ Rods.items.obsidian_rod = {
 		greenWidth = 0.16,
 	},
 	recipe = {
-		requiresLevel = 9,
-		coins = 400,
+		requiresLevel = 23,
+		coins = 1300,
 		materials = { obsidian_shard = 10, fish_scale = 8 },
 	},
 	perk = {
@@ -545,8 +543,8 @@ Rods.items.cinderglass_rod = {
 		greenWidth = 0.16,
 	},
 	recipe = {
-		requiresLevel = 11,
-		coins = 500,
+		requiresLevel = 25,
+		coins = 2400,
 		materials = { obsidian_shard = 10, ember = 10, fish_scale = 4 },
 	},
 	perk = {
@@ -593,8 +591,8 @@ Rods.items.magma_core_rod = {
 		greenWidth = 0.16,
 	},
 	recipe = {
-		requiresLevel = 12,
-		coins = 700,
+		requiresLevel = 26,
+		coins = 4500,
 		materials = { magma_core = 6, sulfur = 10, fish_scale = 8 },
 	},
 	perk = {
@@ -642,8 +640,8 @@ Rods.items.phoenix_ash_rod = {
 	},
 	-- The volcano's capstone: gated on Pyrelisk's heart (owned, never spent).
 	recipe = {
-		requiresLevel = 14,
-		coins = 1600,
+		requiresLevel = 28,
+		coins = 9500,
 		materials = { magma_core = 10, obsidian_shard = 12, ember = 15 },
 		requiresHearts = { "pyrelisk" },
 	},

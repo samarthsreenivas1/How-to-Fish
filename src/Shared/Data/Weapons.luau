@@ -513,11 +513,11 @@ Weapons.items.fenreaver = {
 	},
 }
 
--- ============================================================ Ashfall Caldera (interim L8-14)
--- The volcano's two kept melee weapons, buffed for their slot, plus its
--- three GUNS (revamp Session 2) - the first modern firearms, gated at the
--- island's FINAL L22-28 band (the volcano slides to slot 4; b8's re-gate
--- pass moves the melee pair to match).
+-- ============================================================ Ashfall Caldera (L22-28)
+-- The volcano's two kept melee weapons plus its three GUNS (revamp Session
+-- 2) - the first modern firearms. Everything sits at the island's FINAL
+-- slot-4 band (Session 4 re-gate brought the melee pair's gates, costs and
+-- damage up to match the guns).
 
 Weapons.items.obsidian_piercer = {
 	id = "obsidian_piercer",
@@ -525,7 +525,7 @@ Weapons.items.obsidian_piercer = {
 	description = "A driftwood haft tipped in a shard of glass-black obsidian, honed to a wicked point. It finishes what it starts.",
 	rarity = "Rare",
 	icon = "",
-	damage = { 38, 54 }, -- ~115 dps, and double into a wounded target
+	damage = { 62, 86 }, -- ~185 dps, and double into a wounded target
 	cooldown = 0.4,
 	reach = 15,
 	knockback = 24,
@@ -543,8 +543,8 @@ Weapons.items.obsidian_piercer = {
 		neon = { "Weapon_Glow" },
 	},
 	recipe = {
-		requiresLevel = 9,
-		coins = 400,
+		requiresLevel = 23,
+		coins = 1400,
 		materials = { obsidian_shard = 10, driftwood = 8 },
 	},
 	perk = {
@@ -561,7 +561,7 @@ Weapons.items.magma_gauntlets = {
 	description = "Magma-core knuckles wrapped in sulfur-cured fish scale, still warm from the vent. Every hit in a row lands harder.",
 	rarity = "Epic",
 	icon = "",
-	damage = { 34, 46 }, -- ~182 dps
+	damage = { 44, 60 }, -- ~236 dps
 	cooldown = 0.22,
 	reach = 15,
 	knockback = 16,
@@ -579,8 +579,8 @@ Weapons.items.magma_gauntlets = {
 		neon = { "Weapon_Glow" },
 	},
 	recipe = {
-		requiresLevel = 12,
-		coins = 700,
+		requiresLevel = 26,
+		coins = 4800,
 		materials = { magma_core = 8, sulfur = 10, fish_scale = 8 },
 	},
 	perk = {

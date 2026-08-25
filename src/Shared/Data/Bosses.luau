@@ -201,9 +201,8 @@ Bosses.items.brinejaw = {
 -- generator keeps stable; Session 4 can move it into the largest pond).
 -- Summoned by casting Caldera's Call (Bait.luau). Three phases: bites and
 -- broadsides, then it dives the shallows and coughs up oozes - splitters, so
--- the adds multiply - then it enrages and rains embers. Interim numbers for
--- the volcano's slot-2 band; re-tuned when the island slides to slot 4
--- (docs/revamp-plan.md).
+-- the adds multiply - then it enrages and rains embers. Tuned for the FINAL
+-- slot-4 band (L22-28, ~40k HP on the creature row; docs/revamp-plan.md).
 Bosses.items.pyrelisk = {
 	id = "pyrelisk",
 	name = "Pyrelisk, the Caldera Wyrm",
@@ -212,7 +211,7 @@ Bosses.items.pyrelisk = {
 	islandId = "volcano",
 	-- The bait is the gate, as with Brinejaw: level only, matching Caldera's
 	-- Call's own recipe level (the volcano band's end).
-	gate = { level = 14 },
+	gate = { level = 28 },
 	-- Off the end of the shore jetty (the dock runs out past r~527 on +Z):
 	-- it rises from the sea and can haul itself toward the planks, so players
 	-- fight it from the jetty and the apron's edge.
