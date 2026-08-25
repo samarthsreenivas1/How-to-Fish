@@ -43,6 +43,8 @@ local ORDER = {
 	"MenuButtonsController", -- after Inventory + Crafting + Admin + Islands: bottom-left menu buttons, ALT frees the cursor
 	"CreatureEventController", -- after CombatVfx (camera kick) + Progression (coin pop): enemy states off creature attributes, moments off the CreatureEvent remote
 	"BossHudController", -- no dependencies; the boss health bar off a creature's BossName/Health attributes + rise/down banners off CreatureEvent
+	"RaidHudController", -- no dependencies; raid countdown/wave line + cards off the RaidState remote, filtered to the local island
+	"WeatherController", -- no dependencies; blizzard fog / event ambience off the WorldEvent remote + own-position checks
 }
 
 local loaded = {}

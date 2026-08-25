@@ -120,6 +120,17 @@ local DEFS = {
 	-- other traffic is the moment banner.
 	{ name = "RequestBoat", class = "RemoteEvent" }, -- client -> server: action ("summon" | "dismiss")
 	{ name = "BoatMessage", class = "RemoteEvent" }, -- server -> client: text (hull warnings, refusals, sinkings)
+
+	-- Raids (RaidService -> RaidHudController): the whole state machine as one
+	-- broadcast every second while a raid runs - { islandId, phase, wave,
+	-- waves, remaining, seconds }. Clients filter to the island they stand on.
+	{ name = "RaidState", class = "RemoteEvent" }, -- server -> all clients: raid snapshot (see RaidService)
+
+	-- Island events (WeatherService's blizzard, EruptionService's eruption):
+	-- a window opened or closed - { kind, islandId, active }. The client half
+	-- is pure ambience (WeatherController); the gameplay (spawner bias, lava
+	-- bombs) stays server-side.
+	{ name = "WorldEvent", class = "RemoteEvent" }, -- server -> clients: { kind, islandId, active }
 }
 
 local Remotes = {}

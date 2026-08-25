@@ -32,6 +32,10 @@ local ORDER = {
 	"BossService", -- after Creature + Inventory + Progression: raises island bosses when a player qualifies, records the win
 	"AdminService", -- after Progression + Material: dev cheat grants (coins/xp/materials), gated to admins
 	"DropService", -- after Creature + Inventory: rare finished-item drops off the Killed event
+	"SpawnerService", -- after Creature + World: ambient island hostiles off Islands.items[id].ambient
+	"RaidService", -- after Spawner + Creature + Progression: wave raids off Islands.items[id].raid
+	"WeatherService", -- after Spawner (blizzard biases flyers): timed weather windows on the WorldEvent remote
+	"EruptionService", -- after Spawner (players-on-island + ground probe): the volcano's telegraphed lava-bomb windows
 }
 
 local loaded = {}

@@ -780,4 +780,26 @@ Tuning.Boat = {
 	REPAIR_ON_SUMMON = true, -- a fresh summon at shore is a free patch-up
 }
 
+-- ============================================================ Spawner
+
+-- The ambient spawner (SpawnerService). Per-island rosters live on
+-- Islands.items[id].ambient; this is the machinery's own pacing.
+Tuning.Spawner = {
+	TICK = 2, -- seconds between spawn sweeps
+	GLOBAL_CAP = 40, -- ambient creatures across ALL islands (one Heartbeat serves everything)
+	RING = { 60, 100 }, -- default distance band around the chosen player
+}
+
+-- ============================================================ Raid
+
+-- Island raids (RaidService). Per-island waves/intervals/rewards live on
+-- Islands.items[id].raid; these are the defaults and the shared feel.
+Tuning.Raid = {
+	ANNOUNCE = 60, -- warning countdown, seconds (a raid block may override)
+	WAVE_TIME_LIMIT = 240, -- per wave before the raid counts as failed
+	WAVE_BREATHER = 4, -- seconds between a cleared wave and the next
+	BOUNTY = 0.35, -- kill payouts during a raid (the clear reward is the real payday)
+	SPAWN_RING = { 34, 64 }, -- raid mobs land closer than ambient ones: they come FOR you
+}
+
 return Tuning

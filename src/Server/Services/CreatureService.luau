@@ -40,12 +40,12 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Bosses = require(Shared.Data.Bosses)
 local Creatures = require(Shared.Data.Creatures)
 local CreatureModel = require(Shared.Modules.CreatureModel)
-local Remotes = require(Shared.Net.Remotes)
 local Tuning = require(Shared.Config.Tuning)
 local World = require(Shared.Config.World)
 
 -- For the hostile archetypes' contact damage. PlayerService is listed above
 -- this service in the boot order.
+local Hazards = require(script.Parent.Parent.Modules.Hazards)
 local PlayerService = require(script.Parent.PlayerService)
 -- For the islands' playable-area bounds (clampToBounds / inlandDirection).
 -- WorldService boots first.
@@ -406,6 +406,12 @@ function CreatureService.spawn(row, position: Vector3, target: Vector3?, grade: 
 		friendly = if extra and extra.friendly then true else nil,
 		owner = extra and extra.owner,
 		expiresAt = if extra and extra.lifetime then os.clock() + extra.lifetime else nil,
+
+		-- A raid mob or a Kraken tentacle must not evaporate mid-fight just
+		-- because nobody hit it for LINGER seconds: `noLinger` exempts it from
+		-- the left-alone despawn exactly like a boss (its owner - RaidService,
+		-- the finale - despawns or releases it deliberately instead).
+		noLinger = if extra and extra.noLinger then true else nil,
 
 		-- Hit points. Damage only ever comes through CreatureService.damage
 		-- (server), which keeps these and the replicated attributes in step.
@@ -1169,8 +1175,11 @@ end
 -- grounded frame just sees "expired" and moves on. Knobs: Tuning.Creature.
 
 -- A one-off moment for the clients to draw (CreatureEventController).
+-- Extracted to Modules/Hazards (revamp Session 3) so RaidService and the
+-- island events share the exact same client-moment channel; this local is
+-- the same function it always was.
 local function fireEvent(kind: string, position: Vector3, extra)
-	Remotes.CreatureEvent:FireAllClients(kind, position, extra or {})
+	Hazards.fireEvent(kind, position, extra)
 end
 -- Same function, reachable from the health API above it.
 fireCreatureEvent = fireEvent
@@ -1197,6 +1206,9 @@ end
 -- `heightTolerance` defaults to C.AOE_HEIGHT_TOLERANCE; the boss passes a
 -- bigger one because it sits at the waterline while the players stand on
 -- the arena deck a few studs up.
+-- Extracted to Modules/Hazards (revamp Session 3): raids and island events
+-- hurt players by exactly this rule, so there is one copy. Same signature,
+-- same semantics (falloff, height gate, i-frame bypass).
 local function damagePlayersInRadius(
 	at: Vector3,
 	radius: number,
@@ -1206,23 +1218,7 @@ local function damagePlayersInRadius(
 	edgeFraction: number,
 	heightTolerance: number?
 )
-	local tolerance = heightTolerance or C.AOE_HEIGHT_TOLERANCE
-	for _, player in Players:GetPlayers() do
-		local character = player.Character
-		local root = character and character:FindFirstChild("HumanoidRootPart")
-		if root then
-			local d = (Vector3.new(root.Position.X, 0, root.Position.Z) - Vector3.new(at.X, 0, at.Z)).Magnitude
-			if d <= radius and math.abs(root.Position.Y - at.Y) <= tolerance then
-				local falloff = 1 - (1 - edgeFraction) * (d / radius)
-				PlayerService.damage(
-					player,
-					math.floor(math.random(minDmg, maxDmg) * falloff + 0.5),
-					source,
-					{ bypassIframe = true }
-				)
-			end
-		end
-	end
+	Hazards.damagePlayersInRadius(at, radius, minDmg, maxDmg, source, edgeFraction, heightTolerance)
 end
 
 -- The rusher's contact test, shared: a hit lands if the player is within
@@ -2749,7 +2745,12 @@ local function update(dt: number)
 			-- alone", and being fought is not what keeps it here). Everything
 			-- else goes after LINGER seconds unfought.
 			(creature.expiresAt and now >= creature.expiresAt)
-			or (now - creature.lastFoughtAt > C.LINGER and not creature.row.boss and not creature.friendly)
+			or (
+				now - creature.lastFoughtAt > C.LINGER
+				and not creature.row.boss
+				and not creature.friendly
+				and not creature.noLinger
+			)
 		then
 			-- The LINGER timer resets on every hit, so a fight in progress
 			-- keeps a creature here. A boss never leaves on its own (its

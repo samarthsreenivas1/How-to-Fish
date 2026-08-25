@@ -1470,11 +1470,15 @@ function WorldService.inlandDirection(target: Vector3): Vector3
 end
 
 -- Place every configured island whose mesh exists, recording which landed so
--- travel can be refused to ones not yet imported.
+-- travel can be refused to ones not yet imported. A `site` entry (the
+-- Maelstrom - no mesh, built procedurally by its own pass) is skipped here:
+-- it normally lives OUT of Islands.order, and even listed it must never
+-- reach placeIsland, whose FindFirstChild(entry.model) would throw on nil
+-- and take the whole boot down.
 local function loadIslands(parent: Instance)
 	for _, id in Islands.order do
 		local entry = Islands.items[id]
-		if entry then
+		if entry and not entry.site then
 			placed[id] = placeIsland(parent, id, entry)
 		end
 	end
@@ -1668,17 +1672,11 @@ function WorldService.teleportToIsland(player: Player, islandId: any): (boolean,
 	return true
 end
 
--- The island whose footprint contains `position` (XZ distance inside its
--- radius plus `margin`, default 0), or nil for open sea. Islands sit 3000
--- studs apart with radii under 700, so footprints never overlap.
+-- The island whose footprint contains `position`, or nil for open sea. The
+-- one footprint rule lives in Islands.islandAt (shared with the client's
+-- raid HUD); this alias just keeps the service-side callers reading well.
 function WorldService.islandAt(position: Vector3, margin: number?): (string?, any)
-	for id, entry in Islands.items do
-		local d = Vector3.new(position.X - entry.worldPosition.X, 0, position.Z - entry.worldPosition.Z).Magnitude
-		if d <= entry.radius + (margin or 0) then
-			return id, entry
-		end
-	end
-	return nil, nil
+	return Islands.islandAt(position, margin)
 end
 
 -- EVERY way onto an island funnels through this one gate: the teleport menu,

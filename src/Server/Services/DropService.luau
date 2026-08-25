@@ -19,8 +19,14 @@ local InventoryService = require(script.Parent.InventoryService)
 
 local DropService = {}
 
-local function onKilled(row, _grade: string, killer: Player?)
+local function onKilled(row, _grade: string, killer: Player?, info)
 	if not killer or killer.Parent ~= Players then
+		return
+	end
+	-- Raid mobs (and any other suppressed spawn - an ooze's split halves) pay
+	-- no finished-item jackpots: the raid's payout is its clear reward. Same
+	-- flag MaterialService already honours.
+	if type(info) == "table" and info.suppressDrops then
 		return
 	end
 	local items = row.drops and row.drops.items

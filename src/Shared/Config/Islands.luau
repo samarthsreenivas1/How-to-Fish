@@ -58,6 +58,34 @@ Islands.items = {
 		spawn = World.SPAWN_POSITION,
 		unlockLevel = 0,
 		boss = "brinejaw",
+
+		-- Session 3: the island lives between casts. Ambient hostiles wander
+		-- the beach (SpawnerService - light weights on the light mobs), and
+		-- now and then the cove's own nasties raid it in waves (RaidService).
+		ambient = {
+			rows = {
+				{ id = "snapjaw_crab", weight = 4 },
+				{ id = "pufferfish", weight = 3 },
+				{ id = "tideline_skipper", weight = 2 },
+				{ id = "gullet_cod", weight = 2 },
+				{ id = "moonbell_jelly", weight = 2 },
+				{ id = "pickpocket_hermit", weight = 1 },
+				{ id = "sand_lurker", weight = 1 },
+				{ id = "drowned_deckhand", weight = 1 },
+			},
+			maxAlive = 6,
+			interval = 6,
+		},
+		raid = {
+			interval = { 600, 900 },
+			announce = 45,
+			waves = {
+				{ { id = "snapjaw_crab", count = 4 } },
+				{ { id = "snapjaw_crab", count = 3 }, { id = "pufferfish", count = 2 } },
+				{ { id = "drowned_deckhand", count = 2 }, { id = "tideline_skipper", count = 2 } },
+			},
+			reward = { coins = { 120, 180 }, xp = 90 },
+		},
 	},
 
 	-- Blackmire Fen (revamp Session 2, slot 2, L8-14): the swamp. A meshless
@@ -74,6 +102,33 @@ Islands.items = {
 		spawn = Vector3.new(3000, 4, 122), -- X/Z: on the bank before the dock (planks run Z=140..182); Y is the probe's fallback
 		unlockLevel = 8,
 		boss = "old_gnashroot",
+
+		ambient = {
+			rows = {
+				{ id = "mire_leech", weight = 4 },
+				{ id = "bog_gull", weight = 3 },
+				{ id = "croakjaw_toad", weight = 3 },
+				{ id = "will_o_wisp", weight = 2 },
+				{ id = "dread_dragonfly", weight = 2 },
+				{ id = "snagtooth_gator", weight = 1 },
+				{ id = "peat_revenant", weight = 1 },
+			},
+			maxAlive = 7,
+			interval = 6,
+		},
+		raid = {
+			interval = { 600, 900 },
+			waves = {
+				{ { id = "mire_leech", count = 4 }, { id = "croakjaw_toad", count = 2 } },
+				{ { id = "bog_gull", count = 3 }, { id = "snagtooth_gator", count = 2 } },
+				{
+					{ id = "peat_revenant", count = 2 },
+					{ id = "fen_serpent", count = 2 },
+					{ id = "will_o_wisp", count = 2 },
+				},
+			},
+			reward = { coins = { 260, 380 }, xp = 200 },
+		},
 	},
 
 	-- Frostmaw Reach (slot 3, L15-21). Skeleton entry: b8's Session 4 lane
@@ -113,6 +168,36 @@ Islands.items = {
 		boss = "pyrelisk",
 		-- No castRangeMult: the dock fishes open sea and the lava ponds are
 		-- fished standing beside them, so the base reach is right.
+
+		-- The apron between the lava ponds is patrolled; its raids are the
+		-- "eruption raids" flavour (EruptionService's bomb windows run on
+		-- their own clock on top of these waves).
+		ambient = {
+			rows = {
+				{ id = "ember_swarm", weight = 3 },
+				{ id = "fumarole", weight = 3 },
+				{ id = "magma_ooze", weight = 2 },
+				{ id = "obsidian_shardback", weight = 2 },
+				{ id = "lodestone_eel", weight = 1 },
+				{ id = "cinder_djinn", weight = 1 },
+				{ id = "slagheart_golem", weight = 1 },
+			},
+			maxAlive = 7,
+			interval = 6,
+		},
+		raid = {
+			interval = { 600, 900 },
+			waves = {
+				{ { id = "ember_swarm", count = 3 }, { id = "fumarole", count = 2 } },
+				{ { id = "magma_ooze", count = 2 }, { id = "obsidian_shardback", count = 2 } },
+				{
+					{ id = "slagheart_golem", count = 1 },
+					{ id = "cinder_djinn", count = 2 },
+					{ id = "lodestone_eel", count = 2 },
+				},
+			},
+			reward = { coins = { 450, 650 }, xp = 350 },
+		},
 	},
 
 	-- Gloomtrench (slot 5, L29-35). Skeleton: b8 fills the boss (noctyss) +
@@ -139,6 +224,21 @@ Islands.items = {
 		unlockLevel = 36,
 	},
 }
+
+-- The island whose footprint contains `position` (XZ distance inside its
+-- radius plus `margin`, default 0), or nil for open sea. Shared (Session 3)
+-- so the server's gates/spawner and the client's raid HUD agree on what "on
+-- this island" means. Islands sit 3000 studs apart with radii under 700, so
+-- footprints never overlap.
+function Islands.islandAt(position: Vector3, margin: number?): (string?, any)
+	for id, entry in Islands.items do
+		local d = Vector3.new(position.X - entry.worldPosition.X, 0, position.Z - entry.worldPosition.Z).Magnitude
+		if d <= entry.radius + (margin or 0) then
+			return id, entry
+		end
+	end
+	return nil, nil
+end
 
 -- The cast-range multiplier that applies to a cast from `position`: the
 -- multiplier of the island whose footprint it's inside (its radius plus a
