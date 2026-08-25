@@ -105,7 +105,9 @@ local function unbindAttack()
 end
 
 local function refresh()
-	if weaponOut() then
+	-- A ranged row's clicks belong to RangedController (hold-to-fire, zoom,
+	-- reload) - binding both would fire a shot AND a phantom swing.
+	if weaponOut() and not currentWeapon().ranged then
 		bindAttack()
 	else
 		unbindAttack()
@@ -116,6 +118,9 @@ function CombatController.init() end
 
 function CombatController.start()
 	player:GetAttributeChangedSignal(Equipment.ATTRIBUTE):Connect(refresh)
+	-- Swapping between a melee weapon and a gun changes who owns the click
+	-- without `Equipped` ever changing.
+	player:GetAttributeChangedSignal(Equipment.WEAPON_ATTRIBUTE):Connect(refresh)
 	refresh()
 end
 

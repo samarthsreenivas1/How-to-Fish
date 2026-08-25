@@ -25,6 +25,8 @@ local ORDER = {
 	"CreatureVfxController", -- no dependencies; splashes / drips / puffs driven by creature attributes
 	"EquipController", -- no dependencies; 1/2 hotkeys that ask the server to swap hands
 	"CombatController", -- after both melee viewmodels: click/tap swings the equipped weapon (and asks the server to resolve the hit)
+	"RangedController", -- after WeaponViewmodelController (kick + muzzle): the trigger for any `ranged` weapon row; CombatController stands down for those
+	"RangedFxController", -- after WeaponViewmodelController: pooled tracers + muzzle flashes off the ShotFired remote
 	"CombatFeedbackController", -- no dependencies; flash / health bar / damage numbers off replicated Health
 	"CombatVfxController", -- no dependencies; impact burst + camera kick off the CreatureHit remote
 	"ProgressionController", -- no dependencies; level / XP / coins HUD off the Player's replicated attributes
@@ -32,6 +34,7 @@ local ORDER = {
 	"AdminController", -- after CameraController: P cheat panel (only shown to admins), borrows the cursor while open
 	"IslandsController", -- after CameraController: the Islands travel menu (borrows the cursor while open)
 	"TrophyController", -- after CameraController: H opens the Trophy Hall (boss hearts off the Heart_* attributes)
+	"BoatController", -- no dependencies; R summons the boat, drives it while seated at your own helm (client-owned physics)
 	"DropController", -- no dependencies; "You found: X!" banner off the ItemDropped remote
 	-- A name here with no matching module fails the assert below and kills the
 	-- whole client boot (first person, viewmodels, every menu) - so only ever add

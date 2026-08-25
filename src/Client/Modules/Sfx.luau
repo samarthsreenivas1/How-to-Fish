@@ -78,6 +78,13 @@ local CATALOGUE = {
 	punchSwing = { id = "rbxasset://sounds/action_jump_land.mp3", volume = 0.3, pitch = 2.1, pitchVar = 0.12 },
 	-- A crafted weapon's swing (WeaponViewmodelController): same body, lower and heavier than a fist.
 	weaponSwing = { id = "rbxasset://sounds/action_jump_land.mp3", volume = 0.35, pitch = 1.5, pitchVar = 0.1 },
+	-- Ranged (RangedController / RangedFxController). Same dry-layer rule as
+	-- the punches: a gunshot is the jump-land body thud pitched into a crack,
+	-- a bow is the cast's swoosh with more snap. 2D for the shooter's own
+	-- trigger; the tracer's impact reuses the existing hit cues.
+	gunFire = { id = "rbxasset://sounds/action_jump_land.mp3", volume = 0.5, pitch = 1.9, pitchVar = 0.06 },
+	bowFire = { id = "rbxasset://sounds/swoosh.wav", volume = 0.5, pitch = 1.3, pitchVar = 0.08 },
+	gunReload = { id = "rbxasset://sounds/button.wav", volume = 0.4, pitch = 0.8, pitchVar = 0.05 },
 	hitCrack = {
 		id = "rbxasset://sounds/action_jump_land.mp3",
 		volume = 0.6,

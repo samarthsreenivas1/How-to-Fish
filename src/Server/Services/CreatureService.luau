@@ -553,6 +553,46 @@ function CreatureService.inRange(position: Vector3, radius: number): { any }
 	return result
 end
 
+-- The first live creature along a ray, nearest first - the creature half of a
+-- ranged shot (CombatService's hitscan). The parts are CanQuery = false, so a
+-- real raycast can't see them; this is the "proximity, not raycast" philosophy
+-- applied to a line: a creature counts when the ray passes within its shot
+-- radius (half its bounding sphere, floored so a thin fish is still hittable,
+-- plus a boss's hitRadius). Returns the creature and the distance along the
+-- ray, or nil.
+function CreatureService.raycastNearest(origin: Vector3, direction: Vector3, maxDistance: number): (any?, number?)
+	if direction.Magnitude < 0.001 then
+		return nil, nil
+	end
+	local dir = direction.Unit
+	local best, bestT = nil, maxDistance
+	for _, creature in creatures do
+		if not creature.dead and not creature.untargetable and not creature.friendly then
+			local pivot = creature.model:GetPivot().Position
+			local to = pivot - origin
+			local t = to:Dot(dir)
+			if t > 0 and t < bestT then
+				local radius = creature.shotRadius
+				if not radius then
+					-- Half the bounding sphere reads generous on purpose - a
+					-- shot that visibly clips a fin should land. Cached: the
+					-- model's size doesn't change (the bloater's swell is the
+					-- one exception, and being EASIER to hit as it swells is
+					-- correct anyway).
+					local _, size = creature.model:GetBoundingBox()
+					radius = math.max(1.4, size.Magnitude * 0.3)
+					creature.shotRadius = radius
+				end
+				local perpendicular = (to - dir * t).Magnitude
+				if perpendicular <= radius + (creature.hitRadius or 0) then
+					best, bestT = creature, t
+				end
+			end
+		end
+	end
+	return best, bestT
+end
+
 -- True while update() is walking the creature array. A kill that happens
 -- INSIDE the walk (an urchin's fuse, an explosion taking its neighbours) must
 -- not swap-remove under the loop's feet, so it leaves the struct in place

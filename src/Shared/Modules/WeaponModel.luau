@@ -86,6 +86,51 @@ local function buildBlade(model: Model, m)
 	block(model, "Weapon_Tip", Vector3.new(0.12, tipLength, 0.7), m.length - tipLength / 2, m.accent, "WedgePart")
 end
 
+-- A recurve bow (the ranged rows' fantasy tier). The stave runs the weapon's
+-- +Y length with the grip at its middle; the limbs sweep away and curve back,
+-- and the string spans the tips on +Z, so the standard -90 hold roll turns
+-- the string toward the shooter and the belly forward.
+local function buildBow(model: Model, m)
+	block(model, "Weapon_Grip", Vector3.new(0.34, 1.0, 0.4), m.grip, m.wrap)
+
+	local limb = math.max(0.8, (m.length - 1.0) / 2)
+	for _, sign in { 1, -1 } do
+		local inner = block(model, "Weapon_Limb", Vector3.new(0.24, limb * 0.62, 0.3), 0, m.color)
+		inner.CFrame = CFrame.new(0, m.grip + sign * (0.5 + limb * 0.3), -0.08)
+			* CFrame.Angles(sign * math.rad(-8), 0, 0)
+		local outer = block(model, "Weapon_Limb", Vector3.new(0.2, limb * 0.52, 0.26), 0, m.color)
+		outer.CFrame = CFrame.new(0, m.grip + sign * (0.5 + limb * 0.78), 0.1)
+			* CFrame.Angles(sign * math.rad(16), 0, 0)
+	end
+
+	-- The taut string, tip to tip.
+	local bowstring = block(model, "Weapon_String", Vector3.new(0.05, m.length - 0.7, 0.05), m.grip, m.accent)
+	bowstring.CFrame = CFrame.new(0, m.grip, 0.34)
+end
+
+-- A generic long gun (flintlock through repeater - the mesh pack carries the
+-- character; this is the pre-import fallback). Butt at 0, muzzle at `length`:
+-- stock up to the grip, receiver over it, then the barrel, with a sight at
+-- the muzzle and a magazine dropping off the receiver.
+local function buildGun(model: Model, m)
+	local stockLength = math.max(0.5, m.grip - 0.15)
+	block(model, "Weapon_Stock", Vector3.new(0.26, stockLength, 0.55), stockLength / 2, m.color)
+	block(model, "Weapon_Grip", Vector3.new(0.3, 0.8, 0.46), m.grip, m.wrap)
+
+	local receiverLength = math.clamp(m.length - m.grip - 0.6, 0.5, 1.1)
+	local receiverY = m.grip + 0.4 + receiverLength / 2
+	block(model, "Weapon_Receiver", Vector3.new(0.34, receiverLength, 0.5), receiverY, m.color)
+
+	local barrelStart = m.grip + 0.4 + receiverLength
+	local barrelLength = math.max(0.4, m.length - barrelStart)
+	block(model, "Weapon_Barrel", Vector3.new(0.18, barrelLength, 0.18), barrelStart + barrelLength / 2, m.accent)
+
+	local sight = block(model, "Weapon_Sight", Vector3.new(0.08, 0.16, 0.2), m.length - 0.2, m.accent)
+	sight.CFrame = CFrame.new(0, m.length - 0.2, -0.16)
+	local mag = block(model, "Weapon_Mag", Vector3.new(0.24, 0.7, 0.3), 0, m.accent)
+	mag.CFrame = CFrame.new(0, m.grip + 0.55, 0.32) * CFrame.Angles(math.rad(12), 0, 0)
+end
+
 local function buildFallback(model: Model, m)
 	warn(string.format("[WeaponModel] no builder for weapon shape %q; using a plain stick", tostring(m.shape)))
 	block(model, "Weapon_Haft", Vector3.new(0.3, m.length, 0.3), m.length / 2, m.color)
@@ -95,6 +140,8 @@ end
 local BUILDERS = {
 	club = buildClub,
 	blade = buildBlade,
+	bow = buildBow,
+	gun = buildGun,
 }
 
 -- ============================================================ mesh pack

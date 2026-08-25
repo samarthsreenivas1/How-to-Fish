@@ -123,10 +123,26 @@ local function makeTrail(grip: BasePart, weaponData): Trail
 	return trail
 end
 
+-- ---------------------------------------------------------------- recoil
+-- A gun's kick is procedural rather than a Blender clip: each shot adds to a
+-- spring that pitches the whole rig group back about the elbow and shoves it
+-- toward the shoulder, then decays. Code-driven so the guns needed no new
+-- animation data file - the same reasoning as the cast clip being data, not
+-- a Roblox Animation.
+
+local RECOIL_MAX = 1.6 -- the spring never winds past this, however fast the trigger
+local RECOIL_PITCH = math.rad(5.5) -- pitch back per unit of recoil
+local RECOIL_BACK = 0.16 -- studs toward the shoulder per unit
+local RECOIL_DECAY = 10 -- per second, exponential
+
+local recoil = 0
+
 -- ---------------------------------------------------------------- state
 
 local rig = nil -- Viewmodel rig while a modelled weapon is equipped
 local trail: Trail? = nil
+local gripPart: BasePart? = nil -- the built weapon's grip, for the muzzle
+local gripLength = 0 -- grip -> tip distance of the current weapon, studs
 
 -- The swing clip is applied about swingPivot (the elbow, in camera space -
 -- set at build). `swing` is the one in flight:
@@ -141,7 +157,9 @@ local function clearRig()
 		rig = nil
 	end
 	trail = nil -- a child of the destroyed rig
+	gripPart = nil
 	swing = nil
+	recoil = 0
 end
 
 -- ---------------------------------------------------------------- build
@@ -189,6 +207,8 @@ local function buildRig(character: Model, weaponData)
 	swingPivot = CFrame.new(arm.elbow)
 
 	trail = makeTrail(grip, weaponData)
+	gripPart = grip
+	gripLength = weaponData.model.length - weaponData.model.grip
 
 	rig = newRig
 	newRig:setVisible(true)
@@ -273,6 +293,33 @@ local function swingOffset(now: number): CFrame
 	return swingPivot * anim * swingPivot:Inverse()
 end
 
+-- This frame's recoil transform, about the same elbow pivot as the swings,
+-- so a shot kicks the whole arm-and-gun group back and up together.
+local function recoilOffset(): CFrame
+	if recoil < 0.005 then
+		return CFrame.identity
+	end
+	local raw = CFrame.Angles(RECOIL_PITCH * recoil, 0, 0) * CFrame.new(0, 0, RECOIL_BACK * recoil)
+	return swingPivot * raw * swingPivot:Inverse()
+end
+
+-- One shot's kick. `strength` scales it (1 = a rifle round; a scattergun
+-- passes more, an SMG less), clamped so full-auto can't wind the spring up
+-- past readable.
+function WeaponViewmodelController.kick(strength: number?)
+	recoil = math.min(recoil + (strength or 1) * 0.55, RECOIL_MAX)
+end
+
+-- The muzzle's world position (the built weapon's tip), for the tracer's
+-- start. Nil when no modelled weapon is up - the caller falls back to the
+-- camera.
+function WeaponViewmodelController.getMuzzlePosition(): Vector3?
+	if not rig or not gripPart then
+		return nil
+	end
+	return gripPart.CFrame:PointToWorldSpace(Vector3.new(0, gripLength, 0))
+end
+
 -- Start the named swing clip. Returns the clip's HIT_TIME (seconds from now
 -- until the weapon is at the bottom of its arc - when CombatController asks
 -- the server to land it), or nil if no weapon is out, the clip doesn't
@@ -312,7 +359,10 @@ local function onRenderStep(dt: number)
 	end
 	rig:setVisible(true)
 
-	rig:pin(pin, { [GROUP] = swingOffset(os.clock()) })
+	-- The recoil spring decays every frame; swings and recoil compose about
+	-- the same elbow pivot.
+	recoil *= math.exp(-RECOIL_DECAY * dt)
+	rig:pin(pin, { [GROUP] = swingOffset(os.clock()) * recoilOffset() })
 
 	-- swingOffset has already retired a finished clip, so this also switches
 	-- the trail off on time.
