@@ -49,6 +49,9 @@ ending at something playable in Studio. Concretely:
 - **Several Claude sessions have been working on this project at once** (see
   the concurrency note under Gotchas). Before editing a shared file, check
   whether another session is live and claim the file.
+- **Pre-commit gate (no exceptions):** `stylua src` + `selene src` (0/0/0) +
+  `rojo build` + `python3 tools/check_content.py` — all four green before
+  every commit. Full commands under "Tooling / verification".
 
 ## Where things stand (2026-08-22)
 
@@ -86,6 +89,8 @@ between sessions.
 | Weapon crafting + multi-weapon equip | built, **unreviewed** | `C` menu Weapons tab; club (Lv 3), blade (Lv 7), Shellcrusher (Rare, Lv 9), Drowncleaver (Epic, Lv 13) — all four are WeaponPack meshes (procedural club/blade kept as pre-import fallback; import pending), Blender swing clips |
 | **UI overhaul** (2026-08-23) | built, **unreviewed** | one kit (`Client/UI/Kit`, `Describe`, `ItemDetail`, new `Theme`); every menu + HUD rebuilt on it; no icons uploaded yet — tiles show monograms until rows get `icon` ids |
 | Persistence | **built 2026-08-25**, unreviewed | `DataService` (first in ORDER): UpdateAsync session locking, 60s autosave, BindToClose; slices from Progression/Inventory/Material/Bait services + `Cleared_*`/`Heart_*` attributes |
+| **Drivable boat + tier ladder** (revamp S3, 2026-08-25) | built, **unreviewed** | `Boats.luau` 6 tiers, `BoatModel` (procedural + BoatPack mesh path, TrophyShelf mounts), `BoatService`/`BoatController` (R to summon, driver-owned physics, seaworthiness DoT), Boat tab in `C` menu, `mayEnter` travel gates + containment sweep — see "The boat" |
+| **Ambient spawner + raids + island events** (revamp S3, 2026-08-25) | built, **unreviewed** | `SpawnerService`/`RaidService`/`RaidHudController`/`EruptionService` + `Hazards` extraction + `noLinger`; rosters on the tropical/swamp/volcano Islands entries — see "Spawner, raids, island events" |
 | More archetypes (charger/spitter), style/juggle, arena | not started | see Known gaps |
 
 ### Manual Studio steps — check these first
@@ -333,6 +338,103 @@ make sure users can't leave the rim and the lava itself."
   rocks are collidable and walked among by design (9b). `CastAim` prints one
   throttled line naming whatever stopped a refused cast - remove it once the
   volcano's casting is confirmed good.
+
+### The boat (revamp S3, 2026-08-25, unreviewed)
+
+- **Owning a boat is the replicated `BoatTier` Player attribute** (0 = none;
+  DataService persists it as `profile.boatTier`), not an inventory id.
+  `Shared/Data/Boats.luau` is the 6-tier ladder (Cove Skiff → Stormbreaker
+  Keel, the plan's boat table verbatim); tiers 2–6 craft through the
+  item-agnostic CraftingService (`isBoat` branch demands exactly the next
+  tier up), tier 1 is NEVER crafted — `BoatService` watches the
+  `Heart_brinejaw` attribute and grants it on the kill AND on load (a
+  returning player who beat Brinejaw pre-boats gets back-filled). The `C`
+  menu grew a **Boat tab** (current + next rung unveiled, the rest "?").
+- **`BoatModel.build(row)`** (Shared/Modules, WeaponModel-style): the ONLY
+  collidable part is `Boat_Collider`, an invisible box sized from the row
+  (beam × draft+deckHeight × length, bow toward −Z, origin at the waterline);
+  all visuals weld to it massless/no-collide — procedural hull by default,
+  `Assets/BoatPack` variant meshes when imported (`assets/boat_gen.py`,
+  suffix contract `<Variant>_Hull/_Deck/_Bow/_Mast/_Sail/_Rail/_Trim/
+  _Lantern/_Figurehead/_Shelf/_Helm`; `_Helm` marks the VehicleSeat spot and
+  is consumed). `TrophyShelf` child Model carries Attachments
+  `HeartMount1..6` — TrophyController's shelf renderer mounts boss hearts
+  there off the OWNER's `Heart_*` attrs (owner = the boat Model's
+  `OwnerUserId` attribute).
+- **Driving is client-owned physics**: `R` (or the touch BOAT button)
+  summons/recalls to the nearest shoreline (`WorldService.boatLaunchCFrame` —
+  outward past `radius + 30`); sitting in your own `Boat_Seat` hands the
+  hull's network ownership to you and `BoatController` steers the two
+  constraints in the collider (`Boat_Move` LinearVelocity: heading × speed +
+  a P-controlled vertical component; `Boat_Align`: upright + integrated yaw).
+  **Y is held at `World.WATER_Y` + rest height + bob — NEVER the
+  tide-animated visual plane.** Only the owner may drive (strangers are
+  bounced from the seat); an emptied seat re-anchors flat at the waterline
+  after `PARK_SNAP_DELAY`. Knobs in `Tuning.Boat`.
+- **Collision groups**: ocean slab in `Water`, every boat part in `Boat`;
+  Water↔Boat and Creature↔Boat non-collidable (hull floats by code and a
+  thrown catch passes through a parked boat); players collide with both as
+  before. Registered in `WorldService.registerCollisionGroups`.
+- **Seaworthiness**: BoatService's 1s loop measures
+  `WorldService.openSeaDistance` (distance past the shoreline of the nearest
+  island the OWNER passes `mayEnter` for) against the row's number; beyond
+  it the hull takes ramping DoT (`HullHealth` attribute on the boat Model),
+  one warning banner, then a sink — occupants dumped, wreck despawns. A
+  fresh summon at shore is a free repair.
+- **Travel gates are ONE rule now**: `WorldService.mayEnter(player,
+  islandId)` = exists + placed + level + previous island's `Cleared_` +
+  **`BoatTier >= order index − 1`**; the teleport menu funnels through it,
+  and the 0.5s loop's **containment sweep** bounces any non-admin standing
+  inside a locked island's footprint to the nearest allowed island — closing
+  the walk-on-the-solid-ocean hole, so sailing needs no gate checks of its
+  own. The teleport menu stays as fast travel.
+
+### Spawner, raids, island events (revamp S3, 2026-08-25, unreviewed)
+
+- **`SpawnerService`** — the first non-fishing spawns. Rosters live on
+  `Islands.items[id].ambient` (`rows` weighted, `maxAlive`, `interval`,
+  optional `ring`); every `Tuning.Spawner.TICK` it stands a rolled hostile
+  up on solid ground 60–100 studs from a random player on that island
+  (down-probe vs `Workspace.World`, Ocean hits rejected — land only), no
+  throw target, `{ ambient = true }`. LINGER is the cleanup; global cap
+  `GLOBAL_CAP` (40). **`setBias(islandId, archetype, mult)` /
+  `clearBias(islandId)`** is the event hook — WeatherService's blizzard
+  biases ice flyers ×3 through it. `groundPointNear` / `playersOn` are
+  shared helpers (RaidService and EruptionService use them).
+- **`RaidService`** — per-island `idle → announced → wave k of N →
+  cleared|failed` off `Islands.items[id].raid` (interval/announce/waves/
+  timeLimit/reward/bountyMult; defaults in `Tuning.Raid`). Raid mobs spawn
+  with `extra = { raid = islandId, noLinger = true, suppressDrops = true,
+  bounty = 0.35 }`: **`creature.noLinger` is now a first-class flag in the
+  despawn sweep** (boss/friendly-style exemption — b8's Kraken tentacles
+  reuse it verbatim), `suppressDrops` kills material AND rare-item drops
+  (DropService gained the guard MaterialService already had), `bounty`
+  scales kill coins/XP down so raids can't out-earn fishing — the payday is
+  the clear reward, paid to every `participants` killer (BossService shape).
+  A failed/abandoned raid **releases** its mobs (noLinger cleared, fought
+  clock zeroed) so nothing immortal squats the beach. One `RaidState`
+  broadcast per second while active; `RaidHudController` filters to the
+  island the local player stands on (`Islands.islandAt`, the shared
+  footprint rule).
+- **`Hazards.luau`** (Server/Modules) — `fireEvent` +
+  `damagePlayersInRadius` extracted from CreatureService (which now
+  delegates); raids and events hurt players by exactly the creature rule.
+- **`EruptionService`** — the volcano's bomb windows: every 5–8 min with
+  someone on the apron, 24s of lava bombs (one per 1.7s near a random
+  player, ring 5–26 so a direct hit can't be pre-placed), each fully
+  telegraphed — `telegraph` ring + `spit` glob falling from the summit on
+  the same 1.25s clock, then `damagePlayersInRadius` + `explode`. **No new
+  client code: it speaks the existing CreatureEvent vocabulary.** Start/stop
+  also goes out on `WorldEvent` for ambience.
+- **`WeatherService` / `WeatherController`** (b8's, wired into the ORDERs
+  with S3): timed blizzard windows on the ice island over the same
+  `WorldEvent` remote ({ kind, islandId, active }), client fog/snow +
+  spawner flyer bias; the gloom island's perpetual dark is client-only (no
+  remote — standing there IS the event).
+- **S2/S4 status**: the ranged engine, flyers and Blackmire Fen (S2) are
+  committed; Frostmaw/Gloomtrench/Wreckwater, the volcano's final re-gate,
+  the Maelstrom and the Kraken (S4) are landing in parallel sessions — the
+  ledger of record is `docs/revamp-plan.md`, don't duplicate it here.
 
 ### First person, arms, and the viewmodels
 
@@ -1820,12 +1922,20 @@ src/
       FishingService.luau   cast validation, seeded reel grading, creature roll + spawn, material grant
       CombatService.luau    RequestAttack → equipped Weapons row → nearest creature in reach → hitModifiers (exposed ×2 / charging shock) → damage/knockback/CreatureHit
       ProgressionService.luau  coins/XP/levels off Killed; Player attributes; RewardGranted
-      CraftingService.luau  RequestCraft (rod or weapon id) → validate level/coins/mats → spend + grantItem → CraftResult
-      DropService.luau      third Killed listener: rolls a creature row's drops.items → grantItem + ItemDropped
+      CraftingService.luau  RequestCraft (rod / weapon / bait / boat id) → validate level/coins/mats/hearts → spend + grant → CraftResult
+      DropService.luau      third Killed listener: rolls a creature row's drops.items → grantItem + ItemDropped (skips suppressDrops)
+      BoatService.luau      (S3) boat tiers off Heart_brinejaw + crafting, summon/park/sink, driver network ownership, seaworthiness DoT
+      SpawnerService.luau   (S3) ambient island hostiles off Islands ambient blocks; setBias/clearBias event hook; groundPointNear/playersOn helpers
+      RaidService.luau      (S3) wave raids off Islands raid blocks; noLinger mobs, participants payout, RaidState broadcast
+      WeatherService.luau   (S3/S4) timed weather windows (ice blizzard) on WorldEvent + spawner flyer bias
+      EruptionService.luau  (S3) volcano lava-bomb windows: telegraph/spit/explode vocabulary + Hazards damage
+    Modules/
+      Hazards.luau          (S3) fireEvent + damagePlayersInRadius, the one AoE rule (CreatureService delegates)
   Client/
     init.client.luau        ORDER: Camera, RodViewmodel, FistsViewmodel, WeaponViewmodel, Inventory, Crafting,
-                            Fishing, Ocean, CreatureVfx, Equip, Combat, CombatFeedback, CombatVfx,
-                            Progression, PlayerHud, Admin, Islands, Drop, Bait, MenuButtons, CreatureEvent, BossHud
+                            Fishing, Ocean, Lava, CreatureVfx, Equip, Combat, Ranged, RangedFx, CombatFeedback,
+                            CombatVfx, Progression, PlayerHud, Admin, Islands, Trophy, Boat, Drop, Bait,
+                            MenuButtons, CreatureEvent, BossHud, RaidHud, Weather
     Controllers/
       CameraController.luau        first-person lock, cursor free/lock for menus
       RodViewmodelController.luau  rod rig, tip tracking, cast clip playback
@@ -1839,6 +1949,8 @@ src/
       CreatureEventController.luau enemy states off Dashing/Exposed/Buried/Open/Charging/Enraged attrs + moments off CreatureEvent (spit glob, explosion, emerge, snap, steal, pulse,
                                    + the boss's bossRise/telegraph/bossSnap/sweep/slam/pull (VectorForce on the local root)/spine/spineHit/summon/bossDive/enrage/bossDown)
       BossHudController.luau       top-centre boss name + health bar off BossName/Health/Enraged; rise + ISLAND CLEARED cards off CreatureEvent
+      BoatController.luau          (S3) R/touch-button summon; drives the owner's hull (Boat_Move/Boat_Align, Y held at WATER_Y); BoatMessage banners
+      RaidHudController.luau       (S3) raid countdown/wave/remaining line + cards off RaidState, filtered to the local island (Islands.islandAt)
       EquipController.luau         1 (rod) / 2 (weapon) hotkeys → RequestEquip
       CombatController.luau        click → punch or weapon swing clip (per equipped row) → RequestAttack at HIT_TIME
       CombatFeedbackController.luau health bar, tint flash, damage numbers off Health
@@ -1873,19 +1985,32 @@ assets/
 
 ## Tooling / verification (run every slice, no exceptions)
 
-```powershell
-stylua src        # format — must exit 0
-selene src        # lint — must be 0 errors, 0 warnings, 0 parse errors
-rojo build --output "$env:TEMP\check.rbxlx"   # structural validation — must exit 0
+The pre-commit gate (2026-08-25, revamp sessions — run ALL FOUR before every
+commit; the morning session inherits this bar):
+
+```bash
+stylua src                        # format — must exit 0
+selene src                        # lint — must be 0 errors, 0 warnings, 0 parse errors
+rojo build -o /tmp/check.rbxlx    # structural validation — must exit 0
+python3 tools/check_content.py    # cross-file content invariants — must exit 0
 ```
+
+`tools/check_content.py` catches the integration bug class that actually
+bites with four sessions writing the data tables at once: an id referenced
+in one file that doesn't exist in another (recipe materials, boss ids,
+brood/roster rows, orders, waters keys, requiresHearts...). A useful fifth
+check when touching a boot ORDER: every name listed in
+`init.server.luau`/`init.client.luau` must have its module file, or the
+whole boot dies (see Gotchas).
 
 `stylua.toml` / `selene.toml` are at the project root; `aftman.toml` pins
 `rojo`, `StyLua`, `selene`. Rojo does not parse Luau — a syntax error can
 pass `rojo build` — so always run all three. Generated clip modules are
-written stylua-clean so regeneration never churns formatting. No git on this
-machine (not installed); changes live on disk. The pre-reset build is at
-`C:\Users\sreen\Desktop\Roblox Game (pre-reset backup)\` (already mined for
-`ReelMath`/`Rng`/`Tuning`).
+written stylua-clean so regeneration never churns formatting. Git IS live on
+this machine (macOS, 2026-08-25): commit per milestone with explicit paths
+(`git add <files>` — never `-A`, several sessions share the one checkout).
+The pre-reset build was mined on the old Windows machine; its path there
+(`C:\Users\sreen\Desktop\Roblox Game (pre-reset backup)\`) is stale here.
 
 ## Known gaps / next steps (not yet asked for — don't start unprompted)
 
@@ -1907,13 +2032,11 @@ machine (not installed); changes live on disk. The pre-reset build is at
   the reel grade (the multipliers apply; the visible state doesn't).
   Creatures despawn after `LINGER` (30 s) of not being fought — the timer
   resets on every hit, so nothing vanishes mid-fight (bosses never linger).
-- **Bosses:** one exists (Brinejaw, Starter Cove). The Volcano needs its
-  own `Bosses.items` entry + `Islands.items.volcano.boss` + a Creatures row
-  (+ a species) before a third island could be gated behind it; the engine
-  is generic, so that's data + art only. Untuned: all attack numbers, the
-  pull strength, difficulty at Lv 15 with the Drowncleaver (4,200 HP ≈ a
-  couple of minutes of hits). No death animation (it just goes, like every
-  creature); no per-player "what you're missing" readout for the gate.
+- **Bosses:** the revamp is filling the whole ladder — Brinejaw, Pyrelisk
+  and Old Gnashroot are in, with Rimefang/Noctyss/Admiral Wrack/the Kraken
+  landing in the parallel S4 session (`docs/revamp-plan.md` is the ledger).
+  Still true for all of them: attack numbers untuned, no death animation,
+  no per-player "what you're missing" readout for the gate.
 - **Weapons / targeting:** two craftable weapons exist (see Combat); more
   are a row each. Still proximity targeting — the plan's screen-space
   targeting is unbuilt. Hit VFX/SFX are shared across weapons (a heavier
