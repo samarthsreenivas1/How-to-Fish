@@ -1930,14 +1930,31 @@ function WorldService.start()
 						if islandId and not WorldService.mayEnter(player, islandId) then
 							local target = bounceTarget(player, root.Position)
 							if target then
-								-- A seated character is welded to the seat; break
-								-- the weld first or the PivotTo drags the boat too.
+								-- A seated character is welded to the seat, and
+								-- Sit = false does NOT kill that weld in the same
+								-- step - pivoting through it would drag the whole
+								-- (driver-owned) boat to the bounce target, or be
+								-- clobbered by the driver's replication. Break the
+								-- SeatWeld explicitly, then move the character a
+								-- step later, once it's a free assembly again.
 								local humanoid = character:FindFirstChildOfClass("Humanoid")
-								if humanoid and humanoid.SeatPart then
+								local seatPart = humanoid and humanoid.SeatPart
+								if seatPart then
 									humanoid.Sit = false
+									local weld = seatPart:FindFirstChild("SeatWeld")
+									if weld then
+										weld:Destroy()
+									end
+									task.defer(function()
+										if character.Parent and root.Parent then
+											root.AssemblyLinearVelocity = Vector3.zero
+											character:PivotTo(target)
+										end
+									end)
+								else
+									root.AssemblyLinearVelocity = Vector3.zero
+									character:PivotTo(target)
 								end
-								root.AssemblyLinearVelocity = Vector3.zero
-								character:PivotTo(target)
 							end
 						end
 					end

@@ -46,10 +46,16 @@ type BoatState = {
 	collider: BasePart,
 	seat: VehicleSeat,
 	warned: boolean, -- the seaworthiness warning fired for this excursion
+	sinking: boolean, -- set by sink(); the park path must never resurface a wreck
 	parkThread: thread?,
 }
 local boats: { [Player]: BoatState } = {}
 local lastSummon: { [Player]: number } = {}
+-- Hull damage carried between summons (see summon: a shore summon repairs,
+-- an open-water re-summon keeps its dents - otherwise re-summoning mid
+-- crossing would be a free repair and the seaworthiness DoT would be
+-- toothless). Cleared by an upgrade (a new hull is a new hull).
+local lastHull: { [Player]: number } = {}
 
 local boatFolder: Folder
 
@@ -73,6 +79,10 @@ local function despawn(player: Player)
 		task.cancel(state.parkThread)
 	end
 	if state.model.Parent then
+		local hull = state.model:GetAttribute("HullHealth")
+		if type(hull) == "number" then
+			lastHull[player] = hull
+		end
 		state.model:Destroy()
 	end
 end
@@ -92,6 +102,7 @@ function BoatService.grantTier(player: Player, tier: number)
 	if state then
 		despawn(player)
 	end
+	lastHull[player] = nil -- a new hull is a new hull: no inherited dents
 	local row = Boats.byTier[tier]
 	if row then
 		message(
@@ -126,6 +137,12 @@ local function park(state: BoatState)
 end
 
 local function onOccupantChanged(player: Player, state: BoatState)
+	-- A sinking wreck unseats its driver on the way down; the park path must
+	-- not catch that and re-anchor it back up at the waterline (the "wreck
+	-- pops back to the surface before despawning" bug).
+	if state.sinking then
+		return
+	end
 	local humanoid = state.seat.Occupant
 	if humanoid then
 		if state.parkThread then
@@ -194,10 +211,19 @@ local function summon(player: Player)
 		return
 	end
 
+	-- A summon at the shore of somewhere you're allowed to be is the free
+	-- patch-up (REPAIR_ON_SUMMON); a re-summon on open water keeps the dents
+	-- it had, so summoning mid-crossing can't cheat the seaworthiness DoT.
+	local hull = row.hullHealth
+	local atShore = WorldService.openSeaDistance(player, launch.Position) <= 0
+	if not (Tuning.Boat.REPAIR_ON_SUMMON and atShore) then
+		hull = math.max(1, math.min(row.hullHealth, lastHull[player] or row.hullHealth))
+	end
+
 	model:SetAttribute("OwnerUserId", player.UserId)
 	model:SetAttribute("BoatId", row.id)
 	model:SetAttribute("MaxHullHealth", row.hullHealth)
-	model:SetAttribute("HullHealth", row.hullHealth)
+	model:SetAttribute("HullHealth", hull)
 
 	-- Boats pass through the sea slab and creatures, never players (the
 	-- groups are registered by WorldService.init; assigning an unregistered
@@ -220,6 +246,7 @@ local function summon(player: Player)
 		collider = collider,
 		seat = seat,
 		warned = false,
+		sinking = false,
 		parkThread = nil,
 	}
 	boats[player] = state
@@ -240,6 +267,10 @@ end
 -- ============================================================ the open sea
 
 local function sink(player: Player, state: BoatState)
+	-- Flag FIRST: unseating the driver below fires onOccupantChanged, whose
+	-- park path would otherwise re-anchor the wreck flat at the waterline a
+	-- beat later - a sunk boat popping back to the surface to die.
+	state.sinking = true
 	message(player, "The sea claims her - your boat has sunk!")
 	local occupant = state.seat.Occupant
 	if occupant then
@@ -249,6 +280,10 @@ local function sink(player: Player, state: BoatState)
 	if state.parkThread then
 		task.cancel(state.parkThread)
 	end
+	-- The next summon raises a barely-patched hull (25%), not a fresh one:
+	-- chain-sinking across an ocean must not be a free ferry. Reaching any
+	-- legal shore repairs it properly (see summon).
+	lastHull[player] = math.max(1, math.floor(state.row.hullHealth * 0.25))
 	-- The wreck settles for a beat, then goes; the swimmers are the ocean
 	-- slab's and the under-map net's problem now (both catch them).
 	local model = state.model
@@ -301,6 +336,28 @@ end
 
 -- ============================================================ lifecycle
 
+-- Tier 1 rides Brinejaw's heart: BossService sets Heart_brinejaw on the
+-- kill, DataService restores it on load, and both trip this one watcher.
+-- Called from PlayerAdded AND for everyone already present when the service
+-- starts; the `watched` set keeps a join in the init->start gap from
+-- connecting twice (a dupe would be harmless - grantTier no-ops on an owned
+-- tier - but one watcher per player is the honest shape).
+local watched: { [Player]: boolean } = {}
+
+local function watchHeart(player: Player)
+	if watched[player] then
+		return
+	end
+	watched[player] = true
+	local function check()
+		if player:GetAttribute("Heart_brinejaw") == true then
+			BoatService.grantTier(player, 1)
+		end
+	end
+	player:GetAttributeChangedSignal("Heart_brinejaw"):Connect(check)
+	check()
+end
+
 function BoatService.init()
 	boatFolder = Instance.new("Folder")
 	boatFolder.Name = "Boats"
@@ -308,25 +365,24 @@ function BoatService.init()
 
 	Remotes.RequestBoat.OnServerEvent:Connect(onRequestBoat)
 
-	-- Tier 1 rides Brinejaw's heart: BossService sets Heart_brinejaw on the
-	-- kill, DataService restores it on load, and both trip this one watcher.
-	Players.PlayerAdded:Connect(function(player)
-		local function check()
-			if player:GetAttribute("Heart_brinejaw") == true then
-				BoatService.grantTier(player, 1)
-			end
-		end
-		player:GetAttributeChangedSignal("Heart_brinejaw"):Connect(check)
-		check()
-	end)
+	Players.PlayerAdded:Connect(watchHeart)
 
 	Players.PlayerRemoving:Connect(function(player)
 		despawn(player)
 		lastSummon[player] = nil
+		lastHull[player] = nil
+		watched[player] = nil
 	end)
 end
 
 function BoatService.start()
+	-- The boot contract: start() processes players already in the server -
+	-- init()'s PlayerAdded alone would skip anyone who joined before this
+	-- service came up, and they'd miss the Cove Skiff for the whole session.
+	for _, player in Players:GetPlayers() do
+		watchHeart(player)
+	end
+
 	task.spawn(function()
 		while true do
 			task.wait(1)
