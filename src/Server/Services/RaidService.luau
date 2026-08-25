@@ -231,8 +231,22 @@ local function onKilled(_row, _grade: string, killer: Player?, info)
 		return
 	end
 	local state = raids[info.raid]
-	if state and state.phase ~= "idle" and killer and killer.Parent == Players then
-		state.participants[killer] = true
+	if not state or state.phase == "idle" then
+		return
+	end
+	-- EVERYONE who landed a hit joins the payout, not just the last one:
+	-- CreatureService.damage accumulates creature.participants and ships
+	-- them in the info bag (the same list BossService's win shares out).
+	local function add(player)
+		if player and player.Parent == Players then
+			state.participants[player] = true
+		end
+	end
+	add(killer)
+	if type(info.participants) == "table" then
+		for _, player in info.participants do
+			add(player)
+		end
 	end
 end
 
