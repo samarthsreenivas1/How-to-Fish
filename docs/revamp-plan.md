@@ -31,8 +31,14 @@ Frostmaw was being written the same night.
   the re-exported Assets.rbxm was verified by decompressing its LZ4 chunks (session 5a) and
   contains all six island models incl. the four new fishable-water surfaces (Swamp_Water /
   Frostmaw_IceHoles / Gloomtrench_DarkWater / Wreckwater_Bay), all five mesh packs
-  (Fish/Creature/Rod/Weapon/BoatPack), all six boat hulls, and the Kraken. Live playtest
-  feedback is already flowing (Atmosphere fog fix 5d55419, ambient kill-switch cc7d945).
+  (Fish/Creature/Rod/Weapon/BoatPack), all six boat hulls, and the Kraken. 09 confirmed the
+  packs in the user's Explorer and the FIRST successful end-to-end boot (21 services, 30
+  controllers). Live playtest feedback is already flowing (Atmosphere fog fix 5d55419,
+  ambient kill-switch cc7d945). Open playtest items, not failures: PreciseConvexDecomposition
+  on the island bases unconfirmed; BoatPack bow orientation untested (no boat summoned yet).
+- [ ] **NEW (user order, 2026-08-26, post-plan): visual revamp of the five non-tropical
+  island meshes** ("they look really really bad") — 09's lane; regenerates island_pack.glb,
+  the user re-imports IslandPack, a fresh rbxm follows.
 
 ## Context
 
