@@ -259,7 +259,11 @@ function BoatController.init()
 	)
 
 	if player.Character then
-		watchCharacter(player.Character)
+		-- Off the boot thread: watchCharacter's WaitForChild could otherwise
+		-- stall EVERY later controller for up to 10s on a Humanoid-less
+		-- character (87's sweep, nit 3; CharacterAdded callbacks already run
+		-- in their own threads).
+		task.spawn(watchCharacter, player.Character)
 	end
 	player.CharacterAdded:Connect(watchCharacter)
 

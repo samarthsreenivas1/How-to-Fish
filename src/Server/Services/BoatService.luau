@@ -200,8 +200,6 @@ local function summon(player: Player)
 	if now - (lastSummon[player] or -math.huge) < Tuning.Boat.SUMMON_COOLDOWN then
 		return
 	end
-	lastSummon[player] = now
-
 	local tier = player:GetAttribute(BOAT_ATTR) or 0
 	local row = Boats.byTier[tier]
 	if tier < 1 or not row then
@@ -213,6 +211,11 @@ local function summon(player: Player)
 	if not launch then
 		return
 	end
+
+	-- The cooldown only arms for a summon that actually happens: a refusal
+	-- (no boat yet, no character) is cheap and must not punish the retry
+	-- (87's sweep, nit 1).
+	lastSummon[player] = now
 
 	despawn(player) -- a summon is also the recall: one boat, moved to you
 
