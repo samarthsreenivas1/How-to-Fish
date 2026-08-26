@@ -71,8 +71,11 @@ local function currentIslandId(): string?
 	end
 	local here: string? = nil
 	local bestDist = math.huge
-	for _, id in Islands.order do
-		local entry = Islands.items[id]
+	-- Islands.items, not Islands.order: a site entry (the Maelstrom) is
+	-- outside the order but you can still be standing on it - its card must
+	-- read YOU ARE HERE, not offer a Travel that snaps you across the arena
+	-- mid-fight (review finding, 2026-08-25).
+	for id, entry in Islands.items do
 		local p = entry.worldPosition
 		local dist = (Vector2.new(root.Position.X, root.Position.Z) - Vector2.new(p.X, p.Z)).Magnitude
 		if dist < (entry.radius or World.ISLAND_RADIUS) * 1.5 and dist < bestDist then
