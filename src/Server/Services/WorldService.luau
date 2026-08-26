@@ -342,6 +342,11 @@ local MESH_COLOR = {
 	Volcano_Scree = Color3.fromRGB(23, 23, 31), -- M_Obsidian (fine ground chunks)
 
 	-- Blackmire Fen (assets/island_swamp_gen.py; palette from the generator).
+	-- Swamp_Base carries three materials (peat/mud/wet mud) so it splits into
+	-- three numbered primitives, same as Island_Base and Volcano_Base.
+	Swamp_Base = Color3.fromRGB(61, 77, 50), -- M_Peat (dark waterlogged moss-peat)
+	Swamp_Base2 = Color3.fromRGB(101, 85, 60), -- M_Mud (the mud "beach")
+	Swamp_Base3 = Color3.fromRGB(74, 63, 47), -- M_WetMud
 	Swamp_Water = Color3.fromRGB(55, 77, 60),
 	Swamp_Trunks = Color3.fromRGB(91, 71, 50),
 	Swamp_Canopy = Color3.fromRGB(83, 115, 62),
@@ -353,6 +358,9 @@ local MESH_COLOR = {
 	Swamp_Foam = Color3.fromRGB(217, 224, 212),
 
 	-- Frostmaw Reach (assets/island_ice_gen.py).
+	Frostmaw_Base = Color3.fromRGB(234, 239, 244), -- M_Snow
+	Frostmaw_Base2 = Color3.fromRGB(199, 217, 230), -- M_IceSheet (the walked, fished shelf)
+	Frostmaw_Base3 = Color3.fromRGB(163, 186, 207), -- M_IceWet
 	Frostmaw_IceHoles = Color3.fromRGB(18, 33, 55),
 	Frostmaw_RimIce = Color3.fromRGB(150, 191, 224),
 	Frostmaw_Seracs = Color3.fromRGB(150, 191, 224),
@@ -363,6 +371,9 @@ local MESH_COLOR = {
 	Frostmaw_Foam = Color3.fromRGB(240, 246, 250),
 
 	-- Gloomtrench (assets/island_gloom_gen.py). The glow objects are Neon.
+	Gloomtrench_Base = Color3.fromRGB(33, 32, 42), -- M_GloomRock (near-black basalt)
+	Gloomtrench_Base2 = Color3.fromRGB(52, 50, 62), -- M_GloomSand (ashen violet-grey shore)
+	Gloomtrench_Base3 = Color3.fromRGB(40, 39, 50), -- M_GloomWet
 	Gloomtrench_DarkWater = Color3.fromRGB(6, 11, 22),
 	Gloomtrench_Spires = Color3.fromRGB(33, 32, 42),
 	Gloomtrench_Stalks = Color3.fromRGB(59, 62, 76),
@@ -373,6 +384,9 @@ local MESH_COLOR = {
 	Gloomtrench_Foam = Color3.fromRGB(171, 179, 199),
 
 	-- Wreckwater (assets/island_wreck_gen.py). The ghost-glow is Neon.
+	Wreckwater_Base = Color3.fromRGB(60, 62, 60), -- M_BayFloor (drowned grey-green silt)
+	Wreckwater_Base2 = Color3.fromRGB(170, 163, 142), -- M_WreckSand (bone-grey sand)
+	Wreckwater_Base3 = Color3.fromRGB(132, 126, 109), -- M_WreckWet
 	Wreckwater_Bay = Color3.fromRGB(22, 50, 55),
 	Wreckwater_Hulks = Color3.fromRGB(55, 46, 37),
 	Wreckwater_GhostGlow = Color3.fromRGB(173, 241, 196),
@@ -417,9 +431,11 @@ local function applyMeshColors(island: Model)
 				-- generator no longer produces. Re-import, don't add a colour.
 				warn(
 					string.format(
-						"[WorldService] imported mesh part %q has no colour mapping - "
-							.. "ReplicatedStorage/Assets/Island is probably a stale import; "
-							.. "delete it and re-import assets/island.glb (assets/README.md).",
+						"[WorldService] imported mesh part %q has no MESH_COLOR entry - it keeps the "
+							.. "importer's own colour/material instead of the island palette. Add it to "
+							.. "MESH_COLOR (a multi-material Blender object splits into <Name> / <Name>2 / "
+							.. "<Name>3), or re-import assets/island_pack.glb if the pack is stale "
+							.. "(assets/README.md).",
 						descendant.Name
 					)
 				)
@@ -1933,6 +1949,26 @@ function WorldService.boatLaunchCFrame(player: Player): CFrame?
 		outward = if outward.Magnitude > 0.05 then outward.Unit else Vector3.zAxis
 		at = Vector3.new(position.X, 0, position.Z) + outward * 14
 	end
+
+	-- The coastline wobbles and rocks crowd some shores: if the chosen spot
+	-- still has LAND under it (a down-probe that hits anything of the world
+	-- besides the sea), keep stepping seaward before anchoring a hull inside
+	-- a boulder (review find). Four tries, then take the last point anyway -
+	-- open ocean at worst.
+	if islandFolder then
+		local params = RaycastParams.new()
+		params.FilterType = Enum.RaycastFilterType.Include
+		params.FilterDescendantsInstances = { islandFolder }
+		params.RespectCanCollide = true
+		for _ = 1, 4 do
+			local hit = Workspace:Raycast(Vector3.new(at.X, 300, at.Z), Vector3.new(0, -400, 0), params)
+			if not hit or hit.Instance.Name == World.OCEAN_NAME then
+				break
+			end
+			at += outward * 15
+		end
+	end
+
 	return CFrame.lookAt(Vector3.new(at.X, World.WATER_Y, at.Z), Vector3.new(at.X, World.WATER_Y, at.Z) + outward)
 end
 
@@ -2082,14 +2118,29 @@ function WorldService.start()
 				local root = character and character:FindFirstChild("HumanoidRootPart")
 				if root and root:IsA("BasePart") then
 					if isUnderMap(root.Position) then
-						local target = recoveryPoint(root.Position)
+						-- Non-admins recover to somewhere they're ALLOWED:
+						-- lifting a trespasser onto the locked island they
+						-- were under just hands them to the containment
+						-- sweep for a second teleport (review find). Admins
+						-- keep the nearest-island lift (AdminTeleport walks
+						-- locked islands by design).
+						local target
+						if player:GetAttribute("IsAdmin") == true then
+							target = recoveryPoint(root.Position)
+						else
+							target = bounceTarget(player, root.Position) or recoveryPoint(root.Position)
+						end
 						if target then
 							root.AssemblyLinearVelocity = Vector3.zero
 							character:PivotTo(target)
 						end
 					elseif player:GetAttribute("IsAdmin") ~= true then
+						-- Only a PLACED island's footprint is enforceable
+						-- ground: before its mesh imports, the footprint is
+						-- open sea, and bouncing someone sailing across it
+						-- would punish legal water (review find).
 						local islandId = WorldService.islandAt(root.Position)
-						if islandId and not WorldService.mayEnter(player, islandId) then
+						if islandId and placed[islandId] and not WorldService.mayEnter(player, islandId) then
 							local target = bounceTarget(player, root.Position)
 							if target then
 								-- A seated character is welded to the seat, and

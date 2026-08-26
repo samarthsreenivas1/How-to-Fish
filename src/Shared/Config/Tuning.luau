@@ -798,6 +798,7 @@ Tuning.Boat = {
 	PARK_SNAP_DELAY = 1.2, -- seconds after the seat empties before the server re-anchors
 	SUMMON_COOLDOWN = 3, -- seconds between RequestBoat uses (anti-spam)
 	REPAIR_ON_SUMMON = true, -- a fresh summon at shore is a free patch-up
+	SHORE_REPAIR_DISTANCE = 100, -- "at shore" = the summoner stands within this of an enterable island's shoreline (docks count)
 }
 
 -- ============================================================ Spawner

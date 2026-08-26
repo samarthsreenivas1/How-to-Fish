@@ -229,7 +229,29 @@ function BoatModel.build(row): Model
 	if template and m.variant then
 		usedMesh = assembleVariant(model, template, m.variant)
 	end
-	if not usedMesh then
+	if usedMesh then
+		-- Bring the clones into BOAT space. The pack spaces its six variants
+		-- apart for preview, so a clone keeps that offset - welded as-is the
+		-- visuals would sit a whole variant-spacing away from the collider
+		-- (review find). The hull is the reference: authored to span the
+		-- row's dimensions, so translating every mesh part by the delta that
+		-- centres the hull's box on X/Z and rests its bottom at -draft puts
+		-- the whole variant back on its waterline. Pure translation only -
+		-- if a Studio import shows the bow reversed, that's the importer's
+		-- yaw and gets fixed in boat_gen.py, not here.
+		local hull = model:FindFirstChild("Boat_Hull")
+		if hull and hull:IsA("BasePart") then
+			local target = Vector3.new(0, hull.Size.Y / 2 - m.draft, 0)
+			local delta = target - hull.Position
+			if delta.Magnitude > 0.01 then
+				for _, p in model:GetChildren() do
+					if p:IsA("BasePart") and p ~= collider then
+						p.CFrame = p.CFrame + delta
+					end
+				end
+			end
+		end
+	else
 		buildProcedural(model, m)
 	end
 	colorParts(model, m)

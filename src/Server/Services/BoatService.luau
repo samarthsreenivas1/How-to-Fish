@@ -122,9 +122,12 @@ end
 -- ============================================================ spawn / park
 
 -- Re-anchor a driverless hull flat at the waterline where it drifted to.
+-- Refuses a hull that is sinking or has been re-boarded: deferred Occupant
+-- events can queue two empty-seat callbacks back to back, and a leaked park
+-- thread must never freeze a boat someone is driving again (review find).
 local function park(state: BoatState)
 	local collider = state.collider
-	if not collider.Parent then
+	if not collider.Parent or state.sinking or state.seat.Occupant ~= nil then
 		return
 	end
 	local _, yaw = collider.CFrame:ToEulerAnglesYXZ()
@@ -134,6 +137,12 @@ local function park(state: BoatState)
 		World.WATER_Y + BoatService.restHeight(state.row),
 		collider.Position.Z
 	) * CFrame.Angles(0, yaw, 0)
+	-- Keep the align target on the parked heading, so the next unanchor
+	-- holds this orientation instead of snapping to whatever it last held.
+	local align = collider:FindFirstChild("Boat_Align")
+	if align and align:IsA("AlignOrientation") then
+		align.CFrame = CFrame.Angles(0, yaw, 0)
+	end
 end
 
 local function onOccupantChanged(player: Player, state: BoatState)
@@ -168,7 +177,12 @@ local function onOccupantChanged(player: Player, state: BoatState)
 		end
 	else
 		-- Driver stood up (or was bounced): give physics a beat to settle,
-		-- then freeze the hull flat at the waterline, server-owned.
+		-- then freeze the hull flat at the waterline, server-owned. Cancel
+		-- any earlier pending park first - two queued empty-seat events must
+		-- not leak a thread that fires after a re-board (park() also guards).
+		if state.parkThread then
+			task.cancel(state.parkThread)
+		end
 		state.parkThread = task.delay(Tuning.Boat.PARK_SNAP_DELAY, function()
 			state.parkThread = nil
 			pcall(function()
@@ -214,8 +228,15 @@ local function summon(player: Player)
 	-- A summon at the shore of somewhere you're allowed to be is the free
 	-- patch-up (REPAIR_ON_SUMMON); a re-summon on open water keeps the dents
 	-- it had, so summoning mid-crossing can't cheat the seaworthiness DoT.
+	-- Shore-ness is measured from the PLAYER, not the launch point - the
+	-- launch point is deliberately pushed past the shoreline (radius + 30),
+	-- so measuring there made atShore geometrically impossible and the
+	-- repair dead code (review find). The threshold covers standing on a
+	-- dock (the volcano's runs ~90 studs out); crossings measure 1000+.
 	local hull = row.hullHealth
-	local atShore = WorldService.openSeaDistance(player, launch.Position) <= 0
+	local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+	local atShore = root ~= nil
+		and WorldService.openSeaDistance(player, (root :: BasePart).Position) <= Tuning.Boat.SHORE_REPAIR_DISTANCE
 	if not (Tuning.Boat.REPAIR_ON_SUMMON and atShore) then
 		hull = math.max(1, math.min(row.hullHealth, lastHull[player] or row.hullHealth))
 	end
@@ -238,6 +259,13 @@ local function summon(player: Player)
 
 	collider.Anchored = true
 	model:PivotTo(launch * CFrame.new(0, BoatService.restHeight(row), 0))
+	-- Prime the align constraint with the summon heading: it ships from
+	-- BoatModel at identity, and with its huge torque the first unanchor
+	-- would otherwise snap the hull round to face world -Z (review find).
+	local align = collider:FindFirstChild("Boat_Align")
+	if align and align:IsA("AlignOrientation") then
+		align.CFrame = launch.Rotation
+	end
 	model.Parent = boatFolder
 
 	local state: BoatState = {
