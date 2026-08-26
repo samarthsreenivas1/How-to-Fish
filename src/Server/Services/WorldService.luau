@@ -382,6 +382,7 @@ local MESH_COLOR = {
 	Frostmaw_DeadTrees = Color3.fromRGB(74, 62, 56),
 	Frostmaw_SnowMounds = Color3.fromRGB(246, 249, 252),
 	Frostmaw_ShardLitter = Color3.fromRGB(237, 245, 252), -- flat ice-shard scatter
+	Frostmaw_SnowCaps = Color3.fromRGB(245, 247, 252), -- M_SnowCap: snow strata on berg/walls/arches (shelf rebuild)
 	Frostmaw_Dock_Planks = Color3.fromRGB(142, 122, 96),
 	Frostmaw_Dock_Posts = Color3.fromRGB(103, 86, 67),
 	Frostmaw_Foam = Color3.fromRGB(240, 246, 250),
