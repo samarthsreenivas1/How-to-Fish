@@ -279,6 +279,13 @@ local NON_COLLIDE = {
 	"Frostmaw_IceHoles",
 	"Gloomtrench_DarkWater",
 	"Wreckwater_Bay",
+	-- The open-sea ghost hulks (round 2) and the bay wrecks' rotted sail
+	-- scraps: box/hull collision on a +-700-stud wreck scatter would wall
+	-- off the sea for the boat, and the fiction earns the pass-through -
+	-- the ghost-fire glow says they aren't solid. Approved by the fleet
+	-- coordinator 2026-08-26.
+	"Wreckwater_SeaHulks",
+	"Wreckwater_Sails",
 }
 
 local function shouldCollide(instanceName: string): boolean
@@ -389,8 +396,17 @@ local MESH_COLOR = {
 	Wreckwater_Base3 = Color3.fromRGB(132, 126, 109), -- M_WreckWet
 	Wreckwater_Bay = Color3.fromRGB(22, 50, 55),
 	Wreckwater_Hulks = Color3.fromRGB(55, 46, 37),
+	-- The open-sea graveyard (round 2): same rotten timber as the bay hulks.
+	-- Deliberately NON_COLLIDE (below) - ghost wrecks the boat glides through.
+	Wreckwater_SeaHulks = Color3.fromRGB(55, 46, 37),
 	Wreckwater_GhostGlow = Color3.fromRGB(173, 241, 196),
+	Wreckwater_Sails = Color3.fromRGB(189, 190, 179), -- M_WreckSail (rotted canvas, bone with a green cast)
+	Wreckwater_Dunes = Color3.fromRGB(165, 154, 131), -- M_WreckDrift (drifted dune ridges)
 	Wreckwater_Rocks = Color3.fromRGB(90, 92, 96),
+	-- Round 1 added a lagoon-side quay ALONGSIDE the standard sea dock (the
+	-- export carries both name sets), so both get the plank/post palette.
+	Wreckwater_Quay_Planks = Color3.fromRGB(121, 103, 79),
+	Wreckwater_Quay_Posts = Color3.fromRGB(84, 69, 52),
 	Wreckwater_Dock_Planks = Color3.fromRGB(121, 103, 79),
 	Wreckwater_Dock_Posts = Color3.fromRGB(84, 69, 52),
 	Wreckwater_Foam = Color3.fromRGB(225, 231, 228),
