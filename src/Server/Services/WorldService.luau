@@ -382,6 +382,9 @@ local MESH_COLOR = {
 	Gloomtrench_Base2 = Color3.fromRGB(52, 50, 62), -- M_GloomSand (ashen violet-grey shore)
 	Gloomtrench_Base3 = Color3.fromRGB(40, 39, 50), -- M_GloomWet
 	Gloomtrench_DarkWater = Color3.fromRGB(6, 11, 22),
+	-- Round-2 coastal overhaul objects (87's lane): both near-black, NOT Neon.
+	Gloomtrench_TidePools = Color3.fromRGB(20, 21, 30), -- M_GloomShelf
+	Gloomtrench_Rift = Color3.fromRGB(37, 34, 46), -- M_GloomRift
 	Gloomtrench_Spires = Color3.fromRGB(33, 32, 42),
 	Gloomtrench_Stalks = Color3.fromRGB(59, 62, 76),
 	Gloomtrench_GlowCyan = Color3.fromRGB(74, 239, 224),
