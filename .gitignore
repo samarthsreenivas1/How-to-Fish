@@ -28,3 +28,6 @@ roblox.yml
 .DS_Store
 Thumbs.db
 *.swp
+
+# Claude session state (agent worktrees etc.)
+.claude/

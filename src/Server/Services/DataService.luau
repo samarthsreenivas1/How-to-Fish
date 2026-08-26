@@ -60,7 +60,25 @@ local HEART_PREFIX = "Heart_"
 local BOAT_ATTR = "BoatTier"
 local LOADED_ATTR = "DataLoaded"
 
-local store = DataStoreService:GetDataStore(STORE_NAME)
+-- Studio without API access throws RIGHT HERE, at require time - and a service
+-- module that fails to load takes the entire server boot with it (init.server
+-- requires every service up front, DataService first). So acquire the store
+-- defensively: a nil store routes through the same load-failure path as any
+-- other DataStore error, which is exactly what arms the STUDIO FALLBACK below.
+local storeOk, storeOrErr = pcall(function()
+	return DataStoreService:GetDataStore(STORE_NAME)
+end)
+local store = if storeOk then storeOrErr else nil
+if not store then
+	warn(
+		string.format(
+			"[DataService] DataStore unavailable (%s) - persistence is OFF this session. "
+				.. "In Studio: File > Game Settings > Security > Enable Studio Access to API Services "
+				.. "(the place must be published first).",
+			tostring(storeOrErr)
+		)
+	)
+end
 
 -- key -> { load, serialize }, in registration (= boot) order for stable saves.
 local registered: { { key: string, load: (Player, any) -> (), serialize: (Player) -> any } } = {}
@@ -158,6 +176,9 @@ end
 
 -- Claims the session lock and returns ("ok", data) / ("locked") / ("error", err).
 local function tryLoad(key: string): (string, any)
+	if not store then
+		return "error", "DataStore unavailable (Studio API access off?)"
+	end
 	local blocked = false
 	local ok, result = pcall(function()
 		return store:UpdateAsync(key, function(stored)
@@ -183,6 +204,9 @@ end
 -- Writes `data` under our lock. `release` also clears the lock (leaving).
 -- Skips (with a warn) if another server stole the lock - their data is newer.
 local function writeProfile(key: string, data, release: boolean): boolean
+	if not store then
+		return false -- no store: nothing was ever loaded from it either
+	end
 	local stolen = false
 	local ok, err = pcall(function()
 		store:UpdateAsync(key, function(stored)
@@ -235,6 +259,9 @@ local function loadPlayer(player: Player)
 			return
 		end
 		lastErr = if status == "locked" then "profile locked by another server" else tostring(result)
+		if not store then
+			break -- no DataStore at all: retrying can't help, fall through to the fallback now
+		end
 		task.wait(if status == "locked" then 4 else 2)
 	end
 

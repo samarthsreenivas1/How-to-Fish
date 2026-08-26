@@ -87,6 +87,12 @@ NOTCH_BAND = None
 PEAK_JAG = 0.0
 PEAK_TERMS = []
 
+# One angular sector where the vertical crag is DAMPED: (centre rad, half-width
+# rad, strength 0-1). The volcano uses it to calm the face its switchback trail
+# is cut into, so the path benches into believable ground while the rest of the
+# cone stays shattered. None = untouched (every other island).
+CRAG_CALM = None
+
 # Where the inner material band gives way to the beach, as a relative radius;
 # must be one of RINGS so the boundary lies exactly on a mesh ring (a clean
 # painted edge instead of a stair-stepped one).
@@ -251,6 +257,11 @@ def crag(x, z, u):
         lo, hi = RIM_FLAT
         flat = smoothstep(lo - 0.05, lo, u) * (1 - smoothstep(hi, hi + 0.05, u))
         band *= 1 - flat
+    if CRAG_CALM is not None:
+        a0, half, strength = CRAG_CALM
+        da = abs(((math.atan2(z, x) - a0 + math.pi) % math.tau) - math.pi)
+        if da < half:
+            band *= 1 - strength * smoothstep(half, half * 0.4, da)
     if band <= 0:
         return 0.0
     n = noise.noise(Vector((x * CRAG_FREQ, z * CRAG_FREQ, 2.0)))
@@ -961,6 +972,147 @@ def _near_dock_corridor(theta, u):
     return da < 0.065 and u > 0.80
 
 
+def add_ribbon_slab(bm, left, right, thickness):
+    """add_strip_slab with a PER-POINT thickness, so a ledge can taper away to
+    nothing where it meets the ground instead of ending on a blank wall."""
+    n = len(left)
+    lt = [bm.verts.new(p) for p in left]
+    rt = [bm.verts.new(p) for p in right]
+    lb = [bm.verts.new(p - Vector((0, 0, thickness[i]))) for i, p in enumerate(left)]
+    rb = [bm.verts.new(p - Vector((0, 0, thickness[i]))) for i, p in enumerate(right)]
+    for i in range(n - 1):
+        bm.faces.new((lt[i], rt[i], rt[i + 1], lt[i + 1]))
+        bm.faces.new((lb[i + 1], rb[i + 1], rb[i], lb[i]))
+        bm.faces.new((lt[i], lt[i + 1], lb[i + 1], lb[i]))
+        bm.faces.new((rt[i + 1], rt[i], rb[i], rb[i + 1]))
+    bm.faces.new((lt[0], lb[0], rb[0], rt[0]))
+    bm.faces.new((lt[-1], rt[-1], rb[-1], lb[-1]))
+
+
+# ---------------------------------------------------------------- the climb
+#
+# A switchback trail cut into the flank: the route from the ash apron (right
+# where the dock lands) up to the crater lip. Written in polar as a sinusoid in
+# ANGLE over a radius that only ever shrinks, so the plan view is a true zigzag
+# with rounded hairpins and the climb is monotonic. Every cross-section is dead
+# level (both edges share one deck height) so it is genuinely standable, and
+# the deck is benched off the ground through the middle of its own width - half
+# cut, half fill, the way a mountain road is built - so the ledge reads as cut
+# into the slope with the slab's thickness as its retaining wall. Both ends sit
+# on the dock bearing, and CRAG_CALM quiets the crag across the same face.
+TRAIL_CENTER_DEG = 270.0  # the dock/spawn bearing: the climb starts where you land
+TRAIL_SWING_DEG = 42.0
+TRAIL_LEGS = 7  # half-cycles of the sinusoid = number of straight-ish legs
+TRAIL_PHASE = math.pi / 2  # puts BOTH ends of the zigzag on the dock bearing
+TRAIL_R_START = 450.0
+TRAIL_R_END = 126.0  # lands on the crater lip shoulder
+TRAIL_HALF = 11.5  # half-width of the walking surface
+TRAIL_LANDING = 10.0  # extra half-width at each hairpin (a wide turn platform)
+TRAIL_SAMPLES = 240
+TRAIL_THICK = 14.0
+
+# Filled by build_volcano_terraces, read by every prop scatter so nothing is
+# dropped on the path: (x, y, clearance radius).
+TRAIL_FOOTPRINTS = []
+
+
+def _off_trail(x, z, extra=0.0):
+    for tx, ty, rad in TRAIL_FOOTPRINTS:
+        if math.hypot(x - tx, z - ty) < rad + extra:
+            return False
+    return True
+
+
+def _trail_centerline(ground):
+    """(centre point, half-width, deck height) sampled along the whole route."""
+    c = math.radians(TRAIL_CENTER_DEG)
+    swing = math.radians(TRAIL_SWING_DEG)
+    pts, halves, decks = [], [], []
+    for i in range(TRAIL_SAMPLES):
+        t = i / (TRAIL_SAMPLES - 1)
+        phase = math.pi * TRAIL_LEGS * t + TRAIL_PHASE
+        theta = c + swing * math.cos(phase)
+        # A slightly non-linear march inward: the legs bunch as the cone
+        # narrows, the way a real switchback road does, and it breaks the
+        # even "venetian blind" spacing the linear version read as head-on.
+        r = TRAIL_R_START + (TRAIL_R_END - TRAIL_R_START) * (t**1.22)
+        turn = abs(math.cos(phase)) ** 8  # ~1 only in the hairpins
+        half = TRAIL_HALF + TRAIL_LANDING * turn
+        pts.append((math.cos(theta) * r, math.sin(theta) * r))
+        halves.append(half)
+        # Deck height from the HIGHEST ground across the middle of the bench,
+        # so a crag bulge can never break up through the walking surface.
+        peak = -math.inf
+        for k in (-0.55, -0.28, 0.0, 0.28, 0.55):
+            r_s = r + half * k
+            g = _drop_to_ground(ground, math.cos(theta) * r_s, math.sin(theta) * r_s)
+            peak = max(peak, g if g is not None else height_at(math.cos(theta) * r_s, math.sin(theta) * r_s))
+        decks.append(peak)
+
+    def blur(vals, win):
+        out = []
+        for i in range(len(vals)):
+            lo, hi = max(0, i - win), min(len(vals), i + win + 1)
+            out.append(sum(vals[lo:hi]) / (hi - lo))
+        return out
+
+    # Smooth the facet-to-facet jitter into a clean ramp, then lift the deck
+    # back over anything the averaging cut through.
+    smooth = blur(decks, 7)
+    return pts, halves, blur([max(smooth[i], decks[i]) + 1.4 for i in range(len(decks))], 5)
+
+
+def build_volcano_terraces(ground):
+    """The switchback ledge: one continuous ribbon solid up the flank, with a
+    wide landing at every hairpin (somewhere to stand and fight when an
+    eruption raid catches you mid-climb) and a broad platform where it tops out
+    on the crater lip."""
+    bm = bmesh.new()
+    TRAIL_FOOTPRINTS.clear()
+
+    pts, halves, decks = _trail_centerline(ground)
+    n = len(pts)
+    left, right = [], []
+    for i in range(n):
+        x, y = pts[i]
+        px, py = pts[max(0, i - 1)]
+        nx, ny = pts[min(n - 1, i + 1)]
+        tx, ty = nx - px, ny - py
+        length = math.hypot(tx, ty) or 1.0
+        ox, oy = -ty / length, tx / length  # in-plan perpendicular; handles hairpins
+        h, z = halves[i], decks[i]
+        left.append(Vector((x + ox * h, y + oy * h, z)))
+        right.append(Vector((x - ox * h, y - oy * h, z)))
+        if i % 3 == 0:
+            TRAIL_FOOTPRINTS.append((x, y, h + 10.0))
+
+    # The retaining wall is sized per point to REACH the ground under the
+    # ledge's downhill edge - a fixed thickness leaves the bench visibly
+    # floating wherever the flank steepens. Then taper it to nothing at both
+    # ends so the ledge grows out of the apron and dies into the lip, instead
+    # of ending on a blank wall.
+    thick = []
+    for i in range(n):
+        low = math.inf
+        for edge in (left[i], right[i]):
+            gnd = _drop_to_ground(ground, edge.x, edge.y)
+            low = min(low, gnd if gnd is not None else height_at(edge.x, edge.y))
+        need = min(max(TRAIL_THICK, decks[i] - low + 2.5), 46.0)
+        t = i / (n - 1)
+        fade = min(smoothstep(0.0, 0.055, t), smoothstep(1.0, 0.945, t))
+        thick.append(0.9 + (need - 0.9) * fade)
+    add_ribbon_slab(bm, left, right, thick)
+
+    rise = decks[-1] - decks[0]
+    run = sum(math.dist(pts[i], pts[i + 1]) for i in range(n - 1))
+    print(
+        f"[island_gen] terraces: {TRAIL_LEGS} switchback legs on the {TRAIL_CENTER_DEG:.0f} deg face, "
+        f"r {TRAIL_R_START:.0f}->{TRAIL_R_END:.0f}, climbs {rise:.0f} over {run:.0f} "
+        f"({100 * rise / run:.1f}% grade), deck y {decks[0]:.1f} -> {decks[-1]:.1f}"
+    )
+    return object_from_bmesh("Volcano_Terraces", bm, ["M_VolPath"])
+
+
 def build_volcano_rocks(ground):
     """Obsidian rock, in three places: big angular boulders on the walkable ash
     apron at the foot (walked among), MASSIVE crag boulders jammed into the
@@ -983,7 +1135,7 @@ def build_volcano_rocks(ground):
             continue
         r = ring_radius(u, theta)
         x, z = math.cos(theta) * r, math.sin(theta) * r
-        if not _clear_of_ponds(x, z, 1.0):
+        if not _clear_of_ponds(x, z, 1.0) or not _off_trail(x, z, 12.0):
             continue
         surface = _drop_to_ground(ground, x, z)
         if surface is None:
@@ -1011,6 +1163,8 @@ def build_volcano_rocks(ground):
             continue  # keep the lava channels clear
         r = ring_radius(u, theta)
         x, z = math.cos(theta) * r, math.sin(theta) * r
+        if not _off_trail(x, z, 24.0):
+            continue  # never wall off the switchback
         surface = _drop_to_ground(ground, x, z)
         if surface is None:
             continue
@@ -1035,10 +1189,12 @@ def build_volcano_rocks(ground):
             continue
         r = ring_radius(u, theta)
         x, z = math.cos(theta) * r, math.sin(theta) * r
+        if not _off_trail(x, z, 9.0):
+            continue  # the trail tops out here; leave the viewpoint standable
         surface = _drop_to_ground(ground, x, z)
         if surface is None:
             continue
-        s = random.uniform(6.0, 11.0)
+        s = random.uniform(3.5, 6.5)
         h = s * random.uniform(2.2, 3.4)  # tall shards, not round blobs
         add_blob(
             bm,
@@ -1061,7 +1217,7 @@ def build_volcano_rocks(ground):
             continue
         r = ring_radius(u, theta)
         x, z = math.cos(theta) * r, math.sin(theta) * r
-        if not _clear_of_ponds(x, z, 1.0):
+        if not _clear_of_ponds(x, z, 1.0) or not _off_trail(x, z, 4.0):
             continue
         surface = _drop_to_ground(ground, x, z)
         if surface is None:
@@ -1093,7 +1249,7 @@ def build_volcano_props(ground):
                 continue
             r = ring_radius(u, theta)
             x, z = math.cos(theta) * r, math.sin(theta) * r
-            if not _clear_of_ponds(x, z, pad):
+            if not _clear_of_ponds(x, z, pad) or not _off_trail(x, z, 4.0):
                 continue
             surface = _drop_to_ground(ground, x, z)
             if surface is not None:
@@ -1106,7 +1262,7 @@ def build_volcano_props(ground):
             a = random.uniform(0, math.tau)
             d = random.uniform(0, spread)
             x, z = cx + math.cos(a) * d, cz + math.sin(a) * d
-            if not _clear_of_ponds(x, z):
+            if not _clear_of_ponds(x, z) or not _off_trail(x, z, 3.0):
                 continue
             surface = _drop_to_ground(ground, x, z)
             if surface is not None:
@@ -1192,7 +1348,7 @@ def build_volcano_props(ground):
             continue
         r = ring_radius(u, theta)
         x, z = math.cos(theta) * r, math.sin(theta) * r
-        if not _clear_of_ponds(x, z, 1.0):
+        if not _clear_of_ponds(x, z, 1.0) or not _off_trail(x, z, 2.0):
             continue
         surface = _drop_to_ground(ground, x, z)
         if surface is None:
@@ -1284,12 +1440,14 @@ def _lava_flow(bm, theta0, ground):
     u_end = random.uniform(0.78, 0.84)
     steps = 40  # dense: the straight strip between samples must not dip behind crag bulges
     us = [0.145 + (u_end - 0.145) * (i / (steps - 1)) for i in range(steps)]
-    theta = theta0
+    wander = random.uniform(0, math.tau)
     left, right = [], []
     last_h = LAVA_LEVEL + 0.4  # emerges from the crater lake surface
     for i, u in enumerate(us):
-        if i > 0:
-            theta += random.uniform(-0.03, 0.03)  # slight wander
+        # A BOUNDED wander (a slow sine, +-~3 deg) rather than a random walk:
+        # over 40 steps a walk could drift 20-plus degrees and stray across the
+        # switchback face, which must stay lava-free.
+        theta = theta0 + 0.055 * math.sin(wander + 4.0 * (i / (len(us) - 1)))
         r = ring_radius(u, theta)
         x, z = math.cos(theta) * r, math.sin(theta) * r
         frac = i / (steps - 1)
@@ -1418,8 +1576,10 @@ def build_volcano():
     ground = _ground_bvh(base)  # raycast target so every rock seats on the real surface
     objects = [
         base,
-        # Lava first: it records LAVA_PONDS, which the rock/prop scatter
+        # Terraces first: they record TRAIL_FOOTPRINTS, and lava first after
+        # that: it records LAVA_PONDS. Both are what the rock/prop scatter
         # keeps clear of.
+        build_volcano_terraces(ground),
         build_lava(ground),
         build_volcano_rocks(ground),
         *build_volcano_props(ground),
@@ -1467,141 +1627,641 @@ def _interior_spot(ground, u_lo, u_hi, pad=3.0, tries=40):
 
 
 # ---- Blackmire Fen --------------------------------------------------------
+#
+# The fen is built from an AUTHORED water network rather than scattered
+# puddles: a graph of pools joined by winding channels, with two tidal creeks
+# cutting out through the mud band to the sea. That graph does double duty -
+# it carves the landform (a heightfield displacement, so the ground genuinely
+# dips into every pool and channel) and it builds the Swamp_Water surface, so
+# water and terrain can never disagree. Everything else (reeds, snags, lilies,
+# trees) is placed FROM the network, which is what makes the island read as
+# composed instead of stamped.
+#
+# Only the swamp uses these helpers; the shared island machinery is untouched.
+
+FEN_WATER_Z = 3.2  # the fen's standing-water plane (Blender z; sea is 0)
+FEN_DEPTH = 1.6  # how far the peat is carved below a water surface
+FEN_BANK = 13.0  # studs from the water edge over which the bank climbs out
+FEN_ARENA = (0.0, -74.0, 36.0)  # keep-clear open ground for the boss fight
+
+_FEN_POOLS = []  # (x, y, r, water_z, depth)
+_FEN_CHANNELS = []  # (polyline of (x, y, water_z), half width, depth)
+_FEN_SEGMENTS = []  # flattened channel segments, for the distance field
+_FEN_MOUNDS = []  # (x, y, rx, ry, rot, height) gentle walkable swells
+_FEN_ISLETS = []  # (x, y, r, top_z) ground that rises back out of a pool
+
+
+def _fen_polar(theta_deg, u):
+    a = math.radians(theta_deg)
+    r = ring_radius(u, a)
+    return math.cos(a) * r, math.sin(a) * r
+
+
+def _fen_path(a, b, bow, rng, za, zb, steps=7):
+    """A winding polyline from a to b: bowed sideways and jittered, with the
+    water height ramping za -> zb along it."""
+    ax, ay = a
+    bx, by = b
+    dx, dy = bx - ax, by - ay
+    length = math.hypot(dx, dy)
+    px, py = (-dy / length, dx / length) if length > 0 else (0.0, 0.0)
+    pts = []
+    for i in range(steps + 1):
+        t = i / steps
+        swell = math.sin(math.pi * t)
+        off = bow * swell + rng.uniform(-3.0, 3.0) * swell
+        pts.append((ax + dx * t + px * off, ay + dy * t + py * off, za + (zb - za) * t))
+    return pts
+
+
+def _fen_channel(a, b, bow, rng, hw=7.0, za=None, zb=None, depth=FEN_DEPTH, steps=7):
+    za = FEN_WATER_Z if za is None else za
+    zb = FEN_WATER_Z if zb is None else zb
+    _FEN_CHANNELS.append((_fen_path(a, b, bow, rng, za, zb, steps), hw, depth))
+
+
+def _seg_dist(x, y, a, b):
+    ax, ay = a[0], a[1]
+    dx, dy = b[0] - ax, b[1] - ay
+    l2 = dx * dx + dy * dy
+    s = 0.0 if l2 == 0 else max(0.0, min(1.0, ((x - ax) * dx + (y - ay) * dy) / l2))
+    return math.hypot(x - (ax + dx * s), y - (ay + dy * s)), s
+
+
+def _fen_layout():
+    """Author the fen: pools, channels, creeks, swells, islets. Hand-placed
+    (a fixed local RNG only for the wander), so the composition is stable."""
+    rng = random.Random(20260826)
+    _FEN_POOLS.clear()
+    _FEN_CHANNELS.clear()
+    _FEN_SEGMENTS.clear()
+    _FEN_MOUNDS.clear()
+    _FEN_ISLETS.clear()
+
+    # -- the pool chain. The Mire Eye is the big central water; the rest hang
+    #    off it so the whole system reads as one drainage, not five puddles.
+    eye = _fen_polar(110, 0.15)
+    p1 = _fen_polar(40, 0.37)
+    p2 = _fen_polar(150, 0.39)
+    p3 = _fen_polar(196, 0.29)
+    p4 = _fen_polar(330, 0.45)
+    p5 = _fen_polar(78, 0.55)
+    p6 = _fen_polar(238, 0.66)
+    for (x, y), r in ((eye, 36.0), (p1, 25.0), (p2, 27.0), (p3, 19.0), (p4, 23.0), (p5, 18.0), (p6, 15.0)):
+        _FEN_POOLS.append((x, y, r, FEN_WATER_Z, FEN_DEPTH))
+
+    _fen_channel(eye, p1, 16.0, rng)
+    _fen_channel(eye, p2, -14.0, rng)
+    _fen_channel(eye, p3, 11.0, rng, hw=6.0)
+    _fen_channel(p1, p4, -13.0, rng, hw=6.5)
+    _fen_channel(p2, p5, 12.0, rng, hw=6.0)
+    _fen_channel(p3, p6, -10.0, rng, hw=5.5)
+    _fen_channel(p1, p5, 9.0, rng, hw=5.0)
+
+    # -- two tidal creeks: the fen drains to the sea, and the cuts break the
+    #    dead mud ring the old island had. Both stay well off the dock wedge.
+    for theta, src, bow in ((338, p4, 15.0), (142, p2, -15.0), (205, p3, 13.0)):
+        mouth = _fen_polar(theta, 1.04)
+        _fen_channel(src, mouth, bow, rng, hw=7.5, zb=0.2, depth=1.3, steps=9)
+
+    # -- brackish pans out in the mud band: standing water where the ring used
+    #    to be empty. Shallower, and only a hair above the sea.
+    for theta, u, r in ((22, 0.86, 17.0), (118, 0.87, 15.0), (168, 0.90, 14.0),
+                        (232, 0.86, 15.0), (300, 0.84, 13.0), (318, 0.90, 14.0)):
+        x, y = _fen_polar(theta, u)
+        _FEN_POOLS.append((x, y, r, 0.95, 1.15))
+
+    for pts, hw, depth in _FEN_CHANNELS:
+        for i in range(len(pts) - 1):
+            _FEN_SEGMENTS.append((pts[i], pts[i + 1], hw, depth))
+
+    # -- gentle interior swells (walkable: height/radius stays under ~0.25).
+    for x, y, rx, ry, rot, h in (
+        (-62, 62, 48, 34, 0.6, 4.4),
+        (72, 58, 42, 30, -0.4, 3.6),
+        (36, -98, 46, 30, 1.1, 3.2),
+        (-98, -36, 40, 28, 0.2, 4.0),
+        (-18, 112, 40, 26, -0.9, 3.4),
+        (112, -18, 34, 26, 0.5, 2.8),
+        (-40, -8, 30, 22, 0.9, 2.4),
+    ):
+        _FEN_MOUNDS.append((x, y, rx, ry, rot, h))
+
+    # -- mud bars: tangential ridges through the outer band so the shoreline
+    #    has relief instead of one flat apron.
+    for theta, u, h in ((8, 0.86, 2.3), (52, 0.82, 1.9), (96, 0.89, 2.5), (134, 0.84, 2.0),
+                        (176, 0.86, 2.2), (212, 0.83, 2.0), (302, 0.85, 2.1), (334, 0.89, 2.4)):
+        x, y = _fen_polar(theta, u)
+        _FEN_MOUNDS.append((x, y, 36.0, 13.0, math.radians(theta + 90), h))
+
+    # -- islets: ground rising back out of the water. The first carries the
+    #    landmark tree, so the island has a silhouette from the sea.
+    _FEN_ISLETS.append((eye[0] + 4.0, eye[1] + 6.0, 15.0, FEN_WATER_Z + 3.6))
+    _FEN_ISLETS.append((p2[0] - 6.0, p2[1] + 4.0, 8.0, FEN_WATER_Z + 2.0))
+    _FEN_ISLETS.append((p4[0] + 5.0, p4[1] - 3.0, 7.0, FEN_WATER_Z + 1.8))
+
+
+def _fen_guard(theta, u):
+    """1 where the fen may be reshaped, 0 across the dock/spawn wedge (that
+    ground is gameplay-keyed and must stay exactly as the profile made it)."""
+    a = math.radians(DOCK_ANGLE_DEG)
+    da = abs(((theta - a + math.pi) % math.tau) - math.pi)
+    wedge = smoothstep(0.20, 0.44, da)
+    near = smoothstep(0.58, 0.70, u)  # only guard the outer approach
+    return wedge * near + (1 - near)
+
+
+def _fen_relief(x, y, u):
+    """Hummocks and swells: the thing that stops the fen being a pancake."""
+    h = 0.0
+    for mx, my, rx, ry, rot, mh in _FEN_MOUNDS:
+        dx, dy = x - mx, y - my
+        c, s = math.cos(-rot), math.sin(-rot)
+        lx, ly = (dx * c - dy * s) / rx, (dx * s + dy * c) / ry
+        d = math.hypot(lx, ly)
+        if d < 1.0:
+            h += mh * (0.5 + 0.5 * math.cos(math.pi * d))
+    h += noise.noise(Vector((x * 0.017, y * 0.017, 4.3))) * 1.75
+    h += noise.noise(Vector((x * 0.052, y * 0.052, 11.7))) * 0.7
+    return h * (1 - smoothstep(0.93, 0.99, u))  # crisp shoreline for the foam
+
+
+def _fen_water_field(x, y):
+    """(blend, water_z, depth) of the nearest water feature - 1 inside the
+    pool/channel, falling to 0 a bank's width outside it."""
+    best, wz, dep = 0.0, FEN_WATER_Z, FEN_DEPTH
+    for px, py, pr, pz, pd in _FEN_POOLS:
+        t = 1.0 - smoothstep(0.0, FEN_BANK, math.hypot(x - px, y - py) - pr)
+        if t > best:
+            best, wz, dep = t, pz, pd
+    for a, b, hw, cd in _FEN_SEGMENTS:
+        d, s = _seg_dist(x, y, a, b)
+        t = 1.0 - smoothstep(0.0, FEN_BANK, d - hw)
+        if t > best:
+            best, wz, dep = t, a[2] + (b[2] - a[2]) * s, cd
+    return best, wz, dep
+
+
+def _fen_height(x, y):
+    """The fen's ground: the shared profile, plus relief, minus the water
+    network carved into it, plus islets rising back out."""
+    u = u_at(x, y)
+    theta = math.atan2(y, x)
+    guard = _fen_guard(theta, u)
+    h = profile_height(min(u, RINGS[-1])) + _fen_relief(x, y, u) * guard
+    t, wz, dep = _fen_water_field(x, y)
+    t *= guard
+    if t > 0:
+        h = h * (1 - t) + (wz - dep) * t
+    for ix, iy, ir, itop in _FEN_ISLETS:
+        d = math.hypot(x - ix, y - iy)
+        if d < ir * 1.2:
+            w = 1 - smoothstep(ir * 0.4, ir * 1.2, d)
+            h = max(h, h * (1 - w) + itop * w)
+    return h
+
+
+def _fen_material(x, y, u):
+    """Which of [peat, mud, wet mud] paints this patch of ground. The shared
+    base paints strict rings; the fen instead lets the peat edge WANDER (so
+    the green stops reading as an oval stamped on brown) and puts wet mud in
+    the low, water-adjacent parts of the band, which is what breaks the dead
+    ring the first pass had."""
+    if u > 1.0:
+        return 2
+    edge = GRASS_U + noise.noise(Vector((x * 0.0115, y * 0.0115, 21.0))) * 0.17
+    if u <= edge:
+        return 0
+    if _fen_water_field(x, y)[0] > 0.2:
+        return 2  # the creek cuts and pan margins stay wet
+    if noise.noise(Vector((x * 0.0125, y * 0.0125, 5.0))) > 0.22:
+        return 2  # wet flats scattered through the mud
+    return 1
+
+
+def build_swamp_base(base_name, material_names):
+    """The fen landform. Same radial-fan topology as the shared base, but every
+    vertex comes from _fen_height (so the pools and channels are cut into the
+    real mesh) and every face is painted by _fen_material."""
+    bm = bmesh.new()
+    center = bm.verts.new(Vector((0, 0, _fen_height(0, 0))))
+    rings = []
+    for u in RINGS[1:]:
+        ring = []
+        for s in range(SEGMENTS):
+            theta = (s / SEGMENTS) * math.tau
+            r = ring_radius(u, theta)
+            x, y = math.cos(theta) * r, math.sin(theta) * r
+            ring.append(bm.verts.new(Vector((x, y, _fen_height(x, y)))))
+        rings.append(ring)
+
+    for s in range(SEGMENTS):
+        f = bm.faces.new((center, rings[0][s], rings[0][(s + 1) % SEGMENTS]))
+        f.material_index = 0
+    for i in range(len(rings) - 1):
+        inner, outer = rings[i], rings[i + 1]
+        u_mid = (RINGS[i + 1] + RINGS[i + 2]) * 0.5
+        for s in range(SEGMENTS):
+            s2 = (s + 1) % SEGMENTS
+            f = bm.faces.new((inner[s], outer[s], outer[s2], inner[s2]))
+            cx = (inner[s].co.x + outer[s].co.x + outer[s2].co.x + inner[s2].co.x) * 0.25
+            cy = (inner[s].co.y + outer[s].co.y + outer[s2].co.y + inner[s2].co.y) * 0.25
+            f.material_index = _fen_material(cx, cy, u_mid)
+    return object_from_bmesh(base_name, bm, material_names)
+
+
+def _fen_disc(bm, cx, cy, r, squash, z_top, thickness, salt, seg=22):
+    """A pool surface: a barely-ragged ellipse, kept close to the carve radius
+    so the water never climbs its own bank."""
+    points = []
+    for s in range(seg):
+        a = (s / seg) * math.tau
+        w = 1 + 0.05 * math.sin(3 * a + salt) + 0.03 * math.sin(7 * a + salt * 2.1)
+        points.append((cx + math.cos(a) * r * w, cy + math.sin(a) * r * squash * w))
+    add_disc_slab(bm, points, z_top, thickness)
+
+
+def _fen_in_arena(x, y, pad=0.0):
+    ax, ay, ar = FEN_ARENA
+    return math.hypot(x - ax, y - ay) < ar + pad
 
 
 def build_swamp_water(ground):
-    """The fen's murky pools - the island's fishable water (waters="swamp").
-    A dozen broad, ragged peat pools threaded through the interior, plus a few
-    narrow joining channels, all ONE object: Swamp_Water is the contract name
-    World.FISHABLE_NAMES keys on."""
+    """The fen's water: every authored pool and channel as ONE object.
+    Swamp_Water is the contract name World.FISHABLE_NAMES keys on."""
     bm = bmesh.new()
     LAVA_PONDS.clear()
-    chains = 5
-    for c in range(chains):
-        theta = (c / chains) * math.tau + random.uniform(-0.25, 0.25)
-        u = random.uniform(0.18, 0.34)
-        prev = None
-        for k in range(random.randint(2, 3)):
-            if _near_dock_corridor(theta, u):
-                theta += 0.35
-            r = ring_radius(u, theta)
-            x, z = math.cos(theta) * r, math.sin(theta) * r
-            ground_h = _drop_to_ground(ground, x, z)
-            if ground_h is None:
-                ground_h = height_at(x, z)
-            # The pool surface floats just over the peat it drowned.
-            top = ground_h + 0.45
-            pr = random.uniform(14.0, 24.0)
-            _pool_disc(bm, x, z, pr, top, 3.0, salt=theta * 3 + k)
-            if prev is not None:
-                px, pz, ph = prev
-                seg = Vector((x - px, z - pz, 0))
-                if seg.length > 1:
-                    perp = Vector((-seg.y, seg.x, 0)).normalized() * random.uniform(3.0, 5.0)
-                    a_pt = Vector((px, pz, ph - 0.1))
-                    b_pt = Vector((x, z, top - 0.1))
-                    add_strip_slab(bm, [a_pt + perp, b_pt + perp], [a_pt - perp, b_pt - perp], 2.0)
-            prev = (x, z, top)
-            theta += random.uniform(-0.2, 0.2)
-            u += random.uniform(0.1, 0.16)
-    print(f"[island_gen] swamp water: {len(LAVA_PONDS)} pools")
+    for i, (x, y, r, wz, dep) in enumerate(_FEN_POOLS):
+        _fen_disc(bm, x, y, r * 0.97, random.uniform(0.82, 0.98), wz, dep + 0.9, salt=i * 1.7)
+        LAVA_PONDS.append((x, y, r))
+    for pts, hw, dep in _FEN_CHANNELS:
+        left, right = [], []
+        for i, (px, py, pz) in enumerate(pts):
+            nxt = pts[min(i + 1, len(pts) - 1)]
+            prv = pts[max(i - 1, 0)]
+            dx, dy = nxt[0] - prv[0], nxt[1] - prv[1]
+            n = math.hypot(dx, dy) or 1.0
+            ox, oy = -dy / n * hw * 0.95, dx / n * hw * 0.95
+            left.append(Vector((px + ox, py + oy, pz)))
+            right.append(Vector((px - ox, py - oy, pz)))
+            LAVA_PONDS.append((px, py, hw * 0.8))
+        add_strip_slab(bm, left, right, 2.2)
+    print(f"[island_gen] swamp water: {len(_FEN_POOLS)} pools, {len(_FEN_CHANNELS)} channels")
     return object_from_bmesh("Swamp_Water", bm, ["M_SwampWater"])
 
 
-def build_swamp_trees(ground):
-    """Bald-cypress stands: a tapered trunk flaring at the foot, knee roots
-    breaking the mud around it, and a wide flat moss canopy in two greens.
-    Trunks/knees and canopies are separate objects so each keeps one material."""
-    trunk_bm = bmesh.new()
-    canopy_bm = bmesh.new()
-    placed = 0
-    for _ in range(60):
-        spot = _interior_spot(ground, 0.10, 0.60, pad=2.0)
-        if spot is None:
-            continue
-        x, z, surface = spot
-        h = random.uniform(20.0, 34.0)
-        yaw = random.uniform(0, math.tau)
-        tilt = (random.uniform(-0.06, 0.06), random.uniform(-0.06, 0.06))
-        add_cone(trunk_bm, (x, z, surface - 1.2), random.uniform(2.4, 3.2), 0.8, h, sides=7, tilt=tilt, yaw=yaw)
-        for _ in range(random.randint(3, 5)):  # the knees
-            a = random.uniform(0, math.tau)
-            d = random.uniform(2.2, 5.0)
-            kx, kz = x + math.cos(a) * d, z + math.sin(a) * d
-            ks = _drop_to_ground(ground, kx, kz)
-            if ks is None:
-                continue
-            add_cone(trunk_bm, (kx, kz, ks - 0.4), random.uniform(0.5, 0.9), 0.2, random.uniform(1.4, 2.8), sides=5)
-        axis = cone_axis(tilt, yaw)
-        crown = Vector((x, z, surface - 1.2)) + axis * h
-        # Two stacked, flattened canopy pads - the classic cypress table-top.
-        s = random.uniform(9.0, 14.0)
-        add_blob(canopy_bm, (crown.x, crown.y, crown.z - 1.0), (s, s * 0.85, s * 0.30), 0.35, 40 + placed * 3.1, yaw)
-        add_blob(
+def _fen_mark(bm, first, index):
+    bm.faces.ensure_lookup_table()
+    for i in range(first, len(bm.faces)):
+        bm.faces[i].material_index = index
+
+
+def _fen_canopy_pad(bm, center, scale, salt, yaw, dark):
+    first = len(bm.faces)
+    add_blob(bm, center, scale, 0.35, salt, yaw)
+    _fen_mark(bm, first, 1 if dark else 0)
+
+
+def _fen_tree(trunk_bm, canopy_bm, ground, x, y, surf, kind, rng, salt):
+    """One tree. Three archetypes, each with its own trunk taper, root
+    treatment and canopy build, so no two stamps read alike."""
+    yaw = rng.uniform(0, math.tau)
+    tilt = (rng.uniform(-0.09, 0.09), rng.uniform(-0.09, 0.09))
+
+    if kind == "cypress":
+        h = rng.uniform(24.0, 44.0)
+        r0 = rng.uniform(2.2, 3.4)
+        add_cone(trunk_bm, (x, y, surf - 1.4), r0, r0 * 0.22, h, sides=7, tilt=tilt, yaw=yaw)
+        add_cone(trunk_bm, (x, y, surf - 1.6), r0 * 1.55, r0 * 0.9, rng.uniform(2.0, 3.4), sides=7, yaw=yaw)
+        for _ in range(rng.randint(4, 7)):  # cypress knees
+            a, d = rng.uniform(0, math.tau), rng.uniform(2.4, 6.5)
+            kx, ky = x + math.cos(a) * d, y + math.sin(a) * d
+            ks = _drop_to_ground(ground, kx, ky)
+            if ks is not None:
+                add_cone(trunk_bm, (kx, ky, ks - 0.5), rng.uniform(0.45, 0.95), 0.15, rng.uniform(1.2, 3.0), sides=5)
+        crown = Vector((x, y, surf - 1.4)) + cone_axis(tilt, yaw) * h
+        s = rng.uniform(8.5, 13.5)
+        _fen_canopy_pad(canopy_bm, (crown.x, crown.y, crown.z - 1.2), (s, s * 0.86, s * 0.26), salt, yaw, False)
+        _fen_canopy_pad(
             canopy_bm,
-            (crown.x + random.uniform(-2, 2), crown.y + random.uniform(-2, 2), crown.z + s * 0.16),
-            (s * 0.62, s * 0.55, s * 0.24),
-            0.35,
-            41 + placed * 3.1,
-            yaw,
+            (crown.x + rng.uniform(-2.5, 2.5), crown.y + rng.uniform(-2.5, 2.5), crown.z + s * 0.20),
+            (s * 0.6, s * 0.52, s * 0.22),
+            salt + 1.3,
+            yaw + 0.7,
+            True,
         )
-        placed += 1
-        if placed >= 26:
-            break
-    print(f"[island_gen] swamp trees: {placed} cypress")
+
+    elif kind == "mangrove":
+        h = rng.uniform(11.0, 18.0)
+        lean = rng.uniform(0.10, 0.26)
+        tilt = (math.cos(yaw) * lean, math.sin(yaw) * lean)
+        r0 = rng.uniform(1.3, 2.0)
+        add_cone(trunk_bm, (x, y, surf - 1.0), r0, r0 * 0.45, h, sides=6, tilt=tilt, yaw=yaw)
+        for k in range(rng.randint(4, 6)):  # stilt roots splaying to the mud
+            a = yaw + k * math.tau / 5 + rng.uniform(-0.3, 0.3)
+            d = rng.uniform(3.0, 5.5)
+            rx, ry = x + math.cos(a) * d, y + math.sin(a) * d
+            rs = _drop_to_ground(ground, rx, ry)
+            if rs is None:
+                continue
+            rise = max(1.0, (surf + h * 0.34) - rs)
+            add_cone(
+                trunk_bm, (rx, ry, rs - 0.4), 0.55, 0.22, math.hypot(d, rise),
+                sides=5, tilt=(math.atan2(d, rise), 0.0), yaw=a + math.pi,
+            )
+        crown = Vector((x, y, surf - 1.0)) + cone_axis(tilt, yaw) * h
+        s = rng.uniform(5.5, 8.5)
+        for k in range(3):
+            a = rng.uniform(0, math.tau)
+            _fen_canopy_pad(
+                canopy_bm,
+                (crown.x + math.cos(a) * s * 0.5, crown.y + math.sin(a) * s * 0.5, crown.z + rng.uniform(-1.0, 2.4)),
+                (s * rng.uniform(0.7, 1.05), s * rng.uniform(0.65, 0.95), s * rng.uniform(0.42, 0.62)),
+                salt + k * 2.1,
+                yaw + k,
+                k % 2 == 1,
+            )
+
+    else:  # "dead" - a bare drowned trunk, canopy-less, for silhouette variety
+        h = rng.uniform(13.0, 26.0)
+        lean = rng.uniform(0.05, 0.30)
+        tilt = (math.cos(yaw) * lean, math.sin(yaw) * lean)
+        r0 = rng.uniform(1.2, 2.1)
+        add_cone(trunk_bm, (x, y, surf - 1.2), r0, r0 * 0.2, h, sides=6, tilt=tilt, yaw=yaw)
+        axis = cone_axis(tilt, yaw)
+        for _ in range(rng.randint(1, 3)):  # broken branch stubs
+            t = rng.uniform(0.45, 0.85)
+            b = Vector((x, y, surf - 1.2)) + axis * h * t
+            add_cone(
+                trunk_bm, (b.x, b.y, b.z), rng.uniform(0.35, 0.6), 0.12, rng.uniform(3.0, 7.0),
+                sides=4, tilt=(rng.uniform(0.9, 1.3), 0.0), yaw=rng.uniform(0, math.tau),
+            )
+
+
+def _fen_landmark(trunk_bm, canopy_bm, ground):
+    """Old Gnashroot: the ancient cypress on the islet in the Mire Eye. The
+    island's silhouette from the sea and the boss's namesake."""
+    ix, iy, _, itop = _FEN_ISLETS[0]
+    surf = _drop_to_ground(ground, ix, iy)
+    if surf is None:
+        surf = itop
+    h = 74.0
+    rng = random.Random(99)
+    add_cone(trunk_bm, (ix, iy, surf - 2.0), 7.4, 1.5, h, sides=9)
+    add_cone(trunk_bm, (ix, iy, surf - 2.4), 11.0, 6.6, 7.0, sides=9)  # the flare
+    for k in range(9):  # buttress roots crawling off the islet
+        a = k * math.tau / 9 + 0.2
+        d = rng.uniform(9.0, 15.0)
+        rx, ry = ix + math.cos(a) * d, iy + math.sin(a) * d
+        rs = _drop_to_ground(ground, rx, ry)
+        if rs is None:
+            continue
+        rise = max(1.0, (surf + 7.0) - rs)
+        add_cone(
+            trunk_bm, (rx, ry, rs - 0.6), rng.uniform(1.5, 2.4), 0.7, math.hypot(d, rise),
+            sides=5, tilt=(math.atan2(d, rise), 0.0), yaw=a + math.pi,
+        )
+    for k in range(5):  # heavy limbs
+        a = k * math.tau / 5 + 0.5
+        b = Vector((ix, iy, surf - 2.0 + h * rng.uniform(0.58, 0.80)))
+        add_cone(
+            trunk_bm, (b.x, b.y, b.z), rng.uniform(1.1, 1.8), 0.4, rng.uniform(13.0, 22.0),
+            sides=5, tilt=(rng.uniform(0.75, 1.15), 0.0), yaw=a,
+        )
+    crown = surf - 2.0 + h
+    _fen_canopy_pad(canopy_bm, (ix, iy, crown - 6.0), (30.0, 26.0, 6.0), 3.0, 0.0, False)
+    _fen_canopy_pad(canopy_bm, (ix + 6, iy - 5, crown - 1.5), (21.0, 18.0, 5.0), 6.0, 0.8, True)
+    _fen_canopy_pad(canopy_bm, (ix - 7, iy + 6, crown + 1.0), (17.0, 15.0, 4.5), 9.0, 1.9, False)
+    _fen_canopy_pad(canopy_bm, (ix + 1, iy + 2, crown + 5.5), (12.0, 11.0, 4.0), 12.0, 2.7, True)
+    print("[island_gen] swamp landmark: Old Gnashroot placed on the Mire Eye islet")
+
+
+def build_swamp_trees(ground):
+    """Cypress stands, mangrove thickets and drowned snags - grouped into
+    stands with loners between them, so the canopy has rhythm."""
+    trunk_bm, canopy_bm = bmesh.new(), bmesh.new()
+    rng = random.Random(4041)
+    placed = 0
+
+    _fen_landmark(trunk_bm, canopy_bm, ground)
+
+    # Stands: a centre, then a handful of trees around it at mixed scales.
+    stands = [_fen_polar(theta, u) for theta, u in (
+        (62, 0.30), (128, 0.24), (168, 0.46), (14, 0.52), (300, 0.40),
+        (92, 0.62), (214, 0.44), (340, 0.66), (46, 0.70), (150, 0.68),
+        # Out on the mud band: scrubby thickets so the shoreline is composed
+        # instead of a dead empty ring.
+        (28, 0.83), (72, 0.87), (112, 0.81), (182, 0.85), (232, 0.84),
+        (316, 0.82), (350, 0.88), (198, 0.90),
+    )]
+    for cx, cy in stands:
+        for _ in range(rng.randint(3, 6)):
+            a, d = rng.uniform(0, math.tau), rng.uniform(4.0, 26.0)
+            x, y = cx + math.cos(a) * d, cy + math.sin(a) * d
+            if _fen_in_arena(x, y, 6.0) or not _clear_of_ponds(x, y, 1.5):
+                continue
+            if _near_dock_corridor(math.atan2(y, x), u_at(x, y)):
+                continue
+            surf = _drop_to_ground(ground, x, y)
+            if surf is None or _fen_water_field(x, y)[0] > 0.5:
+                continue
+            if u_at(x, y) > 0.76:  # out on the mud: low, wind-bent, sparse
+                kind = "mangrove" if rng.random() < 0.6 else "dead"
+            else:
+                kind = "cypress" if rng.random() < 0.62 else ("mangrove" if rng.random() < 0.6 else "dead")
+            _fen_tree(trunk_bm, canopy_bm, ground, x, y, surf, kind, rng, salt=40 + placed * 3.1)
+            placed += 1
+
+    # Mangroves hugging the pool rims - the thing that makes water read as water.
+    for px, py, pr, wz, _dep in _FEN_POOLS:
+        for _ in range(rng.randint(2, 4)):
+            a, d = rng.uniform(0, math.tau), pr + rng.uniform(1.0, 7.0)
+            x, y = px + math.cos(a) * d, py + math.sin(a) * d
+            if _fen_in_arena(x, y, 4.0) or _near_dock_corridor(math.atan2(y, x), u_at(x, y)):
+                continue
+            surf = _drop_to_ground(ground, x, y)
+            if surf is None or surf < wz - 1.2:
+                continue
+            kind = "mangrove" if rng.random() < 0.75 else "dead"
+            _fen_tree(trunk_bm, canopy_bm, ground, x, y, surf, kind, rng, salt=200 + placed * 2.7)
+            placed += 1
+
+    print(f"[island_gen] swamp trees: {placed} + landmark")
     return (
         object_from_bmesh("Swamp_Trunks", trunk_bm, ["M_Cypress"]),
-        object_from_bmesh("Swamp_Canopy", canopy_bm, ["M_Moss"]),
+        object_from_bmesh("Swamp_Canopy", canopy_bm, ["M_Moss", "M_MossDark"]),
     )
 
 
+def _fen_water_edge_points(rng, count_per_pool=(6, 10)):
+    """Sample points just outside every pool rim and along every channel bank -
+    where reeds and logs belong."""
+    pts = []
+    for px, py, pr, wz, _d in _FEN_POOLS:
+        for _ in range(rng.randint(*count_per_pool)):
+            a = rng.uniform(0, math.tau)
+            d = pr + rng.uniform(-1.0, 5.5)
+            pts.append((px + math.cos(a) * d, py + math.sin(a) * d, wz))
+    for line, hw, _d in _FEN_CHANNELS:
+        for i in range(len(line) - 1):
+            a, b = line[i], line[i + 1]
+            dx, dy = b[0] - a[0], b[1] - a[1]
+            n = math.hypot(dx, dy) or 1.0
+            t = rng.uniform(0.25, 0.75)
+            cx, cy = a[0] + dx * t, a[1] + dy * t
+            for side in (1, -1):
+                if rng.random() < 0.25:  # gaps, so the channel stays readable
+                    continue
+                off = (hw + rng.uniform(-0.5, 3.5)) * side
+                pts.append((cx - dy / n * off, cy + dx / n * off, a[2] + (b[2] - a[2]) * t))
+    return pts
+
+
 def build_swamp_props(ground):
-    """Reed brakes around the pools, half-sunk root snags, and mud hummocks."""
+    """Reed brakes hugging every water edge, driftwood and half-sunk logs
+    placed on the banks, mud hummocks breaking up the flats, and bog stones."""
+    rng = random.Random(777)
+
     reed_bm = bmesh.new()
-    for px, py, pr in list(LAVA_PONDS):
-        for _ in range(random.randint(6, 10)):
-            a = random.uniform(0, math.tau)
-            d = pr + random.uniform(1.0, 5.0)
-            x, z = px + math.cos(a) * d, py + math.sin(a) * d
-            surface = _drop_to_ground(ground, x, z)
-            if surface is None:
+    stems = 0
+    for x, y, wz in _fen_water_edge_points(rng):
+        surf = _drop_to_ground(ground, x, y)
+        if surf is None or surf > wz + 2.2 or surf < wz - 1.6:
+            continue
+        for _ in range(rng.randint(3, 6)):
+            ox, oy = x + rng.uniform(-2.2, 2.2), y + rng.uniform(-2.2, 2.2)
+            base = _drop_to_ground(ground, ox, oy)
+            if base is None:
                 continue
-            for _ in range(random.randint(3, 6)):  # one brake = a few stems
-                ox, oz = x + random.uniform(-1.6, 1.6), z + random.uniform(-1.6, 1.6)
-                add_post(reed_bm, ox, oz, surface - 0.3, surface + random.uniform(2.4, 4.6), 0.16, sides=4)
+            add_post(reed_bm, ox, oy, base - 0.4, max(base, wz) + rng.uniform(2.0, 4.4), rng.uniform(0.12, 0.2), sides=4)
+            stems += 1
+
+    # Saltmarsh tufts: sparse reed clumps out on the mud band, so the ring
+    # has ground cover between the thickets instead of bare brown.
+    tufts = 0
+    for _ in range(260):
+        theta = rng.uniform(0, math.tau)
+        u = rng.uniform(0.76, 0.97)
+        if _near_dock_corridor(theta, u):
+            continue
+        r = ring_radius(u, theta)
+        x, y = math.cos(theta) * r, math.sin(theta) * r
+        base = _drop_to_ground(ground, x, y)
+        if base is None or base < 0.2:
+            continue
+        for _ in range(rng.randint(2, 4)):
+            ox, oy = x + rng.uniform(-2.5, 2.5), y + rng.uniform(-2.5, 2.5)
+            b = _drop_to_ground(ground, ox, oy)
+            if b is None:
+                continue
+            add_post(reed_bm, ox, oy, b - 0.4, b + rng.uniform(1.4, 3.0), rng.uniform(0.11, 0.18), sides=4)
+            stems += 1
+        tufts += 1
 
     snag_bm = bmesh.new()
-    for _ in range(16):
-        spot = _interior_spot(ground, 0.12, 0.72, pad=1.0)
-        if spot is None:
+    logs = 0
+    for x, y, wz in _fen_water_edge_points(random.Random(31), count_per_pool=(2, 3)):
+        if logs >= 26:
+            break
+        surf = _drop_to_ground(ground, x, y)
+        if surf is None or _fen_in_arena(x, y, 2.0):
             continue
-        x, z, surface = spot
-        yaw = random.uniform(0, math.tau)
-        tilt = (random.uniform(0.5, 1.1), 0.0)  # mostly toppled
-        add_cone(snag_bm, (x, z, surface - 0.8), random.uniform(1.2, 2.0), 0.4, random.uniform(9.0, 17.0), sides=6, tilt=tilt, yaw=yaw)
+        yaw = rng.uniform(0, math.tau)
+        if rng.random() < 0.55:  # a log lying half in the water
+            add_cone(snag_bm, (x, y, surf + 0.5), rng.uniform(1.0, 1.7), rng.uniform(0.5, 1.0),
+                     rng.uniform(10.0, 20.0), sides=6, tilt=(rng.uniform(1.42, 1.62), 0.0), yaw=yaw)
+        else:  # a leaning dead trunk
+            add_cone(snag_bm, (x, y, surf - 0.8), rng.uniform(1.0, 1.6), 0.35, rng.uniform(8.0, 15.0),
+                     sides=6, tilt=(rng.uniform(0.35, 0.9), 0.0), yaw=yaw)
+        logs += 1
 
     hummock_bm = bmesh.new()
-    for i in range(46):
-        spot = _interior_spot(ground, 0.08, 0.85, pad=1.0, tries=12)
+    mounds = 0
+    for i in range(90):
+        spot = _interior_spot(ground, 0.10, 0.97, pad=1.0, tries=10)
         if spot is None:
             continue
-        x, z, surface = spot
-        s = random.uniform(2.0, 5.0)
-        add_blob(hummock_bm, (x, z, surface - s * 0.35), (s, s * 0.8, s * 0.5), 0.4, 700 + i * 4.7, yaw=random.uniform(0, math.tau))
+        x, y, surface = spot
+        if _fen_in_arena(x, y, -8.0):
+            continue
+        s = rng.uniform(2.0, 6.0)
+        add_blob(hummock_bm, (x, y, surface - s * 0.42), (s, s * rng.uniform(0.6, 0.9), s * rng.uniform(0.35, 0.55)),
+                 0.4, 700 + i * 4.7, yaw=rng.uniform(0, math.tau))
+        mounds += 1
 
+    stone_bm = bmesh.new()
+    stones = 0
+    for theta, u in ((30, 0.80), (86, 0.92), (160, 0.78), (192, 0.93), (250, 0.90), (322, 0.79), (352, 0.90), (120, 0.72)):
+        x, y = _fen_polar(theta, u)
+        surf = _drop_to_ground(ground, x, y)
+        if surf is None:
+            continue
+        s = rng.uniform(4.5, 9.5)
+        add_blob(stone_bm, (x, y, surf - s * 0.34), (s, s * rng.uniform(0.7, 1.0), s * rng.uniform(0.45, 0.8)),
+                 0.55, 900 + theta, yaw=rng.uniform(0, math.tau))
+        # A smaller companion, so each stone reads as an outcrop not a cone.
+        add_blob(stone_bm, (x + rng.uniform(-7, 7), y + rng.uniform(-7, 7), surf - s * 0.25),
+                 (s * 0.55, s * 0.45, s * 0.35), 0.55, 950 + theta, yaw=rng.uniform(0, math.tau))
+        stones += 2
+    # One leaning menhir on the north bar, a second silhouette cue.
+    lx, ly = _fen_polar(96, 0.80)
+    ls = _drop_to_ground(ground, lx, ly)
+    if ls is not None:
+        add_cone(stone_bm, (lx, ly, ls - 1.5), 4.2, 2.6, 19.0, sides=6, tilt=(0.22, 0.10), yaw=0.6)
+        stones += 1
+
+    print(f"[island_gen] swamp props: {stems} reed stems ({tufts} marsh tufts), {logs} snags, {mounds} hummocks, {stones} stones")
     return (
         object_from_bmesh("Swamp_Reeds", reed_bm, ["M_Reed"]),
         object_from_bmesh("Swamp_Snags", snag_bm, ["M_RootWood"]),
         object_from_bmesh("Swamp_Hummocks", hummock_bm, ["M_MudMound"]),
+        object_from_bmesh("Swamp_Stones", stone_bm, ["M_BogStone"]),
     )
 
 
+def build_swamp_lilies():
+    """Lily pads floating on the fen: flat discs a hair above each water
+    surface. Cheap, and they are what makes the murk read as water at range."""
+    bm = bmesh.new()
+    rng = random.Random(1212)
+    pads = 0
+    for px, py, pr, wz, _d in _FEN_POOLS:
+        for _ in range(rng.randint(10, 18)):
+            a, d = rng.uniform(0, math.tau), pr * math.sqrt(rng.uniform(0.05, 0.92))
+            r = rng.uniform(1.3, 3.2)
+            cx, cy = px + math.cos(a) * d, py + math.sin(a) * d
+            pts = []
+            for s in range(7):
+                t = (s / 7) * math.tau
+                w = 1 + 0.12 * math.sin(3 * t + a)
+                pts.append((cx + math.cos(t) * r * w, cy + math.sin(t) * r * w))
+            add_disc_slab(bm, pts, wz + 0.08, 0.08)
+            pads += 1
+    for line, hw, _d in _FEN_CHANNELS:
+        for i in range(len(line) - 1):
+            if rng.random() < 0.5:
+                continue
+            a, b = line[i], line[i + 1]
+            t = rng.uniform(0.2, 0.8)
+            cx, cy = a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t
+            cz = a[2] + (b[2] - a[2]) * t
+            off = rng.uniform(-hw * 0.6, hw * 0.6)
+            r = rng.uniform(1.2, 2.4)
+            pts = [(cx + off + math.cos((s / 7) * math.tau) * r, cy + math.sin((s / 7) * math.tau) * r) for s in range(7)]
+            add_disc_slab(bm, pts, cz + 0.08, 0.08)
+            pads += 1
+    print(f"[island_gen] swamp lilies: {pads} pads")
+    return object_from_bmesh("Swamp_Lilies", bm, ["M_Lily"])
+
+
 def build_swamp():
-    base = build_island_base("Swamp_Base", ["M_Peat", "M_Mud", "M_WetMud"])
+    _fen_layout()
+    base = build_swamp_base("Swamp_Base", ["M_Peat", "M_Mud", "M_WetMud"])
     ground = _ground_bvh(base)
     objects = [
         base,
-        build_swamp_water(ground),  # first: records the keep-clear pools
+        build_swamp_water(ground),  # records the keep-clear pools
+        build_swamp_lilies(),
         *build_swamp_trees(ground),
         *build_swamp_props(ground),
         *build_dock("Swamp_Dock_Planks", "Swamp_Dock_Posts", "M_SwampPlank", "M_SwampPost"),
@@ -1609,7 +2269,9 @@ def build_swamp():
     ]
     a = math.radians(DOCK_ANGLE_DEG)
     start_r = ring_radius(DOCK_START_U, a)
-    print(f"[island_gen] HANDOFF swamp: dock start (Roblox rel) X=0 Z={start_r:.0f}, spawn suggestion X=0 Z={start_r - 18:.0f} ground Y~{height_at(0, -(start_r - 18)):.1f}")
+    ax, ay, ar = FEN_ARENA
+    print(f"[island_gen] HANDOFF swamp: dock start (Roblox rel) X=0 Z={start_r:.0f}, spawn suggestion X=0 Z={start_r - 18:.0f} ground Y~{_fen_height(0, -(start_r - 18)):.1f}")
+    print(f"[island_gen] HANDOFF swamp: boss arena (Roblox rel) X={ax:.0f} Z={-ay:.0f} radius {ar:.0f}, ground Y~{_fen_height(ax, ay):.1f}")
     return objects
 
 
@@ -1754,102 +2416,417 @@ def build_frostmaw():
 
 
 # ---- Gloomtrench ----------------------------------------------------------
+#
+# The trench shelf is an AMPHITHEATRE OF DARKNESS. A craggy crown ring stands
+# out of the sea; inside it the rock TERRACES DOWN, step by step, to one
+# lightless lake at the bottom. The player lands at the dock, crosses the
+# apron, walks through a gate in the crown flanked by monoliths, and looks
+# down into the pit - where every scrap of light in the composition lives:
+# groves of giant glowing mushrooms, anemone beds at the waterline, crystal
+# clusters on the risers, and glowing veins tracing the terrace lips so the
+# routes read even with the lantern out. Everything below is self-contained to
+# this island (shared helpers untouched).
+
+GLOOM_PATH = []  # centre line (Blender x, y) of the lit route, for keep-clear
+GLOOM_LAKE_R = 46.0  # nominal radius of the dark lake in the pit
+GLOOM_TERRACE_LIPS = (0.325, 0.415, 0.495)  # u of each riser top - the lit contours
+
+
+def _gloom_path_points():
+    """The walked route: in from the dock landing, across the apron, through
+    the gate in the crown, down the terraces, then a promenade around the
+    lake."""
+    a = math.radians(DOCK_ANGLE_DEG)
+    ca, sa = math.cos(a), math.sin(a)
+    pts = []
+    u = 0.90
+    while u > 0.275:
+        r = ring_radius(u, a)
+        sway = 12.0 * math.sin((0.92 - u) * 7.0)  # a lazy S so it isn't a spoke
+        pts.append((ca * r - sa * sway, sa * r + ca * sway))
+        u -= 0.013
+    lx, ly = pts[-1]
+    r0 = math.hypot(lx, ly)
+    a0 = math.atan2(ly, lx)
+    for k in range(1, 19):  # lakeside promenade
+        ang = a0 + k * 0.125
+        pts.append((math.cos(ang) * r0, math.sin(ang) * r0))
+    return pts
+
+
+def _gloom_off_path(x, y, clear=12.0):
+    """True if (x, y) is far enough off the walked route to drop a prop."""
+    c2 = clear * clear
+    return all((x - px) ** 2 + (y - py) ** 2 > c2 for px, py in GLOOM_PATH)
+
+
+def _gloom_spot(ground, u_lo, u_hi, pad=3.0, clear=12.0, tries=24):
+    """_interior_spot, additionally kept off the lit route."""
+    for _ in range(tries):
+        spot = _interior_spot(ground, u_lo, u_hi, pad=pad, tries=3)
+        if spot is None:
+            continue
+        if _gloom_off_path(spot[0], spot[1], clear):
+            return spot
+    return None
 
 
 def build_gloom_water(ground):
-    """The trench shelf's lightless pools (waters="gloom"): near-black water
-    sunk between the basalt shelves. One object, Gloomtrench_DarkWater."""
+    """The lightless lake at the floor of the amphitheatre - the island's
+    fishable water (waters="gloom"). ONE ragged sheet, flat and horizontal a
+    hair above the waterline, pooled in the pit the terraces step down to and
+    castable from the shelving bank that rings it. Gloomtrench_DarkWater is
+    the contract name World.FISHABLE_NAMES keys on."""
     bm = bmesh.new()
     LAVA_PONDS.clear()
-    placed = 0
-    for _ in range(120):
-        if placed >= 8:
-            break
-        theta = random.uniform(0, math.tau)
-        u = random.uniform(0.22, 0.62)
-        if _near_dock_corridor(theta, u):
-            continue
-        r = ring_radius(u, theta)
-        x, z = math.cos(theta) * r, math.sin(theta) * r
-        if not _clear_of_ponds(x, z, 10.0):
-            continue
-        ground_h = _drop_to_ground(ground, x, z)
-        if ground_h is None:
-            continue
-        pr = random.uniform(13.0, 22.0)
-        _pool_disc(bm, x, z, pr, ground_h + 0.4, 3.4, salt=x * 0.11 + placed)
-        placed += 1
-    print(f"[island_gen] gloom water: {placed} pools")
+    _jagged_disc(bm, 0.0, 0.0, GLOOM_LAKE_R, GLOOM_LAKE_R * 0.92, 0.35, 4.6, salt=2.3, seg=40)
+    LAVA_PONDS.append((0.0, 0.0, GLOOM_LAKE_R * 0.98))
+    print(f"[island_gen] gloom water: 1 lake, r~{GLOOM_LAKE_R:.0f} at z=0.35")
     return object_from_bmesh("Gloomtrench_DarkWater", bm, ["M_DarkWater"])
 
 
+def _gloom_fin(bm, x, y, surface, half_w, half_h, salt, yaw, thin=0.42):
+    """One black basalt fin: a tall slab-ish blob, base buried in the ground."""
+    add_blob(bm, (x, y, surface + half_h * 0.78), (half_w, half_w * thin, half_h), 0.5, salt, yaw=yaw)
+
+
+def _gloom_arch(bm, cx, cy, surface, span, height, thick, yaw, salt):
+    """Two leaning legs and a capstone - a sea-arch of trench rock."""
+    dx, dy = math.cos(yaw), math.sin(yaw)
+    for sgn in (-1, 1):
+        add_blob(
+            bm,
+            (cx + dx * span * sgn, cy + dy * span * sgn, surface + height * 0.48),
+            (thick, thick * 0.8, height * 0.55),
+            0.26,
+            salt + sgn * 3.0,
+            yaw=yaw,
+        )
+    add_blob(bm, (cx, cy, surface + height * 1.0), (span * 1.22, thick * 0.85, thick * 0.7), 0.3, salt + 7.0, yaw=yaw)
+
+
 def build_gloom_spires(ground):
-    """The trench-rock skyline: a ring of tall black fins around the crown and
-    clusters of leaning shards over the shelf."""
+    """The silhouette: a broken crown of fins around the amphitheatre rim with
+    a GATE punched through it above the dock, two monoliths flanking that
+    gate, stone arches on the apron and the crown (the landmark seen from the
+    sea), shards on the terraces and fangs standing out of the lake."""
     bm = bmesh.new()
-    for i in range(14):
-        theta = (i / 14) * math.tau + random.uniform(-0.14, 0.14)
-        u = random.uniform(0.05, 0.22)
-        r = ring_radius(u, theta)
-        x, z = math.cos(theta) * r, math.sin(theta) * r
-        surface = _drop_to_ground(ground, x, z)
+    a = math.radians(DOCK_ANGLE_DEG)
+
+    # --- the crown: a BROKEN wall, not a picket fence. Fins come in clumps
+    #     with real gaps between them, sizes range from knee-high wedges to
+    #     hero towers, and wide slabs fill in as wall between the spikes.
+    clumps = 16
+    for c in range(clumps):
+        theta_c = (c / clumps) * math.tau + random.uniform(-0.12, 0.12)
+        da = abs(((theta_c - a + math.pi) % math.tau) - math.pi)
+        if da < 0.27:  # the gate stays open
+            continue
+        hero = c % 3 == 0
+        for k in range(random.randint(2, 4)):
+            theta = theta_c + random.uniform(-0.16, 0.16)
+            u = random.uniform(0.51, 0.60)
+            r = ring_radius(u, theta)
+            x, y = math.cos(theta) * r, math.sin(theta) * r
+            surface = _drop_to_ground(ground, x, y)
+            if surface is None:
+                continue
+            if hero and k == 0:
+                w, h, thin = random.uniform(6.5, 9.5), random.uniform(26.0, 38.0), random.uniform(0.38, 0.58)
+            elif k == 1:
+                w, h, thin = random.uniform(7.5, 12.0), random.uniform(9.0, 16.0), random.uniform(0.7, 1.0)
+            else:
+                w = random.uniform(3.2, 7.0)
+                h = w * random.uniform(2.0, 3.8)
+                thin = random.uniform(0.35, 0.7)
+            _gloom_fin(bm, x, y, surface, w, h, 150 + c * 17.3 + k * 5.1, yaw=theta + random.uniform(-0.6, 0.6), thin=thin)
+
+    # --- the gate: two monoliths either side of the way in, the tallest rock
+    #     on the island, so the entrance reads from out at sea.
+    r_gate = ring_radius(0.555, a)
+    for sgn in (-1, 1):
+        gx = math.cos(a) * r_gate - math.sin(a) * 22.0 * sgn
+        gy = math.sin(a) * r_gate + math.cos(a) * 22.0 * sgn
+        surface = _drop_to_ground(ground, gx, gy)
         if surface is None:
             continue
-        s = random.uniform(3.5, 7.0)
-        h = s * random.uniform(2.4, 3.8)
-        add_blob(bm, (x, z, surface + h * 0.1), (s, s * 0.55, h), 0.42, 150 + i * 6.3, yaw=random.uniform(0, math.tau))
-    for i in range(26):
-        spot = _interior_spot(ground, 0.24, 0.80, pad=2.5, tries=14)
+        _gloom_fin(bm, gx, gy, surface, 6.8, 38.0, 40 + sgn * 11, yaw=a + 0.22 * sgn, thin=0.5)
+        _gloom_fin(bm, gx + 7.0 * sgn, gy - 7.0, surface, 5.0, 14.0, 60 + sgn * 5, yaw=a - 0.4 * sgn, thin=0.8)
+
+    # --- the cathedral: three towers leaning together on the far shoulder,
+    #     the tallest thing on the island and the landmark off the open sea.
+    th_c = a + math.radians(150.0)
+    r_c = ring_radius(0.545, th_c)
+    cx, cy = math.cos(th_c) * r_c, math.sin(th_c) * r_c
+    for k, (dx, dy, w, h) in enumerate(((0.0, 0.0, 8.0, 44.0), (-13.0, 6.0, 6.0, 33.0), (11.0, -7.0, 5.4, 27.0))):
+        px, py = cx + dx, cy + dy
+        surface = _drop_to_ground(ground, px, py)
+        if surface is None:
+            continue
+        _gloom_fin(bm, px, py, surface, w, h, 3100 + k * 12.5, yaw=th_c + 0.3 * k, thin=0.52)
+
+    # --- arches: two on the apron beside the dock (seen from the boat), one
+    #     riding the crown on the far shoulder.
+    for u_arch, off_deg, span, height, thick, salt in (
+        (0.83, 27.0, 17.0, 26.0, 3.8, 310.0),
+        (0.56, 122.0, 19.0, 30.0, 4.4, 420.0),
+        (0.79, -33.0, 14.0, 21.0, 3.2, 530.0),
+    ):
+        th = a + math.radians(off_deg)
+        r = ring_radius(u_arch, th)
+        x, y = math.cos(th) * r, math.sin(th) * r
+        surface = _drop_to_ground(ground, x, y)
+        if surface is not None:
+            _gloom_arch(bm, x, y, surface, span, height, thick, th + math.pi / 2, salt)
+
+    # --- shards scattered over the terraces (kept off the walked route).
+    for i in range(22):
+        spot = _gloom_spot(ground, 0.26, 0.50, pad=3.0, clear=13.0)
         if spot is None:
             continue
-        x, z, surface = spot
-        s = random.uniform(1.6, 4.6)
-        h = s * random.uniform(1.4, 2.6)
-        add_blob(bm, (x, z, surface - s * 0.2), (s, s * 0.7, h), 0.46, 500 + i * 4.1, yaw=random.uniform(0, math.tau))
+        x, y, surface = spot
+        w = random.uniform(1.8, 4.6)
+        h = w * random.uniform(1.6, 3.2)
+        _gloom_fin(bm, x, y, surface, w, h, 500 + i * 4.1, yaw=random.uniform(0, math.tau), thin=random.uniform(0.4, 0.8))
+
+    # --- fangs standing out of the dark lake: the centrepiece of the pit.
+    for i in range(7):
+        ang = (i / 7) * math.tau + 0.4
+        d = GLOOM_LAKE_R * random.uniform(0.25, 0.78)
+        x, y = math.cos(ang) * d, math.sin(ang) * d
+        h = random.uniform(7.0, 15.0)
+        _gloom_fin(bm, x, y, -4.0, random.uniform(2.0, 4.0), h, 700 + i * 8.7, yaw=ang + 0.6, thin=0.5)
+
+    # --- the apron and the shallows: clumps of boulders and a few sea stacks
+    #     so the outer shelf isn't an empty pancake and the coast reads broken.
+    for i in range(8):
+        theta = random.uniform(0, math.tau)
+        da = abs(((theta - a + math.pi) % math.tau) - math.pi)
+        if da < 0.16:
+            continue
+        cu = random.uniform(0.70, 0.98)
+        cr = ring_radius(cu, theta)
+        cx, cy = math.cos(theta) * cr, math.sin(theta) * cr
+        if not _gloom_off_path(cx, cy, 15.0):
+            continue
+        for k in range(random.randint(2, 5)):
+            x, y = cx + random.uniform(-9, 9), cy + random.uniform(-9, 9)
+            surface = _drop_to_ground(ground, x, y)
+            if surface is None:
+                continue
+            w = random.uniform(2.4, 6.5)
+            add_blob(bm, (x, y, surface + w * 0.45), (w, w * random.uniform(0.6, 1.0), w * random.uniform(0.5, 1.1)), 0.42, 2000 + i * 9.1 + k, yaw=random.uniform(0, math.tau))
+    for i in range(6):
+        theta = a + math.radians(random.choice((52, 88, 133, -60, -104, 160))) + random.uniform(-0.08, 0.08)
+        r = ring_radius(random.uniform(1.05, 1.14), theta)
+        x, y = math.cos(theta) * r, math.sin(theta) * r
+        w = random.uniform(3.0, 6.0)
+        _gloom_fin(bm, x, y, -6.0, w, random.uniform(9.0, 16.0), 2500 + i * 13.7, yaw=theta + 0.7, thin=random.uniform(0.5, 0.9))
+
     return object_from_bmesh("Gloomtrench_Spires", bm, ["M_GloomRock"])
 
 
+def build_gloom_path(ground):
+    """The lit route, as pale flagstones: dock landing -> gate -> terraces ->
+    lakeside promenade. Purely so the walk READS in a near-black scene; the
+    slabs sit a hair proud of the ground and the glow veins line them."""
+    bm = bmesh.new()
+    pts = GLOOM_PATH
+    for i, (x, y) in enumerate(pts):
+        nx, ny = pts[min(i + 1, len(pts) - 1)]
+        px, py = pts[max(i - 1, 0)]
+        yaw = math.atan2(ny - py, nx - px)
+        surface = _drop_to_ground(ground, x, y)
+        if surface is None:
+            continue
+        add_box(bm, (x, y, surface - 0.55), (12.5, 8.0, 1.8), yaw=yaw + math.pi / 2)
+    return object_from_bmesh("Gloomtrench_Path", bm, ["M_GloomPath"])
+
+
+def _gloom_mushroom(stalk_bm, cap_bm, x, y, surface, cap_r, stem_h, salt):
+    """A glowing trench mushroom: a dark stem carrying a big luminous cap."""
+    stem_r = max(0.45, cap_r * 0.20)
+    add_cone(stalk_bm, (x, y, surface - 0.8), stem_r * 1.35, stem_r * 0.75, stem_h, sides=6)
+    squash = 0.42 if (int(salt) % 3) else 0.85  # parasols, and rounder domes
+    add_blob(cap_bm, (x, y, surface + stem_h), (cap_r, cap_r * 0.94, cap_r * squash), 0.16, salt)
+
+
+def _gloom_grove(ground, stalk_bm, cap_bm, cx, cy, radius, count, scale, salt):
+    """A CLUSTER of mushrooms with one hero at its heart - glow is grouped
+    into focal clumps, never sprinkled."""
+    for i in range(count):
+        ang = random.uniform(0, math.tau)
+        d = 0.0 if i == 0 else radius * math.sqrt(random.random())
+        x, y = cx + math.cos(ang) * d, cy + math.sin(ang) * d
+        surface = _drop_to_ground(ground, x, y)
+        if surface is None:
+            continue
+        cap_r = scale * (random.uniform(7.5, 10.5) if i == 0 else random.uniform(1.9, 4.4))
+        stem_h = cap_r * random.uniform(1.6, 2.6)
+        _gloom_mushroom(stalk_bm, cap_bm, x, y, surface, cap_r, stem_h, salt + i * 3.7)
+
+
+def _gloom_anemones(bm, ground, x, y, r, count, salt, base=None):
+    """A bed of fat glowing bulbs mounded on the ground - the waterline beds."""
+    for i in range(count):
+        ang = random.uniform(0, math.tau)
+        d = r * math.sqrt(random.random())
+        px, py = x + math.cos(ang) * d, y + math.sin(ang) * d
+        surface = _drop_to_ground(ground, px, py) if base is None else base
+        if surface is None:
+            continue
+        s = random.uniform(1.4, 3.8) * (1.35 - 0.5 * d / max(r, 0.01))
+        add_blob(bm, (px, py, surface + s * 0.45), (s, s, s * 1.15), 0.3, salt + i * 2.3, yaw=ang)
+
+
+def _gloom_crystals(bm, ground, x, y, r, count, h_max, salt, base=None):
+    """A cluster of glowing shards spiking out of the rock."""
+    for i in range(count):
+        ang = random.uniform(0, math.tau)
+        d = r * math.sqrt(random.random())
+        px, py = x + math.cos(ang) * d, y + math.sin(ang) * d
+        surface = _drop_to_ground(ground, px, py) if base is None else base
+        if surface is None:
+            continue
+        h = h_max * random.uniform(0.35, 1.0)
+        add_cone(
+            bm,
+            (px, py, surface - 0.9),
+            h * random.uniform(0.10, 0.17),
+            0.06,
+            h,
+            sides=5,
+            tilt=(random.uniform(-0.28, 0.28), random.uniform(-0.28, 0.28)),
+            yaw=random.uniform(0, math.tau),
+        )
+
+
 def build_gloom_glow(ground):
-    """The bioluminescence that carries the island's identity: lantern stalks
-    (a thin stem with a glowing bulb), glow-anemone clusters at the pool rims,
-    and drifting glow kelp fronds. Bulbs/anemones in cyan, kelp in violet -
-    two objects so each keeps one flat glow colour."""
+    """Everything that gives light. Groves of giant mushrooms ring the lake
+    and greet the dock, anemone beds crowd the waterline, crystal clusters
+    spike the terrace risers, and thin veins of shards trace the terrace lips
+    and the flagstone route so the composition still reads with the lantern
+    out. Cyan carries the mushroom caps/anemones, violet the crystals - two
+    objects so each keeps one flat Neon colour."""
     stalk_bm = bmesh.new()
     cyan_bm = bmesh.new()
     violet_bm = bmesh.new()
+    a = math.radians(DOCK_ANGLE_DEG)
 
-    for px, py, pr in list(LAVA_PONDS):
-        for _ in range(random.randint(3, 5)):
-            a = random.uniform(0, math.tau)
-            d = pr + random.uniform(1.0, 4.0)
-            x, z = px + math.cos(a) * d, py + math.sin(a) * d
-            surface = _drop_to_ground(ground, x, z)
+    # --- the lake rim: the money shot. Groves + anemone beds all round it.
+    for i in range(7):
+        ang = a + 0.55 + (i / 7) * math.tau
+        d = GLOOM_LAKE_R * random.uniform(1.34, 1.62)
+        x, y = math.cos(ang) * d, math.sin(ang) * d
+        _gloom_grove(
+            ground, stalk_bm, cyan_bm if i % 3 else violet_bm, x, y, 12.0, random.randint(5, 8), 1.3, 100 + i * 40
+        )
+        bx, by = math.cos(ang + 0.22) * (GLOOM_LAKE_R * 1.06), math.sin(ang + 0.22) * (GLOOM_LAKE_R * 1.06)
+        _gloom_anemones(cyan_bm, ground, bx, by, 11.0, random.randint(13, 19), 400 + i * 31)
+
+    # --- hero mushrooms standing right on the bank, over the black water.
+    for k, off in enumerate((0.9, 2.6, 4.4)):
+        ang = a + off
+        d = GLOOM_LAKE_R * 1.02
+        hx, hy = math.cos(ang) * d, math.sin(ang) * d
+        surface = _drop_to_ground(ground, hx, hy)
+        if surface is None:
+            continue
+        cap_r = random.uniform(10.0, 13.5)
+        _gloom_mushroom(stalk_bm, cyan_bm if k != 1 else violet_bm, hx, hy, surface, cap_r, cap_r * 1.9, 900 + k * 13)
+
+    # --- the fangs in the lake wear crowns of violet crystal.
+    for i in range(5):
+        ang = (i / 5) * math.tau + 0.9
+        d = GLOOM_LAKE_R * random.uniform(0.3, 0.7)
+        _gloom_crystals(violet_bm, ground, math.cos(ang) * d, math.sin(ang) * d, 5.0, 6, 9.0, 800 + i * 17, base=0.2)
+
+    # --- terrace risers: crystal clusters catching the step edges.
+    for i in range(8):
+        spot = _gloom_spot(ground, 0.30, 0.52, pad=3.0, clear=14.0)
+        if spot is None:
+            continue
+        x, y, _ = spot
+        _gloom_crystals(violet_bm, ground, x, y, 8.0, random.randint(7, 11), random.uniform(12.0, 20.0), 1200 + i * 23)
+
+    # --- a grove either side of the dock landing, and two in the gate mouth,
+    #     so arrival and the way in are both lit.
+    for u_g, off_deg, scale, salt in (
+        (0.86, 13.0, 1.2, 60.0),  # the landing, either side of the planks
+        (0.82, -16.0, 1.05, 90.0),
+        (0.545, 10.0, 1.15, 120.0),  # the gate mouth
+        (0.545, -10.5, 1.05, 150.0),
+        (0.39, 46.0, 1.1, 180.0),  # terrace groves, seen over the crown
+        (0.47, -70.0, 1.0, 210.0),
+        (0.32, 155.0, 1.15, 240.0),
+    ):
+        th = a + math.radians(off_deg)
+        r = ring_radius(u_g, th)
+        _gloom_grove(ground, stalk_bm, cyan_bm, math.cos(th) * r, math.sin(th) * r, 10.0, random.randint(5, 7), scale, salt)
+
+    # --- the outer apron gets its own light so the boss ground and the walk
+    #     round the island are not a blank grey shelf.
+    for i in range(5):
+        th = a + math.radians(random.choice((70, 112, 158, -78, -128)))
+        r = ring_radius(random.uniform(0.72, 0.90), th)
+        x, y = math.cos(th) * r, math.sin(th) * r
+        if not _gloom_off_path(x, y, 16.0):
+            continue
+        if i % 2:
+            _gloom_crystals(violet_bm, ground, x, y, 7.0, random.randint(6, 9), random.uniform(8.0, 14.0), 1600 + i * 29)
+        else:
+            _gloom_grove(ground, stalk_bm, cyan_bm, x, y, 11.0, random.randint(4, 6), 1.0, 1700 + i * 31)
+
+    # --- glowing veins along the terrace lips: arcs of small shards that draw
+    #     the contour lines of the amphitheatre in the dark.
+    for lip_i, u_lip in enumerate(GLOOM_TERRACE_LIPS):
+        for arc in range(4):
+            a0 = a + random.uniform(0, math.tau)
+            span = random.uniform(0.5, 1.0)
+            steps = 16
+            for k in range(steps):
+                theta = a0 + span * (k / steps)
+                da = abs(((theta - a + math.pi) % math.tau) - math.pi)
+                if da < 0.20:
+                    continue
+                r = ring_radius(u_lip, theta) + random.uniform(-2.0, 2.0)
+                x, y = math.cos(theta) * r, math.sin(theta) * r
+                surface = _drop_to_ground(ground, x, y)
+                if surface is None:
+                    continue
+                bm = violet_bm if (lip_i + arc) % 2 else cyan_bm
+                add_cone(
+                    bm,
+                    (x, y, surface - 0.5),
+                    random.uniform(0.35, 0.7),
+                    0.05,
+                    random.uniform(2.0, 4.2),
+                    sides=4,
+                    tilt=(random.uniform(-0.2, 0.2), random.uniform(-0.2, 0.2)),
+                    yaw=random.uniform(0, math.tau),
+                )
+
+    # --- veins lining the flagstones: the route glows all the way in.
+    for i, (x, y) in enumerate(GLOOM_PATH):
+        if i % 2:
+            continue
+        nx, ny = GLOOM_PATH[min(i + 1, len(GLOOM_PATH) - 1)]
+        yaw = math.atan2(ny - y, nx - x) + math.pi / 2
+        for sgn in (-1, 1):
+            px, py = x + math.cos(yaw) * 7.4 * sgn, y + math.sin(yaw) * 7.4 * sgn
+            surface = _drop_to_ground(ground, px, py)
             if surface is None:
                 continue
-            s = random.uniform(0.8, 1.8)
-            add_blob(cyan_bm, (x, z, surface + s * 0.2), (s, s, s * 0.9), 0.35, 60 + x * 0.1, yaw=random.uniform(0, math.tau))
-
-    stalks = 0
-    for _ in range(40):
-        spot = _interior_spot(ground, 0.18, 0.82, pad=1.5, tries=12)
-        if spot is None:
-            continue
-        x, z, surface = spot
-        h = random.uniform(7.0, 14.0)
-        add_post(stalk_bm, x, z, surface - 0.4, surface + h, 0.28, sides=5)
-        add_blob(cyan_bm, (x, z, surface + h + 0.8), (1.2, 1.2, 1.5), 0.3, 70 + stalks * 2.9)
-        stalks += 1
-        if stalks >= 22:
-            break
-
-    for i in range(30):
-        spot = _interior_spot(ground, 0.20, 0.86, pad=1.0, tries=10)
-        if spot is None:
-            continue
-        x, z, surface = spot
-        for _ in range(random.randint(2, 4)):
-            ox, oz = x + random.uniform(-2.0, 2.0), z + random.uniform(-2.0, 2.0)
-            add_cone(violet_bm, (ox, oz, surface - 0.3), 0.35, 0.08, random.uniform(3.2, 6.4), sides=4, tilt=(random.uniform(-0.2, 0.2), random.uniform(-0.2, 0.2)), yaw=random.uniform(0, math.tau))
+            bm = cyan_bm if (i // 2) % 2 else violet_bm
+            add_cone(
+                bm,
+                (px, py, surface - 0.5),
+                random.uniform(0.4, 0.75),
+                0.05,
+                random.uniform(2.2, 4.0),
+                sides=4,
+                yaw=random.uniform(0, math.tau),
+            )
 
     return (
         object_from_bmesh("Gloomtrench_Stalks", stalk_bm, ["M_GloomStalk"]),
@@ -1859,19 +2836,23 @@ def build_gloom_glow(ground):
 
 
 def build_gloomtrench():
+    GLOOM_PATH[:] = _gloom_path_points()
     base = build_island_base("Gloomtrench_Base", ["M_GloomRock", "M_GloomSand", "M_GloomWet"])
     ground = _ground_bvh(base)
     objects = [
         base,
         build_gloom_water(ground),
         build_gloom_spires(ground),
+        build_gloom_path(ground),
         *build_gloom_glow(ground),
         *build_dock("Gloomtrench_Dock_Planks", "Gloomtrench_Dock_Posts", "M_GloomPlank", "M_GloomPost"),
         build_foam("Gloomtrench_Foam", "M_GloomFoam"),
     ]
     a = math.radians(DOCK_ANGLE_DEG)
     start_r = ring_radius(DOCK_START_U, a)
-    print(f"[island_gen] HANDOFF gloomtrench: dock start (Roblox rel) X=0 Z={start_r:.0f}, spawn suggestion X=0 Z={start_r - 18:.0f} ground Y~{height_at(0, -(start_r - 18)):.1f}")
+    spawn_h = _drop_to_ground(ground, 0.0, -154.0)
+    gate_h = _drop_to_ground(ground, 0.0, -ring_radius(0.615, a))
+    print(f"[island_gen] HANDOFF gloomtrench: dock start (Roblox rel) X=0 Z={start_r:.0f}, spawn (0,154) ground Y~{spawn_h}, gate crest Y~{gate_h}")
     return objects
 
 
@@ -1908,114 +2889,668 @@ def build_wreck_bay(ground):
     return object_from_bmesh("Wreckwater_Bay", bm, ["M_BayWater"])
 
 
-def _wreck_hull(wood_bm, glow_bm, cx, cy, yaw, length, beam, deck_h, ghost=False):
-    """One broken galleon: keel slab, two flank walls, an angled bow pair, a
-    stern board, a leaning snapped mast with a yard, and (for the ghost ships)
-    a pale glow strip along the gunwale."""
-    d = Vector((math.cos(yaw), math.sin(yaw), 0))
-    p = Vector((-d.y, d.x, 0))
-    half = length / 2
-    wall_h = random.uniform(4.5, 6.5)
-    # Keel / sunken deck.
-    add_box(wood_bm, (cx, cy, deck_h - 0.6), (length * 0.9, beam * 0.8, 1.2), yaw)
-    # Flank walls.
-    for side in (1, -1):
-        wx = cx + p.x * (beam / 2) * side
-        wy = cy + p.y * (beam / 2) * side
-        add_box(wood_bm, (wx, wy, deck_h + wall_h / 2), (length * random.uniform(0.62, 0.8), 1.0, wall_h), yaw)
-        if ghost:
-            add_box(glow_bm, (wx, wy, deck_h + wall_h + 0.25), (length * 0.6, 0.5, 0.35), yaw)
-    # Bow: two short walls angling to a point.
-    bow = Vector((cx, cy, 0)) + d * half
-    for side in (1, -1):
-        ba = yaw + side * 0.5
-        bd = Vector((math.cos(ba), math.sin(ba), 0))
-        bx = bow.x - bd.x * length * 0.12
-        by = bow.y - bd.y * length * 0.12
-        add_box(wood_bm, (bx, by, deck_h + wall_h * 0.45), (length * 0.26, 0.9, wall_h * 0.9), ba)
-    # Stern board.
-    stern = Vector((cx, cy, 0)) - d * half * 0.86
-    add_box(wood_bm, (stern.x, stern.y, deck_h + wall_h * 0.55), (1.1, beam * 0.9, wall_h * 1.1), yaw)
-    # Snapped mast + yard.
-    mast_h = random.uniform(14.0, 24.0)
-    tilt = (random.uniform(0.08, 0.3), 0.0)
-    m_yaw = yaw + random.uniform(-0.6, 0.6)
-    base = Vector((cx, cy, deck_h - 0.5)) - d * length * 0.1
-    add_cone(wood_bm, base, 0.8, 0.3, mast_h, sides=6, tilt=tilt, yaw=m_yaw)
-    axis = cone_axis(tilt, m_yaw)
-    joint = base + axis * (mast_h * 0.7)
-    add_cone(wood_bm, joint, 0.35, 0.15, random.uniform(7.0, 12.0), sides=4, tilt=(1.35, 0.0), yaw=yaw + random.uniform(0, math.tau))
+# ---- Wreckwater: ship-carpentry helpers ----------------------------------
+#
+# Everything below is self-contained (prefix _wr_) so it cannot disturb the
+# shared prop helpers. All of it works in a SHIP-LOCAL frame - +X toward the
+# bow, +Y to port, +Z up - mapped into the world by one 4x4 from _wr_frame,
+# which is what lets a bow section rear out of the bay at a real angle.
 
 
-def build_wrecks(ground):
-    """The fleet: hulks foundered in the bay (half-drowned), one heeled on the
-    rim beach, and drift-plank litter. The two ghost ships carry the pale
-    gunwale glow the island is named for."""
-    wood_bm = bmesh.new()
-    glow_bm = bmesh.new()
+def _wr_emit(bm, temp):
+    """Append a scratch bmesh into `bm` (the round-trip the shared helpers use)."""
+    mesh = bpy.data.meshes.new("_wr")
+    temp.to_mesh(mesh)
+    temp.free()
+    bm.from_mesh(mesh)
+    bpy.data.meshes.remove(mesh)
 
-    bay_r = LAVA_PONDS[0][2] if LAVA_PONDS else 60.0
-    dock_a = math.radians(DOCK_ANGLE_DEG)
-    placed = 0
-    for i in range(10):
-        if placed >= 5:
-            break
-        a = random.uniform(0, math.tau)
-        if abs(((a - dock_a + math.pi) % math.tau) - math.pi) < 0.5:
-            continue  # keep the channel open
-        d = random.uniform(bay_r * 0.25, bay_r * 0.8)
-        x, z = math.cos(a) * d, math.sin(a) * d
-        floor_h = _drop_to_ground(ground, x, z)
-        if floor_h is None:
-            continue
-        deck_h = max(floor_h + 0.8, random.uniform(-1.6, 0.6))  # half-drowned
-        _wreck_hull(wood_bm, glow_bm, x, z, random.uniform(0, math.tau), random.uniform(26.0, 40.0), random.uniform(8.0, 12.0), deck_h, ghost=placed < 2)
-        placed += 1
 
-    # One hulk heeled over on the rim beach.
-    spot = _interior_spot(ground, 0.78, 0.9, pad=2.0, tries=30)
-    if spot is not None:
-        x, z, surface = spot
-        _wreck_hull(wood_bm, glow_bm, x, z, random.uniform(0, math.tau), 30.0, 9.0, surface + 0.6)
-
-    # Drift-plank litter on the rim and beach.
-    for i in range(70):
-        spot = _interior_spot(ground, 0.5, 0.97, pad=0.5, tries=8)
-        if spot is None:
-            continue
-        x, z, surface = spot
-        add_box(wood_bm, (x, z, surface + 0.15), (random.uniform(2.4, 5.0), random.uniform(0.7, 1.2), 0.35), random.uniform(0, math.tau))
-
-    print(f"[island_gen] wrecks: {placed} in the bay + 1 beached")
+def _wr_frame(pos, yaw=0.0, pitch=0.0, roll=0.0):
+    """Ship-local -> world. `pitch` is bow-UP radians, `roll` is heel to port."""
     return (
-        object_from_bmesh("Wreckwater_Hulks", wood_bm, ["M_HullWood"]),
-        object_from_bmesh("Wreckwater_GhostGlow", glow_bm, ["M_GhostGlow"]),
+        Matrix.Translation(Vector(pos))
+        @ Matrix.Rotation(yaw, 4, "Z")
+        @ Matrix.Rotation(-pitch, 4, "Y")
+        @ Matrix.Rotation(roll, 4, "X")
     )
 
 
-def build_wreck_rocks(ground):
-    """Grave-grey sea stacks on the rim + shore boulders."""
-    bm = bmesh.new()
-    for i in range(12):
-        theta = (i / 12) * math.tau + random.uniform(-0.2, 0.2)
-        if abs(((theta - math.radians(DOCK_ANGLE_DEG) + math.pi) % math.tau) - math.pi) < 0.35:
+def _wr_beam(bm, frame, p0, p1, width, thick, twist=0.0):
+    """A squared timber spanning ship-local p0 -> p1: the workhorse for ribs,
+    yards, bowsprits, deck planks and beached driftwood."""
+    a, b = Vector(p0), Vector(p1)
+    d = b - a
+    length = d.length
+    if length < 1e-5:
+        return
+    rot = Vector((1.0, 0.0, 0.0)).rotation_difference(d.normalized()).to_matrix().to_4x4()
+    temp = bmesh.new()
+    bmesh.ops.create_cube(temp, size=1.0)
+    local = (
+        Matrix.Translation((a + b) / 2)
+        @ rot
+        @ Matrix.Rotation(twist, 4, "X")
+        @ Matrix.Diagonal(Vector((length, width, thick))).to_4x4()
+    )
+    bmesh.ops.transform(temp, matrix=frame @ local, verts=temp.verts[:])
+    _wr_emit(bm, temp)
+
+
+def _wr_spar(bm, frame, p0, p1, r0, r1, sides=6):
+    """A tapered round timber (mast, topmast, piling) between two local points."""
+    a, b = Vector(p0), Vector(p1)
+    d = b - a
+    length = d.length
+    if length < 1e-5:
+        return
+    temp = bmesh.new()
+    bmesh.ops.create_cone(temp, cap_ends=True, cap_tris=False, segments=sides, radius1=r0, radius2=r1, depth=length)
+    rot = Vector((0.0, 0.0, 1.0)).rotation_difference(d.normalized()).to_matrix().to_4x4()
+    bmesh.ops.transform(temp, matrix=frame @ Matrix.Translation((a + b) / 2) @ rot, verts=temp.verts[:])
+    _wr_emit(bm, temp)
+
+
+def _wr_orb(bm, frame, p, r):
+    """A small faceted ball - the ghost lanterns / sea-fire on the wrecks."""
+    temp = bmesh.new()
+    bmesh.ops.create_icosphere(temp, subdivisions=1, radius=r)
+    bmesh.ops.transform(temp, matrix=frame @ Matrix.Translation(Vector(p)), verts=temp.verts[:])
+    _wr_emit(bm, temp)
+
+
+def _wr_mound(bm, center, scale, salt, yaw=0.0, roughness=0.16):
+    """A smooth, long sand swell - a rounder sphere than the angular add_blob
+    boulder, so drifted dune reads as dune and not as a shard of rock."""
+    temp = bmesh.new()
+    bmesh.ops.create_icosphere(temp, subdivisions=2, radius=1.0)
+    for v in temp.verts:
+        bump = noise.noise(v.co * 1.1 + Vector((salt, salt * 0.6, salt * 1.4)))
+        v.co += v.co.normalized() * bump * roughness
+    matrix = (
+        Matrix.Translation(Vector(center))
+        @ Matrix.Rotation(yaw, 4, "Z")
+        @ Matrix.Diagonal(Vector(scale)).to_4x4()
+    )
+    bmesh.ops.transform(temp, matrix=matrix, verts=temp.verts[:])
+    _wr_emit(bm, temp)
+
+
+def _wr_panel(bm, frame, corners, thick=0.28):
+    """A flat quad with a little thickness - one width of torn sailcloth.
+    Corners are ship-local and given in order around the panel."""
+    pts = [Vector(c) for c in corners]
+    n = (pts[1] - pts[0]).cross(pts[3] - pts[0])
+    if n.length < 1e-6:
+        return
+    n = n.normalized() * (thick / 2)
+    temp = bmesh.new()
+    top = [temp.verts.new(pt + n) for pt in pts]
+    bot = [temp.verts.new(pt - n) for pt in pts]
+    temp.faces.new(top)
+    temp.faces.new(list(reversed(bot)))
+    for i in range(4):
+        j = (i + 1) % 4
+        temp.faces.new((top[i], bot[i], bot[j], top[j]))
+    bmesh.ops.recalc_face_normals(temp, faces=temp.faces[:])
+    bmesh.ops.transform(temp, matrix=frame, verts=temp.verts[:])
+    _wr_emit(bm, temp)
+
+
+def _wr_stations(length, beam, depth, freeboard, n=9, bow_rise=1.0, fullness=1.0):
+    """Cross-sections down a broken hull section: x=0 is the ragged break where
+    the ship tore in half, x=length the bow point. Returns
+    (x, half_beam, keel_z, sheer_z) - an elliptical waterplane, a keel that
+    sweeps up into the forefoot, and a sheer line that lifts toward the bow."""
+    out = []
+    for i in range(n):
+        t = i / (n - 1)
+        hb = (beam / 2) * math.sqrt(max(0.015, 1.0 - t ** 2.4)) * (0.72 + 0.28 * fullness)
+        keel = -depth + depth * 0.78 * t ** 2.4
+        sheer = freeboard + freeboard * bow_rise * t ** 1.9
+        out.append((t * length, hb, keel, sheer))
+    return out
+
+
+def _wr_hull_shell(bm, frame, stations, cap_break=True):
+    """Loft the stations into a closed low-poly hull solid: eight-point rings
+    (port sheer, turn of the bilge, keel, starboard, then back over the deck)
+    stitched span by span. Solid, so it reads from inside the bay too."""
+
+    def ring(st):
+        x, hb, kz, sz = st
+        h = sz - kz
+        return [
+            Vector((x, hb, sz)),
+            Vector((x, hb * 0.94, kz + h * 0.36)),
+            Vector((x, hb * 0.56, kz + h * 0.07)),
+            Vector((x, 0.0, kz)),
+            Vector((x, -hb * 0.56, kz + h * 0.07)),
+            Vector((x, -hb * 0.94, kz + h * 0.36)),
+            Vector((x, -hb, sz)),
+            Vector((x, 0.0, sz + h * 0.05)),  # crowned deck centreline
+        ]
+
+    temp = bmesh.new()
+    loops = []
+    for st in stations:
+        loops.append([temp.verts.new(p) for p in ring(st)])
+    for i in range(len(loops) - 1):
+        a, b = loops[i], loops[i + 1]
+        for k in range(8):
+            j = (k + 1) % 8
+            try:
+                temp.faces.new((a[k], a[j], b[j], b[k]))
+            except ValueError:
+                pass
+    if cap_break:
+        try:
+            temp.faces.new(loops[0])
+        except ValueError:
+            pass
+    try:
+        temp.faces.new(list(reversed(loops[-1])))
+    except ValueError:
+        pass
+    bmesh.ops.recalc_face_normals(temp, faces=temp.faces[:])
+    bmesh.ops.transform(temp, matrix=frame, verts=temp.verts[:])
+    _wr_emit(bm, temp)
+
+
+def _wr_ribs(bm, frame, stations, span, rise, thick=0.6, glow_bm=None, glow_every=3):
+    """The exposed ribcage: frames arcing up and inward off the sheer where the
+    planking has rotted away. `span` is the (lo, hi) fraction of the hull they
+    cover; `rise` how far above the sheer they reach."""
+    lo, hi = span
+    n = len(stations)
+    for i, (x, hb, kz, sz) in enumerate(stations):
+        t = i / (n - 1)
+        if t < lo or t > hi:
             continue
-        u = random.uniform(0.55, 0.7)
+        r = rise * (0.55 + 0.45 * math.sin(math.pi * (t - lo) / max(1e-3, hi - lo)))
+        for side in (1, -1):
+            prev = Vector((x, side * hb, sz - 0.3))
+            for k in range(1, 4):
+                f = k / 3
+                nxt = Vector((x, side * hb * (1.0 - 0.30 * f * f), sz + r * f))
+                _wr_beam(bm, frame, prev, nxt, thick, thick * 0.85)
+                prev = nxt
+            if glow_bm is not None and i % glow_every == 0:
+                _wr_orb(glow_bm, frame, prev + Vector((0, 0, 0.25)), 0.55)
+
+
+def _wr_gunwale_glow(glow_bm, frame, stations, lo=0.0, hi=1.0, lift=0.35):
+    """A thin line of sea-fire running the sheer of a ghost ship - a drawn
+    edge, not a speck."""
+    n = len(stations)
+    picked = [s for i, s in enumerate(stations) if lo <= i / (n - 1) <= hi]
+    for side in (1, -1):
+        for a, b in zip(picked, picked[1:]):
+            p0 = Vector((a[0], side * a[1], a[3] + lift))
+            p1 = Vector((b[0], side * b[1], b[3] + lift))
+            _wr_beam(glow_bm, frame, p0, p1, 0.45, 0.30)
+
+
+def _wr_mast(wood_bm, glow_bm, sail_bm, frame, base, lean, dir_ang, height, snapped=True, sail=0.0):
+    """A leaning mast: lower stump, a snapped-off upper section carrying a yard,
+    optional tattered sail, and a lantern at the head."""
+    base = Vector(base)
+    axis = Vector((math.sin(lean) * math.cos(dir_ang), math.sin(lean) * math.sin(dir_ang), math.cos(lean)))
+    head = base + axis * height
+    _wr_spar(wood_bm, frame, base, head, height * 0.055, height * 0.026, sides=6)
+    # The yard, crossed near the head.
+    perp = axis.cross(Vector((0, 0, 1)))
+    if perp.length < 1e-4:
+        perp = Vector((0, 1, 0))
+    perp.normalize()
+    yard_at = base + axis * (height * 0.72)
+    half = height * 0.30
+    y0 = yard_at + perp * half + Vector((0, 0, -half * 0.14))
+    y1 = yard_at - perp * half + Vector((0, 0, half * 0.10))
+    _wr_beam(wood_bm, frame, y0, y1, height * 0.030, height * 0.030)
+    if sail > 0.0 and sail_bm is not None:
+        # Canvas still bent to the yard: contiguous widths hanging off it with a
+        # ragged hem and one width torn clean away, bellied off the mast so it
+        # reads as one rotted sail rather than a row of chips.
+        panels = 6
+        bel = perp.cross(Vector((0, 0, 1)))
+        belly = (bel.normalized() if bel.length > 1e-5 else Vector((0, 1, 0))) * (sail * 0.22)
+        hem = [sail * random.uniform(0.55, 1.45) for _ in range(panels + 1)]
+        gone = random.randrange(panels)
+        for k in range(panels):
+            if k == gone:
+                continue
+            a, b = y0.lerp(y1, k / panels), y0.lerp(y1, (k + 1) / panels)
+            f0, f1 = (k + 0.5) / panels, (k + 1.5) / panels
+            _wr_panel(sail_bm, frame, (
+                a, b,
+                b + belly * (1 - abs(2 * f1 - 1)) - Vector((0, 0, hem[k + 1])),
+                a + belly * (1 - abs(2 * f0 - 1)) - Vector((0, 0, hem[k])),
+            ), 0.30)
+    if snapped:
+        broke = head + axis * (height * 0.10)
+        tip = broke + Vector((axis.x, axis.y, 0)).normalized() * height * 0.30 - Vector((0, 0, height * 0.16))
+        _wr_spar(wood_bm, frame, broke, tip, 0.4, 0.18, sides=4)
+    if glow_bm is not None:
+        _wr_orb(glow_bm, frame, head + Vector((0, 0, 0.7)), 0.9)
+
+
+def _wr_bow_section(wood_bm, glow_bm, sail_bm, pos, yaw, pitch, length, beam, depth, ghost=True):
+    """THE LANDMARK: a bow reared out of the lagoon, keel to the sky - hull
+    shell, exposed ribs along the torn break, a bowsprit and its dolphin
+    striker, and sea-fire down both gunwales."""
+    frame = _wr_frame(pos, yaw=yaw, pitch=pitch)
+    st = _wr_stations(length, beam, depth, freeboard=beam * 0.42, n=10, bow_rise=1.25)
+    _wr_hull_shell(wood_bm, frame, st, cap_break=True)
+    _wr_ribs(wood_bm, frame, st, (0.0, 0.45), rise=beam * 0.55, thick=0.7, glow_bm=glow_bm if ghost else None)
+    # Bowsprit off the stem, plus the little vertical striker under it.
+    tip = Vector((length * 1.34, 0.0, st[-1][3] + length * 0.10))
+    stem = Vector((length * 0.96, 0.0, st[-1][3] - 0.4))
+    _wr_spar(wood_bm, frame, stem, tip, 0.75, 0.28)
+    _wr_beam(wood_bm, frame, Vector((length * 1.12, 0, st[-1][3] - 0.2)), Vector((length * 1.14, 0, st[-1][3] - 3.2)), 0.5, 0.5)
+    # Wales: the heavy longitudinal strakes that break up a bare hull side.
+    for wf, wl in ((0.30, 0.92), (0.62, 0.80)):
+        for side in (1, -1):
+            prev = None
+            for i, (x, hb, kz, sz) in enumerate(st):
+                if i / (len(st) - 1) > wl:
+                    break
+                p = Vector((x, side * hb * 1.02, kz + (sz - kz) * wf))
+                if prev is not None:
+                    _wr_beam(wood_bm, frame, prev, p, 0.8, 0.7)
+                prev = p
+    # A torn, jagged edge where the ship snapped in half.
+    x0, hb0, kz0, sz0 = st[0]
+    for k in range(7):
+        f = -0.9 + 1.8 * (k / 6)
+        _wr_beam(
+            wood_bm, frame,
+            (x0 + 0.2, f * hb0, sz0 - 0.4),
+            (x0 - random.uniform(0.5, 2.5), f * hb0 * 0.97, sz0 + random.uniform(1.5, 5.5)),
+            1.1, 0.8,
+        )
+    # Deck beams still spanning the open break.
+    for f in (0.10, 0.22, 0.34):
+        i = int(f * (len(st) - 1))
+        x, hb, kz, sz = st[i]
+        _wr_beam(wood_bm, frame, (x, hb * 0.95, sz - 0.2), (x, -hb * 0.95, sz - 0.2), 1.0, 0.55)
+    if ghost:
+        _wr_gunwale_glow(glow_bm, frame, st, lo=0.35, hi=1.0)
+        _wr_orb(glow_bm, frame, tip + Vector((0, 0, -0.8)), 1.15)
+    _wr_mast(wood_bm, glow_bm if ghost else None, sail_bm, frame, (length * 0.30, 0, st[3][3]), 0.28, math.pi, length * 0.85, snapped=True, sail=length * 0.16)
+    return frame
+
+
+def _wr_stern_section(wood_bm, glow_bm, sail_bm, pos, yaw, pitch, roll, length, beam, depth, ghost=True):
+    """The other half of a ship: the stern, settled low and heeled, its transom
+    and quarterdeck still standing over a rotted-open waist."""
+    frame = _wr_frame(pos, yaw=yaw, pitch=pitch, roll=roll)
+    st = _wr_stations(length, beam, depth, freeboard=beam * 0.46, n=8, bow_rise=0.15, fullness=1.2)
+    _wr_hull_shell(wood_bm, frame, st, cap_break=True)
+    _wr_ribs(wood_bm, frame, st, (0.45, 1.0), rise=beam * 0.5, thick=0.6, glow_bm=glow_bm if ghost else None)
+    # The stern castle: a squat deckhouse rising off the transom end, its
+    # walls carried down to the sheer so it sits ON the hull.
+    x0, hb0, kz0, sz0 = st[0]
+    house_l = length * 0.26
+    house_h = beam * 0.52
+    for side in (1, -1):  # side walls
+        _wr_beam(wood_bm, frame, (x0 + 0.4, side * hb0 * 0.92, sz0 + house_h / 2),
+                 (x0 + house_l, side * hb0 * 0.86, sz0 + house_h / 2), 1.0, house_h)
+    _wr_beam(wood_bm, frame, (x0 + 0.4, hb0 * 0.92, sz0 + house_h / 2),
+             (x0 + 0.4, -hb0 * 0.92, sz0 + house_h / 2), 1.0, house_h)  # transom face
+    _wr_beam(wood_bm, frame, (x0 + 0.4, 0, sz0 + house_h), (x0 + house_l, 0, sz0 + house_h * 0.86),
+             hb0 * 1.85, 0.9)  # quarterdeck roof, sagging forward
+    # A snapped taffrail post at each quarter.
+    for side in (1, -1):
+        _wr_beam(wood_bm, frame, (x0 + 0.4, side * hb0 * 0.9, sz0 + house_h),
+                 (x0 + 0.2, side * hb0 * 0.95, sz0 + house_h + beam * 0.22), 0.7, 0.7)
+    if ghost:
+        _wr_gunwale_glow(glow_bm, frame, st, lo=0.0, hi=0.6)
+        for side in (1, -1):
+            _wr_orb(glow_bm, frame, (x0 - 0.9, side * hb0 * 0.75, sz0 + beam * 0.74), 0.85)
+    _wr_mast(wood_bm, glow_bm if ghost else None, sail_bm, frame, (length * 0.62, 0, st[5][3] - 0.5), 0.52, 0.6, length * 1.15, snapped=True, sail=length * 0.20)
+    return frame
+
+
+def _wr_ribcage(wood_bm, glow_bm, pos, yaw, pitch, roll, length, beam, depth):
+    """A hull picked clean: keelson, stem and sternpost, and bare frames arcing
+    out of the water. Pure silhouette, almost no surface."""
+    frame = _wr_frame(pos, yaw=yaw, pitch=pitch, roll=roll)
+    st = _wr_stations(length, beam, depth, freeboard=beam * 0.36, n=11, bow_rise=1.0)
+    # Keel + keelson.
+    _wr_beam(wood_bm, frame, (st[0][0], 0, st[0][2]), (st[-1][0], 0, st[-1][2]), beam * 0.22, 1.4)
+    for side in (1, -1):
+        prev = None
+        for x, hb, kz, sz in st:
+            p = Vector((x, side * hb * 0.95, sz))
+            if prev is not None:
+                _wr_beam(wood_bm, frame, prev, p, 1.1, 1.0)  # the wale, tying the frames
+            prev = p
+    _wr_ribs(wood_bm, frame, st, (0.05, 0.95), rise=beam * 0.78, thick=1.15, glow_bm=glow_bm, glow_every=2)
+    # Stempost rearing at the bow end.
+    x, hb, kz, sz = st[-1]
+    _wr_beam(wood_bm, frame, (x - 1.0, 0, kz), (x + length * 0.10, 0, sz + beam * 0.75), 1.1, 1.1)
+    _wr_gunwale_glow(glow_bm, frame, st, lo=0.2, hi=0.9, lift=0.5)
+    return frame
+
+
+def _wr_debris_pile(bm, x, y, surface, salt):
+    """A crossed heap of drift timber - beached wreckage that reads at a
+    distance instead of the old scatter of matchsticks."""
+    rng = random.Random(salt)
+    frame = _wr_frame((x, y, surface), yaw=rng.uniform(0, math.tau))
+    n = rng.randint(3, 5)
+    for k in range(n):
+        a = rng.uniform(0, math.pi)
+        L = rng.uniform(5.0, 11.0)
+        h = 0.4 + k * 0.55
+        p0 = Vector((math.cos(a) * -L / 2, math.sin(a) * -L / 2, h))
+        p1 = Vector((math.cos(a) * L / 2, math.sin(a) * L / 2, h + rng.uniform(-0.6, 1.4)))
+        _wr_beam(bm, frame, p0, p1, rng.uniform(0.8, 1.6), rng.uniform(0.4, 0.7), twist=rng.uniform(0, 1.0))
+    if rng.random() < 0.5:  # a barrel rolled up with it
+        _wr_spar(bm, frame, (rng.uniform(-3, 3), rng.uniform(-3, 3), 0.2), (rng.uniform(-3, 3), rng.uniform(-3, 3), 2.6), 1.5, 1.2, sides=8)
+
+
+def _wr_in_channel(x, y, bay_r, half=16.0):
+    """True inside the harbour cut - the boat lane from the sea into the lagoon.
+    Nothing but water and the flanking quays may stand here."""
+    a = math.radians(DOCK_ANGLE_DEG)
+    along = x * math.cos(a) + y * math.sin(a)
+    lateral = abs(-x * math.sin(a) + y * math.cos(a))
+    return along > bay_r * 0.78 and lateral < half
+
+
+_WR_EXTRA_GLOW = []  # (x, y, z, r) lanterns other wreck builders hand to the glow object
+
+
+def build_wreck_quay(ground):
+    """Twin salvage-timber quays down either side of the harbour cut, from the
+    dock head back onto the rim. They give standable footing on both banks of
+    the cut (which is otherwise a drowned gully) and a clear walk off the dock,
+    while leaving the middle of the cut - the boat lane into the lagoon -
+    completely open water. Two objects: Wreckwater_Quay_Planks / _Posts."""
+    plank_bm = bmesh.new()
+    post_bm = bmesh.new()
+    deck = DOCK_MIN_TOP  # flush with the dock deck, so you step straight across
+    y_far, y_near = -190.0, -150.0  # Blender y = -(island-local Z)
+    for side in (1, -1):
+        x_in, x_out = side * 11.0, side * 30.0
+        # Deck planking, laid across the quay with a couple of gaps rotted through.
+        y = y_far
+        i = 0
+        while y < y_near:
+            w = random.uniform(1.5, 2.2)
+            if i % 9 != 4:  # every ninth plank is missing
+                jitter = random.uniform(-0.5, 0.5)
+                bpl = (x_in + x_out) / 2
+                add_box(
+                    plank_bm,
+                    ((bpl + jitter), y + w / 2, deck - 0.35),
+                    (abs(x_out - x_in) - random.uniform(0.0, 1.4), w, 0.7),
+                )
+            y += w + 0.3
+            i += 1
+        # Stringers under the deck, running the length of the quay.
+        for sx in (x_in + side * 1.4, x_out - side * 1.4):
+            add_box(plank_bm, (sx, (y_far + y_near) / 2, deck - 1.3), (1.6, y_near - y_far, 1.4))
+        # Pilings.
+        n = 6
+        for k in range(n):
+            py = y_far + (y_near - y_far) * (k / (n - 1))
+            for px in (x_in + side * 1.4, x_out - side * 1.4):
+                add_post(post_bm, px, py, -7.0, deck - 0.5, 1.15, sides=6)
+        # A leaning lamp stake at the seaward corner of each quay.
+        lx = x_out - side * 1.4
+        add_post(post_bm, lx, y_far + 3.0, deck - 1.0, deck + 7.0, 0.7, sides=5)
+        _WR_EXTRA_GLOW.append((lx, y_far + 3.0, deck + 7.8, 1.1))
+    return (
+        object_from_bmesh("Wreckwater_Quay_Planks", plank_bm, ["M_WreckPlank"]),
+        object_from_bmesh("Wreckwater_Quay_Posts", post_bm, ["M_WreckPost"]),
+    )
+
+
+def build_wrecks(ground):
+    """The graveyard: a bow reared out of the lagoon as the island's landmark,
+    its stern half foundered apart from it, a picked-clean ribcage, two hulks
+    driven up onto the rim, and beached timber. Ghost ships carry the pale
+    sea-fire the island is named for. Returns wood, glow and canvas objects."""
+    wood_bm = bmesh.new()
+    glow_bm = bmesh.new()
+    sail_bm = bmesh.new()
+
+    bay_r = LAVA_PONDS[0][2] if LAVA_PONDS else 96.0
+    b = bay_r
+
+    # 1. THE LANDMARK. Reared bow on the camera-near flank of the bay, clear of
+    #    both the boss disc (Blender 0,+20 r30) and the +Z entry channel.
+    _wr_bow_section(
+        wood_bm, glow_bm, sail_bm,
+        pos=(b * 0.34, -b * 0.20, -5.0), yaw=math.radians(-135), pitch=math.radians(37),
+        length=b * 0.64, beam=b * 0.30, depth=b * 0.13, ghost=True,
+    )
+
+    # 2. Her stern half, settled and heeled well away across the bay.
+    _wr_stern_section(
+        wood_bm, glow_bm, sail_bm,
+        pos=(-b * 0.38, -b * 0.46, -2.0), yaw=math.radians(126),
+        pitch=math.radians(-8), roll=math.radians(28),
+        length=b * 0.54, beam=b * 0.24, depth=b * 0.11, ghost=True,
+    )
+
+    # 3. The picked-clean ribcage, opposite side of the lagoon.
+    _wr_ribcage(
+        wood_bm, glow_bm,
+        pos=(b * 0.42, b * 0.56, -3.2), yaw=math.radians(-58),
+        pitch=math.radians(8), roll=math.radians(-15),
+        length=b * 0.62, beam=b * 0.28, depth=b * 0.12,
+    )
+
+    # 3b. A snapped mainmast and its yard adrift across the shallows, half
+    #     under water - it ties the two bay hulks together.
+    drift = _wr_frame((-b * 0.62, b * 0.12, -0.6), yaw=math.radians(24))
+    _wr_spar(wood_bm, drift, (-b * 0.26, 0, 0), (b * 0.26, 2.0, 1.6), 1.8, 0.8)
+    _wr_beam(wood_bm, drift, (b * 0.06, -b * 0.13, 0.9), (b * 0.10, b * 0.13, 0.5), 1.0, 1.0)
+    _wr_orb(glow_bm, drift, (b * 0.26, 2.0, 2.4), 1.0)
+
+    # 4. A hulk driven right up onto the rim, heeled hard over. Seated on the
+    #    real faceted ground so it never floats.
+    beached = 0
+    for theta_deg, u in ((38, 0.80), (150, 0.76), (322, 0.86)):
+        theta = math.radians(theta_deg)
         r = ring_radius(u, theta)
-        x, z = math.cos(theta) * r, math.sin(theta) * r
-        surface = _drop_to_ground(ground, x, z)
+        x, y = math.cos(theta) * r, math.sin(theta) * r
+        surface = _drop_to_ground(ground, x, y)
         if surface is None:
             continue
-        s = random.uniform(3.0, 6.0)
-        h = s * random.uniform(1.6, 2.6)
-        add_blob(bm, (x, z, surface + h * 0.05), (s, s * 0.7, h), 0.44, 210 + i * 5.9, yaw=random.uniform(0, math.tau))
-    for i in range(28):
+        beached += 1
+        _wr_stern_section(
+            wood_bm, glow_bm if beached == 1 else None, sail_bm,
+            pos=(x, y, surface - 1.6), yaw=theta + math.radians(122),
+            pitch=math.radians(6), roll=math.radians(34 if beached % 2 else -30),
+            length=b * 0.36, beam=b * 0.15, depth=b * 0.07, ghost=(beached == 1),
+        )
+
+    # 5. Half-buried frames and drift timber along the beach and rim.
+    piles = 0
+    for i in range(16):
+        spot = _interior_spot(ground, 0.66, 0.97, pad=1.0, tries=10)
+        if spot is None:
+            continue
+        x, y, surface = spot
+        if _wr_in_channel(x, y, bay_r):
+            continue
+        _wr_debris_pile(wood_bm, x, y, surface, 900 + i * 17)
+        piles += 1
+
+    # Lone broken frames standing out of the sand - grave markers.
+    for i in range(14):
+        spot = _interior_spot(ground, 0.60, 0.94, pad=1.0, tries=8)
+        if spot is None:
+            continue
+        x, y, surface = spot
+        if _wr_in_channel(x, y, bay_r):
+            continue
+        frame = _wr_frame((x, y, surface - 0.5), yaw=random.uniform(0, math.tau))
+        h = random.uniform(3.0, 7.5)
+        lean = random.uniform(0.1, 0.45)
+        _wr_beam(wood_bm, frame, (0, 0, 0), (math.sin(lean) * h, 0, math.cos(lean) * h), 0.8, 0.7)
+
+    # 5b. The tide flat: the drained inner band between the lagoon and the rim
+    #     is where the sea leaves the bones - half-buried frames, split planks
+    #     and the odd stranded boat rib.
+    dock_a = math.radians(DOCK_ANGLE_DEG)
+    for i in range(22):
+        theta = random.uniform(0, math.tau)
+        if abs(((theta - dock_a + math.pi) % math.tau) - math.pi) < 0.34:
+            continue  # the channel mouth stays clear
+        u = random.uniform(0.50, 0.62)
+        r = ring_radius(u, theta)
+        x, y = math.cos(theta) * r, math.sin(theta) * r
+        surface = _drop_to_ground(ground, x, y)
+        if surface is None:
+            continue
+        frame = _wr_frame((x, y, surface - 0.8), yaw=random.uniform(0, math.tau))
+        if i % 3 == 0:  # a stranded rib arc, still curved
+            span = random.uniform(7.0, 14.0)
+            rise = random.uniform(5.0, 11.0)
+            prev = Vector((-span / 2, 0, 0))
+            for k in range(1, 5):
+                f = k / 4
+                nxt = Vector((-span / 2 + span * f, 0, rise * math.sin(math.pi * f) * 1.1))
+                _wr_beam(wood_bm, frame, prev, nxt, 1.0, 0.9)
+                prev = nxt
+        else:  # split planking pressed into the silt
+            for k in range(random.randint(2, 4)):
+                a = random.uniform(0, math.pi)
+                L = random.uniform(4.0, 10.0)
+                _wr_beam(
+                    wood_bm, frame,
+                    (math.cos(a) * -L / 2, math.sin(a) * -L / 2, 0.3 + k * 0.35),
+                    (math.cos(a) * L / 2, math.sin(a) * L / 2, 0.5 + k * 0.35),
+                    random.uniform(1.0, 1.8), 0.5, twist=random.uniform(0, 0.9),
+                )
+
+    # 6. The channel stakes: rotted harbour pilings marking the boat lane in
+    #    from the sea, each capped with a ghost lantern. They read the entry
+    #    channel as navigable AND carry the island's glow out to the dock.
+    a = math.radians(DOCK_ANGLE_DEG)
+    d = Vector((math.cos(a), math.sin(a), 0))
+    perp = Vector((-d.y, d.x, 0))
+    r_in, r_out = b * 0.86, ring_radius(1.06, a)
+    stakes = 7
+    for i in range(stakes):
+        f = i / (stakes - 1)
+        r = r_in + (r_out - r_in) * f
+        for side in (1, -1):
+            off = perp * (13.5 + 2.5 * math.sin(f * 4.0))
+            x = d.x * r + off.x * side
+            y = d.y * r + off.y * side
+            top = random.uniform(3.4, 7.0)
+            frame = _wr_frame((x, y, -7.0))
+            lean = random.uniform(-0.10, 0.10)
+            head = Vector((math.sin(lean) * (top + 7.0), 0.0, top + 7.0))
+            _wr_spar(wood_bm, frame, (0, 0, 0), head, 1.15, 0.85)
+            if i % 2 == 0:
+                _wr_orb(glow_bm, frame, head + Vector((0, 0, 0.8)), 1.0)
+
+    # 7. Grave lanterns along the rim: a leaning stake with sea-fire at the top,
+    #    so the ring has the island's mood on it after dark too.
+    for i in range(12):
+        spot = _interior_spot(ground, 0.62, 0.95, pad=1.5, tries=8)
+        if spot is None:
+            continue
+        x, y, surface = spot
+        if _wr_in_channel(x, y, bay_r):
+            continue
+        frame = _wr_frame((x, y, surface - 0.6), yaw=random.uniform(0, math.tau))
+        h = random.uniform(5.0, 8.5)
+        lean = random.uniform(0.08, 0.3)
+        head = Vector((math.sin(lean) * h, 0, math.cos(lean) * h))
+        _wr_spar(wood_bm, frame, (0, 0, 0), head, 0.75, 0.5, sides=5)
+        _wr_beam(wood_bm, frame, head, head + Vector((2.4, 0, 0.3)), 0.5, 0.4)
+        _wr_orb(glow_bm, frame, head + Vector((2.4, 0, -0.9)), 1.05)
+
+    for gx, gy, gz, gr in _WR_EXTRA_GLOW:
+        _wr_orb(glow_bm, _wr_frame((gx, gy, gz)), (0, 0, 0), gr)
+    _WR_EXTRA_GLOW.clear()
+
+    print(f"[island_gen] wrecks: 3 in the bay + {beached} beached + {piles} debris piles")
+    return (
+        object_from_bmesh("Wreckwater_Hulks", wood_bm, ["M_HullWood"]),
+        object_from_bmesh("Wreckwater_GhostGlow", glow_bm, ["M_GhostGlow"]),
+        object_from_bmesh("Wreckwater_Sails", sail_bm, ["M_WreckSail"]),
+    )
+
+
+def build_wreck_dunes(ground):
+    """Long, low sand swells across the rim so the ring reads as drifted beach
+    instead of a flat band. Same sand material as the base beach, so they melt
+    into it. One object: Wreckwater_Dunes."""
+    bm = bmesh.new()
+    for i in range(18):
+        spot = _interior_spot(ground, 0.72, 0.92, pad=2.0, tries=12)
+        if spot is None:
+            continue
+        x, y, surface = spot
+        if _wr_in_channel(x, y, ring_radius(0.46, math.atan2(y, x)), half=26.0):
+            continue
+        length = random.uniform(44.0, 80.0)
+        width = random.uniform(26.0, 46.0)
+        h = random.uniform(7.0, 13.0)
+        # Run the swell along the shore, not up it.
+        yaw = math.atan2(y, x) + math.pi / 2 + random.uniform(-0.6, 0.6)
+        _wr_mound(bm, (x, y, surface - h * 0.56), (length / 2, width / 2, h), 1200 + i * 6.1, yaw=yaw)
+    return object_from_bmesh("Wreckwater_Dunes", bm, ["M_WreckDrift"])
+
+
+def build_wreck_rocks(ground):
+    """Grave-grey stone: a reef of half-drowned stacks ringing the island
+    outside the shoreline (the hazard that made this a wreck graveyard), sea
+    stacks on the rim, and shore boulders."""
+    bm = bmesh.new()
+    dock_a = math.radians(DOCK_ANGLE_DEG)
+
+    # The outer reef: clustered teeth just off the beach, mostly submerged.
+    for i in range(30):
+        theta = (i / 30) * math.tau + random.uniform(-0.06, 0.06)
+        if abs(((theta - dock_a + math.pi) % math.tau) - math.pi) < 0.30:
+            continue  # the boat lane in
+        for k in range(random.randint(1, 3)):
+            th = theta + random.uniform(-0.05, 0.05)
+            u = random.uniform(1.015, 1.14)
+            r = ring_radius(u, th)
+            x, y = math.cos(th) * r, math.sin(th) * r
+            surface = _drop_to_ground(ground, x, y)
+            if surface is None:
+                continue
+            s = random.uniform(3.2, 8.5)
+            top = random.uniform(0.8, 8.0)
+            h = (top - surface) * random.uniform(0.5, 0.8)
+            add_blob(bm, (x, y, surface + h * 0.40), (s, s * 0.8, h), 0.5, 300 + i * 3.7 + k, yaw=random.uniform(0, math.tau))
+
+    # Sea stacks standing on the rim.
+    for i in range(14):
+        theta = (i / 14) * math.tau + random.uniform(-0.2, 0.2)
+        if abs(((theta - dock_a + math.pi) % math.tau) - math.pi) < 0.35:
+            continue
+        u = random.uniform(0.56, 0.72)
+        r = ring_radius(u, theta)
+        x, y = math.cos(theta) * r, math.sin(theta) * r
+        surface = _drop_to_ground(ground, x, y)
+        if surface is None:
+            continue
+        s = random.uniform(4.5, 9.0)
+        h = s * random.uniform(1.0, 1.9)
+        add_blob(bm, (x, y, surface + h * 0.05), (s, s * 0.7, h), 0.44, 210 + i * 5.9, yaw=random.uniform(0, math.tau))
+
+    # Shore boulders, seated into the sand.
+    for i in range(26):
         spot = _interior_spot(ground, 0.6, 0.96, pad=1.5, tries=10)
         if spot is None:
             continue
-        x, z, surface = spot
-        s = random.uniform(1.4, 3.6)
-        add_blob(bm, (x, z, surface - s * 0.3), (s, s * 0.8, s * 0.6), 0.46, 640 + i * 4.3, yaw=random.uniform(0, math.tau))
+        x, y, surface = spot
+        s = random.uniform(1.8, 4.6)
+        add_blob(bm, (x, y, surface - s * 0.34), (s, s * 0.85, s * 0.82), 0.46, 640 + i * 4.3, yaw=random.uniform(0, math.tau))
     return object_from_bmesh("Wreckwater_Rocks", bm, ["M_GraveRock"])
 
 
@@ -2025,6 +3560,8 @@ def build_wreckwater():
     objects = [
         base,
         build_wreck_bay(ground),  # first: records the bay keep-clear circle
+        build_wreck_dunes(ground),
+        *build_wreck_quay(ground),
         *build_wrecks(ground),
         build_wreck_rocks(ground),
         *build_dock("Wreckwater_Dock_Planks", "Wreckwater_Dock_Posts", "M_WreckPlank", "M_WreckPost"),
@@ -2052,43 +3589,47 @@ ISLANDS = {
     "volcano": {
         "model": "Volcano",
         "overrides": {
-            # A TOWERING stratovolcano (2026-08-24 redesign, replacing the
-            # walkable-rim caldera): the peak is ~940 studs up - a colossal
-            # jagged spire you never climb. The PLAYABLE area is the flat ash
-            # apron around the foot at sea level, littered with volcanic
-            # props (dead snags, basalt columns, cinder vents, obsidian) and
-            # the flows' molten ponds; the fishing dock is a plain shore
-            # jetty into the SEA. Radius stays capped at 640 so the base mesh
-            # stays under Roblox's 2048-stud import limit (at 850 the base
-            # was 2508 wide and could not be imported); height 940 + skirt 9
-            # is comfortably under the same cap.
+            # A believable STRATOVOLCANO (2026-08-26 revamp, replacing the
+            # 940-stud needle): a broad 1,280-stud-wide cone with CONCAVE
+            # flanks - ~40 deg under the crater lip easing to ~10 deg where it
+            # meets the apron - topping out at a ragged crater lip around 225.
+            # The mountain is now CLIMBED, not just looked at: a 7-leg
+            # switchback trail (build_volcano_terraces) benches up the face
+            # you land on, with a wide landing at every hairpin, so an
+            # eruption raid has somewhere to happen all the way up. The
+            # playable ground is still the ash apron at the foot, its props
+            # and its molten ponds, and the fishing dock is still the plain
+            # shore jetty into the SEA - both unchanged, so the S4 lane keys
+            # (dock start Z=526.5, deck Y=2.71, spawn ground ~6.6) still hold.
+            # Radius stays capped at 640 for Roblox's 2048-stud import limit.
             "ISLAND_RADIUS": 640,
-            "SEGMENTS": 64,  # facets stay big on a cone this size regardless
+            "SEGMENTS": 72,  # a walk-scale facet on the flanks the player crosses
             "GRASS_U": 0.70,  # basalt cone above, ash apron below
             "RINGS": [
-                0.0, 0.045, 0.075, 0.105, 0.14,  # crater floor -> lip -> outer drop
-                0.19, 0.25, 0.32, 0.40, 0.48, 0.56, 0.63,  # the huge flank
+                0.0, 0.045, 0.075, 0.110, 0.155, 0.190,  # crater floor -> lip -> shoulder
+                0.25, 0.32, 0.40, 0.48, 0.56, 0.63,  # the concave flank
                 0.70, 0.76, 0.82, 0.90, 1.0, 1.09, 1.28,  # apron -> shore -> skirt
             ],  # fmt: skip
-            # Concave stratovolcano silhouette with a WIDE, ragged crater
-            # mouth (~150 studs across): crater floor, steep inner wall,
-            # the summit lip, then near-vertical outer walls easing into the
-            # walkable apron. Steepness is the drama - the cone drops ~770
-            # studs in ~350 horizontal. PEAK_JAG below breaks the lip and
-            # shoulders into an asymmetric ridgeline (+-~70 studs), so the
-            # rim is 935 +- the jag, not one clean height.
+            # The stratovolcano silhouette: a crater floor under the lake, a
+            # steep inner wall, the ragged summit lip at 225, then a CONCAVE
+            # outer flank - steepest (~40 deg) just under the lip, easing
+            # steadily to ~10 deg where it meets the apron. That concavity is
+            # what makes it read as a mountain rather than a spike, and it is
+            # what makes the switchback grade a walk (~6%) instead of a
+            # scramble. PEAK_JAG breaks the lip into an asymmetric ridgeline
+            # (+-16 studs), so the rim is 225 +- the jag, not one clean height.
             "PROFILE": [
-                (0.000, 828.0),  # crater floor (under the summit lava lake)
-                (0.075, 828.0),
-                (0.110, 882.0),  # inner crater wall
-                (0.155, 935.0),  # the summit lip
-                (0.205, 800.0),  # outer drop, near-vertical
-                (0.250, 640.0),
-                (0.320, 470.0),
-                (0.400, 320.0),
-                (0.480, 205.0),
-                (0.560, 122.0),
-                (0.630, 64.0),
+                (0.000, 150.0),  # crater floor (under the summit lava lake)
+                (0.075, 150.0),
+                (0.110, 178.0),  # inner crater wall
+                (0.155, 225.0),  # the summit lip
+                (0.190, 218.0),  # lip shoulder - the trail tops out here
+                (0.250, 186.0),  # ~40 deg
+                (0.320, 152.0),  # ~37 deg
+                (0.400, 118.0),  # ~34 deg
+                (0.480, 88.0),  # ~30 deg
+                (0.560, 62.0),  # ~27 deg
+                (0.630, 44.0),  # ~22 deg
                 (0.700, 30.0),  # cone meets the ash apron
                 (0.760, 13.0),
                 (0.820, 7.0),
@@ -2102,19 +3643,23 @@ ISLANDS = {
             "RIM_FLAT": (0.70, 1.0),
             # The notches carve the SUMMIT crater lip, not the apron.
             "NOTCH_BAND": (0.10, 0.21),
-            "LAVA_LEVEL": 838.0,  # summit lake, just below the 935 lip
-            "LAKE_U": 0.115,  # laps the inner crater wall; ~150-stud-wide lake
+            "LAVA_LEVEL": 200.0,  # summit lake, below even the lowest jagged lip
+            "LAKE_U": 0.135,  # laps the inner crater wall; ~170-stud-wide lake
             # The broken ridgeline: three incommensurate angular waves, up to
             # ~70 studs of rise/fall around the crater mouth and shoulders.
-            "PEAK_JAG": 70.0,
+            "PEAK_JAG": 16.0,
             "PEAK_TERMS": [(2, 0.8, 0.45), (3, 2.6, 0.35), (5, 1.1, 0.20)],
             # Very jagged: strong outline wobble + heavy broad crag on the
             # flanks + radial jitter, so the cone reads as shattered rock.
             "COAST_TERMS": [(2, 1.0, 0.12), (3, 3.0, 0.09), (5, 0.5, 0.07), (8, 2.0, 0.06)],
             "GRASS_TERMS": [(2, 0.9, 0.06), (4, 1.5, 0.05)],
-            "CRAG": 56.0,  # huge broken-rock relief at this scale
-            "CRAG_FREQ": 0.012,  # broad features, read from the beach far below
-            "CRAG_RADIAL": 0.14,
+            "CRAG": 16.0,  # broken rock, but scaled to a 225-stud mountain
+            "CRAG_FREQ": 0.016,  # broad ribs, not fine noise
+            "CRAG_RADIAL": 0.05,  # gentle, so the foam ring still meets the real shore
+            # Quiet the crag across the face the switchbacks are cut into, so
+            # the trail benches into believable ground; the other three
+            # quarters of the cone keep every stud of it.
+            "CRAG_CALM": (math.radians(270), math.radians(52), 0.50),
             # Five gashes in the crater lip - "lava flowing everywhere": one
             # full-flank flow pours out of each, dying in a pond on the apron.
             # None faces the dock (270): the sea in front of the planks stays
@@ -2122,12 +3667,16 @@ ISLANDS = {
             # Depths must drop the 935 lip below the 838 lake (>97), and
             # peak_jag is zeroed inside each notch window so a high ridge
             # beside a gash can't seal it.
+            # Depths must drop the 225 lip below the 200 lake (>25); peak_jag
+            # is zeroed inside each notch window so a high ridge beside a gash
+            # can't seal it. Every gash also clears the switchback face
+            # (270 +- 42 deg plus margin) - the climb stays lava-free.
             "NOTCHES": [
-                (math.radians(320), math.radians(16), 135.0),
-                (math.radians(15), math.radians(12), 122.0),
-                (math.radians(80), math.radians(10), 118.0),
-                (math.radians(150), math.radians(13), 128.0),
-                (math.radians(205), math.radians(10), 120.0),
+                (math.radians(330), math.radians(15), 70.0),
+                (math.radians(15), math.radians(12), 66.0),
+                (math.radians(80), math.radians(10), 62.0),
+                (math.radians(150), math.radians(13), 68.0),
+                (math.radians(205), math.radians(10), 64.0),
             ],
             # The fishing dock: a plain shore jetty into the SEA (build_dock
             # machinery) at the same Roblox +Z angle as the tropical dock,
@@ -2155,6 +3704,7 @@ ISLANDS = {
                 "M_Charred": (0.10, 0.085, 0.08),  # dead burnt snags
                 "M_Basalt": (0.14, 0.15, 0.185),  # hex column clusters
                 "M_Cinder": (0.24, 0.20, 0.19),  # fumarole vent cones
+                "M_VolPath": (0.33, 0.30, 0.29),  # trodden ash of the switchback trail
             },
         },
         "build": build_volcano,
@@ -2168,18 +3718,27 @@ ISLANDS = {
         "model": "Swamp",
         "overrides": {
             "ISLAND_RADIUS": 180,
-            "SEGMENTS": 72,
-            "GRASS_U": 0.66,
-            "RINGS": [0.0, 0.10, 0.20, 0.30, 0.40, 0.52, 0.66, 0.78, 0.88, 0.95, 1.0, 1.09, 1.28],
-            # Flat as standing water allows: the whole interior is ~2-5 studs
-            # up, so the pools sit IN the ground rather than perched on it.
+            # Dense enough that a 14-stud channel and its banks actually
+            # resolve in the radial fan - the fen's shape IS its water.
+            "SEGMENTS": 160,
+            "GRASS_U": 0.74,  # a narrower mud band; the old ring read as dead
+            "RINGS": [
+                0.0, 0.045, 0.09, 0.135, 0.18, 0.225, 0.27, 0.315, 0.36, 0.405,
+                0.45, 0.495, 0.54, 0.585, 0.63, 0.675, 0.74, 0.79, 0.84, 0.88,
+                0.92, 0.96, 1.0, 1.09, 1.28,
+            ],
+            # Low, but no longer flat: the interior sits 3-4 studs proud of the
+            # standing water so the carved pools and channels read as sunken.
+            # Everything from u=0.88 out is UNCHANGED, which is what keeps the
+            # dock deck height (2.4) and the shoreline exactly where they were.
             "PROFILE": [
-                (0.00, 5.2),
-                (0.25, 4.6),
-                (0.40, 4.0),
-                (0.52, 3.4),
-                (0.66, 2.4),
-                (0.78, 1.6),
+                (0.00, 7.4),
+                (0.18, 7.0),
+                (0.32, 6.5),
+                (0.46, 5.9),
+                (0.58, 5.2),
+                (0.70, 4.2),
+                (0.80, 2.9),
                 (0.88, 1.1),
                 (1.00, 0.6),
                 (1.09, -1.8),
@@ -2187,7 +3746,7 @@ ISLANDS = {
             ],
             # A heavily lobed, creeky coastline - fingers of mud and water.
             "COAST_TERMS": [(2, 0.7, 0.13), (3, 2.9, 0.10), (5, 1.6, 0.08), (9, 0.4, 0.045)],
-            "GRASS_TERMS": [(2, 1.1, 0.05), (4, 2.3, 0.04)],
+            "GRASS_TERMS": [(2, 1.1, 0.10), (3, 0.4, 0.075), (5, 2.3, 0.05)],
             "DOCK_ANGLE_DEG": 270,
             "DOCK_START_U": 0.90,
             "DOCK_LENGTH": 42.0,
@@ -2198,12 +3757,16 @@ ISLANDS = {
             "DOCK_POST_SPACING": 7.0,
             "DOCK_POST_BOTTOM": -6.0,
             "COLORS": {
-                "M_Peat": (0.239, 0.302, 0.196),  # dark waterlogged moss-peat
+                "M_Peat": (0.278, 0.376, 0.216),  # waterlogged moss-peat (kept light enough
+                # that the murk pools read as water against it)
                 "M_Mud": (0.396, 0.333, 0.235),  # the mud "beach"
                 "M_WetMud": (0.290, 0.247, 0.184),
-                "M_SwampWater": (0.216, 0.302, 0.235),  # opaque murk - you can't see what's biting
+                "M_SwampWater": (0.129, 0.200, 0.165),  # opaque murk - you can't see what's biting
                 "M_Cypress": (0.357, 0.278, 0.196),
                 "M_Moss": (0.325, 0.451, 0.243),
+                "M_MossDark": (0.235, 0.353, 0.208),  # the second canopy pad
+                "M_Lily": (0.451, 0.643, 0.318),  # lily pads: the fen's colour pop
+                "M_BogStone": (0.353, 0.365, 0.333),  # sunken bog stones / menhir
                 "M_Reed": (0.545, 0.529, 0.302),
                 "M_RootWood": (0.259, 0.208, 0.157),
                 "M_MudMound": (0.337, 0.294, 0.216),
@@ -2283,29 +3846,48 @@ ISLANDS = {
         "overrides": {
             "ISLAND_RADIUS": 200,
             "SEGMENTS": 72,
-            "GRASS_U": 0.60,
-            "RINGS": [0.0, 0.10, 0.20, 0.32, 0.46, 0.60, 0.72, 0.82, 0.90, 0.96, 1.0, 1.09, 1.28],
+            # The material break sits exactly on the crown lip: near-black
+            # basalt fills the amphitheatre, the ashen violet-grey shore wraps
+            # the outer apron, so the rim reads as a hard tonal edge.
+            "GRASS_U": 0.56,
+            # Every ring is a terrace tread or a riser edge, so the steps land
+            # on mesh rings and the contours stay crisp, never stair-stepped.
+            "RINGS": [0.0, 0.14, 0.215, 0.245, 0.30, 0.325, 0.39, 0.415, 0.47, 0.495, 0.56, 0.62, 0.68, 0.74, 0.80, 0.88, 0.96, 1.0, 1.09, 1.28],
+            # The amphitheatre: a pit sunk BELOW the waterline (so the dark
+            # water pools at sea level), three terraces stepping up out of it,
+            # a high crown ring, then a wide apron falling away to the dock.
             "PROFILE": [
-                (0.00, 16.0),
-                (0.20, 12.0),
-                (0.32, 8.6),
-                (0.46, 6.0),
-                (0.60, 4.2),
-                (0.72, 3.0),
-                (0.82, 2.2),
-                (0.90, 1.5),
-                (1.00, 0.7),
-                (1.09, -1.8),
-                (1.28, SKIRT_BOTTOM),
+                (0.000, -6.4),  # lake floor, under the water sheet
+                (0.140, -5.4),
+                (0.215, 0.5),  # the bank climbs out of the dark water
+                (0.245, 2.6),
+                (0.300, 3.0),  # terrace A tread - the fishing shore
+                (0.325, 10.0),  # riser
+                (0.390, 10.6),  # terrace B tread
+                (0.415, 17.6),  # riser
+                (0.470, 18.2),  # terrace C tread
+                (0.495, 25.4),  # riser
+                (0.560, 26.2),  # the crown - the silhouette off the sea
+                (0.620, 19.0),
+                (0.680, 11.0),
+                (0.740, 5.2),
+                (0.800, 3.0),  # the apron: spawn + boss ground
+                (0.880, 2.1),
+                (0.960, 1.2),
+                (1.000, 0.7),
+                (1.090, -1.8),
+                (1.280, SKIRT_BOTTOM),
             ],
             "COAST_TERMS": [(2, 1.7, 0.11), (4, 0.6, 0.08), (6, 2.8, 0.06)],
             "GRASS_TERMS": [(3, 0.8, 0.05)],
-            "CRAG": 4.5,
-            "CRAG_FREQ": 0.04,
-            "CRAG_RADIAL": 0.06,
-            "RIM_FLAT": (0.46, 0.96),  # the walkable shelf band
+            # Enough crag to break the lathe rings into broken rock, not so
+            # much that it eats the terrace risers.
+            "CRAG": 1.7,
+            "CRAG_FREQ": 0.030,
+            "CRAG_RADIAL": 0.05,
+            "RIM_FLAT": (0.66, 0.96),  # apron + shore stay level: spawn, dock, boss
             "DOCK_ANGLE_DEG": 270,
-            "DOCK_START_U": 0.90,
+            "DOCK_START_U": 0.907,
             "DOCK_LENGTH": 44.0,
             "DOCK_WIDTH": 10.0,
             "DOCK_END_LENGTH": 13.0,
@@ -2314,13 +3896,14 @@ ISLANDS = {
             "DOCK_POST_SPACING": 7.0,
             "DOCK_POST_BOTTOM": -6.0,
             "COLORS": {
-                "M_GloomRock": (0.129, 0.125, 0.165),  # near-black basalt
-                "M_GloomSand": (0.204, 0.196, 0.243),  # ashen violet-grey shore
-                "M_GloomWet": (0.157, 0.153, 0.196),
+                "M_GloomRock": (0.110, 0.106, 0.145),  # near-black basalt
+                "M_GloomSand": (0.243, 0.231, 0.298),  # ashen violet-grey shore
+                "M_GloomWet": (0.157, 0.153, 0.204),
                 "M_DarkWater": (0.024, 0.043, 0.086),  # all but black
                 "M_GloomStalk": (0.231, 0.243, 0.298),
-                "M_GlowCyan": (0.290, 0.937, 0.878),  # the lantern bulbs / anemones
-                "M_GlowViolet": (0.663, 0.416, 0.937),  # the kelp fronds
+                "M_GloomPath": (0.365, 0.353, 0.443),  # pale flagstones - the route
+                "M_GlowCyan": (0.290, 0.937, 0.878),  # mushroom caps / anemones
+                "M_GlowViolet": (0.663, 0.416, 0.937),  # crystal shards / veins
                 "M_GloomPlank": (0.278, 0.259, 0.322),
                 "M_GloomPost": (0.196, 0.180, 0.235),
                 "M_GloomFoam": (0.671, 0.702, 0.780),
@@ -2371,12 +3954,14 @@ ISLANDS = {
             "DOCK_POST_BOTTOM": -6.0,
             "COLORS": {
                 "M_BayFloor": (0.235, 0.243, 0.235),  # drowned grey-green silt
-                "M_WreckSand": (0.667, 0.639, 0.557),  # bone-grey sand
+                "M_WreckSand": (0.741, 0.706, 0.612),  # bone-grey sand
+            "M_WreckDrift": (0.647, 0.604, 0.514),  # the drifted dune ridges, a shade deeper
                 "M_WreckWet": (0.518, 0.494, 0.427),
                 "M_BayWater": (0.086, 0.196, 0.216),  # deep still teal
-                "M_HullWood": (0.216, 0.180, 0.145),  # rotten black-brown timbers
+                "M_HullWood": (0.196, 0.157, 0.125),  # rotten black-brown timbers
                 "M_GhostGlow": (0.678, 0.945, 0.769),  # the pale sea-fire on the ghost ships
-                "M_GraveRock": (0.353, 0.361, 0.376),
+            "M_WreckSail": (0.741, 0.745, 0.702),  # rotted canvas, bone with a green cast
+                "M_GraveRock": (0.286, 0.298, 0.325),
                 "M_WreckGrass": (0.443, 0.502, 0.373),  # dull sage rim grass
                 "M_WreckPlank": (0.475, 0.404, 0.310),
                 "M_WreckPost": (0.329, 0.271, 0.204),
