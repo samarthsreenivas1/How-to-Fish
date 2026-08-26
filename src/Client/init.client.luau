@@ -22,6 +22,7 @@ local ORDER = {
 	"FishingController", -- after RodViewmodelController: reads the rod tip; after CameraController: borrows the cursor while reeling
 	"OceanController", -- no dependencies; scrolls the water textures
 	"LavaController", -- no dependencies; molten crust + bubbles/bursts on any "*Lava" part under Workspace/World
+	"MaelstromVfxController", -- no dependencies; spins the Maelstrom's whirlpool disc + counter-layer (pure local decoration)
 	"CreatureVfxController", -- no dependencies; splashes / drips / puffs driven by creature attributes
 	"EquipController", -- no dependencies; 1/2 hotkeys that ask the server to swap hands
 	"CombatController", -- after both melee viewmodels: click/tap swings the equipped weapon (and asks the server to resolve the hit)
