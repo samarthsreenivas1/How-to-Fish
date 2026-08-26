@@ -334,10 +334,12 @@ Bosses.items.old_gnashroot = {
 	islandId = "swamp",
 	-- The bait is the gate, as always: level only, the fen band's end.
 	gate = { level = 14 },
-	-- Off the end of the fen's jetty (the Swamp dock runs +Z from Z=140 to
-	-- ~182 at radius 180): it rises from the open water past the planks, and
-	-- can haul itself toward them.
-	arena = { offset = Vector3.new(0, 0, 210), radius = 28 },
+	-- The fen's interior boss pool: the round-2 island rebuild carved a real
+	-- arena pond inland and its generator prints the placement as a HANDOFF
+	-- line (rel Z=74, radius 36 - pack build 5904cf0, the authoritative
+	-- numbers). It rises out of the peat murk in the island's heart, fought
+	-- from the banks - no longer the open sea off the jetty.
+	arena = { offset = Vector3.new(0, 0, 74), radius = 36 },
 	aggro = 90,
 	standoff = 14,
 	hitRadius = 6, -- at scale 1, pivot to the jaws; x1.5 = 9, the Brinejaw frame

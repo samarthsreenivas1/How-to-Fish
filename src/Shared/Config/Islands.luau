@@ -99,7 +99,7 @@ Islands.items = {
 		model = "Swamp",
 		worldPosition = Vector3.new(3000, 0, 0),
 		radius = 180,
-		spawn = Vector3.new(3000, 4, 122), -- X/Z: on the bank before the dock (planks run Z=140..182); Y is the probe's fallback
+		spawn = Vector3.new(3000, 4, 130), -- X/Z: on the bank before the dock (planks start Z=148 after the round-2 rebuild; pack 5904cf0 HANDOFF); Y is the probe's fallback
 		unlockLevel = 8,
 		boss = "old_gnashroot",
 
