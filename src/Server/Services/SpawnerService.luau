@@ -211,6 +211,13 @@ end
 function SpawnerService.init() end
 
 function SpawnerService.start()
+	-- Ambient spawning is a Tuning kill switch (user, 2026-08-26: hostiles
+	-- appearing unannounced on the islands read as a bug). The module stays
+	-- up either way - RaidService leans on groundAt/groundPointNear and the
+	-- weather events on setBias - only the sweep itself stays down.
+	if not S.AMBIENT_ENABLED then
+		return
+	end
 	task.spawn(function()
 		while true do
 			task.wait(S.TICK)

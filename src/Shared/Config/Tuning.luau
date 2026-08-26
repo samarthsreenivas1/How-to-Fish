@@ -806,6 +806,13 @@ Tuning.Boat = {
 -- The ambient spawner (SpawnerService). Per-island rosters live on
 -- Islands.items[id].ambient; this is the machinery's own pacing.
 Tuning.Spawner = {
+	-- OFF (user, 2026-08-26): "hostile mobs just spawn on the islands - fix
+	-- that." Ambient hostiles materializing unannounced read as a bug in
+	-- play, so the sweep never starts; hostiles come only from fishing and
+	-- from raids (which are announced, with a countdown and a reward).
+	-- Everything below is dormant until this is turned back on; the
+	-- island `ambient` rosters and the weather flyer-bias hook stay wired.
+	AMBIENT_ENABLED = false,
 	TICK = 2, -- seconds between spawn sweeps
 	GLOBAL_CAP = 40, -- ambient creatures across ALL islands (one Heartbeat serves everything)
 	RING = { 60, 100 }, -- default distance band around the chosen player
