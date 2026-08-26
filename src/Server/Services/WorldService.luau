@@ -369,10 +369,19 @@ local MESH_COLOR = {
 	Frostmaw_Base2 = Color3.fromRGB(199, 217, 230), -- M_IceSheet (the walked, fished shelf)
 	Frostmaw_Base3 = Color3.fromRGB(163, 186, 207), -- M_IceWet
 	Frostmaw_IceHoles = Color3.fromRGB(18, 33, 55),
-	Frostmaw_RimIce = Color3.fromRGB(150, 191, 224),
-	Frostmaw_Seracs = Color3.fromRGB(150, 191, 224),
-	Frostmaw_Rocks = Color3.fromRGB(68, 74, 84),
-	Frostmaw_Snags = Color3.fromRGB(132, 126, 118),
+	-- Round-2 soft-glacier rebuild (pack after 5904cf0): blunt chunky
+	-- forms in a pastel arctic palette. RimIce/Seracs/Rocks/Snags are gone
+	-- from the mesh; these ten replace them.
+	Frostmaw_Berg = Color3.fromRGB(182, 214, 241), -- the rounded central berg
+	Frostmaw_Arch = Color3.fromRGB(150, 195, 232), -- the ice arch
+	Frostmaw_Walls = Color3.fromRGB(122, 173, 225), -- thick blue ice walls
+	Frostmaw_Terraces = Color3.fromRGB(216, 231, 245), -- stepped snow mesas
+	Frostmaw_Crystals = Color3.fromRGB(122, 218, 215), -- stubby teal clusters
+	Frostmaw_PineSnow = Color3.fromRGB(246, 249, 251), -- snow load on the pines
+	Frostmaw_Pines = Color3.fromRGB(90, 140, 102),
+	Frostmaw_DeadTrees = Color3.fromRGB(74, 62, 56),
+	Frostmaw_SnowMounds = Color3.fromRGB(246, 249, 252),
+	Frostmaw_ShardLitter = Color3.fromRGB(237, 245, 252), -- flat ice-shard scatter
 	Frostmaw_Dock_Planks = Color3.fromRGB(142, 122, 96),
 	Frostmaw_Dock_Posts = Color3.fromRGB(103, 86, 67),
 	Frostmaw_Foam = Color3.fromRGB(240, 246, 250),
@@ -422,6 +431,11 @@ local MESH_MATERIAL = {
 	Gloomtrench_GlowCyan = Enum.Material.Neon,
 	Gloomtrench_GlowViolet = Enum.Material.Neon,
 	Wreckwater_GhostGlow = Enum.Material.Neon,
+	-- Frostmaw's big glacial forms glint like real ice; nothing Neon here.
+	Frostmaw_Berg = Enum.Material.Ice,
+	Frostmaw_Arch = Enum.Material.Ice,
+	Frostmaw_Walls = Enum.Material.Ice,
+	Frostmaw_Crystals = Enum.Material.Ice,
 }
 
 local function applyMeshColors(island: Model)

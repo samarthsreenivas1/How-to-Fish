@@ -140,7 +140,7 @@ Islands.items = {
 		model = "Frostmaw",
 		worldPosition = Vector3.new(6000, 0, 0),
 		radius = 230,
-		spawn = Vector3.new(6000, 5, 174), -- X/Z: shore before the dock (planks run Z=192..238); Y is the probe's fallback
+		spawn = Vector3.new(6000, 8, 174), -- X/Z: shore before the dock (planks run Z=192..238); Y is the probe's fallback (ground ~7.4 after the soft-glacier rebuild)
 		unlockLevel = 15,
 		boss = "rimefang",
 		ambient = {
