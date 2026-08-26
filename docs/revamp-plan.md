@@ -27,7 +27,12 @@ Frostmaw was being written the same night.
 - [ ] S4b: Maelstrom site, Kraken, shelf/weather wiring — b8 (after 5a's raids)
 - [ ] Art: S4 hostile/fish species + S4 weapon variants — 16 (in flight)
 - [ ] Final integration review + verification sweep — 81 (adversarial review fleet running)
-- [ ] **Manual (user, in Studio): imports per docs/import-checklist.md**
+- [x] **Manual (user, in Studio): imports per docs/import-checklist.md** — done 2026-08-26:
+  the re-exported Assets.rbxm was verified by decompressing its LZ4 chunks (session 5a) and
+  contains all six island models incl. the four new fishable-water surfaces (Swamp_Water /
+  Frostmaw_IceHoles / Gloomtrench_DarkWater / Wreckwater_Bay), all five mesh packs
+  (Fish/Creature/Rod/Weapon/BoatPack), all six boat hulls, and the Kraken. Live playtest
+  feedback is already flowing (Atmosphere fog fix 5d55419, ambient kill-switch cc7d945).
 
 ## Context
 
