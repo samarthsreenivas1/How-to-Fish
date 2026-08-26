@@ -201,6 +201,48 @@ local function track(model: Model)
 	refresh()
 end
 
+-- With seven islands, two bosses can be alive at once (each summoned on
+-- its own island). The bar belongs to the NEAREST live boss - islands sit
+-- 3000 studs apart, so "nearest" is always the one this player is
+-- fighting - and every add/remove RE-TARGETS instead of last-writer-wins:
+-- a boss dying elsewhere must never hide the bar of the one still trying
+-- to eat you (review finding, 2026-08-25).
+local creaturesFolder: Instance? = nil
+
+local function nearestBoss(): Model?
+	if not creaturesFolder then
+		return nil
+	end
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	local best: Model? = nil
+	local bestDist = math.huge
+	for _, child in creaturesFolder:GetChildren() do
+		if child:IsA("Model") and child:GetAttribute(ATTR_BOSS_NAME) then
+			local dist = if root and root:IsA("BasePart")
+				then (child:GetPivot().Position - root.Position).Magnitude
+				else 0
+			if dist < bestDist then
+				best = child
+				bestDist = dist
+			end
+		end
+	end
+	return best
+end
+
+local function retarget()
+	local best = nearestBoss()
+	if best == current then
+		return
+	end
+	if best then
+		track(best)
+	else
+		untrack()
+	end
+end
+
 -- A creature becomes a boss the moment its BossName lands (set by the
 -- server as it rises - a frame or so after the model appears).
 local function consider(child: Instance)
@@ -208,14 +250,14 @@ local function consider(child: Instance)
 		return
 	end
 	if child:GetAttribute(ATTR_BOSS_NAME) then
-		track(child)
+		retarget()
 		return
 	end
 	local connection
 	connection = child:GetAttributeChangedSignal(ATTR_BOSS_NAME):Connect(function()
 		if child:GetAttribute(ATTR_BOSS_NAME) and child.Parent then
 			connection:Disconnect()
-			track(child)
+			retarget()
 		end
 	end)
 end
@@ -284,10 +326,15 @@ function BossHudController.start()
 			warn("[BossHud] no Workspace." .. CREATURES_FOLDER .. " folder; boss bar off")
 			return
 		end
+		creaturesFolder = creatures
 		creatures.ChildAdded:Connect(consider)
 		creatures.ChildRemoved:Connect(function(child)
 			if child == current then
+				-- The tracked boss went down; another may still be live on
+				-- this player's island (or anywhere) - hand the bar over
+				-- rather than killing it.
 				untrack()
+				retarget()
 			end
 		end)
 		for _, existing in creatures:GetChildren() do
