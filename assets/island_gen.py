@@ -2630,363 +2630,652 @@ def build_swamp():
 
 # ---- Frostmaw Reach -------------------------------------------------------
 #
-# Frostmaw is read from two things: the BERG and the SPIKE FIELDS. A single
-# towering iceberg (hundreds of studs of stacked, leaning glacial mass with
-# stepped shelves and an overhanging crown) sits on the central ridge, and the
-# flat walkable sheet around it is planted with clustered forests of huge ice
-# spikes. The fishing holes are clustered INSIDE those spike fields, so
-# working the ice means threading a crystal forest - which is why every spike
-# cluster is laid out as a ring of shards around an open middle, and why the
-# clusters themselves are islands of ice with plain sheet between them.
+# Frostmaw is a BLUNT island. Every form here is a chunky, soft-faceted mass
+# with a wide base and a rounded shoulder - stacked ice courses, terraced
+# slabs, rolled berg mounds, stubby teal crystals. Nothing on this island is a
+# needle or a spike; the silhouette language is "boulder of ice", never
+# "shard of glass".
+#
+# The read, from the sea in: stepped glacial cliff WALLS wrap most of the
+# coast (leaving the dock quadrant and two beach bays open), the land behind
+# them steps up in two broad TERRACES to a rolled berg MASSIF at the heart, an
+# ICE ARCH stands out on the field, and the whole walkable sheet is scattered
+# with hundreds of flat ice plates - the litter is the signature texture, and
+# it thickens along the FROZEN CHANNEL (a broad shallow trough carved by
+# NOTCHES) where most of the fishing holes are cut.
+#
+# Poly discipline: every ice mass is one low-sided tapered stack (_ice_mass,
+# ~20 polys) and every plate is a yawed box (6 polys), so a very dense scatter
+# still lands well inside the island budget.
 
-_ICE_CLUSTERS = []  # (x, y, radius) spike-field centres, shared holes <-> spikes
+_ICE_OCC = []  # (x, z, radius) footprints of the big props, so they never merge
+_ICE_CLUSTERS = []  # (x, z, radius) crystal cluster sites, shared with the litter
+_ICE_WALL_FEET = []  # (x, z) wall course feet, so shard litter piles at their base
 
 
-def _ice_keepout(x, z):
-    """Extra keep-clear for BIG ice mass: a wide wedge over the dock walk and a
-    generous bubble around the spawn ground, on top of _near_dock_corridor
-    (which is only a thin rock-sized wedge)."""
+# Radius profiles for _ice_mass: (t along the height, radius multiplier).
+# Every one of them ENDS WIDE - that is the whole art direction.
+_PROF_BOULDER = ((0.0, 0.86), (0.30, 1.0), (0.70, 0.90), (1.0, 0.52))
+_PROF_COURSE = ((0.0, 1.0), (0.55, 0.96), (0.85, 0.88), (1.0, 0.74))
+_PROF_SLAB = ((0.0, 1.0), (0.70, 0.98), (1.0, 0.90))
+_PROF_CRYSTAL = ((0.0, 1.0), (0.45, 0.88), (0.80, 0.68), (1.0, 0.52))  # tip = 52% of base
+_PROF_DOME = ((0.0, 1.0), (0.40, 0.93), (0.75, 0.76), (1.0, 0.44))
+_PROF_MOUND = ((0.0, 1.0), (0.35, 0.96), (0.70, 0.84), (1.0, 0.58))  # a rolled hill flank
+
+
+def _ice_mass(bm, center, rx, ry, height, prof=_PROF_BOULDER, sides=6, yaw=0.0,
+              tilt=(0.0, 0.0), jitter=0.0, salt=0.0):
+    """ONE blunt ice mass: a low-sided stack of rings whose radius follows
+    `prof`, capped top and bottom, then yawed/tilted into place with its BASE
+    at `center`. This is the only solid Frostmaw builds anything from - bergs,
+    wall courses, terrace slabs, crystals, snow mounds - which is what keeps
+    the island's whole vocabulary chunky and consistent."""
+    temp = bmesh.new()
+    rings = []
+    for t, m in prof:
+        ring = []
+        for s in range(sides):
+            a = (s / sides) * math.tau
+            w = 1.0
+            if jitter:
+                w += noise.noise(Vector((math.cos(a) * 1.7 + salt, math.sin(a) * 1.7 + salt * 0.6, t * 2.3))) * jitter
+            ring.append(temp.verts.new(Vector((math.cos(a) * rx * m * w, math.sin(a) * ry * m * w, t * height))))
+        rings.append(ring)
+    temp.faces.new(list(reversed(rings[0])))
+    for i in range(len(rings) - 1):
+        lo, hi = rings[i], rings[i + 1]
+        for s in range(sides):
+            s2 = (s + 1) % sides
+            temp.faces.new((lo[s], hi[s], hi[s2], lo[s2]))
+    temp.faces.new(rings[-1])
+    matrix = (
+        Matrix.Translation(Vector(center))
+        @ Matrix.Rotation(yaw, 4, "Z")
+        @ Matrix.Rotation(tilt[0], 4, "X")
+        @ Matrix.Rotation(tilt[1], 4, "Y")
+    )
+    bmesh.ops.transform(temp, matrix=matrix, verts=temp.verts[:])
+    mesh = bpy.data.meshes.new("_icemass")
+    temp.to_mesh(mesh)
+    temp.free()
+    bm.from_mesh(mesh)
+    bpy.data.meshes.remove(mesh)
+
+
+def _ice_plate(bm, x, z, surface, size, salt):
+    """One flat broken floe on the ice: a thin yawed slab lying almost level.
+    Six polys - the reason the sheet can carry hundreds of them."""
+    thick = size * random.uniform(0.10, 0.20) + 0.16
+    add_box(bm, (x, z, surface + thick * 0.35), (size, size * random.uniform(0.55, 0.95), thick),
+            yaw=salt)
+
+
+def _ice_spawn_xy():
+    """Where WorldService drops the player: 18 studs inland of the dock start
+    on the dock bearing. Nothing is ever built inside its bubble."""
     a = math.radians(DOCK_ANGLE_DEG)
+    r = ring_radius(DOCK_START_U, a) - 18.0
+    return math.cos(a) * r, math.sin(a) * r
+
+
+def _ice_open(x, z, pad=0.0, spawn_clear=14.0):
+    """Is (x, z) free to build on? Keeps the walk off the planks open, keeps a
+    clear standing bubble at the spawn, and stays out of every cut hole."""
     theta = math.atan2(z, x)
+    a = math.radians(DOCK_ANGLE_DEG)
     da = abs(((theta - a + math.pi) % math.tau) - math.pi)
-    r = math.hypot(x, z)
-    if da < 0.30 and r > ring_radius(0.62, theta):
-        return True
-    spawn_r = ring_radius(DOCK_START_U, a) - 18.0
-    sx, sz = math.cos(a) * spawn_r, math.sin(a) * spawn_r
-    return (x - sx) ** 2 + (z - sz) ** 2 < 34.0**2
+    if da < 0.14 and math.hypot(x, z) > ring_radius(0.72, theta):
+        return False
+    sx, sz = _ice_spawn_xy()
+    if (x - sx) ** 2 + (z - sz) ** 2 < (spawn_clear + pad) ** 2:
+        return False
+    return _clear_of_ponds(x, z, max(pad, 2.0))
 
 
-def _ice_cluster_layout():
-    """Lay out the spike fields once, before anything is built. Holes are cut
-    inside them and shards ring them, so both agree on where the forests are."""
-    _ICE_CLUSTERS.clear()
-    for i in range(8):
-        for _ in range(30):
-            theta = (i / 8) * math.tau + random.uniform(-0.22, 0.22)
-            u = random.uniform(0.62, 0.84)
-            r = ring_radius(u, theta)
-            x, z = math.cos(theta) * r, math.sin(theta) * r
-            if _near_dock_corridor(theta, u) or _ice_keepout(x, z):
-                continue
-            _ICE_CLUSTERS.append((x, z, random.uniform(26.0, 38.0)))
-            break
+def _ice_free(x, z, r):
+    """No big prop overlaps another big prop's footprint."""
+    return all((x - px) ** 2 + (z - pz) ** 2 > (r + pr) ** 2 for px, pz, pr in _ICE_OCC)
+
+
+def _ice_claim(x, z, r):
+    _ICE_OCC.append((x, z, r))
+
+
+def _ice_channel_spot(u_lo=0.56, u_hi=0.93, spread=0.85):
+    """A point in the frozen channel - the trough NOTCHES carves across the
+    sheet. Holes cluster here and the floe litter thickens here."""
+    if not NOTCHES:
+        return None
+    a0, half, _d = random.choice(NOTCHES)
+    theta = a0 + random.uniform(-half * spread, half * spread)
+    u = random.uniform(u_lo, u_hi)
+    r = ring_radius(u, theta)
+    return math.cos(theta) * r, math.sin(theta) * r
 
 
 def build_ice_holes(ground):
-    """The frozen shelf's fishing holes - fixed, pre-cut discs of black-blue
-    water in the ice, each collared by chunked rim ice. Most are cut in the
-    open middles of the spike fields; a few are lone holes out on the bare
-    sheet. One object, Frostmaw_IceHoles: the fishable-surface contract name
-    (waters="ice")."""
+    """The fishing holes: 18-24 ragged discs of black-blue water cut through
+    the sheet, most of them strung along the frozen channel where the ice is
+    thin, the rest out on the open terraces. One object, Frostmaw_IceHoles -
+    the fishable-surface contract name (waters="ice")."""
     bm = bmesh.new()
     LAVA_PONDS.clear()
-    _ice_cluster_layout()
+    _ICE_OCC.clear()
+    _ICE_CLUSTERS.clear()
+    _ICE_WALL_FEET.clear()
     placed = 0
 
     def cut(x, z):
         nonlocal placed
-        if not _clear_of_ponds(x, z, 13.0):  # holes keep well apart
+        if not _ice_open(x, z, pad=11.0, spawn_clear=20.0):
             return False
         surface = _drop_to_ground(ground, x, z)
         if surface is None:
             return False
-        hr = random.uniform(5.0, 8.5)
-        _pool_disc(bm, x, z, hr, surface + 0.25, 2.2, salt=x * 0.13 + z * 0.07, squash=random.uniform(0.85, 1.0))
+        hr = random.uniform(4.6, 8.0)
+        _pool_disc(bm, x, z, hr, surface + 0.22, 2.0, salt=x * 0.13 + z * 0.07,
+                   squash=random.uniform(0.82, 1.0))
         placed += 1
         return True
 
-    # Clustered: 2-3 holes in the clear middle of each spike field.
-    for cx, cz, crad in _ICE_CLUSTERS:
-        for _ in range(random.randint(2, 3)):
-            for _ in range(14):
-                a = random.uniform(0, math.tau)
-                d = random.uniform(0.0, crad * 0.46)
-                x, z = cx + math.cos(a) * d, cz + math.sin(a) * d
-                theta = math.atan2(z, x)
-                r = math.hypot(x, z)
-                if r > ring_radius(0.90, theta) or r < ring_radius(0.58, theta):
-                    continue
-                if _near_dock_corridor(theta, r / max(ring_radius(1.0, theta), 1e-6)):
-                    continue
-                if cut(x, z):
-                    break
+    # Strung along the channel: the run you walk to work the ice.
+    for _ in range(120):
+        if placed >= 13:
+            break
+        spot = _ice_channel_spot(0.58, 0.90)
+        if spot is not None:
+            cut(*spot)
 
-    # A few loners out on the open sheet, so the shelf is fishable everywhere.
-    for _ in range(90):
+    # The rest out on the open sheet, so the terraces are fishable too.
+    for _ in range(220):
         if placed >= 21:
             break
         theta = random.uniform(0, math.tau)
-        u = random.uniform(0.58, 0.90)
-        if _near_dock_corridor(theta, u):
-            continue
+        u = random.uniform(0.56, 0.90)
         r = ring_radius(u, theta)
-        x, z = math.cos(theta) * r, math.sin(theta) * r
-        cut(x, z)
+        cut(math.cos(theta) * r, math.sin(theta) * r)
 
     print(f"[island_gen] ice holes: {placed}")
     return object_from_bmesh("Frostmaw_IceHoles", bm, ["M_IceWater"])
 
 
-def build_ice_rims(ground):
-    """Chunked ice collars around every hole + scattered sheet debris."""
+# The coastline windows left OPEN (no cliff wall): the dock quadrant, so the
+# approach from the sea reads as a landing, and two beach bays. Everything
+# else gets stepped glacial cliffs. (centre degrees, half-width degrees)
+_ICE_WALL_GAPS = ((270.0, 40.0), (152.0, 24.0), (34.0, 20.0), (208.0, 12.0))
+
+
+def _ice_wall_gap(theta):
+    for c, half in _ICE_WALL_GAPS:
+        a0 = math.radians(c)
+        da = abs(((theta - a0 + math.pi) % math.tau) - math.pi)
+        if da < math.radians(half):
+            return True
+    return False
+
+
+def build_ice_walls(ground):
+    """The coast the reference opens with: BIG SMOOTH GLACIAL CLIFFS. Stacked
+    courses of rounded chunks - a wide foot course, a stepped-back middle, a
+    narrower crown - marching round the shoreline wherever a bay or the dock
+    quadrant does not open it up. 15-45 studs, and every course is blunt."""
     bm = bmesh.new()
-    for px, py, pr in list(LAVA_PONDS):
-        for i in range(random.randint(5, 8)):
-            a = random.uniform(0, math.tau)
-            d = pr + random.uniform(0.6, 2.2)
-            x, z = px + math.cos(a) * d, py + math.sin(a) * d
+    STEPS = 104
+    built = 0
+    for i in range(STEPS):
+        theta = (i / STEPS) * math.tau
+        if _ice_wall_gap(theta):
+            continue
+        # A slow swell along the coast: some stretches are low ramparts, some
+        # are full cliffs, so the wall is never one extruded band.
+        s = 0.5 + 0.5 * math.sin(2.7 * theta + 0.9)
+        s2 = 0.5 + 0.5 * math.sin(6.1 * theta + 2.4)
+        H = 18.0 + 22.0 * s + 6.0 * s2
+        u = 0.995 + 0.012 * math.sin(9.0 * theta + 1.7)
+        r = ring_radius(u, theta)
+        x, z = math.cos(theta) * r, math.sin(theta) * r
+        surface = _drop_to_ground(ground, x, z)
+        if surface is None:
+            continue
+        _ICE_WALL_FEET.append((x, z))
+        # Chunks are WIDER than the spacing between stations, so the courses
+        # fuse into one continuous cliff face instead of standing as separate
+        # teeth. The wall is smooth and massive; only its top edge breaks up.
+        step = math.tau * r / STEPS
+        out = Vector((math.cos(theta), math.sin(theta)))
+        zc = surface - 6.0
+        # ONE tall foot course carries the whole face - a big smooth glacial
+        # cliff, deep and wide - and the upper courses are OCCASIONAL, stepped
+        # back and varied, so the crest breaks up instead of crenellating.
+        rw = step * random.uniform(1.30, 1.85)
+        _ice_mass(bm, (x, z, zc), rw, rw * random.uniform(1.05, 1.5), H * random.uniform(0.68, 0.92),
+                  prof=_PROF_COURSE, sides=6, yaw=theta + random.uniform(-0.18, 0.18),
+                  jitter=0.06, salt=100 + i * 0.7)
+        upper = 2 if (i % 3) else 1
+        for c in range(upper):
+            f = (0.46, 0.72)[c] * random.uniform(0.85, 1.1)
+            rw2 = step * random.uniform(0.85, 1.35) * (1.0 - c * 0.22)
+            back = -(f + 0.25) * rw2 * random.uniform(0.7, 1.3)
+            cx = x + out.x * back + random.uniform(-step * 0.4, step * 0.4)
+            cz = z + out.y * back + random.uniform(-step * 0.4, step * 0.4)
+            _ice_mass(bm, (cx, cz, zc + H * f), rw2, rw2 * random.uniform(0.85, 1.3),
+                      H * random.uniform(0.30, 0.55), prof=_PROF_COURSE, sides=6,
+                      yaw=theta + random.uniform(-0.5, 0.5), jitter=0.10, salt=180 + i * 0.9 + c)
+        built += 1
+    print(f"[island_gen] ice walls: {built} cliff stations "
+          f"({built / STEPS * 100:.0f}% of the coastline)")
+    return object_from_bmesh("Frostmaw_Walls", bm, ["M_GlacialIce"])
+
+
+def build_ice_terraces(ground):
+    """The two terrace lips get a course of chunky ice blocks along their edge,
+    so the step the PROFILE cuts reads as a flat-topped glacier plateau with a
+    vertical chunky side (reference image 2) instead of a soft slope."""
+    bm = bmesh.new()
+    for lip_u, block in ((0.305, 7.5), (0.505, 6.5), (0.665, 5.5)):
+        n = int(math.tau * lip_u * ISLAND_RADIUS / (block * 1.55))
+        for i in range(n):
+            theta = (i / n) * math.tau + random.uniform(-0.012, 0.012)
+            # Only stretches of each lip are chunked, so it reads as a broken
+            # glacier edge and not a fence running all the way round.
+            if 0.5 + 0.5 * math.sin(4.3 * theta + lip_u * 31.0) < 0.34:
+                continue
+            r = ring_radius(lip_u + random.uniform(-0.004, 0.006), theta)
+            x, z = math.cos(theta) * r, math.sin(theta) * r
+            if not _ice_open(x, z, pad=0.0, spawn_clear=13.0):
+                continue
             surface = _drop_to_ground(ground, x, z)
             if surface is None:
                 continue
-            s = random.uniform(1.0, 2.4)
-            add_blob(bm, (x, z, surface - s * 0.2), (s, s * 0.7, s * 0.6), 0.42, 300 + i * 3.3 + px * 0.1, yaw=random.uniform(0, math.tau))
-    for i in range(60):
-        spot = _interior_spot(ground, 0.56, 0.95, pad=2.0, tries=12)
-        if spot is None:
+            w = block * random.uniform(0.85, 1.25)
+            h = block * random.uniform(0.9, 1.6)
+            _ice_mass(bm, (x, z, surface - h * 0.55), w, w * random.uniform(0.6, 0.9), h,
+                      prof=_PROF_SLAB, sides=6, yaw=theta + random.uniform(-0.3, 0.3),
+                      jitter=0.09, salt=300 + i * 0.9 + lip_u)
+    # A few free-standing stepped mesas out on the sheet - the flat-topped
+    # plateaus from the asset kit, three terraced slabs each.
+    mesas = 0
+    for _ in range(90):
+        if mesas >= 7:
+            break
+        theta = random.uniform(0, math.tau)
+        u = random.uniform(0.58, 0.86)
+        r = ring_radius(u, theta)
+        x, z = math.cos(theta) * r, math.sin(theta) * r
+        base = random.uniform(13.0, 22.0)
+        if not _ice_open(x, z, pad=base + 6.0, spawn_clear=24.0) or not _ice_free(x, z, base + 8.0):
             continue
-        x, z, surface = spot
-        s = random.uniform(0.8, 2.0)
-        add_blob(bm, (x, z, surface - s * 0.3), (s, s * 0.8, s * 0.5), 0.45, 900 + i * 5.1, yaw=random.uniform(0, math.tau))
-    return object_from_bmesh("Frostmaw_RimIce", bm, ["M_GlacialIce"])
+        surface = _drop_to_ground(ground, x, z)
+        if surface is None:
+            continue
+        _ice_claim(x, z, base + 6.0)
+        yaw = random.uniform(0, math.tau)
+        zc = surface - 2.0
+        for c in range(3):
+            w = base * (1.0, 0.74, 0.50)[c]
+            h = random.uniform(4.5, 8.0)
+            _ice_mass(bm, (x + random.uniform(-2.0, 2.0), z + random.uniform(-2.0, 2.0), zc),
+                      w, w * random.uniform(0.72, 0.95), h, prof=_PROF_SLAB, sides=7,
+                      yaw=yaw + c * 0.4, jitter=0.07, salt=420 + mesas * 3.1 + c)
+            zc += h - 0.6
+        mesas += 1
+    print(f"[island_gen] ice terraces: {mesas} stepped mesas")
+    return object_from_bmesh("Frostmaw_Terraces", bm, ["M_IceStep"])
 
 
-_ICE_SPIKES = []  # (x, y, foot radius) planted shards, so they never merge
-
-
-def _ice_spike(bm, ground, x, z, height, r_bottom, salt, lean=0.0, lean_yaw=0.0):
-    """One huge ice shard: a slender faceted spire, buried a little so it grows
-    out of the sheet, with a smaller splinter leaning off its foot."""
-    surface = _drop_to_ground(ground, x, z)
-    if surface is None:
-        return False
-    base = Vector((x, z, surface - height * 0.06))
-    sides = 5 if r_bottom < 6.0 else 6
-    blunt = random.random() < 0.28  # some shards are sheared-off blocks, not needles
-    add_cone(bm, base, r_bottom, r_bottom * (random.uniform(0.34, 0.55) if blunt else random.uniform(0.04, 0.14)),
-             height * (0.55 if blunt else 1.0), sides=sides, tilt=(lean, 0.0), yaw=lean_yaw)
-    # A cracked collar where it pierces the ice.
-    add_blob(bm, (x, z, surface - r_bottom * 0.25), (r_bottom * 1.7, r_bottom * 1.35, r_bottom * 0.55),
-             0.45, salt + 0.7, yaw=salt)
-    # Splinters leaning off the root - a shard is never alone.
-    for k in range(random.randint(1, 3) if height > 34.0 else 1):
-        a = salt * 1.7 + k * 2.3
-        d = r_bottom * random.uniform(1.5, 2.6)
-        sx, sz = x + math.cos(a) * d, z + math.sin(a) * d
-        s2 = _drop_to_ground(ground, sx, sz)
-        if s2 is not None:
-            add_cone(bm, Vector((sx, sz, s2 - 1.5)), r_bottom * random.uniform(0.30, 0.58), r_bottom * 0.05,
-                     height * random.uniform(0.26, 0.60), sides=5,
-                     tilt=(random.uniform(0.12, 0.34), 0.0), yaw=a)
-    _ICE_SPIKES.append((x, z, r_bottom))
-    return True
-
-
-def _ice_spike_clear(x, z, r_foot):
-    """Shards keep a walking gap between them: no two feet closer than the sum
-    of their collars plus a body-width of open ice."""
-    return all((x - px) ** 2 + (z - pz) ** 2 > (r_foot * 1.7 + pr * 1.7 + 9.0) ** 2 for px, pz, pr in _ICE_SPIKES)
-
-
-def _ice_berg(bm, ground):
-    """THE BERG. A single towering iceberg on the central ridge: a broad
-    shattered plinth, a stack of glacial slabs that narrows and walks sideways
-    as it climbs (the lean), stepped shelves jutting from its faces, and an
-    overhanging crown of tilted blocks capped by summit shards. Built purely as
-    geometry into Frostmaw_Seracs - the base stays a walkable shelf."""
+def build_ice_berg(ground):
+    """THE MASSIF. A rolled hill of ice at the heart of the island: broad
+    stacked mounds that lose radius as they climb and wander a few studs off
+    centre, with lobed shoulders breaking the plan and a plinth of big rounded
+    boulders round the foot. Soft, heavy, blunt - a hill, never a spike."""
+    bm = bmesh.new()
     foot = _drop_to_ground(ground, 0.0, 0.0)
     if foot is None:
-        foot = 40.0
-    lean_a = math.radians(DOCK_ANGLE_DEG) + 0.55  # leans across the dock approach, not onto it
-    lx, lz = math.cos(lean_a), math.sin(lean_a)
+        foot = 30.0
+    RISE = 116.0
+    LAYERS = 11
+    BASE_R = 55.0
+    wander = math.radians(DOCK_ANGLE_DEG) + 1.9
+    wx, wz = math.cos(wander), math.sin(wander)
+    top = foot
+    for i in range(LAYERS):
+        t = i / (LAYERS - 1)
+        z = foot - 7.0 + t * RISE
+        # A DOME curve, not a cone: the radius holds wide low down and only
+        # falls away near the top, so the silhouette rolls over instead of
+        # stepping up. Every layer is much taller than the radius it loses.
+        # A dome curve that never necks down to a point: the top layer is
+        # still 17 studs across, so the crown caps roll over it.
+        rad = 17.0 + BASE_R * math.cos(t * math.pi * 0.5) ** 0.85
+        off = (t ** 1.7) * 16.0
+        cx, cz = wx * off, wz * off
+        # Each layer is more than TWICE its own rise tall, so consecutive
+        # layers swallow each other and the flank is one continuous roll of
+        # ice rather than a stack of visible discs.
+        h = (RISE / LAYERS) * random.uniform(2.0, 2.5)
+        _ice_mass(bm, (cx, cz, z), rad, rad * random.uniform(0.86, 1.0), h,
+                  prof=_PROF_DOME if t > 0.7 else _PROF_MOUND, sides=8,
+                  yaw=i * 1.29, jitter=0.10, salt=500 + i * 2.7)
+        # Lobed shoulders at wandering heights, which is what actually hides
+        # the layer seams: a mass with bays and buttresses rolling off it.
+        if t < 0.86:
+            for j in range(2):
+                a = i * 2.4 + 0.6 + j * 2.6
+                d = rad * random.uniform(0.60, 0.92)
+                lr = rad * random.uniform(0.34, 0.56)
+                # WIDE AND LOW - a shoulder bulging off the flank. Anything
+                # taller than it is wide would read as a column, which is the
+                # one thing this island must never grow.
+                _ice_mass(bm, (cx + math.cos(a) * d, cz + math.sin(a) * d,
+                               z + h * random.uniform(-0.55, -0.05)),
+                          lr, lr * random.uniform(0.72, 1.0), lr * random.uniform(0.85, 1.35),
+                          prof=_PROF_BOULDER, sides=7, yaw=a, jitter=0.16, salt=560 + i * 3.3 + j)
+        top = max(top, z + h)
+    # The crown: two rolled caps, so the summit is a dome and not a point.
+    _ice_mass(bm, (wx * 14.0, wz * 14.0, top - 28.0), 26.0, 22.0, 26.0,
+              prof=_PROF_DOME, sides=8, yaw=0.7, jitter=0.10, salt=590)
+    _ice_mass(bm, (wx * 14.0 + 11.0, wz * 14.0 - 8.0, top - 22.0), 18.0, 15.0, 18.0,
+              prof=_PROF_DOME, sides=7, yaw=2.2, jitter=0.10, salt=594)
+    crown = top + 6.0
+    _ice_claim(0.0, 0.0, 74.0)
 
-    # Plinth: broad shattered shelves piled around the foot.
-    for i in range(14):
-        a = (i / 14) * math.tau + random.uniform(-0.2, 0.2)
-        d = random.uniform(58.0, 102.0)
+    # Plinth: big rounded berg boulders piled round the massif's skirt.
+    for i in range(22):
+        a = (i / 22) * math.tau + random.uniform(-0.16, 0.16)
+        d = random.uniform(58.0, 84.0)
         px, pz = math.cos(a) * d, math.sin(a) * d
         s = _drop_to_ground(ground, px, pz)
         if s is None:
             continue
-        w = random.uniform(20.0, 38.0)
-        add_blob(bm, (px, pz, s + random.uniform(2.0, 16.0)), (w, w * 0.72, random.uniform(9.0, 26.0)),
-                 0.42, 120 + i * 5.3, yaw=random.uniform(0, math.tau))
-
-    # Trunk: stacked glacial slabs, narrowing and WALKING sideways as they
-    # climb. Each slab is offset, squashed and yawed differently so the tower
-    # is a fractured leaning mass, never a symmetrical stack of discs.
-    STEPS = 20
-    RISE = 218.0
-    top = None
-    for i in range(STEPS):
-        t = i / (STEPS - 1)
-        y = foot + 4.0 + t * RISE
-        r = (14.0 + 86.0 * (1.0 - t) ** 1.05) * random.uniform(0.86, 1.12)
-        off = (t**1.35) * 64.0
-        jit = random.uniform(-0.20, 0.20)
-        cx = lx * off + math.cos(lean_a + 1.57) * r * jit
-        cz = lz * off + math.sin(lean_a + 1.57) * r * jit
-        thick = (12.0 + 10.0 * (1.0 - t)) * random.uniform(0.8, 1.25)
-        add_blob(bm, (cx, cz, y), (r, r * random.uniform(0.68, 0.95), thick),
-                 0.44, 200 + i * 3.7, yaw=i * 1.37 + random.uniform(-0.6, 0.6))
-        # Knit the narrow upper stack: a half-step block between slabs, so the
-        # tower stays one solid mass instead of a chain of beads.
-        if t > 0.34 and i < STEPS - 1:
-            add_blob(bm, (cx + lx * 4.0, cz + lz * 4.0, y + RISE / (STEPS - 1) * 0.5),
-                     (r * 0.86, r * 0.72, thick * 0.85), 0.4, 240 + i * 3.1, yaw=i * 0.7)
-        # Shelves: fractured ledges that break out of ONE face at a time -
-        # the sheared step of a calving front, not a pagoda's eaves.
-        if 0.10 < t < 0.86 and i % 3 != 1:
-            sa = i * 2.11 + random.uniform(-0.4, 0.4)
-            sd = r * random.uniform(0.7, 1.0)
-            sw = r * random.uniform(0.45, 0.8)
-            add_blob(bm, (cx + math.cos(sa) * sd, cz + math.sin(sa) * sd, y - thick * random.uniform(0.2, 0.6)),
-                     (sw, sw * random.uniform(0.5, 0.8), random.uniform(5.0, 11.0)),
-                     0.5, 260 + i * 2.9, yaw=sa + random.uniform(-0.5, 0.5))
-        top = (cx, cz, y)
-
-    # Buttress: a subsidiary shoulder shouldering up the WINDWARD face to
-    # about half height, so the berg's silhouette is a massif, not a column.
-    ba = lean_a + math.pi
-    bx0, bz0 = math.cos(ba) * 62.0, math.sin(ba) * 62.0
-    bfoot = _drop_to_ground(ground, bx0, bz0)
-    if bfoot is None:
-        bfoot = foot
-    for i in range(10):
-        t = i / 9
-        r = (12.0 + 50.0 * (1.0 - t) ** 0.85) * random.uniform(0.85, 1.15)
-        pull = t * 40.0  # it leans IN against the trunk as it climbs
-        add_blob(bm, (bx0 - math.cos(ba) * pull, bz0 - math.sin(ba) * pull, bfoot + 6.0 + t * 132.0),
-                 (r, r * random.uniform(0.6, 0.95), (11.0 + 7.0 * (1.0 - t)) * random.uniform(0.8, 1.2)),
-                 0.46, 480 + i * 4.3, yaw=i * 1.9)
-    # ...and a lower ridge spur on the third face, breaking the round plan.
-    sa = lean_a + 2.1
-    sx0, sz0 = math.cos(sa) * 52.0, math.sin(sa) * 52.0
-    sfoot = _drop_to_ground(ground, sx0, sz0)
-    if sfoot is not None:
-        for i in range(7):
-            t = i / 6
-            r = (9.0 + 26.0 * (1.0 - t) ** 0.8) * random.uniform(0.85, 1.15)
-            pull = t * 34.0
-            add_blob(bm, (sx0 - math.cos(sa) * pull, sz0 - math.sin(sa) * pull, sfoot + 4.0 + t * 74.0),
-                     (r, r * random.uniform(0.55, 0.9), (10.0 + 6.0 * (1.0 - t)) * random.uniform(0.8, 1.2)),
-                     0.48, 540 + i * 5.7, yaw=i * 2.4)
-
-    # Crown: heavy blocks that keep walking out past the trunk into a genuine
-    # overhang, then a fan of summit shards leaning off the high side.
-    cx, cz, y = top
-    for i in range(4):
-        f = (i + 1) / 4
-        w = 24.0 - i * 3.6
-        add_blob(bm, (cx + lx * f * 34.0, cz + lz * f * 34.0, y + 4.0 + f * 42.0),
-                 (w, w * random.uniform(0.6, 0.9), 14.0 + (1.0 - f) * 9.0),
-                 0.46, 320 + i * 6.1, yaw=i * 1.7)
-    cx += lx * 34.0
-    cz += lz * 34.0
-    y += 46.0
-    peak = 0.0
-    for i in range(5):
-        a = (i / 5) * math.tau + 0.4
-        d = random.uniform(2.0, 12.0)
-        h = random.uniform(38.0, 66.0) * (1.55 if i == 0 else 1.0)
-        peak = max(peak, h)
-        add_cone(bm, Vector((cx + math.cos(a) * d, cz + math.sin(a) * d, y - 10.0)),
-                 random.uniform(5.0, 9.5), 0.5, h, sides=5,
-                 tilt=(random.uniform(0.08, 0.30), 0.0), yaw=a + math.pi)
-    print(f"[island_gen] frostmaw berg: foot Y~{foot:.1f}, crown top ~{y + peak:.0f}, lean reach ~{130.0:.0f}")
+        w = random.uniform(13.0, 26.0)
+        _ice_mass(bm, (px, pz, s - w * 0.28), w, w * random.uniform(0.7, 0.95),
+                  w * random.uniform(0.65, 1.05), prof=_PROF_BOULDER, sides=6,
+                  yaw=a + random.uniform(-0.6, 0.6), jitter=0.16, salt=620 + i * 2.1)
+        _ice_claim(px, pz, w * 1.1)
+    print(f"[island_gen] frostmaw massif: foot Y~{foot:.1f}, crown ~{crown:.0f} "
+          f"({crown - foot:.0f} studs of ice)")
+    return object_from_bmesh("Frostmaw_Berg", bm, ["M_BergIce"])
 
 
-def build_ice_seracs(ground):
-    """The glacial heart: THE BERG on the central ridge, shattered bergy bits
-    around its skirts, and clustered forests of huge ice spikes out on the
-    walkable sheet - open in the middle where the fishing holes are cut, with
-    plain ice between the clusters so every hole stays reachable on foot."""
+_ARCH_SITES = ((214.0, 118.0, 80.0, 36.0), (66.0, 132.0, 54.0, 27.0))
+# (bearing deg, radius from centre, leg separation, leg height)
+
+
+def build_ice_arch(ground):
+    """ICE ARCHES: two thick blunt legs and a chunky curved span walked over
+    them in overlapping blocks. The big one stands out on the sheet where you
+    can walk under it; a smaller one springs near the massif's skirt."""
     bm = bmesh.new()
-    _ICE_SPIKES.clear()
-    _ice_berg(bm, ground)
-
-    # Bergy bits: the shattered apron between the berg and the sheet.
-    for i in range(24):
-        spot = _interior_spot(ground, 0.34, 0.54, pad=3.0, tries=15)
-        if spot is None:
-            continue
-        x, z, surface = spot
-        s = random.uniform(4.0, 11.0)
-        add_blob(bm, (x, z, surface - s * 0.25), (s, s * 0.75, s * random.uniform(0.8, 1.6)), 0.45,
-                 400 + i * 4.9, yaw=random.uniform(0, math.tau))
-
-    # The spike forests: a ring of shards around each field's open middle.
-    planted = 0
-    for ci, (cx, cz, crad) in enumerate(_ICE_CLUSTERS):
-        for k in range(11):
-            for _ in range(12):
-                a = random.uniform(0, math.tau)
-                d = random.uniform(crad * 0.55, crad * 1.15)
-                x, z = cx + math.cos(a) * d, cz + math.sin(a) * d
-                theta = math.atan2(z, x)
-                r = math.hypot(x, z)
-                if r > ring_radius(0.93, theta) or r < ring_radius(0.55, theta):
-                    continue
-                if _ice_keepout(x, z) or not _clear_of_ponds(x, z, 9.0):
-                    continue
-                rb = random.uniform(3.0, 10.5)
-                if not _ice_spike_clear(x, z, rb):
-                    continue
-                h = rb * random.uniform(6.0, 15.0)
-                if _ice_spike(bm, ground, x, z, h, rb, salt=500 + ci * 13.0 + k * 2.3,
-                              lean=random.uniform(-0.13, 0.13), lean_yaw=a):
-                    planted += 1
+    built = 0
+    for si, (bearing, dist, sep, legh) in enumerate(_ARCH_SITES):
+        a = math.radians(bearing)
+        cx, cz = math.cos(a) * dist, math.sin(a) * dist
+        # The span runs across the bearing, so you walk under it going round.
+        ax, az = math.cos(a + math.pi / 2), math.sin(a + math.pi / 2)
+        legs = []
+        ok = True
+        for sgn in (-1, 1):
+            lx, lz = cx + ax * sep * 0.5 * sgn, cz + az * sep * 0.5 * sgn
+            s = _drop_to_ground(ground, lx, lz)
+            if s is None:
+                ok = False
                 break
+            legs.append((lx, lz, s))
+        if not ok:
+            continue
+        legr = legh * 0.34
+        for (lx, lz, s) in legs:
+            _ice_mass(bm, (lx, lz, s - 3.0), legr, legr * 0.82, legh + 3.0,
+                      prof=_PROF_COURSE, sides=6, yaw=a + 0.3, jitter=0.09, salt=700 + si * 9)
+            _ice_claim(lx, lz, legr * 1.6)
+        # The span: an arc of overlapping blunt blocks from leg top to leg top.
+        base_z = min(l[2] for l in legs) + legh
+        SEG = 11
+        rise = sep * 0.34
+        for k in range(SEG):
+            t = k / (SEG - 1)
+            ang = math.pi * t
+            px = cx - ax * sep * 0.5 * math.cos(ang)
+            pz = cz - az * sep * 0.5 * math.cos(ang)
+            py = base_z + rise * math.sin(ang)
+            w = sep * 0.115 * (1.0 + 0.18 * math.sin(ang))
+            _ice_mass(bm, (px, pz, py - w * 0.55), w, w * 0.78, w * 1.25,
+                      prof=_PROF_BOULDER, sides=6, yaw=ang + si, jitter=0.11,
+                      salt=740 + si * 11 + k * 1.7)
+        _ice_claim(cx, cz, sep * 0.5 + legr)
+        built += 1
+        print(f"[island_gen] ice arch {built}: span {sep:.0f} studs, "
+              f"clearance ~{legh:.0f} studs, apex ~{base_z + rise:.0f}")
+    return object_from_bmesh("Frostmaw_Arch", bm, ["M_ArchIce"])
 
-    # Loose shards scattered between the forests, so the sheet is never bare.
-    for i in range(34):
+
+def build_ice_crystals(ground):
+    """Clusters of STUBBY teal crystals: wide-based, blunt-tipped standing
+    stones of ice (the tip is 44% of the base, so they read as monoliths, not
+    needles). Knee-height to house-height, some tilted, always in a group."""
+    bm = bmesh.new()
+    grown = 0
+    for _ in range(400):
+        if len(_ICE_CLUSTERS) >= 13:
+            break
         theta = random.uniform(0, math.tau)
-        u = random.uniform(0.56, 0.92)
+        u = random.uniform(0.55, 0.90)
+        r = ring_radius(u, theta)
+        cx, cz = math.cos(theta) * r, math.sin(theta) * r
+        crad = random.uniform(9.0, 16.0)
+        if not _ice_open(cx, cz, pad=crad + 5.0, spawn_clear=26.0):
+            continue
+        if not _ice_free(cx, cz, crad + 9.0):
+            continue
+        _ice_claim(cx, cz, crad + 5.0)
+        _ICE_CLUSTERS.append((cx, cz, crad))
+        tall = random.uniform(17.0, 28.0)
+        n = random.randint(3, 8)
+        for k in range(n):
+            a = (k / n) * math.tau + random.uniform(-0.5, 0.5)
+            d = random.uniform(0.0, crad * 0.85) if k else 0.0
+            x, z = cx + math.cos(a) * d, cz + math.sin(a) * d
+            s = _drop_to_ground(ground, x, z)
+            if s is None:
+                continue
+            h = tall * (1.0 if k == 0 else random.uniform(0.22, 0.78))
+            h = max(4.0, h)
+            rb = h * random.uniform(0.33, 0.46)
+            lean = random.uniform(0.0, 0.17) if random.random() < 0.55 else 0.0
+            _ice_mass(bm, (x, z, s - h * 0.10), rb, rb * random.uniform(0.78, 1.0), h * 1.10,
+                      prof=_PROF_CRYSTAL, sides=random.choice((5, 6)),
+                      yaw=a + random.uniform(-0.7, 0.7), tilt=(lean, 0.0),
+                      jitter=0.07, salt=800 + grown * 1.9)
+            grown += 1
+    print(f"[island_gen] ice crystals: {len(_ICE_CLUSTERS)} clusters, {grown} crystals")
+    return object_from_bmesh("Frostmaw_Crystals", bm, ["M_IceCrystal"])
+
+
+def build_ice_litter(ground):
+    """SHARD LITTER - the signature ground texture. Hundreds of small flat
+    broken floes lying on the ice: dense down the frozen channel, ringing every
+    hole (with a course of blunt collar chunks), aprons under the crystal
+    clusters, drifts at the foot of the cliff walls, and a thin scatter
+    everywhere else. The spawn bubble stays swept clean."""
+    bm = bmesh.new()
+    n = 0
+
+    def plate(x, z, lo, hi, salt, spawn_clear=12.0):
+        nonlocal n
+        if not _ice_open(x, z, pad=0.0, spawn_clear=spawn_clear):
+            return
+        surface = _drop_to_ground(ground, x, z)
+        if surface is None:
+            return
+        _ice_plate(bm, x, z, surface, random.uniform(lo, hi) * 1.25, salt)
+        n += 1
+
+    # Hole collars: blunt chunks of heaved ice, then a rubble ring of plates.
+    for px, pz, pr in list(LAVA_PONDS):
+        for i in range(random.randint(6, 9)):
+            a = random.uniform(0, math.tau)
+            d = pr + random.uniform(1.0, 2.6)
+            x, z = px + math.cos(a) * d, pz + math.sin(a) * d
+            s = _drop_to_ground(ground, x, z)
+            if s is None:
+                continue
+            w = random.uniform(1.6, 3.4)
+            _ice_mass(bm, (x, z, s - w * 0.45), w, w * random.uniform(0.6, 0.9),
+                      w * random.uniform(0.8, 1.5), prof=_PROF_BOULDER, sides=5,
+                      yaw=a, jitter=0.18, salt=900 + i + px * 0.05)
+            n += 1
+        for i in range(random.randint(6, 10)):
+            a = random.uniform(0, math.tau)
+            d = pr + random.uniform(2.5, 12.0)
+            plate(px + math.cos(a) * d, pz + math.sin(a) * d, 1.2, 4.0, a * 3.0)
+
+    # The frozen channel floor: dense broken floe litter, the reference's
+    # walled-channel bed.
+    for i in range(175):
+        spot = _ice_channel_spot(0.58, 0.94, spread=1.0)
+        if spot is None:
+            break
+        plate(spot[0], spot[1], 1.0, 4.6, i * 0.37)
+
+    # Aprons under the crystal clusters.
+    for ci, (cx, cz, crad) in enumerate(_ICE_CLUSTERS):
+        for i in range(random.randint(9, 15)):
+            a = random.uniform(0, math.tau)
+            d = random.uniform(crad * 0.4, crad * 1.9)
+            plate(cx + math.cos(a) * d, cz + math.sin(a) * d, 0.9, 3.4, ci * 1.3 + i * 0.29)
+
+    # Drifts at the foot of the cliff walls, seen from the beaches.
+    for i, (wx, wz) in enumerate(_ICE_WALL_FEET):
+        if i % 3:
+            continue
+        for k in range(2):
+            a = math.atan2(wz, wx)
+            d = random.uniform(10.0, 30.0)
+            plate(wx - math.cos(a) * d + random.uniform(-6, 6),
+                  wz - math.sin(a) * d + random.uniform(-6, 6), 1.0, 3.8, i * 0.21 + k)
+
+    # And a thin scatter over the whole sheet, so no ground is ever bare.
+    for i in range(140):
+        theta = random.uniform(0, math.tau)
+        u = random.uniform(0.30, 0.96)
+        r = ring_radius(u, theta)
+        plate(math.cos(theta) * r, math.sin(theta) * r, 0.9, 4.2, i * 0.41)
+
+    print(f"[island_gen] ice shard litter: {n} pieces")
+    return object_from_bmesh("Frostmaw_ShardLitter", bm, ["M_IceShard"])
+
+
+def _ice_pine(trunk_bm, snow_bm, lip_bm, x, z, surface, h, salt):
+    """A snowy pine: a dark trunk under 3-5 stacked flattened cone skirts, each
+    skirt white with a thin green needle lip peeking out beneath it."""
+    r = h * 0.30
+    add_cone(trunk_bm, Vector((x, z, surface - 1.2)), h * 0.075, h * 0.045, h * 0.42, sides=5)
+    tiers = random.randint(3, 5)
+    for k in range(tiers):
+        t = k / max(tiers - 1, 1)
+        zz = surface + h * (0.20 + 0.66 * t)
+        rr = r * (1.0 - 0.66 * t)
+        sh = h * random.uniform(0.15, 0.20)
+        add_cone(lip_bm, Vector((x, z, zz - sh * 0.16)), rr * 1.14, rr * 0.92, sh * 0.34, sides=7,
+                 yaw=salt + k)
+        add_cone(snow_bm, Vector((x, z, zz)), rr, rr * 0.30, sh, sides=7, yaw=salt + k * 0.5)
+    # A snow cap on the very top.
+    add_cone(snow_bm, Vector((x, z, surface + h * 0.86)), r * 0.30, r * 0.06, h * 0.16, sides=6)
+
+
+def _ice_dead_tree(bm, x, z, surface, h, salt):
+    """A bare dead tree: a slim dark trunk with a few up-swept branches."""
+    tilt = (random.uniform(-0.09, 0.09), random.uniform(-0.09, 0.09))
+    yaw = salt
+    base = Vector((x, z, surface - 1.0))
+    add_cone(bm, base, h * 0.075, h * 0.022, h, sides=5, tilt=tilt, yaw=yaw)
+    axis = cone_axis(tilt, yaw)
+    for k in range(random.randint(2, 4)):
+        joint = base + axis * (h * random.uniform(0.42, 0.86))
+        add_cone(bm, joint, h * 0.030, h * 0.008, h * random.uniform(0.20, 0.36), sides=4,
+                 tilt=(random.uniform(0.55, 0.95), 0.0), yaw=salt * 1.7 + k * 2.2)
+
+
+def build_ice_trees(ground):
+    """Loose stands of snowy pines on the terraces, plus bare dead trees
+    scattered between them - the winter-kit silhouettes from the reference."""
+    trunk_bm, snow_bm, lip_bm = bmesh.new(), bmesh.new(), bmesh.new()
+    pines = 0
+    stands = 0
+    for _ in range(1200):
+        if pines >= 28 or stands >= 9:
+            break
+        theta = random.uniform(0, math.tau)
+        u = random.uniform(0.34, 0.88)
+        r = ring_radius(u, theta)
+        sx, sz = math.cos(theta) * r, math.sin(theta) * r
+        if not _ice_open(sx, sz, pad=9.0, spawn_clear=24.0) or not _ice_free(sx, sz, 11.0):
+            continue
+        _ice_claim(sx, sz, 11.0)
+        stands += 1
+        for _ in range(random.randint(3, 5)):
+            if pines >= 28:
+                break
+            a = random.uniform(0, math.tau)
+            d = random.uniform(2.0, 13.0)
+            x, z = sx + math.cos(a) * d, sz + math.sin(a) * d
+            surface = _drop_to_ground(ground, x, z)
+            if surface is None:
+                continue
+            _ice_pine(trunk_bm, snow_bm, lip_bm, x, z, surface,
+                      random.uniform(15.0, 27.0), salt=pines * 0.83)
+            pines += 1
+
+    dead = 0
+    for _ in range(600):
+        if dead >= 14:
+            break
+        theta = random.uniform(0, math.tau)
+        u = random.uniform(0.34, 0.92)
         r = ring_radius(u, theta)
         x, z = math.cos(theta) * r, math.sin(theta) * r
-        if _near_dock_corridor(theta, u) or _ice_keepout(x, z) or not _clear_of_ponds(x, z, 9.0):
+        if not _ice_open(x, z, pad=5.0, spawn_clear=20.0) or not _ice_free(x, z, 7.0):
             continue
-        rb = random.uniform(2.4, 5.6)
-        if not _ice_spike_clear(x, z, rb):
+        surface = _drop_to_ground(ground, x, z)
+        if surface is None:
             continue
-        if _ice_spike(bm, ground, x, z, rb * random.uniform(7.0, 12.0), rb, salt=900 + i * 7.7,
-                      lean=random.uniform(-0.16, 0.16), lean_yaw=random.uniform(0, math.tau)):
-            planted += 1
-    print(f"[island_gen] ice spikes: {planted}")
-    return object_from_bmesh("Frostmaw_Seracs", bm, ["M_GlacialIce"])
-
-
-def build_ice_rocks(ground):
-    """Frost-dark rock breaking the white: outcrops near the ridge and a few
-    snow-dusted boulders on the sheet, plus stark dead trees by the shore."""
-    rock_bm = bmesh.new()
-    for i in range(30):
-        spot = _interior_spot(ground, 0.16, 0.60, pad=2.0, tries=15)
-        if spot is None:
-            continue
-        x, z, surface = spot
-        s = random.uniform(2.5, 7.0)
-        add_blob(rock_bm, (x, z, surface - s * 0.35), (s, s * 0.8, s * 0.7), 0.48, 600 + i * 3.9, yaw=random.uniform(0, math.tau))
-
-    snag_bm = bmesh.new()
-    for _ in range(9):
-        spot = _interior_spot(ground, 0.86, 0.97, pad=1.0, tries=15)
-        if spot is None:
-            continue
-        x, z, surface = spot
-        yaw = random.uniform(0, math.tau)
-        tilt = (random.uniform(-0.12, 0.12), random.uniform(-0.12, 0.12))
-        h = random.uniform(12.0, 22.0)
-        base = Vector((x, z, surface - 1.0))
-        add_cone(snag_bm, base, random.uniform(1.0, 1.6), 0.35, h, sides=5, tilt=tilt, yaw=yaw)
-        axis = cone_axis(tilt, yaw)
-        for _ in range(random.randint(1, 3)):
-            joint = base + axis * (h * random.uniform(0.5, 0.85))
-            add_cone(snag_bm, joint, 0.4, 0.12, random.uniform(4.0, 9.0), sides=4, tilt=(random.uniform(0.9, 1.3), 0.0), yaw=random.uniform(0, math.tau))
+        _ice_claim(x, z, 5.0)
+        _ice_dead_tree(trunk_bm, x, z, surface, random.uniform(13.0, 23.0), salt=dead * 1.31)
+        dead += 1
+    print(f"[island_gen] frostmaw trees: {pines} snowy pines in {stands} stands, {dead} dead trees")
     return (
-        object_from_bmesh("Frostmaw_Rocks", rock_bm, ["M_FrostRock"]),
-        object_from_bmesh("Frostmaw_Snags", snag_bm, ["M_FrostWood"]),
+        object_from_bmesh("Frostmaw_PineSnow", snow_bm, ["M_PineSnow"]),
+        object_from_bmesh("Frostmaw_Pines", lip_bm, ["M_PineNeedle"]),
+        object_from_bmesh("Frostmaw_DeadTrees", trunk_bm, ["M_FrostWood"]),
     )
+
+
+def build_ice_mounds(ground):
+    """Rounded snow mounds and smooth snow boulders filling the gaps - the soft
+    white punctuation between the hard blue ice."""
+    bm = bmesh.new()
+    made = 0
+    for i in range(320):
+        if made >= 110:
+            break
+        theta = random.uniform(0, math.tau)
+        u = random.uniform(0.12, 0.94)
+        r = ring_radius(u, theta)
+        x, z = math.cos(theta) * r, math.sin(theta) * r
+        w = random.uniform(2.6, 9.5)
+        if not _ice_open(x, z, pad=w + 1.0, spawn_clear=13.0):
+            continue
+        surface = _drop_to_ground(ground, x, z)
+        if surface is None:
+            continue
+        boulder = random.random() < 0.35
+        h = w * (random.uniform(0.75, 1.05) if boulder else random.uniform(0.34, 0.55))
+        _ice_mass(bm, (x, z, surface - h * 0.30), w, w * random.uniform(0.7, 1.0), h,
+                  prof=_PROF_BOULDER if boulder else _PROF_DOME, sides=6,
+                  yaw=random.uniform(0, math.tau), jitter=0.14, salt=1200 + i * 1.7)
+        made += 1
+    print(f"[island_gen] snow mounds: {made}")
+    return object_from_bmesh("Frostmaw_SnowMounds", bm, ["M_SnowMound"])
 
 
 def build_frostmaw():
@@ -2994,10 +3283,15 @@ def build_frostmaw():
     ground = _ground_bvh(base)
     objects = [
         base,
-        build_ice_holes(ground),  # first: records keep-clear circles
-        build_ice_rims(ground),
-        build_ice_seracs(ground),
-        *build_ice_rocks(ground),
+        build_ice_holes(ground),  # first: records the keep-clear circles
+        build_ice_berg(ground),
+        build_ice_arch(ground),
+        build_ice_walls(ground),
+        build_ice_terraces(ground),
+        build_ice_crystals(ground),
+        *build_ice_trees(ground),
+        build_ice_mounds(ground),
+        build_ice_litter(ground),  # last: fills in around everything placed
         *build_dock("Frostmaw_Dock_Planks", "Frostmaw_Dock_Posts", "M_FrostPlank", "M_FrostPost"),
         build_foam("Frostmaw_Foam", "M_FrostFoam"),
     ]
@@ -4967,40 +5261,56 @@ ISLANDS = {
         },
         "build": build_swamp,
     },
-    # ---- Frostmaw Reach (revamp island 3). A glacial shelf: a blue serac
-    # ridge at the heart, a flat white ice sheet the player walks - punched
-    # with fixed fishing holes (Frostmaw_IceHoles, the "ice" surface) - and
-    # frost-dark rock breaking through. RIM_FLAT keeps the sheet walkable
-    # while the ridge keeps its crags.
+    # ---- Frostmaw Reach (revamp island 3). A BLUNT glacial island: a flat
+    # white ice sheet stepped up in two broad terraces to a rolled berg massif,
+    # walled round most of its coast by stacked glacial cliffs, with an ice
+    # arch out on the field, clusters of stubby teal crystals, snowy pines and
+    # hundreds of flat ice floes littering the ground. CRAG is 0 - nothing on
+    # this island is jagged; the steps come from the PROFILE and from chunky
+    # terrace slab geometry. NOTCHES carve the frozen channel (a broad shallow
+    # trough, not a chasm) that most of the fishing holes are strung along.
     "ice": {
         "model": "Frostmaw",
         "overrides": {
             "ISLAND_RADIUS": 230,
             "SEGMENTS": 72,
-            "GRASS_U": 0.52,
-            "RINGS": [0.0, 0.08, 0.16, 0.26, 0.38, 0.52, 0.64, 0.76, 0.86, 0.94, 1.0, 1.09, 1.28],
+            "GRASS_U": 0.52,  # the snow/ice-sheet material break sits ON the second terrace lip
+            "RINGS": [0.0, 0.14, 0.30, 0.325, 0.42, 0.50, 0.52, 0.60, 0.66, 0.685, 0.78, 0.86, 0.93, 1.0, 1.09, 1.28],
+            # Flat plateaus joined by short steep risers: a terraced glacier,
+            # not a cone. Ring pairs straddle each riser so the step is crisp.
             "PROFILE": [
-                (0.00, 40.0),  # the glacial ridge - the berg's seat
-                (0.12, 33.0),
-                (0.26, 17.0),
-                (0.38, 9.2),
-                (0.52, 6.2),  # ridge foot -> the sheet
-                (0.64, 5.4),
-                (0.76, 4.8),
-                (0.86, 3.6),
-                (0.94, 2.2),
+                (0.00, 34.0),  # the upper snow plateau - the massif's seat
+                (0.14, 33.2),
+                (0.30, 32.2),  # terrace 1 lip
+                (0.325, 22.0),  # riser
+                (0.42, 21.6),
+                (0.50, 21.0),  # terrace 2 lip
+                (0.52, 13.6),  # riser -> lands exactly on the snow/ice material break
+                (0.60, 13.2),
+                (0.66, 12.6),  # terrace 3 lip
+                (0.685, 8.4),  # riser -> the big walked ice sheet
+                (0.78, 8.1),
+                (0.86, 7.4),  # the spawn shelf band (rel Z~174) - flat
+                (0.93, 5.0),
                 (1.00, 1.0),
                 (1.09, -1.8),
                 (1.28, SKIRT_BOTTOM),
             ],
-            # Sheared berg-like coast: long straight-ish faces, few lobes.
+            # Long soft-lobed berg coast: broad faces, no fine crenellation.
             "COAST_TERMS": [(2, 0.4, 0.10), (3, 1.9, 0.07), (7, 3.3, 0.05)],
             "GRASS_TERMS": [(2, 0.6, 0.05), (5, 1.4, 0.03)],
-            # Crags on the ridge only; the sheet the player fights on is flat.
-            "CRAG": 7.0,
+            # NOTHING is craggy on Frostmaw. The whole landform is flat steps.
+            "CRAG": 0.0,
             "CRAG_FREQ": 0.03,
-            "CRAG_RADIAL": 0.05,
+            "CRAG_RADIAL": 0.0,
             "RIM_FLAT": (0.52, 1.0),
+            # The frozen channel: two broad shallow troughs across the sheet
+            # (depth in studs), well clear of the dock bearing at 270.
+            "NOTCH_BAND": (0.60, 0.91),
+            "NOTCHES": [
+                (math.radians(40.0), 0.40, 5.4),
+                (math.radians(126.0), 0.30, 4.2),
+            ],
             "DOCK_ANGLE_DEG": 270,
             "DOCK_START_U": 0.92,
             "DOCK_LENGTH": 46.0,
@@ -5010,17 +5320,26 @@ ISLANDS = {
             "DOCK_MIN_TOP": 2.4,
             "DOCK_POST_SPACING": 7.5,
             "DOCK_POST_BOTTOM": -6.0,
+            # Near-white snow, pale blue-cast ice, three ice blues stepping
+            # down for terraces -> berg -> arch -> cliffs, minty teal crystals.
             "COLORS": {
-                "M_Snow": (0.918, 0.937, 0.957),
-                "M_IceSheet": (0.780, 0.851, 0.902),  # the walked (and fished) shelf
-                "M_IceWet": (0.639, 0.729, 0.812),
+                "M_Snow": (0.961, 0.973, 0.984),  # the upper snow plateaus
+                "M_IceSheet": (0.898, 0.937, 0.980),  # the walked (and fished) sheet
+                "M_IceWet": (0.729, 0.827, 0.914),
                 "M_IceWater": (0.071, 0.129, 0.216),  # the black-blue water in the holes
-                "M_GlacialIce": (0.588, 0.749, 0.878),  # seracs / bergs / hole collars
-                "M_FrostRock": (0.267, 0.290, 0.329),
-                "M_FrostWood": (0.518, 0.494, 0.463),  # bleached dead shore trees
+                "M_IceStep": (0.847, 0.906, 0.961),  # terrace lips + stepped mesas
+                "M_BergIce": (0.714, 0.839, 0.945),  # the massif
+                "M_ArchIce": (0.588, 0.765, 0.910),  # the ice arches
+                "M_GlacialIce": (0.478, 0.678, 0.882),  # the coastal cliff walls (deepest blue)
+                "M_IceCrystal": (0.478, 0.855, 0.843),  # minty teal crystal clusters
+                "M_IceShard": (0.929, 0.961, 0.988),  # the flat floe litter
+                "M_SnowMound": (0.965, 0.976, 0.988),
+                "M_PineSnow": (0.965, 0.976, 0.984),  # snow-laden pine skirts
+                "M_PineNeedle": (0.353, 0.549, 0.400),  # the green lip under each skirt
+                "M_FrostWood": (0.290, 0.243, 0.220),  # warm dark trunks / dead trees
                 "M_FrostPlank": (0.557, 0.478, 0.376),
                 "M_FrostPost": (0.404, 0.337, 0.263),
-                "M_FrostFoam": (0.941, 0.965, 0.980),
+                "M_FrostFoam": (0.949, 0.969, 0.984),
             },
         },
         "build": build_frostmaw,
