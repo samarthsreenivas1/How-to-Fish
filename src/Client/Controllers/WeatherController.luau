@@ -17,6 +17,14 @@
 -- client that writes it: it snapshots the defaults at init and every frame
 -- of ambience is a tween back toward either the snapshot or the preset.
 -- Anything else that wants to touch Lighting should go through here.
+--
+-- FOG IS THE ATMOSPHERE, NOT Lighting.Fog* (review finding, 2026-08-25):
+-- WorldService.buildLighting parents an Atmosphere to Lighting, and Roblox
+-- IGNORES the legacy FogEnd/FogStart/FogColor properties whenever an
+-- Atmosphere instance exists - tweening them renders nothing. So every
+-- mode drives Atmosphere.Density/Color/Decay/Haze instead (snapshotted at
+-- init the moment the replicated Atmosphere appears), and the legacy fog
+-- properties are kept only as the fallback for a place with no Atmosphere.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -39,7 +47,12 @@ local WeatherController = {}
 local PROBE_INTERVAL = 1.0
 local TWEEN_TIME = 1.6
 
--- The gloom island's personal lamp, and how far the dark lets you see.
+-- The gloom island's personal lamp, and how thick the dark presses in.
+-- Atmosphere.Density is the real fog knob (see the header): ~0.28 is the
+-- world default, ~0.55 a heavy whiteout, past ~0.7 a wall. The legacy
+-- FogEnd numbers below only matter in the no-Atmosphere fallback.
+local GLOOM_DENSITY = 0.72
+local GLOOM_DENSITY_LANTERN = 0.58
 local GLOOM_FOG_END = 160
 local GLOOM_FOG_END_LANTERN = 320
 local LAMP_RANGE = 18
@@ -50,9 +63,12 @@ local LANTERN_RODS: { [string]: boolean } = {
 	gloomheart_rod = true,
 }
 
+local BLIZZARD_DENSITY = 0.55
 local BLIZZARD_FOG_END = 190
 
 local defaults = nil -- Lighting snapshot, taken at init
+local atmosphere: Atmosphere? = nil -- Lighting's Atmosphere (replicated from the server)
+local atmosphereDefaults = nil -- its snapshot, taken when it appears
 local blizzards: { [string]: boolean } = {} -- islandId -> a window is open
 local currentMode = "clear" -- "clear" | "blizzard" | "gloom"
 local lamp: PointLight? = nil
@@ -90,6 +106,17 @@ end
 
 local function tweenLighting(props: { [string]: any })
 	TweenService:Create(Lighting, TweenInfo.new(TWEEN_TIME, Enum.EasingStyle.Sine), props):Play()
+end
+
+-- The fog, wherever it actually lives: with an Atmosphere present the
+-- Atmosphere is tweened and the legacy properties are left alone (they are
+-- ignored anyway); without one, the legacy fog still works.
+local function tweenFog(atmosphereProps: { [string]: any }, legacyProps: { [string]: any })
+	if atmosphere then
+		TweenService:Create(atmosphere, TweenInfo.new(TWEEN_TIME, Enum.EasingStyle.Sine), atmosphereProps):Play()
+	else
+		tweenLighting(legacyProps)
+	end
 end
 
 -- ============================================================ the lamp
@@ -179,27 +206,37 @@ end
 
 local function applyClear()
 	tweenLighting({
-		FogEnd = defaults.FogEnd,
-		FogStart = defaults.FogStart,
-		FogColor = defaults.FogColor,
 		Ambient = defaults.Ambient,
 		OutdoorAmbient = defaults.OutdoorAmbient,
 		ClockTime = defaults.ClockTime,
 		Brightness = defaults.Brightness,
 	})
+	tweenFog(
+		atmosphereDefaults or {},
+		{ FogEnd = defaults.FogEnd, FogStart = defaults.FogStart, FogColor = defaults.FogColor }
+	)
 	setLamp(false, 0)
 	setSnow(false)
 end
 
 local function applyBlizzard()
 	tweenLighting({
-		FogEnd = BLIZZARD_FOG_END,
-		FogStart = 12,
-		FogColor = Color3.fromRGB(226, 236, 244),
 		OutdoorAmbient = Color3.fromRGB(190, 200, 212),
 		Brightness = defaults.Brightness,
 		ClockTime = defaults.ClockTime,
 		Ambient = defaults.Ambient,
+	})
+	-- The whiteout: thick, bright atmosphere with no sun glare through it.
+	tweenFog({
+		Density = BLIZZARD_DENSITY,
+		Color = Color3.fromRGB(230, 240, 248),
+		Decay = Color3.fromRGB(200, 212, 224),
+		Haze = 2.8,
+		Glare = 0,
+	}, {
+		FogEnd = BLIZZARD_FOG_END,
+		FogStart = 12,
+		FogColor = Color3.fromRGB(226, 236, 244),
 	})
 	setLamp(false, 0)
 	setSnow(true)
@@ -207,13 +244,22 @@ end
 
 local function applyGloom(lanternHeld: boolean)
 	tweenLighting({
-		FogEnd = if lanternHeld then GLOOM_FOG_END_LANTERN else GLOOM_FOG_END,
-		FogStart = 6,
-		FogColor = Color3.fromRGB(8, 8, 14),
 		Ambient = Color3.fromRGB(14, 12, 22),
 		OutdoorAmbient = Color3.fromRGB(22, 20, 34),
 		ClockTime = 0,
 		Brightness = 0.6,
+	})
+	-- The dark presses in; a lantern rod pushes it back a real, visible step.
+	tweenFog({
+		Density = if lanternHeld then GLOOM_DENSITY_LANTERN else GLOOM_DENSITY,
+		Color = Color3.fromRGB(10, 12, 20),
+		Decay = Color3.fromRGB(6, 8, 14),
+		Haze = 2.2,
+		Glare = 0,
+	}, {
+		FogEnd = if lanternHeld then GLOOM_FOG_END_LANTERN else GLOOM_FOG_END,
+		FogStart = 6,
+		FogColor = Color3.fromRGB(8, 8, 14),
 	})
 	setLamp(true, if lanternHeld then LAMP_RANGE_LANTERN else LAMP_RANGE)
 	setSnow(false)
@@ -252,6 +298,41 @@ function WeatherController.init()
 		ClockTime = Lighting.ClockTime,
 		Brightness = Lighting.Brightness,
 	}
+
+	-- The server's Atmosphere (WorldService.buildLighting) may not have
+	-- replicated yet when the client boots; adopt it whenever it appears and
+	-- snapshot the numbers every mode returns to.
+	local function adoptAtmosphere(instance: Instance)
+		if not instance:IsA("Atmosphere") or atmosphere ~= nil then
+			return
+		end
+		atmosphere = instance
+		atmosphereDefaults = {
+			Density = instance.Density,
+			Color = instance.Color,
+			Decay = instance.Decay,
+			Haze = instance.Haze,
+			Glare = instance.Glare,
+		}
+		-- Adopted mid-mode (it replicated after we fogged via the legacy
+		-- fallback): re-apply so the real fog takes over.
+		if currentMode ~= "clear" then
+			local mode = currentMode
+			currentMode = "clear"
+			if mode == "gloom" then
+				applyGloom(holdingLanternRod())
+				currentMode = mode
+			elseif mode == "blizzard" then
+				applyBlizzard()
+				currentMode = mode
+			end
+		end
+	end
+	local existing = Lighting:FindFirstChildOfClass("Atmosphere")
+	if existing then
+		adoptAtmosphere(existing)
+	end
+	Lighting.ChildAdded:Connect(adoptAtmosphere)
 
 	Remotes.WorldEvent.OnClientEvent:Connect(function(event)
 		if type(event) ~= "table" or event.kind ~= "blizzard" then
