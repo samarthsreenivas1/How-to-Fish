@@ -398,6 +398,10 @@ local MESH_COLOR = {
 	Swamp_LilyBlooms = Color3.fromRGB(224, 158, 191), -- the occasional pale-pink flower
 	Swamp_Logs = Color3.fromRGB(66, 53, 40), -- half-sunken logs + cypress knees
 	Swamp_Stones = Color3.fromRGB(90, 93, 85), -- mossy bog stones
+	-- Mangrove trunks + stilt roots. Deliberately NOT in NON_COLLIDE (a
+	-- trunk is a real obstacle); the import uses PreciseConvexDecomposition
+	-- so only the actual wood blocks, never a hull over the whole forest.
+	Swamp_Trees = Color3.fromRGB(87, 68, 50),
 
 	-- Frostmaw Reach (assets/island_ice_gen.py).
 	Frostmaw_Base = Color3.fromRGB(234, 239, 244), -- M_Snow

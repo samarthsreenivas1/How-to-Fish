@@ -1637,10 +1637,100 @@ def build_swamp_smalls():
     ]
 
 
+def _tilt_toward(direction):
+    """The add_cone tilt (a, b) whose axis points along unit `direction`.
+    add_cone's axis for tilt (a, b) is Ry(b)Rx(a) @ +Z =
+    (sin b cos a, -sin a, cos b cos a), so a = asin(-dy) and
+    b = asin(dx / cos a)."""
+    a = math.asin(max(-1.0, min(1.0, -direction.y)))
+    ca = math.cos(a)
+    b = math.asin(max(-1.0, min(1.0, direction.x / ca))) if abs(ca) > 1e-4 else 0.0
+    return (a, b)
+
+
+def build_swamp_trees():
+    """The mangrove BASES (user: 'no leaves but just the base of the trees...
+    roots exposed in the marsh itself and the trees should be thick and
+    tall'): each tree is a thick tapered trunk standing on a CAGE of stilt
+    roots - 5-8 woody props rising out of the marsh water to meet the trunk
+    base a couple of studs above the surface, the classic mangrove
+    silhouette - plus two or three bare limb stubs up top for shape. No
+    canopy: leaves are their own later step. One object (Swamp_Trees,
+    M_Mangrove), deliberately NOT in WorldService's NON_COLLIDE - a trunk
+    is a real obstacle - so the import note says PreciseConvexDecomposition
+    (a box hull over a whole forest would be the old invisible-wall bug)."""
+    bm = bmesh.new()
+    rng = random.Random(4517)
+    mx, my, mr = SWAMP_MERE
+    sx, sy = SWAMP_SPAWN
+    placed = []
+    trees, attempts = 0, 0
+    while trees < 34 and attempts < 2000:
+        attempts += 1
+        theta = rng.uniform(0, math.tau)
+        u = rng.uniform(0.08, SWAMP_RIM_U - 0.02)
+        r_world = ring_radius(u, theta)
+        x, y = math.cos(theta) * r_world, math.sin(theta) * r_world
+        g = _swamp_height(x, y)
+        # Mangroves stand IN the water and on the wet margins.
+        if not (SWAMP_BED_Z - 1.2 <= g <= SWAMP_WATER_Z + 0.5):
+            continue
+        if math.hypot(x - mx, y - my) < mr + 9 or math.hypot(x - sx, y - sy) < 26:
+            continue
+        if any(math.hypot(x - px, y - py) < 13 for px, py in placed):
+            continue
+        placed.append((x, y))
+        trees += 1
+
+        # The root hub: where the stilt roots gather under the trunk, a
+        # couple of studs above the water.
+        hub_z = SWAMP_WATER_Z + rng.uniform(2.4, 3.4)
+        trunk_r = rng.uniform(1.7, 2.5)
+
+        # The stilt-root cage: each root runs from the mud (underwater -
+        # the exposed-roots read) up and inward to the hub's rim.
+        for k in range(rng.randint(5, 8)):
+            az = (k / 7.0) * math.tau + rng.uniform(-0.35, 0.35)
+            rr = rng.uniform(3.4, 6.2)
+            bx, by = x + math.cos(az) * rr, y + math.sin(az) * rr
+            bz = _swamp_height(bx, by) - 0.35
+            ax, ay = x + math.cos(az) * trunk_r * 0.7, y + math.sin(az) * trunk_r * 0.7
+            d = Vector((ax - bx, ay - by, hub_z - bz))
+            length = d.length + 0.5
+            add_cone(bm, (bx, by, bz), rng.uniform(0.5, 0.7), 0.22, length, sides=4, tilt=_tilt_toward(d / d.length))
+
+        # The trunk: thick and tall, from just under the hub straight up
+        # with a slight lean.
+        height = rng.uniform(19.0, 29.0)
+        lean = (rng.uniform(-0.05, 0.05), rng.uniform(-0.05, 0.05))
+        add_cone(bm, (x, y, hub_z - 0.7), trunk_r, trunk_r * 0.45, height, sides=6, tilt=lean)
+
+        # Bare limb stubs near the crown - silhouette only, no leaves yet.
+        axis = cone_axis(lean, 0.0)
+        for _b in range(rng.randint(2, 3)):
+            t = rng.uniform(0.7, 0.94)
+            bx2 = x + axis.x * height * t
+            by2 = y + axis.y * height * t
+            bz2 = (hub_z - 0.7) + axis.z * height * t
+            ba = rng.uniform(0, math.tau)
+            add_cone(
+                bm,
+                (bx2, by2, bz2),
+                trunk_r * 0.3,
+                0.09,
+                rng.uniform(3.5, 6.5),
+                sides=4,
+                tilt=(math.cos(ba) * rng.uniform(0.7, 1.1), math.sin(ba) * rng.uniform(0.7, 1.1)),
+            )
+    print(f"[island_gen] swamp trees: {trees} mangrove bases (trunks + stilt-root cages, no canopy yet)")
+    return object_from_bmesh("Swamp_Trees", bm, ["M_Mangrove"])
+
+
 def build_swamp():
     objects = [
         build_swamp_base(),
         build_swamp_water(),
+        build_swamp_trees(),
         *build_swamp_cattails(),
         *build_swamp_smalls(),
     ]
@@ -5104,6 +5194,7 @@ ISLANDS = {
                 "M_LilyBloom": (0.88, 0.62, 0.75),  # the occasional pale-pink flower
                 "M_RootWood": (0.259, 0.208, 0.157),  # sunken logs + cypress knees
                 "M_BogStone": (0.353, 0.365, 0.333),  # mossy bog stones
+                "M_Mangrove": (0.34, 0.267, 0.196),  # mangrove trunks + stilt roots
             },
         },
         "build": build_swamp,
