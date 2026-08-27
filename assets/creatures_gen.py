@@ -144,32 +144,32 @@ COLORS = {
     "Leviathan_Marks": (0.47, 1.0, 0.84),
     # Revamp bosses (islands 2-7). Marks are each boss's enrage/tell parts,
     # same rule as the Leviathan.
-    "Gnashroot_Body": (0.25, 0.30, 0.20),
-    "Gnashroot_Fins": (0.33, 0.26, 0.18),
-    "Gnashroot_Eyes": (1.0, 0.72, 0.30),
-    "Gnashroot_Marks": (0.55, 0.90, 0.60),
-    "Rimefang_Body": (0.62, 0.74, 0.84),
-    "Rimefang_Fins": (0.42, 0.55, 0.70),
+    "Gnashroot_Body": (0.22, 0.26, 0.16),
+    "Gnashroot_Fins": (0.30, 0.23, 0.15),
+    "Gnashroot_Eyes": (1.0, 0.70, 0.26),
+    "Gnashroot_Marks": (0.55, 0.95, 0.52),
+    "Rimefang_Body": (0.36, 0.50, 0.68),
+    "Rimefang_Fins": (0.78, 0.88, 0.96),
     "Rimefang_Eyes": (0.70, 0.95, 1.0),
-    "Rimefang_Marks": (0.50, 0.95, 1.0),
-    "Pyrelisk_Body": (0.23, 0.17, 0.15),
-    "Pyrelisk_Fins": (0.19, 0.17, 0.24),
+    "Rimefang_Marks": (0.45, 0.90, 1.0),
+    "Pyrelisk_Body": (0.11, 0.10, 0.13),
+    "Pyrelisk_Fins": (0.17, 0.15, 0.21),
     "Pyrelisk_Eyes": (1.0, 0.60, 0.20),
     "Pyrelisk_Marks": (1.0, 0.40, 0.08),
-    "Noctyss_Body": (0.14, 0.12, 0.18),
-    "Noctyss_Fins": (0.22, 0.18, 0.28),
-    "Noctyss_Eyes": (0.85, 0.88, 0.95),
-    "Noctyss_Marks": (1.0, 0.90, 0.55),
-    "AdmiralWrack_Body": (0.26, 0.23, 0.20),
-    "AdmiralWrack_Fins": (0.40, 0.62, 0.58),
+    "Noctyss_Body": (0.09, 0.07, 0.13),
+    "Noctyss_Fins": (0.58, 0.53, 0.46),
+    "Noctyss_Eyes": (0.88, 0.87, 0.82),
+    "Noctyss_Marks": (1.0, 0.84, 0.45),
+    "AdmiralWrack_Body": (0.27, 0.21, 0.15),
+    "AdmiralWrack_Fins": (0.36, 0.52, 0.44),
     "AdmiralWrack_Eyes": (0.50, 1.0, 0.85),
     "AdmiralWrack_Marks": (0.45, 0.90, 0.75),
-    "Kraken_Body": (0.20, 0.15, 0.24),
-    "Kraken_Fins": (0.30, 0.20, 0.30),
+    "Kraken_Body": (0.16, 0.12, 0.22),
+    "Kraken_Fins": (0.42, 0.12, 0.15),
     "Kraken_Eyes": (1.0, 0.80, 0.30),
     "Kraken_Marks": (0.40, 0.90, 0.90),
-    "KrakenTentacle_Body": (0.20, 0.15, 0.24),
-    "KrakenTentacle_Fins": (0.30, 0.20, 0.30),
+    "KrakenTentacle_Body": (0.16, 0.12, 0.22),
+    "KrakenTentacle_Fins": (0.42, 0.12, 0.15),
     "KrakenTentacle_Marks": (0.40, 0.90, 0.90),
     # Flyers (the new archetype: swamp, ice, wreck, maelstrom).
     "BogGull_Body": (0.72, 0.70, 0.62),
@@ -2709,10 +2709,13 @@ def build_leviathan():
 
 
 # ---------------------------------------------------------------- Old Gnashroot, the Fen Tyrant (island 2 boss)
-# A moss-backed snapping turtle-gator: a broad fluted shell crusted with
-# glowing fen-moss and wisp buds, a long gator snout with a hooked snapper
-# beak, four stumpy clawed legs, a ridged tail. FLAT: lies belly-down,
-# front +X. bbox: X ~15 > Y ~8 > Z ~4.2.
+# Half ancient gator, half drowned oak. A hulking low silhouette: broad flat
+# armoured skull with an under-bite tusk pair and a ragged tooth palisade,
+# a moss-canopy back (shelf fungus, two dead saplings, hanging moss sheets),
+# gnarled root-claw limbs, a ridged half-rotten log for a tail. Its snare
+# roots glow in the fight, so the _Marks are fungal veins threading the bark,
+# glow-moss tufts and root-tendrils trailing off the flanks. FLAT: lies
+# belly-down, front +X. bbox: X ~16 > Y ~8 > Z ~5.
 
 
 def build_gnashroot():
@@ -2721,64 +2724,131 @@ def build_gnashroot():
     eyes = bmesh.new()
     marks = bmesh.new()
 
-    # The shell: a broad dome over a flat rim plate.
-    dome(body, (-1.5, 0, 1.15), (4.2, 3.2, 2.2), 1)
-    ellipsoid(body, (-1.5, 0, 1.05), (4.6, 3.6, 0.5), 1)
-    # Scute plates ringing the rim, angled out like a saw edge.
-    for k in range(10):
-        a = (k / 10) * TAU
-        px, py = -1.5 + math.cos(a) * 4.1, math.sin(a) * 3.2
-        box(fins, (px, py, 1.35), (0.9, 0.55, 0.35), Matrix.Rotation(a, 4, "Z"))
-    # A jagged ridge down the shell's crown.
-    for i in range(4):
-        box(fins, (0.4 - i * 1.3, 0, 3.15 - i * 0.12), (0.8, 0.4, 0.6), Matrix.Rotation(math.radians(35), 4, "Y"))
-
-    # Gator head off the shell's front: broad snout, wider than tall.
+    # ---- torso: a low, broad gator hull, flat-topped (phase puts a facet up).
     revolve(
         body,
-        [(-0.6, 1.5), (0.8, 1.45), (2.2, 1.1), (3.4, 0.85), (4.2, 0.55), (4.6, 0.0)],
-        sides=8,
+        [(-4.9, 0.0), (-4.2, 1.2), (-3.0, 2.0), (-1.4, 2.55), (0.4, 2.7), (1.9, 2.45), (3.0, 1.9), (3.6, 0.0)],
+        sides=9,
         axis="x",
-        center=(2.4, 0, 1.1),
-        squash=0.72,
+        center=(-0.8, 0, 1.55),
+        squash=0.6,
+        phase=TAU / 18,
     )
-    # The snapper beak: a hooked upper tip over an open lower jaw slab.
-    cone(body, (6.7, 0, 1.35), (7.2, 0, 0.55), 0.4, 5)
-    box(body, (5.2, 0, 0.35), (3.0, 1.7, 0.4), Matrix.Rotation(math.radians(-10), 4, "Y"))
-    # Teeth up from the lower jaw and down from the snout.
+    # Bark hide: staggered scute slabs armouring the spine and shoulders.
     for i in range(4):
-        x = 4.4 + i * 0.55
-        for s in (-1, 1):
-            cone(fins, (x, s * 0.75, 0.55), (x + 0.05, s * 0.72, 1.0), 0.09, 4)
-            cone(fins, (x - 0.2, s * 0.8, 1.15), (x - 0.15, s * 0.78, 0.7), 0.09, 4)
-    # Brow bosses over the eyes.
+        x = 1.2 - i * 1.45
+        box(body, (x, 0, 2.95 - i * 0.06), (1.15, 1.5, 0.42), Matrix.Rotation(math.radians(6), 4, "Y"))
     for s in (-1, 1):
-        ellipsoid(body, (3.3, s * 0.95, 1.75), (0.6, 0.35, 0.3), 1)
-        ellipsoid(eyes, (3.5, s * 0.95, 1.6), (0.3, 0.22, 0.24), 1)
+        for i in range(3):
+            x = 0.9 - i * 1.7
+            box(body, (x, s * 1.55, 2.45), (1.0, 0.95, 0.4), Matrix.Rotation(math.radians(s * -22), 4, "X"))
 
-    # Four stumpy legs with claw toes.
-    for lx, ly in ((1.4, 3.0), (1.4, -3.0), (-3.8, 2.9), (-3.8, -2.9)):
+    # ---- skull: broad, FLAT, armoured - stacked slabs, not a snout cone.
+    ellipsoid(body, (2.9, 0, 1.5), (1.7, 1.95, 1.25), 1)  # neck root
+    box(body, (4.3, 0, 2.0), (3.2, 3.0, 0.6), Matrix.Rotation(math.radians(-5), 4, "Y"))  # skull table
+    box(body, (5.9, 0, 1.7), (2.6, 2.15, 0.5), Matrix.Rotation(math.radians(-7), 4, "Y"))  # snout wedge
+    box(body, (7.0, 0, 1.5), (1.1, 1.5, 0.45), Matrix.Rotation(math.radians(-9), 4, "Y"))  # nose block
+    for s in (-1, 1):
+        box(body, (4.0, s * 1.3, 2.45), (1.6, 0.75, 0.4), Matrix.Rotation(math.radians(s * -8), 4, "X"))  # brow ridges
+        box(body, (3.6, s * 1.65, 1.55), (1.8, 0.6, 1.1), Matrix.Rotation(math.radians(s * 14), 4, "X"))  # cheek armour
+        ellipsoid(body, (6.9, s * 0.55, 1.85), (0.35, 0.3, 0.22), 1)  # nostril bosses
+    # Under-bite jaw: wider and longer than the snout, thrust forward.
+    box(body, (6.2, 0, 0.7), (3.8, 2.6, 0.55), Matrix.Rotation(math.radians(3), 4, "Y"))
+    box(body, (7.7, 0, 0.85), (1.1, 1.9, 0.75))  # chin block
+    # The under-bite tusks: two heavy hooks curving up past the snout.
+    for s in (-1, 1):
+        chain(fins, [(7.9, s * 1.0, 0.9), (8.35, s * 1.12, 1.7), (8.25, s * 1.0, 2.5)], [0.3, 0.2, 0.06], 5)
+    # Ragged tooth palisade: uneven cones up from the jaw rim, shorter row
+    # down from the snout, meshing.
+    for i in range(6):
+        x = 4.6 + i * 0.62
+        for s in (-1, 1):
+            h = 0.55 + 0.25 * ((i * 3 + (0 if s > 0 else 1)) % 3) / 2
+            cone(fins, (x, s * 1.12, 0.95), (x + 0.04, s * 1.08, 0.95 + h), 0.12, 4)
+            if i % 2 == 0:
+                cone(fins, (x + 0.3, s * 0.95, 1.42), (x + 0.34, s * 0.92, 0.95), 0.1, 4)
+    # Eyes: small, mean, amber - poking out sideways under the brow rims.
+    for s in (-1, 1):
+        ellipsoid(eyes, (4.55, s * 1.62, 2.22), (0.34, 0.26, 0.22), 1)
+
+    # ---- moss canopy back: shelf fungus, dead saplings, hanging moss.
+    # Shelf-fungus plates jutting off the flanks and spine (half-disc slabs).
+    def shelf(cx, cy, cz, r, ang):
+        # A half-disc in local xy (flat edge against the bark), yawed by `ang`.
+        loc = [(0.0, -r), (r * 0.8, -r * 0.55), (r, 0.0), (r * 0.8, r * 0.55), (0.0, r)]
+        c, s = math.cos(math.radians(ang)), math.sin(math.radians(ang))
+        world = [(cx + a * c - b * s, cy + a * s + b * c) for a, b in loc]
+        plate(fins, world, 0.22, "xy", offset=(0, 0, cz))
+
+    for cx, cy, r, ang in (
+        (0.6, 1.75, 1.0, 55),
+        (-1.1, 1.95, 0.85, 90),
+        (-2.7, 1.6, 0.75, 125),
+        (-0.2, -1.9, 0.95, -80),
+        (-2.0, -1.8, 0.8, -110),
+        (1.4, -1.5, 0.7, -45),
+    ):
+        shelf(cx, cy, 2.35 + r * 0.3, r, ang)
+        shelf(cx * 0.92, cy * 0.92, 2.0 + r * 0.3, r * 0.7, ang)
+    # Two dead saplings rising off the spine, forked and bare.
+    chain(fins, [(-1.9, 0.5, 2.9), (-2.1, 0.65, 4.1), (-2.35, 0.85, 5.1)], [0.22, 0.14, 0.05], 5)
+    chain(fins, [(-2.05, 0.6, 3.9), (-1.55, 1.1, 4.65), (-1.4, 1.3, 5.0)], [0.11, 0.06, 0.03], 4)
+    chain(fins, [(-2.1, 0.68, 4.35), (-2.6, 0.2, 4.95)], [0.08, 0.03], 4)
+    chain(fins, [(0.7, -0.55, 2.95), (0.85, -0.75, 3.9), (1.05, -0.7, 4.5)], [0.16, 0.1, 0.04], 5)
+    chain(fins, [(0.8, -0.68, 3.7), (0.4, -1.15, 4.3)], [0.07, 0.03], 4)
+    # Hanging moss sheets: thin ragged ribbons drooping from the shelf rims.
+    def moss_sheet(x, y, z, w, drop, lean):
+        pts = [(x - w, z), (x - w * 0.9, z - drop * 0.75), (x - w * 0.45, z - drop * 0.5), (x, z - drop), (x + w * 0.5, z - drop * 0.6), (x + w * 0.9, z - drop * 0.85), (x + w, z)]
+        plate(fins, pts, 0.07, "xz", offset=(0, y + lean, 0))
+
+    moss_sheet(0.6, 2.6, 2.55, 0.55, 1.5, 0.15)
+    moss_sheet(-1.2, 2.75, 2.3, 0.5, 1.3, 0.2)
+    moss_sheet(-0.3, -2.7, 2.45, 0.6, 1.6, -0.15)
+    moss_sheet(-2.2, -2.4, 2.2, 0.45, 1.1, -0.2)
+    moss_sheet(3.1, 1.9, 2.1, 0.4, 1.0, 0.1)
+
+    # ---- limbs: gnarled root-claws. A thick bowed leg, then splayed
+    # root-toes that kink like grown wood.
+    for lx, ly in ((2.0, 2.6), (2.0, -2.6), (-3.6, 2.5), (-3.6, -2.5)):
         s = 1 if ly > 0 else -1
-        chain(body, [(lx, ly * 0.85, 1.0), (lx + 0.1, ly + s * 0.35, 0.7), (lx + 0.15, ly + s * 0.4, 0.25)], [0.75, 0.6, 0.55], 6)
-        ellipsoid(body, (lx + 0.2, ly + s * 0.45, 0.22), (0.7, 0.6, 0.22), 1)
-        for t in (-1, 0, 1):
-            cone(fins, (lx + 0.55, ly + s * 0.45 + t * 0.35, 0.25), (lx + 1.0, ly + s * 0.5 + t * 0.45, 0.1), 0.11, 4)
+        chain(body, [(lx, ly * 0.8, 1.6), (lx + 0.1, ly + s * 0.55, 1.05), (lx + 0.05, ly + s * 0.7, 0.45)], [0.85, 0.68, 0.58], 6)
+        for t, (dx, dy) in enumerate(((0.85, 0.15), (0.55, 0.75), (-0.1, 0.95), (-0.65, 0.55))):
+            tx, ty = lx + 0.05 + dx, ly + s * (0.7 + dy)
+            chain(
+                fins,
+                [(lx + 0.05, ly + s * 0.7, 0.5), (tx * 0.35 + (lx + 0.05) * 0.65, ty * 0.5 + (ly + s * 0.7) * 0.5, 0.55), (tx, ty, 0.28), (tx + dx * 0.3, ty + s * dy * 0.3, 0.06)],
+                [0.3, 0.24, 0.16, 0.05],
+                5,
+            )
 
-    # The ridged tail, swinging slightly to port.
-    tail = [(-5.4, 0, 1.0), (-6.6, 0.5, 0.85), (-7.6, 1.0, 0.6), (-8.3, 1.3, 0.35)]
-    chain(body, tail, [0.9, 0.65, 0.4, 0.15], 6)
-    for i, (tx, ty, tz) in enumerate(tail[:3]):
-        box(fins, (tx, ty, tz + 0.65 - i * 0.1), (0.5, 0.3, 0.5), Matrix.Rotation(math.radians(40), 4, "Y"))
+    # ---- tail: a ridged, half-rotten log dragging astern.
+    tail = [(-5.0, 0, 1.35), (-6.4, 0.35, 1.2), (-7.6, 0.75, 1.05), (-8.5, 1.05, 0.95)]
+    chain(body, tail, [1.25, 1.05, 0.9, 0.8], 7)
+    # Bark ridge rings at each joint, and a splintered hollow end.
+    for i, (tx, ty, tz) in enumerate(tail[1:]):
+        rot = Matrix.Rotation(math.radians(14 * (i + 1)), 4, "Z")
+        box(fins, (tx + 0.25, ty, tz), (0.35, 2.0 - i * 0.22, 2.0 - i * 0.22), rot)
+    end = Vector(tail[-1])
+    back = Vector((-0.95, 0.32, -0.04)).normalized()
+    for k in range(6):
+        a = k / 6 * TAU
+        rim = end + Vector((0, math.cos(a), math.sin(a))) * 0.72
+        cone(fins, rim, rim + back * (0.55 + 0.3 * (k % 2)), 0.16, 4)
+    ellipsoid(marks, end + back * 0.15, (0.32, 0.42, 0.42), 1)  # rot-glow in the hollow core
 
-    # The fen-moss: glowing lichen mats on the shell and wisp buds on stalks
-    # (the brood tell - lit when it calls the bog).
-    for mx, my, r in ((-0.4, 1.6, 0.9), (-2.6, -1.2, 0.8), (-1.0, -2.0, 0.6), (-3.2, 1.4, 0.7)):
-        ellipsoid(marks, (mx, my, 2.6 + 0.3 * (r - 0.6)), (r, r * 0.8, 0.25), 1)
-    for wx, wy in ((-0.6, 0.4), (-2.4, 0.9), (-1.8, -0.9)):
-        chain(fins, [(wx, wy, 3.1), (wx - 0.15, wy + 0.1, 3.85)], [0.08, 0.05], 4)
-        ellipsoid(marks, (wx - 0.18, wy + 0.12, 4.0), (0.18, 0.18, 0.2), 1)
-    # A glowing throat patch inside the open maw.
-    ellipsoid(marks, (4.6, 0, 0.62), (0.8, 0.6, 0.2), 1)
+    # ---- the glow (_Marks): fungal veins threading the bark, glow-moss
+    # tufts, snare-root tendrils trailing off the flanks, and the maw.
+    chain(marks, [(2.6, 0.5, 3.05), (1.0, 1.1, 2.95), (-0.8, 0.7, 3.1), (-2.4, 1.0, 2.75), (-3.9, 0.5, 2.3)], [0.07, 0.09, 0.08, 0.08, 0.05], 4)
+    chain(marks, [(1.8, -0.7, 3.0), (0.2, -1.2, 2.85), (-1.6, -0.9, 2.95), (-3.3, -1.2, 2.35)], [0.06, 0.08, 0.08, 0.05], 4)
+    chain(marks, [(-4.2, 0.2, 2.0), (-5.6, 0.4, 1.75), (-7.0, 0.7, 1.5)], [0.06, 0.06, 0.04], 4)  # vein running out the log
+    for mx, my, mz, r in ((0.55, 1.85, 2.55, 0.34), (-1.2, 2.05, 2.3, 0.3), (-0.25, -2.0, 2.55, 0.32), (-2.1, -1.9, 2.3, 0.26), (-2.3, 0.85, 4.05, 0.2), (0.85, -0.72, 3.85, 0.16)):
+        ellipsoid(marks, (mx, my, mz), (r, r, r * 0.75), 1)
+    # Snare-root tendrils: glowing roots spilling off the flanks to the mud.
+    for rx, ry, sy in ((1.1, 2.35, 1), (-2.6, 2.3, 1), (0.2, -2.4, -1), (-4.3, -1.9, -1)):
+        chain(marks, [(rx, ry * 0.7, 2.1), (rx + 0.15, ry, 1.45), (rx + 0.3, ry + sy * 0.75, 0.8), (rx + 0.15, ry + sy * 1.3, 0.12)], [0.13, 0.11, 0.08, 0.03], 4)
+        chain(marks, [(rx + 0.28, ry + sy * 0.72, 0.85), (rx + 0.85, ry + sy * 1.0, 0.15)], [0.06, 0.02], 4)
+    # The maw: a glowing throat down in the under-bite.
+    ellipsoid(marks, (5.4, 0, 1.1), (1.1, 0.75, 0.22), 1)
 
     return [
         finish("Gnashroot_Body", body, MATS["Gnashroot_Body"]),
@@ -2789,11 +2859,13 @@ def build_gnashroot():
 
 
 # ---------------------------------------------------------------- Rimefang, the Glacier Serpent (island 3 boss)
-# An ice serpent tunnelling in and out of the shelf: a long S-curved body,
-# a frilled wedge head with two great icicle fangs, a crest of icicle spines
-# down the spine, aurora veins along the flanks. FLAT: front +X.
-# bbox: X ~17 > Y ~7 > Z ~4.6.
-
+# A sleek glacial serpent that hunts UNDER the ice sheet. Long S-coiled body
+# armoured in compacted snow/ice slabs (chunky segment plates with visible
+# gaps), a bergsaw ridge of jagged ice plates down the whole spine, a wedge
+# head crowned with backswept translucent crystal frill spikes over an
+# underslung needle-fanged jaw, and a broad fluke tail cut like an iceberg
+# fragment. _Marks: frost-crack veins glowing in every plate gap + the
+# glowing throat (its frost breath). FLAT: front +X. bbox: X ~22 > Y ~6.5 > Z ~5.
 
 def build_rimefang():
     body = bmesh.new()
@@ -2801,60 +2873,114 @@ def build_rimefang():
     eyes = bmesh.new()
     marks = bmesh.new()
 
-    # The body: an S-curve, thickest amidships, tapering to the tail.
+    # ---- the S-coil: core chain, thickest amidships.
     pts, radii = [], []
-    n = 14
+    n = 16
     for i in range(n):
         t = i / (n - 1)
-        x = 7.6 - t * 16.0
-        y = 2.1 * math.sin(t * math.pi * 1.7)
-        z = 1.5 + 0.3 * math.cos(t * math.pi * 2.3)
-        pts.append((x, y, z))
-        radii.append(0.35 + 0.95 * math.sin(math.pi * min(max(t, 0.06), 0.94)))
-    chain(body, pts, radii, 7)
-    # Tail: a fluked icicle fan.
-    plate(fins, [(-8.2, 1.9), (-9.6, 3.2), (-9.2, 1.8), (-10.0, 1.4), (-9.0, 0.9), (-9.4, -0.2), (-8.3, 0.9)], 0.25, "xz", offset=(0, pts[-1][1], 0))
+        x = 8.0 - t * 16.6
+        y = 1.9 * math.sin(t * math.pi * 1.7)
+        z = 1.45 + 0.25 * math.cos(t * math.pi * 2.1)
+        pts.append(Vector((x, y, z)))
+        radii.append(0.38 + 0.92 * math.sin(math.pi * min(max(t, 0.07), 0.93)))
+    chain(body, [tuple(p) for p in pts], radii, 7)
 
-    # The head: a faceted wedge with a frill behind it.
-    revolve(
-        body,
-        [(-1.2, 1.25), (0.2, 1.15), (1.4, 0.85), (2.4, 0.5), (3.0, 0.0)],
-        sides=8,
-        axis="x",
-        center=(8.4, 0, 1.6),
-        squash=0.85,
-    )
-    # Frill: radiating icicle plates behind the skull.
-    for ang in (-55, -25, 0, 25, 55):
-        rot = Matrix.Rotation(math.radians(ang), 4, "X")
-        box(fins, (7.0, math.sin(math.radians(ang)) * 1.6, 1.6 + math.cos(math.radians(ang)) * 1.5), (0.9, 0.35, 1.6), rot)
-    # Jaw open, two great icicle fangs down, smaller teeth.
-    box(body, (10.0, 0, 0.85), (2.2, 1.3, 0.35), Matrix.Rotation(math.radians(12), 4, "Y"))
-    for s in (-1, 1):
-        cone(fins, (10.6, s * 0.55, 1.35), (10.9, s * 0.6, 0.15), 0.2, 5)
-        for i in range(3):
-            cone(fins, (9.4 + i * 0.45, s * 0.6, 1.2), (9.5 + i * 0.45, s * 0.6, 0.7), 0.08, 4)
-    for s in (-1, 1):
-        ellipsoid(eyes, (9.3, s * 0.75, 2.05), (0.32, 0.2, 0.26), 1)
+    def seg_yaw(i):
+        d = pts[min(i + 1, n - 1)] - pts[max(i - 1, 0)]
+        return math.atan2(d.y, d.x)
 
-    # The crest: icicle spines down the spine, glowing at the tips.
-    for i in range(1, n - 1, 2):
+    # ---- compacted ice-slab armour: a chunky faceted plate riding every
+    # other segment, slightly proud of the hide, rolled a little so no two
+    # sit alike - the gaps between them are where the frost-cracks glow.
+    for i in range(1, n - 1):
+        r = radii[i]
+        if r < 0.55:
+            continue
+        yaw = Matrix.Rotation(seg_yaw(i), 4, "Z")
+        roll = Matrix.Rotation(math.radians(-8 + (i * 7) % 17), 4, "X")
+        px, py, pz = pts[i]
+        box(body, (px, py, pz + r * 0.12), (0.92, r * 2.15, r * 1.8), yaw @ roll)
+        # flank slabs a shade lower, splayed out - stacked-slab read
+        for s in (-1, 1):
+            box(body, (px, py + s * r * 0.75, pz - r * 0.35), (0.8, r * 0.85, r * 0.9), yaw @ Matrix.Rotation(math.radians(s * 24), 4, "X"))
+    # Frost-crack veins glowing in every gap between the slabs.
+    for i in range(1, n - 2):
+        r = min(radii[i], radii[i + 1])
+        if r < 0.55:
+            continue
+        mid = (pts[i] + pts[i + 1]) / 2
+        yaw = Matrix.Rotation(seg_yaw(i), 4, "Z")
+        box(marks, (mid.x, mid.y, mid.z + r * 0.05), (0.14, r * 2.05, r * 1.6), yaw @ Matrix.Rotation(math.radians(9), 4, "X"))
+    # Belly keel: ice slabs under the forward arcs.
+    for i in range(2, 11, 2):
+        px, py, pz = pts[i]
+        box(fins, (px, py, pz - radii[i] * 0.9), (1.15, 0.85, 0.32), Matrix.Rotation(seg_yaw(i), 4, "Z"))
+
+    # ---- the bergsaw: jagged ice plates down the WHOLE spine, alternating
+    # tall and short, each yawed with its segment.
+    for i in range(1, n - 1):
         px, py, pz = pts[i]
         r = radii[i]
-        cone(fins, (px, py, pz + r * 0.8), (px - 0.25, py, pz + r + 1.5), 0.22, 4)
-        cone(marks, (px - 0.18, py, pz + r + 0.95), (px - 0.25, py, pz + r + 1.5), 0.09, 4)
-    # Belly plates: a keel of ice slabs under the forward arcs.
-    for i in range(2, 9, 2):
-        px, py, pz = pts[i]
-        box(fins, (px, py, pz - radii[i] * 0.85), (1.0, 0.7, 0.3))
+        if r < 0.45:
+            continue
+        h = (1.7 if i % 2 else 1.1) * (0.55 + r * 0.5)
+        yaw = Matrix.Rotation(seg_yaw(i), 4, "Z")
+        box(fins, (px, py, pz + r * 0.8 + h * 0.4), (0.95, 0.2, h), yaw @ Matrix.Rotation(math.radians(28), 4, "Y"))
+        if i % 2:
+            cone(fins, (px - 0.1, py, pz + r * 0.7 + h * 0.55), (px - 0.75, py, pz + r + h * 1.05), 0.14, 4)
 
-    # Aurora veins tracing both flanks.
+    # ---- head: a faceted wedge, flat-crowned, cheek slabs, snout tip.
+    revolve(
+        body,
+        [(-1.4, 1.3), (0.0, 1.22), (1.5, 0.95), (2.6, 0.6), (3.4, 0.0)],
+        sides=7,
+        axis="x",
+        center=(8.8, 0, 1.7),
+        squash=0.78,
+        phase=TAU / 14,
+    )
+    box(body, (9.6, 0, 2.35), (2.5, 1.5, 0.4), Matrix.Rotation(math.radians(-7), 4, "Y"))  # skull table
+    box(body, (11.2, 0, 1.95), (1.3, 0.95, 0.4), Matrix.Rotation(math.radians(-10), 4, "Y"))  # snout slab
     for s in (-1, 1):
-        vein = [(pts[i][0], pts[i][1] + s * radii[i] * 0.9, pts[i][2] + 0.2) for i in range(1, n - 1, 3)]
-        chain(marks, vein, [0.07] * len(vein), 4)
-    # Frost-breath wisps curling off the nostrils.
+        box(body, (9.3, s * 1.05, 1.6), (1.9, 0.5, 0.9), Matrix.Rotation(math.radians(s * 16), 4, "X"))  # cheek slabs
+        ellipsoid(eyes, (10.25, s * 1.08, 2.12), (0.36, 0.26, 0.26), 1)
+        box(body, (9.9, s * 1.0, 2.4), (1.0, 0.5, 0.28), Matrix.Rotation(math.radians(s * -10), 4, "X"))  # brow shard
+
+    # ---- the crown: backswept translucent crystal frill spikes, longest on
+    # the centreline, raked down the sides.
+    for ang, ln in ((0, 3.3), (24, 2.7), (-24, 2.7), (48, 2.0), (-48, 2.0), (72, 1.4), (-72, 1.4)):
+        a = math.radians(ang)
+        base = Vector((8.3, math.sin(a) * 0.85, 2.3 + math.cos(a) * 0.55))
+        tip = base + Vector((-ln * 0.82, math.sin(a) * ln * 0.5, math.cos(a) * ln * 0.62))
+        mid = base + (tip - base) * 0.5 + Vector((0, 0, 0.18))
+        chain(fins, [tuple(base), tuple(mid), tuple(tip)], [0.26, 0.17, 0.04], 5)
+
+    # ---- underslung jaw: hung open below the snout, a needle-fang comb.
+    box(body, (10.6, 0, 0.85), (2.6, 1.1, 0.35), Matrix.Rotation(math.radians(14), 4, "Y"))
+    box(body, (9.4, 0, 0.95), (0.9, 1.3, 0.6))  # jaw hinge block
     for s in (-1, 1):
-        chain(marks, [(11.0, s * 0.3, 1.7), (11.5, s * 0.55, 2.0)], [0.06, 0.03], 4)
+        cone(fins, (11.55, s * 0.42, 1.75), (11.85, s * 0.48, 0.55), 0.16, 4)  # the two great fangs
+        for i in range(4):
+            x = 9.9 + i * 0.42
+            cone(fins, (x, s * 0.5, 1.75 - i * 0.02), (x + 0.06, s * 0.5, 1.15), 0.07, 4)  # upper needles
+            cone(fins, (x + 0.2, s * 0.42, 1.0), (x + 0.26, s * 0.42, 1.55), 0.07, 4)  # lower needles
+    # The glowing throat - frost breath pooling behind the jaw.
+    ellipsoid(marks, (9.7, 0, 1.25), (1.0, 0.62, 0.35), 1)
+    for s in (-1, 1):
+        chain(marks, [(11.6, s * 0.28, 1.6), (12.15, s * 0.5, 1.95)], [0.07, 0.03], 4)  # breath wisps
+
+    # ---- tail: a broad fluke cut like an iceberg fragment - thick, angular,
+    # with shard teeth on its trailing edge.
+    ty = pts[-1].y
+    plate(
+        fins,
+        [(-8.4, 1.5), (-9.5, 3.0), (-9.2, 2.0), (-10.3, 1.9), (-9.6, 1.05), (-10.1, 0.35), (-9.2, 0.5), (-9.5, 0.05), (-8.5, 0.45)],
+        0.42,
+        "xz",
+        offset=(0, ty, 0),
+    )
+    box(fins, (-8.6, ty, 1.15), (0.9, 0.65, 1.3), Matrix.Rotation(math.radians(20), 4, "Y"))  # fluke root mass
+    chain(marks, [(-8.5, ty, 1.6), (-9.3, ty, 2.2), (-9.1, ty, 1.1), (-9.8, ty, 0.6)], [0.06, 0.05, 0.05, 0.03], 4)  # cracks in the berg
 
     return [
         finish("Rimefang_Body", body, MATS["Rimefang_Body"]),
@@ -2865,10 +2991,14 @@ def build_rimefang():
 
 
 # ---------------------------------------------------------------- Pyrelisk, the Caldera Wyrm (island 4 boss)
-# A magma serpent swimming the lava ponds: three arched coils breaking the
-# surface (nothing like Rimefang's flat S), obsidian back-plates, magma
-# cracks glowing down every arch, a horned wyrm skull with a molten maw.
-# FLAT: front +X. bbox: X ~16 > Y ~5.4 > Z ~4.2.
+# An obsidian-armoured magma wyrm: three arched coils breaking the lava
+# (nothing like Rimefang's flat S). The body underneath is MOLTEN - a glowing
+# _Marks core runs the whole length - and the armour is faceted volcanic
+# glass: sharp-edged plate boxes and shattered basalt-column prisms with
+# open gaps between every plate where the magma shows through. A cracked
+# basalt-wedge skull with twin down-curved horns, magma drooling off the
+# jaw, ember-spike spines down the back, glowing vents on the flanks, a
+# hardened spade-slab tail. FLAT: front +X. bbox: X ~20 > Y ~4.8 > Z ~4.4.
 
 
 def build_pyrelisk():
@@ -2877,52 +3007,113 @@ def build_pyrelisk():
     eyes = bmesh.new()
     marks = bmesh.new()
 
-    # The coils: humps arch out of the lava, dipping between.
+    # ---- the coils, and the molten core that IS the creature: the glowing
+    # chain runs the whole length; the armour rides on top of it.
     pts, radii = [], []
-    n = 16
+    n = 18
     for i in range(n):
         t = i / (n - 1)
-        x = 7.0 - t * 14.8
-        y = 1.15 * math.sin(t * math.pi * 2.0)
-        z = 0.8 + 1.45 * abs(math.sin(t * math.pi * 2.55 + 0.25))
-        pts.append((x, y, z))
-        radii.append(0.3 + 0.9 * math.sin(math.pi * min(max(t, 0.05), 0.95)))
-    chain(body, pts, radii, 7)
-    cone(body, pts[-1], (pts[-1][0] - 1.2, pts[-1][1] - 0.4, 0.5), radii[-1], 5)
+        x = 6.8 - t * 15.6
+        y = 0.85 * math.sin(t * math.pi * 2.0)
+        z = 0.85 + 1.3 * abs(math.sin(t * math.pi * 2.55 + 0.25))
+        pts.append(Vector((x, y, z)))
+        radii.append(0.32 + 0.88 * math.sin(math.pi * min(max(t, 0.06), 0.94)))
+    chain(marks, [tuple(p) for p in pts], [r * 0.85 for r in radii], 6)
 
-    # Obsidian back-plates riding each arch crest.
+    def seg_yaw(i):
+        d = pts[min(i + 1, n - 1)] - pts[max(i - 1, 0)]
+        return math.atan2(d.y, d.x)
+
+    # ---- the obsidian armour: chunky sharp plate pairs on every segment,
+    # rolled and pitched so the seams stay open - molten light in every gap.
+    for i in range(1, n - 1):
+        r = radii[i]
+        if r < 0.45:
+            continue
+        px, py, pz = pts[i]
+        yaw = Matrix.Rotation(seg_yaw(i), 4, "Z")
+        pitch = Matrix.Rotation(math.radians(-14 + (i * 9) % 28), 4, "Y")
+        # dorsal plate: a sharp-edged glass slab, slightly clear of the core
+        box(body, (px, py, pz + r * 0.45), (0.78, r * 1.9, r * 1.1), yaw @ pitch)
+        # flank plates, splayed, leaving a lit seam against the dorsal plate
+        for s in (-1, 1):
+            roll = Matrix.Rotation(math.radians(s * (38 + (i * 11) % 14)), 4, "X")
+            box(body, (px - 0.05, py + s * r * 0.72, pz - r * 0.28), (0.7, r * 0.75, r * 1.15), yaw @ roll)
+    # Shattered basalt columns: hex prisms jutting off the arch crests at
+    # broken angles, tallest right on top.
     for i in range(1, n - 1):
         px, py, pz = pts[i]
-        if pz > 1.7:  # only where the coil is out of the lava
-            box(fins, (px, py, pz + radii[i] * 0.85), (0.55, 0.25, 0.8), Matrix.Rotation(math.radians(30), 4, "Y"))
-    # Magma cracks: glowing seams down every out-of-lava arch.
-    for s in (-1, 1):
-        seam = [(pts[i][0], pts[i][1] + s * radii[i] * 0.75, pts[i][2] + 0.25) for i in range(1, n - 1, 2) if pts[i][2] > 1.4]
-        if len(seam) > 1:
-            chain(marks, seam, [0.09] * len(seam), 4)
-    # A molten underglow where each hump meets the lava line.
-    for i in range(1, n - 1, 3):
+        r = radii[i]
+        if pz < 1.75 or r < 0.5:
+            continue
+        yawa = seg_yaw(i)
+        for k, (dy, tilt, ln) in enumerate(((0.0, 0.0, 1.05), (0.42, 0.5, 0.7), (-0.4, -0.45, 0.62))):
+            base = Vector((px + math.sin(yawa) * dy * 0.3, py + math.cos(yawa) * dy, pz + r * 0.35))
+            d = Vector((0.28 * tilt - 0.12, dy * 0.55, 1.0)).normalized()
+            limb(fins, base, base + d * (ln * (0.8 + r * 0.35)), 0.26 - k * 0.05, 0.2 - k * 0.05, 6)
+    # Ember-spike spines: short obsidian thorns down the back, tips alight.
+    for i in range(1, n - 1):
         px, py, pz = pts[i]
-        ellipsoid(marks, (px, py, max(pz - radii[i] * 0.8, 0.5)), (0.5, 0.35, 0.15), 1)
+        r = radii[i]
+        if r < 0.5 or pz < 1.3 or i % 2:
+            continue
+        tip = (px - 0.35, py, pz + r + 0.95)
+        cone(fins, (px, py, pz + r * 0.55), tip, 0.14, 4)
+        cone(marks, (px - 0.28, py, pz + r + 0.62), (tip[0] - 0.03, tip[1], tip[2] + 0.1), 0.06, 4)
+    # Glowing vents: furnace grates set into the lower flanks of each arch.
+    for i in (3, 6, 9, 12, 14):
+        px, py, pz = pts[i]
+        r = radii[i]
+        yaw = Matrix.Rotation(seg_yaw(i), 4, "Z")
+        for s in (-1, 1):
+            box(marks, (px, py + s * r * 0.95, pz - r * 0.42), (0.5, 0.16, 0.42), yaw @ Matrix.Rotation(math.radians(s * 30), 4, "X"))
+    # Molten underglow pooling where each hump meets the lava line.
+    for i in (2, 5, 8, 11, 15):
+        px, py, pz = pts[i]
+        ellipsoid(marks, (px, py, max(pz - radii[i] * 0.75, 0.45)), (0.55, 0.4, 0.16), 1)
 
-    # The skull: a horned wedge, maw hung open and glowing.
-    revolve(
-        body,
-        [(-1.0, 1.15), (0.4, 1.05), (1.6, 0.8), (2.6, 0.45), (3.1, 0.0)],
-        sides=8,
-        axis="x",
-        center=(7.6, 0, 1.75),
-        squash=0.9,
-    )
-    box(body, (9.4, 0, 0.9), (2.4, 1.2, 0.35), Matrix.Rotation(math.radians(14), 4, "Y"))
-    ellipsoid(marks, (9.2, 0, 1.15), (1.0, 0.55, 0.25), 1)  # the molten throat
-    # Swept obsidian horns and jaw hooks.
+    # ---- the skull: a cracked basalt wedge, all flats and edges.
+    box(body, (8.0, 0, 2.0), (2.6, 1.7, 0.75), Matrix.Rotation(math.radians(-6), 4, "Y"))  # skull block
+    box(body, (9.6, 0, 1.7), (1.8, 1.15, 0.55), Matrix.Rotation(math.radians(-12), 4, "Y"))  # snout wedge
+    box(body, (10.35, 0, 1.45), (0.8, 0.7, 0.45), Matrix.Rotation(math.radians(-16), 4, "Y"))  # chipped nose
+    box(body, (7.3, 0, 2.55), (1.3, 1.2, 0.4), Matrix.Rotation(math.radians(8), 4, "Y"))  # crown slab
     for s in (-1, 1):
-        chain(fins, [(7.2, s * 0.8, 2.6), (6.4, s * 1.3, 3.5), (5.6, s * 1.5, 3.9)], [0.28, 0.17, 0.06], 5)
-        cone(fins, (9.8, s * 0.6, 1.3), (10.1, s * 0.65, 0.55), 0.16, 4)
+        box(body, (8.3, s * 0.95, 1.55), (1.7, 0.45, 0.85), Matrix.Rotation(math.radians(s * 18), 4, "X"))  # cheek shards
+        box(body, (8.9, s * 0.8, 2.3), (1.2, 0.45, 0.3), Matrix.Rotation(math.radians(s * -8), 4, "X"))  # brow shards
+    # The crack: a glowing fissure splitting the skull crown.
+    chain(marks, [(9.9, 0.12, 2.15), (8.9, -0.1, 2.35), (7.9, 0.15, 2.5), (7.0, -0.05, 2.75)], [0.06, 0.08, 0.07, 0.05], 4)
+    # Twin horns: heavy, down-curved past the cheeks like a bull's.
+    for s in (-1, 1):
+        chain(
+            fins,
+            [(7.4, s * 0.75, 2.7), (7.0, s * 1.45, 2.5), (7.3, s * 1.8, 1.7), (8.0, s * 1.85, 1.0)],
+            [0.34, 0.26, 0.17, 0.05],
+            6,
+        )
+    # The maw: hung open, molten inside, magma drooling off the jaw rim.
+    box(body, (9.9, 0, 0.75), (2.6, 1.05, 0.4), Matrix.Rotation(math.radians(10), 4, "Y"))  # lower jaw slab
+    ellipsoid(marks, (9.55, 0, 1.2), (1.15, 0.55, 0.3), 1)  # the furnace throat
+    for s in (-1, 1):
+        cone(fins, (10.6, s * 0.42, 1.5), (10.85, s * 0.46, 0.75), 0.13, 4)
         for i in range(3):
-            cone(fins, (8.6 + i * 0.4, s * 0.55, 1.25), (8.7 + i * 0.4, s * 0.55, 0.8), 0.08, 4)
-        ellipsoid(eyes, (8.5, s * 0.7, 2.15), (0.3, 0.2, 0.24), 1)
+            cone(fins, (9.1 + i * 0.5, s * 0.48, 1.45), (9.2 + i * 0.5, s * 0.48, 1.0), 0.08, 4)
+    for dx, dy in ((0.35, 0.3), (0.0, -0.35), (0.75, -0.1)):
+        chain(marks, [(10.3 + dx * 0.3, dy, 1.05), (10.45 + dx * 0.3, dy * 1.3, 0.55), (10.4 + dx * 0.3, dy * 1.5, 0.15)], [0.08, 0.05, 0.02], 4)
+        ellipsoid(marks, (10.4 + dx * 0.3, dy * 1.5, 0.12), (0.14, 0.14, 0.08), 1)  # drips pooling
+    # Furnace eyes, deep under the brow shards.
+    for s in (-1, 1):
+        ellipsoid(eyes, (8.85, s * 1.02, 2.12), (0.3, 0.2, 0.22), 1)
+
+    # ---- the tail: a hardened spade slab of lava, seams still glowing.
+    tv = pts[-1]
+    plate(
+        fins,
+        [(tv.x + 0.3, 0.55), (tv.x - 0.9, 1.15), (tv.x - 2.1, 0.6), (tv.x - 2.7, 0.0), (tv.x - 2.1, -0.6), (tv.x - 0.9, -1.15), (tv.x + 0.3, -0.55)],
+        0.45,
+        "xy",
+        offset=(0, tv.y, max(tv.z - 0.25, 0.55)),
+    )
+    chain(marks, [(tv.x - 0.2, tv.y, tv.z + 0.1), (tv.x - 1.3, tv.y + 0.3, tv.z), (tv.x - 2.4, tv.y, tv.z - 0.15)], [0.07, 0.06, 0.03], 4)
 
     return [
         finish("Pyrelisk_Body", body, MATS["Pyrelisk_Body"]),
@@ -2933,11 +3124,14 @@ def build_pyrelisk():
 
 
 # ---------------------------------------------------------------- Noctyss, the Trench Mother (island 5 boss)
-# An abyssal angler-queen: a deep-bodied silhouette hung with a skirt of
-# tendrils, a maw of needle fangs, ragged dorsal spine-rays, and one long
-# lure arcing overhead - the only light in her arena. Her marks are that
-# lure, its beads and her photophores (doused between attacks when she
-# enrages). UPRIGHT (stance): Z-up, front +X. ~13 long, ~9.5 tall.
+# An abyssal angler QUEEN, grotesquely elegant: the maw IS the head - an
+# overhung skull hood and a dropped jaw-scoop palisaded with long needle
+# fangs; a scatter of small dead-white secondary eyes across the brow (she
+# is blind - the lure does the seeing); bone ribs standing proud of starved
+# flanks; veil sheets flowing off flank, spine and tail like a tattered
+# funeral gown; and THE LURE - a long arched stalk crowned with a caged
+# bulb, the only light in her pitch-black arena (marks). UPRIGHT (stance):
+# Z-up, front +X. Bone-pale fins on a near-black body.
 
 
 def build_noctyss():
@@ -2948,72 +3142,128 @@ def build_noctyss():
 
     zc = 4.6  # body axis height - she hangs in the dark
 
-    # Deep keeled body, blunter than the Leviathan, fattest forward.
-    revolve(
-        body,
-        [(-4.6, 0.0), (-3.6, 0.9), (-2.2, 1.7), (-0.4, 2.3), (1.4, 2.5), (2.8, 2.2), (3.8, 1.5), (4.4, 0.6), (4.6, 0.0)],
-        sides=9,
-        axis="x",
-        center=(0, 0, zc),
-        squash=1.35,
-        phase=TAU / 18,
-    )
+    # The body: deep-keeled (squash 1.4), fattest at the skull, wasting away
+    # toward a starved tail stock.
+    profile = [(-5.2, 0.0), (-4.2, 0.6), (-3.0, 1.15), (-1.6, 1.7), (-0.2, 2.15), (1.2, 2.45), (2.4, 2.4), (3.3, 2.0), (3.9, 1.2), (4.1, 0.0)]
+    revolve(body, profile, sides=10, axis="x", center=(0, 0, zc), squash=1.4, phase=TAU / 20)
 
-    # The maw: a hung-open jaw and two rows of NEEDLE fangs, longer than any
-    # other creature's.
-    jaw_rot = Matrix.Rotation(math.radians(22), 4, "Y")
-    box(body, (3.5, 0, zc - 2.5), (3.2, 2.6, 0.5), jaw_rot)
-    for i in range(7):
-        y = -1.2 + i * 0.4
-        x = 4.5 - abs(y) * 0.4
-        cone(fins, (x, y, zc - 0.5), (x + 0.25, y, zc - 2.1), 0.09, 4)
-    for i in range(6):
-        y = -1.0 + i * 0.4
-        x = 4.3 - abs(y) * 0.35
-        cone(fins, (x, y, zc - 2.3), (x + 0.3, y, zc - 0.7), 0.08, 4)
+    # Starved skeletal flanks: bone ribs standing proud of the hide, arcing
+    # from the spine down both sides. (Bone-pale fins on near-black hide.)
+    def body_r(x):
+        for (x0, r0), (x1, r1) in zip(profile, profile[1:]):
+            if x0 <= x <= x1:
+                t = (x - x0) / (x1 - x0)
+                return r0 + (r1 - r0) * t
+        return 0.5
+    for i in range(5):
+        rx = 1.2 - i * 1.15
+        rr = body_r(rx) + 0.1
+        _wk_arc(fins, (rx, 0, zc), rr, math.radians(72), math.radians(-55), 5, 0.09, 0.05, "yz", 4)
+        _wk_arc(fins, (rx, 0, zc), rr, math.radians(108), math.radians(235), 5, 0.09, 0.05, "yz", 4)
 
-    # Ragged dorsal spine-rays with torn membrane between the first pair.
-    rays = [((0.8, zc + 2.6), (0.2, zc + 5.2)), ((-0.6, zc + 2.7), (-1.6, zc + 5.6)), ((-2.0, zc + 2.4), (-3.4, zc + 5.0)), ((-3.4, zc + 1.8), (-4.8, zc + 3.8))]
-    for (bx, bz), (tx, tz) in rays:
-        limb(fins, (bx, 0, bz), (tx, 0, tz), 0.16, 0.04, 4)
-    plate(fins, [(0.8, zc + 2.6), (0.2, zc + 5.0), (-1.2, zc + 3.6), (-1.6, zc + 5.4), (-3.0, zc + 3.4), (-3.4, zc + 4.8), (-4.4, zc + 2.4), (-3.6, zc + 1.6)], 0.18, "xz")
-
-    # The skirt: tendrils hanging from the belly line, drifting aft.
-    for k in range(7):
-        y = -1.5 + k * 0.5
-        x0 = 1.2 - abs(y) * 0.8
-        chain(fins, [(x0, y, zc - 2.6), (x0 - 0.5, y * 1.25, zc - 4.0), (x0 - 1.1, y * 1.4, 0.5)], [0.16, 0.1, 0.04], 4)
-
-    # Pectorals: small, ragged - she drifts, she doesn't swim fast.
+    # The skull hood: a heavy dome over the front, and a snout shelf that
+    # overhangs the gape.
+    dome(body, (2.0, 0, zc + 1.3), (2.1, 2.1, 1.5), 1)
+    box(body, (3.5, 0, zc + 0.7), (1.9, 2.7, 0.9), Matrix.Rotation(math.radians(-14), 4, "Y"))
+    # Cheek flares framing the gape.
     for s in (-1, 1):
-        plate(fins, [(0.4, s * 2.4), (-1.4, s * 3.8), (-2.6, s * 3.4), (-1.6, s * 2.4)], 0.2, "xy", offset=(0, 0, zc - 0.6))
-    # Tail: a ragged half-fan.
-    plate(fins, [(-4.4, zc + 0.6), (-6.4, zc + 1.9), (-5.8, zc + 0.4), (-6.6, zc - 0.9), (-5.4, zc - 0.6), (-4.5, zc - 0.7)], 0.22, "xz")
+        box(body, (3.1, s * 2.0, zc - 0.5), (2.0, 0.5, 1.9), Matrix.Rotation(math.radians(s * 12), 4, "X"))
 
-    # THE LURE: a long stalk off the brow, arcing right over her head, ending
-    # in the bulb that is the arena's only light - caged in bone ribs, beads
-    # trailing under it.
-    chain(fins, [(2.8, 0, zc + 2.3), (4.0, 0, zc + 4.4), (6.2, 0, zc + 5.1), (7.9, 0, zc + 4.3)], [0.24, 0.17, 0.12, 0.09], 5)
-    bulb = Vector((8.0, 0, zc + 3.4))
-    ellipsoid(marks, bulb, (0.85, 0.85, 0.95), 1)
-    for k in range(4):
-        a = (k / 4) * TAU + 0.4
+    # THE MAW: a huge jaw-scoop swung 40 deg open - floor, side walls and a
+    # jutting chin keel - so the gape is most of the head.
+    jaw_rot = Matrix.Rotation(math.radians(40), 4, "Y")
+    box(body, (3.4, 0, zc - 2.7), (3.8, 2.9, 0.55), jaw_rot)
+    for s in (-1, 1):
+        box(body, (3.3, s * 1.55, zc - 2.5), (3.2, 0.35, 1.1), jaw_rot @ Matrix.Rotation(math.radians(-s * 10), 4, "X"))
+    box(body, (2.2, 0, zc - 3.5), (1.4, 1.6, 1.0), jaw_rot)
+    cone(body, (2.0, 0, zc - 3.9), (1.5, 0, zc - 4.7), 0.45, 5)
+    # Chin barbels trailing off the jaw tip.
+    for dy in (-0.6, 0.0, 0.6):
+        chain(fins, [(2.2, dy, zc - 4.0), (1.5, dy * 1.6, zc - 4.9), (0.8, dy * 2.0, zc - 5.5)], [0.09, 0.06, 0.02], 4)
+
+    # The fang palisade: long translucent needles. An upper row hanging from
+    # the snout shelf, a lower row rising from the jaw scoop, and one saber
+    # each side at the gape's corners.
+    for i in range(9):
+        y = -1.6 + i * 0.4
+        x = 4.5 - abs(y) * 0.45
+        cone(fins, (x, y, zc - 0.1), (x + 0.35, y * 1.08, zc - 2.2 + abs(y) * 0.3), 0.075, 4)
+    for i in range(8):
+        y = -1.4 + i * 0.4
+        x = 4.6 - abs(y) * 0.4
+        cone(fins, (x, y, zc - 2.6 + abs(y) * 0.2), (x + 0.4, y * 1.05, zc - 0.8), 0.07, 4)
+    for s in (-1, 1):
+        cone(fins, (3.6, s * 1.95, zc - 0.3), (4.6, s * 2.15, zc - 2.9), 0.13, 4)
+
+    # The brow: a scatter of small DEAD-WHITE secondary eyes, asymmetric, and
+    # two larger blind primaries low on the cheeks.
+    for ex, ey, ez, r in (
+        (3.55, 0.9, zc + 1.5, 0.2), (3.75, -0.6, zc + 1.55, 0.16), (3.0, 1.55, zc + 1.2, 0.15),
+        (3.2, -1.45, zc + 1.1, 0.18), (3.85, 0.25, zc + 1.85, 0.14), (2.7, -0.6, zc + 2.25, 0.15),
+        (2.85, 0.7, zc + 2.15, 0.13),
+    ):
+        ellipsoid(eyes, (ex, ey, ez), (r, r, r * 1.1), 1)
+    for s in (-1, 1):
+        ellipsoid(eyes, (3.35, s * 1.6, zc + 0.7), (0.3, 0.2, 0.26), 1)
+
+    # THE LURE: the model's focal point. A long stalk rooted at the brow,
+    # arching high over the maw, crowned with the bulb (marks - the arena's
+    # only light) caged in bone ribs, a bead halo, and glowing filaments
+    # trailing beneath.
+    chain(fins, [(2.6, 0, zc + 2.4), (3.3, 0, zc + 4.4), (5.0, 0, zc + 5.3), (7.1, 0, zc + 5.0), (8.2, 0, zc + 4.1)], [0.24, 0.18, 0.13, 0.1, 0.08], 5)
+    bulb = Vector((8.35, 0, zc + 3.35))
+    ellipsoid(marks, bulb, (0.95, 0.95, 1.05), 1)
+    ellipsoid(marks, bulb + Vector((0.55, 0, 0.15)), (0.4, 0.4, 0.45), 1)  # a hot spot toward the prey
+    for k in range(5):
+        a = (k / 5) * TAU + 0.3
         off = Vector((0, math.cos(a), math.sin(a)))
-        chain(fins, [bulb + Vector((-0.7, 0, 0)) + off * 0.3, bulb + off * 1.0, bulb + Vector((0.7, 0, 0)) + off * 0.3], [0.06, 0.07, 0.06], 4)
-    for dy in (-0.5, 0.0, 0.5):
-        tip = bulb + Vector((0.3, dy, -2.0))
-        chain(marks, [bulb + Vector((0.1, dy * 0.4, -0.8)), tip], [0.05, 0.02], 4)
+        chain(fins, [bulb + Vector((-0.85, 0, 0)) + off * 0.35, bulb + off * 1.15, bulb + Vector((0.85, 0, 0)) + off * 0.35], [0.06, 0.075, 0.06], 4)
+    for k in range(6):
+        a = (k / 6) * TAU
+        ellipsoid(marks, bulb + Vector((0, math.cos(a), math.sin(a))) * 1.45, (0.12, 0.12, 0.12), 0)
+    for dy in (-0.55, 0.0, 0.55):
+        tip = bulb + Vector((0.3, dy, -2.3))
+        chain(marks, [bulb + Vector((0.1, dy * 0.4, -0.9)), tip], [0.05, 0.02], 4)
         ellipsoid(marks, tip, (0.16, 0.16, 0.18), 1)
 
-    # Photophores: dotted rows along both flanks (doused on enrage).
+    # THE GOWN: veil sheets flowing off her like a tattered funeral dress.
+    # Flank veils, swept aft and down, one big and one small per side.
+    for s in (-1, 1):
+        _wk_sheet(
+            fins,
+            [(1.0, s * 2.1, zc - 0.2), (-1.2, s * 3.3, zc - 1.5), (-3.6, s * 3.5, zc - 3.1), (-5.2, s * 2.7, zc - 4.2),
+             (-4.0, s * 2.4, zc - 2.9), (-2.0, s * 2.5, zc - 1.7), (0.2, s * 2.1, zc - 0.7)],
+            0.14,
+            (0.15, s * 0.6, 0.25),
+        )
+        _wk_sheet(
+            fins,
+            [(-2.6, s * 2.4, zc + 0.9), (-4.4, s * 3.1, zc - 0.4), (-5.8, s * 2.6, zc - 1.8), (-4.8, s * 2.2, zc - 0.7), (-3.4, s * 2.1, zc + 0.3)],
+            0.12,
+            (0.1, s * 0.7, 0.3),
+        )
+    # The dorsal veil: thin spine-rays with a ragged torn membrane between.
+    for (bx, bz), (tx, tz) in (((1.2, zc + 2.4), (0.7, zc + 4.6)), ((-0.8, zc + 2.7), (-1.7, zc + 5.1)), ((-2.8, zc + 2.2), (-3.6, zc + 4.4))):
+        limb(fins, (bx, 0, bz), (tx, 0, tz), 0.14, 0.04, 4)
+    plate(fins, [(1.2, zc + 2.4), (0.7, zc + 4.4), (-0.6, zc + 3.2), (-1.7, zc + 4.9), (-2.6, zc + 3.1), (-3.6, zc + 4.2), (-4.6, zc + 1.9), (-3.2, zc + 1.9)], 0.15, "xz")
+    # The tail veil: a long ragged train, deeper than it is tall.
+    plate(
+        fins,
+        [(-4.5, zc + 0.9), (-6.9, zc + 0.5), (-6.1, zc - 0.5), (-7.4, zc - 1.5), (-5.9, zc - 1.8), (-6.6, zc - 3.2), (-4.9, zc - 1.9), (-4.3, zc - 0.7)],
+        0.16,
+        "xz",
+    )
+    # The under-skirt: fine tendrils drifting off the belly line to the dark.
+    for k in range(6):
+        y = -1.25 + k * 0.5
+        x0 = 0.6 - abs(y) * 0.7
+        chain(fins, [(x0, y, zc - 3.0), (x0 - 0.7, y * 1.3, zc - 4.4), (x0 - 1.3, y * 1.5, 0.4)], [0.13, 0.08, 0.025], 4)
+
+    # Photophore rows down both flanks, under the ribs (doused on enrage).
     for s in (-1, 1):
         for i in range(6):
-            x = 2.6 - i * 1.15
-            ellipsoid(marks, (x, s * (2.3 - abs(x) * 0.12), zc - 0.9), (0.14, 0.14, 0.14), 0)
-
-    # Eyes: small, pale, nearly blind - the lure does the seeing.
-    for s in (-1, 1):
-        ellipsoid(eyes, (3.3, s * 1.5, zc + 1.0), (0.3, 0.2, 0.26), 1)
+            x = 2.4 - i * 1.15
+            ellipsoid(marks, (x, s * (body_r(x) * 0.92), zc - 1.1), (0.13, 0.13, 0.13), 0)
 
     return [
         finish("Noctyss_Body", body, MATS["Noctyss_Body"]),
@@ -3067,10 +3317,15 @@ def _wk_sheet(bm, points, thickness=0.1, along=(0, 0, 1)):
 
 
 # ---------------------------------------------------------------- Admiral Wrack, the Fleet-Eater (island 6 boss)
-# A drowned admiral fused into his flagship's bow: a hull-wedge base with a
-# prow, a great-coated torso rising through the deck, bicorne hat, cutlass
-# arm and an anchor-and-chain arm, a mast with a ragged spectral sail.
-# UPRIGHT (stance): Z-up, front +X. ~11 long, ~8.5 tall.
+# A drowned admiral FUSED INTO his flagship's bow - half man-of-war, half
+# corpse. The hull wedge is his lower half; his chest is a second bow, a
+# planked prow-wedge with a rotted figurehead fused under his chin and a
+# snapped bowsprit spearing from the breastbone. Shoulders carry snapped
+# mast stumps trailing tattered sails; one arm raises a cutlass, the other
+# ends in a huge fouled anchor on a chain (his chain-down attack). Both
+# flanks carry a row of square GUNPORTS - marks glow inside them (the
+# broadside tell) - and everything is crusted in barnacles and kelp. A
+# waterlogged tricorn crowns the skull. UPRIGHT (stance): Z-up, front +X.
 
 
 def build_admiralwrack():
@@ -3079,17 +3334,13 @@ def build_admiralwrack():
     eyes = bmesh.new()
     marks = bmesh.new()
 
-    # The hull wedge: side profile extruded across the beam, plus a raked
-    # prow blade and a deck he bursts through.
+    # ---- the hull he rises from: side profile extruded across the beam, a
+    # raked prow blade, a cutwater, and the deck he bursts through.
     plate(body, [(5.2, 2.6), (4.0, 0.6), (-3.6, 0.2), (-3.8, 2.8), (0.5, 3.2)], 4.4, "xz")
     plate(body, [(6.6, 3.6), (5.6, 3.2), (3.8, 0.9), (4.9, 1.0)], 0.5, "xz")
     box(body, (0.3, 0, 3.1), (7.4, 4.6, 0.5), Matrix.Rotation(math.radians(-4), 4, "Y"))
-    # Plank seams (fins - the spectral parts pick out the wreck's bones).
-    for i in range(3):
-        box(fins, (0.4 - i * 0.2, 0, 1.0 + i * 0.75), (7.6 - i * 0.6, 4.7, 0.12))
-    # Raked hull strakes down each flank and a cutwater along the stem: the
-    # half-of-him-is-a-bow read wants planking that follows the sheer, not
-    # just the flat bands.
+    box(body, (5.05, 0, 2.1), (2.6, 0.42, 1.0), Matrix.Rotation(math.radians(-38), 4, "Y"))
+    # Raked hull strakes following the sheer down each flank.
     for s in (-1, 1):
         for i in range(3):
             box(
@@ -3098,94 +3349,125 @@ def build_admiralwrack():
                 (6.6 - i * 0.5, 0.16, 0.2),
                 Matrix.Rotation(math.radians(7 - i * 2), 4, "Y"),
             )
-    box(body, (5.05, 0, 2.1), (2.6, 0.42, 1.0), Matrix.Rotation(math.radians(-38), 4, "Y"))
-    # The bowsprit, spearing out over the prow with a pair of ghost stays.
-    limb(body, (4.6, 0, 3.15), (6.95, 0, 4.35), 0.2, 0.11, 5)
 
-    # The torso: greatcoat, shoulders, skull, bicorne.
-    box(body, (-0.4, 0, 4.9), (2.6, 3.2, 2.8), Matrix.Rotation(math.radians(-6), 4, "Y"))
-    box(body, (-0.5, 0, 3.6), (3.2, 3.8, 1.0))  # coat skirt flaring at the deck
+    # ---- THE BROADSIDE: square gunports punched through both flanks, a
+    # timber frame around each, ghost-fire glowing inside (marks), and a
+    # cannon muzzle run out of every other port.
     for s in (-1, 1):
-        ellipsoid(body, (-0.4, s * 1.9, 6.1), (0.9, 0.75, 0.7), 1)
-        box(fins, (-0.4, s * 1.95, 6.55), (1.1, 0.7, 0.18))  # epaulettes
+        for i in range(4):
+            px = 2.6 - i * 1.7
+            pz = 2.05 + i * 0.06
+            box(fins, (px, s * 2.28, pz), (0.72, 0.16, 0.14))  # lintel
+            box(fins, (px, s * 2.28, pz - 0.62), (0.72, 0.16, 0.14))  # sill
+            for d in (-1, 1):
+                box(fins, (px + d * 0.36, s * 2.28, pz - 0.31), (0.14, 0.16, 0.76))
+            box(marks, (px, s * 2.22, pz - 0.31), (0.48, 0.2, 0.5))  # the glow inside
+            if i % 2 == 0:
+                limb(fins, (px, s * 2.3, pz - 0.28), (px, s * 2.85, pz - 0.24), 0.15, 0.13, 6)
+
+    # ---- the torso IS a bow: two planked faces meeting at a stem that runs
+    # up his front, rising straight out of the deck.
+    for s in (-1, 1):
+        box(body, (0.35, s * 0.95, 5.1), (2.5, 0.55, 3.2), Matrix.Rotation(math.radians(-s * 26), 4, "Z"))
+        for k in range(3):  # plank seams up each chest face
+            box(fins, (0.55 + k * 0.1, s * (1.15 - k * 0.28), 4.2 + k * 0.85), (1.9, 0.1, 0.14), Matrix.Rotation(math.radians(-s * 26), 4, "Z"))
+    box(body, (-0.75, 0, 5.0), (1.7, 2.9, 3.1))  # his back / the coat
+    box(body, (-0.5, 0, 3.55), (3.0, 3.7, 0.9))  # coat skirt bursting the deck
+    box(body, (1.3, 0, 5.1), (0.55, 0.62, 3.3))  # the stem edge, chin to deck
+    # The snapped bowsprit: spearing up-and-out from the breastbone, its tip
+    # broken to a splintered stub with a trailing stay.
+    limb(body, (1.1, 0, 5.6), (3.7, 0, 7.05), 0.3, 0.16, 5)
+    cone(fins, (3.65, 0, 7.02), (4.3, 0.1, 7.35), 0.14, 4)
+    cone(fins, (3.55, 0.08, 7.05), (3.9, 0.16, 6.7), 0.07, 4)  # a hanging splinter
+    chain(marks, [(3.5, 0, 6.9), (4.3, 0, 5.6), (4.9, 0, 4.2)], [0.04, 0.04, 0.03], 4)  # ghost stay
+    # The rotted figurehead, fused under his chin: a drowned maiden arching
+    # off the stem, arms swept back into the planking, face gone soft.
+    chain(body, [(1.4, 0, 6.55), (2.15, 0, 6.15), (2.6, 0, 5.5)], [0.38, 0.28, 0.12], 5)
+    ellipsoid(body, (2.35, 0, 6.05), (0.3, 0.26, 0.34), 1)
+    for s in (-1, 1):
+        chain(body, [(2.1, s * 0.15, 5.9), (1.6, s * 0.5, 5.4), (1.1, s * 0.6, 4.9)], [0.12, 0.09, 0.05], 4)
+
+    # ---- shoulders: greatcoat boards, epaulette fringe, and the snapped
+    # MAST STUMPS rising off each - yards still crossed, sails in rags.
+    for s in (-1, 1):
+        ellipsoid(body, (-0.4, s * 1.9, 6.15), (0.9, 0.75, 0.7), 1)
+        box(fins, (-0.4, s * 1.95, 6.6), (1.1, 0.7, 0.18))
         for k in range(3):
-            cone(fins, (-0.4, s * (2.1 + k * 0.12), 6.45), (-0.4, s * (2.25 + k * 0.12), 6.0), 0.05, 4)
-    box(body, (-0.3, 0, 7.0), (1.3, 1.2, 1.4))  # the skull
-    # Bicorne: a crescent worn athwart.
-    box(body, (-0.3, 0, 7.9), (0.55, 2.6, 0.8))
-    for s in (-1, 1):
-        box(body, (-0.3, s * 1.5, 7.65), (0.5, 1.0, 0.6), Matrix.Rotation(math.radians(s * -28), 4, "X"))
-    # Sunken glowing eye sockets, and a jaw gap.
-    for s in (-1, 1):
-        ellipsoid(eyes, (0.32, s * 0.3, 7.1), (0.14, 0.18, 0.2), 1)
-    box(fins, (0.25, 0, 6.6), (0.5, 0.7, 0.14))
-
-    # Saber arm (starboard): shoulder -> fist, then an officer's curved blade
-    # raised over the prow - grip, knuckle-bow basket, pommel, and a bit that
-    # sweeps up and forward the way a saber's does.
-    chain(body, [(-0.4, 1.9, 5.6), (0.8, 2.7, 5.1), (1.8, 2.5, 5.5)], [0.5, 0.38, 0.3], 5)
-    box(fins, (1.85, 2.5, 5.3), (0.3, 0.5, 0.5))  # the fist's grip
-    limb(fins, (1.62, 2.5, 5.12), (2.08, 2.5, 5.62), 0.11, 0.1, 5)
-    box(fins, (1.56, 2.5, 5.04), (0.28, 0.34, 0.24))  # pommel
-    _wk_arc(fins, (1.95, 2.5, 5.4), 0.46, -1.35, 1.5, 3, 0.09, 0.07, "xz", 4)  # knuckle bow
-    plate(fins, [(1.95, 5.55), (3.3, 6.4), (4.55, 8.15), (4.42, 8.28), (2.95, 6.8), (1.85, 5.95)],
-          0.16, "xz", offset=(0, 2.5, 0))
-    # Anchor arm (port): hand low, chain links down to the anchor.
-    chain(body, [(-0.4, -1.9, 5.6), (0.5, -2.8, 4.5), (1.0, -2.6, 3.7)], [0.5, 0.38, 0.3], 5)
-    link = Vector((1.1, -2.6, 3.4))
-    for k in range(4):
-        nxt = link + Vector((0.12, 0.05 if k % 2 else -0.05, -0.55))
-        limb(fins, link, nxt, 0.09, 0.09, 4)
-        link = nxt
-    limb(fins, (link.x, link.y, link.z + 0.1), (link.x, link.y, link.z - 1.0), 0.14, 0.1, 5)
-    box(fins, (link.x, link.y, link.z - 0.15), (0.7, 0.16, 0.16))
-    for s in (-1, 1):
-        chain(fins, [(link.x, link.y + s * 0.1, link.z - 1.0), (link.x + 0.5, link.y + s * 0.55, link.z - 0.6)], [0.12, 0.03], 4)
-
-    # The shattered ship's wheel, fused around that same forearm: a broken
-    # rim (a whole quadrant gone), a hub, and spokes - two snapped off short,
-    # the rest still carrying their handles past the rim.
-    wheel_c = (1.05, -2.35, 4.2)
-    _wk_arc(fins, wheel_c, 0.95, 0.62, TAU - 0.72, 8, 0.13, 0.13, "yz", 4)
-    limb(fins, (0.82, wheel_c[1], wheel_c[2]), (1.28, wheel_c[1], wheel_c[2]), 0.24, 0.24, 6)
-    for k, reach in ((1, 1.24), (2, 1.26), (3, 0.55), (4, 1.22), (5, 0.5)):
-        a = (k / 6) * TAU + 0.3
-        limb(
+            cone(fins, (-0.4, s * (2.1 + k * 0.12), 6.5), (-0.4, s * (2.25 + k * 0.12), 6.05), 0.05, 4)
+        # The stump: a broken mast socketed into the shoulder, sheared at an
+        # angle; a yard lashed across it; a ragged sail sheet trailing aft.
+        limb(body, (-0.55, s * 1.95, 6.6), (-0.85, s * 2.1, 8.35), 0.24, 0.19, 6)
+        cone(fins, (-0.85, s * 2.1, 8.35), (-0.7, s * 2.2, 8.7), 0.16, 5)  # the sheared splinter
+        limb(body, (-0.8, s * 1.25, 7.75), (-0.9, s * 2.95, 7.65), 0.09, 0.09, 5)
+        _wk_sheet(
             fins,
-            (wheel_c[0], wheel_c[1] + math.cos(a) * 0.2, wheel_c[2] + math.sin(a) * 0.2),
-            (wheel_c[0], wheel_c[1] + math.cos(a) * reach, wheel_c[2] + math.sin(a) * reach),
-            0.11,
-            0.08,
-            4,
+            [(-0.9, s * 2.85, 7.6), (-2.3, s * 3.05, 6.7), (-3.3, s * 2.6, 5.3), (-2.5, s * 2.35, 6.1), (-1.6, s * 2.0, 6.9), (-0.95, s * 1.5, 7.55)],
+            0.1,
+            (0.75, s * 0.35, 0.35),
         )
 
-    # The mast behind him, a yard and a ragged spectral sail.
-    limb(body, (-2.8, 0, 3.2), (-2.8, 0, 8.6), 0.26, 0.18, 6)
-    limb(body, (-2.8, -2.1, 7.4), (-2.8, 2.1, 7.4), 0.14, 0.14, 5)
-    box(fins, (-2.8, 0, 6.1), (0.14, 3.8, 2.2))
-    for k in range(4):
-        y = -1.5 + k * 1.0
-        box(fins, (-2.8, y, 4.6), (0.12, 0.5, 1.1), Matrix.Rotation(math.radians(10 - k * 6), 4, "X"))
-    # A tattered admiral's pennant streaming aft off the masthead.
-    plate(
-        fins,
-        [(-2.72, 0.15), (-3.72, 0.55), (-3.52, -0.05), (-3.78, -0.62), (-2.72, -0.3)],
-        0.08,
-        "xy",
-        offset=(0, 0, 8.25),
-    )
-
-    # Marks: the ghost-fire - a chest wound, a prow lantern on a hook, glow
-    # lines along the hull seam, the cutwater, rigging threads to the masthead
-    # and the stays running down off the bowsprit.
-    ellipsoid(marks, (0.75, 0.4, 5.2), (0.4, 0.5, 0.6), 1)
+    # ---- the skull under a waterlogged TRICORN, jaw hung, eye sockets lit.
+    box(body, (-0.3, 0, 7.15), (1.25, 1.15, 1.35))
+    box(body, (0.25, 0, 6.55), (0.6, 0.72, 0.4), Matrix.Rotation(math.radians(14), 4, "Y"))  # the jaw
     for s in (-1, 1):
-        chain(marks, [(6.85, 0, 4.3), (5.4, s * 1.6, 2.5)], [0.05, 0.04], 4)
-    box(marks, (5.15, 0, 1.95), (2.5, 0.16, 0.1), Matrix.Rotation(math.radians(-38), 4, "Y"))
-    chain(fins, [(6.4, 0, 3.5), (6.9, 0, 3.1)], [0.06, 0.04], 4)
-    ellipsoid(marks, (6.95, 0, 2.8), (0.28, 0.28, 0.34), 1)
-    box(marks, (0.5, 0, 2.55), (8.2, 0.1, 0.1))
-    chain(marks, [(-2.8, 0, 8.55), (1.5, 0, 6.2), (6.4, 0, 3.6)], [0.04, 0.04, 0.03], 4)
+        ellipsoid(eyes, (0.34, s * 0.3, 7.3), (0.14, 0.18, 0.2), 1)
+    box(body, (-0.3, 0, 8.0), (0.95, 0.95, 0.55))  # the crown
+    box(body, (-0.3, 0, 7.78), (1.5, 1.5, 0.14))  # the flat brim disc
+    # Three cocked brim flaps turned up around the crown - the tricorn read.
+    for yaw in (0.0, 2.1, -2.1):
+        rot = Matrix.Rotation(yaw, 4, "Z") @ Matrix.Rotation(math.radians(-38), 4, "Y")
+        c = Vector((-0.3, 0, 7.98)) + Matrix.Rotation(yaw, 4, "Z") @ Vector((0.72, 0, 0))
+        box(body, c, (0.16, 1.35, 0.55), rot)
+
+    # ---- cutlass arm (starboard): shoulder -> fist, grip, knuckle bow,
+    # pommel, and the curved blade swept up over the prow.
+    chain(body, [(-0.4, 1.9, 5.6), (0.8, 2.7, 5.1), (1.8, 2.5, 5.5)], [0.5, 0.38, 0.3], 5)
+    box(fins, (1.85, 2.5, 5.3), (0.3, 0.5, 0.5))
+    limb(fins, (1.62, 2.5, 5.12), (2.08, 2.5, 5.62), 0.11, 0.1, 5)
+    box(fins, (1.56, 2.5, 5.04), (0.28, 0.34, 0.24))
+    _wk_arc(fins, (1.95, 2.5, 5.4), 0.46, -1.35, 1.5, 3, 0.09, 0.07, "xz", 4)
+    plate(fins, [(1.95, 5.55), (3.3, 6.4), (4.55, 8.15), (4.42, 8.28), (2.95, 6.8), (1.85, 5.95)],
+          0.16, "xz", offset=(0, 2.5, 0))
+
+    # ---- ANCHOR arm (port): the fist grips a chain that drops to a huge
+    # fouled anchor - ring, shank, stock, crown, two barbed flukes - hanging
+    # beside the hull, wrapped in kelp.
+    chain(body, [(-0.4, -1.9, 5.6), (0.5, -2.7, 4.7), (1.0, -2.55, 4.0)], [0.5, 0.38, 0.3], 5)
+    box(fins, (1.05, -2.55, 3.8), (0.42, 0.42, 0.5))  # the fist
+    link = Vector((1.1, -2.55, 3.5))
+    for k in range(4):
+        nxt = link + Vector((0.1, 0.06 if k % 2 else -0.06, -0.42))
+        limb(fins, link, nxt, 0.09, 0.09, 4)
+        link = nxt
+    _wk_arc(fins, (link.x, link.y, link.z - 0.2), 0.22, 0.5 * math.pi, 2.5 * math.pi, 6, 0.07, 0.07, "yz", 4)  # the ring
+    top = Vector((link.x, link.y, link.z - 0.45))
+    limb(fins, top, (top.x, top.y, top.z - 1.9), 0.17, 0.13, 6)  # shank
+    box(fins, (top.x, top.y, top.z - 0.35), (1.5, 0.2, 0.2), Matrix.Rotation(math.radians(8), 4, "Y"))  # stock
+    crown = Vector((top.x, top.y, top.z - 1.95))
+    for d in (-1, 1):
+        _wk_arc(fins, (crown.x, crown.y, crown.z + 0.72), 0.78, math.radians(-90), math.radians(-90 + d * 135), 5, 0.13, 0.09, "xz", 4)
+        tip = crown + Vector((d * 0.74, 0, 0.78))
+        cone(fins, tip, tip + Vector((d * 0.28, 0, 0.55)), 0.16, 4)  # barbed palm
+    _cove_kelp(fins, (top.x + 0.15, top.y + 0.1, top.z - 0.5), 3, (0.1, 0.12, -0.5), 0.07)
+
+    # ---- the drowning: barnacle crusts on hull, chest and hat, kelp
+    # draped off the bowsprit, the yards and the hull sheer.
+    _cove_barnacles(body, (4.6, 1.6, 2.9), (0.3, 0.6, 0.75), 4, 0.13, 0.3)
+    _cove_barnacles(body, (0.9, -1.15, 4.6), (0.55, -0.75, 0.2), 4, 0.12, 0.26)
+    _cove_barnacles(body, (-0.9, 1.35, 5.6), (-0.3, 0.85, 0.45), 3, 0.12, 0.24)
+    _cove_barnacles(body, (-0.05, 0.62, 8.06), (0, 0.25, 1.0), 3, 0.1, 0.2)
+    _cove_barnacles(body, (2.4, 2.3, 2.6), (0.1, 1.0, 0.3), 4, 0.12, 0.26)
+    _cove_kelp(fins, (3.0, 0.12, 6.65), 3, (-0.05, 0.1, -0.55), 0.06)
+    _cove_kelp(fins, (-0.85, -2.6, 7.6), 3, (-0.1, -0.08, -0.5), 0.06)
+    _cove_kelp(fins, (5.6, 0.9, 3.15), 3, (0.02, 0.14, -0.55), 0.06)
+
+    # ---- marks: the rest of the ghost-fire - the chest wound where the stem
+    # fuses into him, a prow lantern hung off the cutwater, and the glow seam
+    # along the keel line.
+    ellipsoid(marks, (1.3, 0, 5.55), (0.35, 0.5, 0.7), 1)
+    chain(fins, [(6.3, 0, 3.4), (6.75, 0, 3.0)], [0.06, 0.04], 4)
+    ellipsoid(marks, (6.8, 0, 2.7), (0.28, 0.28, 0.34), 1)
+    box(marks, (0.5, 0, 2.5), (8.2, 0.1, 0.1))
 
     return [
         finish("AdmiralWrack_Body", body, MATS["AdmiralWrack_Body"]),
@@ -3197,10 +3479,15 @@ def build_admiralwrack():
 
 # ---------------------------------------------------------------- The Kraken, Maw of the Maelstrom (final boss head)
 # The head/mantle only - the fightable tentacles are separate KrakenTentacle
-# creatures spawned by the boss's `parts` field. A towering mantle leaning
-# aft, huge baleful eyes, a beak maw between a crown of eight SHORT tentacle
-# stubs (the stumps of the real ones), storm veins crawling the mantle.
-# UPRIGHT (stance): Z-up, front +X. ~15 across the stubs, ~11 tall.
+# creatures spawned by the boss's `parts` field. The saga's finale: a
+# mountainous mantle leaning aft like a storm-crowned peak, its ridges
+# SPIRALING the way its maelstrom does (glow bands wind between them -
+# marks); ONE enormous baleful primary eye ringed in glow beads plus
+# smaller eyes set asymmetrically; a huge hooked beak at the waterline
+# framed by eight thick arm-stumps studded with crimson sucker pads and tip
+# hooks (the planted tentacles are the same creature); and ancient broken
+# harpoons still lodged in the scarred hide. UPRIGHT (stance): Z-up,
+# front +X.
 
 
 def build_kraken():
@@ -3209,25 +3496,43 @@ def build_kraken():
     eyes = bmesh.new()
     marks = bmesh.new()
 
-    # The mantle: a swept bell about Z, leaning aft.
-    rings = revolve(
-        body,
-        [(0.0, 4.6), (2.2, 4.9), (4.4, 4.3), (6.6, 3.1), (8.4, 1.7), (10.4, 0.0)],
-        sides=10,
-        axis="z",
-        center=(-1.2, 0, 0),
-        squash=0.92,
-    )
-    # Lean the upper mantle back (-x) so the silhouette isn't a plain cone.
+    # The mantle: a swept bell about Z, leaning aft, peak pulled to a crag.
+    prof = [(0.0, 4.6), (1.8, 5.0), (3.6, 4.5), (5.4, 3.6), (7.2, 2.6), (8.8, 1.6), (10.2, 0.7), (11.0, 0.0)]
+    rings = revolve(body, prof, sides=12, axis="z", center=(-1.2, 0, 0), squash=0.92)
     for ring in rings[2:]:
         vs = ring if isinstance(ring, list) else [ring]
         for v in vs:
-            v.co.x -= (v.co.z - 4.4) * 0.28
-    # A ragged crest plate up the mantle's back.
-    plate(fins, [(-4.6, 4.0), (-6.2, 6.4), (-5.2, 6.2), (-6.6, 8.6), (-5.0, 7.9), (-4.6, 9.4), (-3.6, 8.2), (-3.2, 5.0)], 0.3, "xz")
+            v.co.x -= (v.co.z - 3.6) * 0.26
 
-    # The crown of stubs: eight short curling tentacle stumps around the
-    # front half of the base - the REAL tentacles fight as their own rows.
+    def mantle_r(z):
+        for (z0, r0), (z1, r1) in zip(prof, prof[1:]):
+            if z0 <= z <= z1:
+                t = (z - z0) / (z1 - z0)
+                return r0 + (r1 - r0) * t
+        return 0.1
+
+    def spiral_pt(t, a0, lift=0.0):
+        """A point winding up the leaning mantle: t 0..1 base->peak."""
+        z = 0.6 + t * 9.6
+        a = a0 + t * TAU * 1.35
+        r = mantle_r(z) + 0.28 + lift
+        x = -1.2 + math.cos(a) * r - max(z - 3.6, 0) * 0.26
+        y = math.sin(a) * r * 0.92
+        return (x, y, z)
+
+    # The SPIRAL: three storm-ridges winding up the mantle (hide), with two
+    # bioluminescent bands coiling between them (marks - the enrage tell).
+    for a0 in (0.0, TAU / 3, 2 * TAU / 3):
+        pts = [spiral_pt(i / 11, a0) for i in range(12)]
+        radii = [0.30 - 0.02 * i if i < 9 else 0.12 - 0.02 * (i - 9) for i in range(12)]
+        chain(body, pts, radii, 5)
+    for a0 in (TAU / 6, TAU / 2):
+        pts = [spiral_pt(i / 10, a0, -0.14) for i in range(11)]
+        chain(marks, pts, [0.13 - 0.008 * i for i in range(11)], 4)
+
+    # The crown of stubs: eight thick arm-stumps around the front half of
+    # the base, each studded with crimson sucker pads and ending in a hook -
+    # unmistakably the same creature as the planted tentacles.
     for k in range(8):
         a = math.radians(-115 + k * 33)
         bx, by = -1.2 + math.cos(a) * 3.9, math.sin(a) * 4.3
@@ -3236,28 +3541,57 @@ def build_kraken():
         p1 = (bx + dx * 2.2, by + dy * 2.4, 0.9)
         p2 = (bx + dx * 3.6, by + dy * 3.8, 2.0)
         p3 = (bx + dx * 4.0, by + dy * 4.2, 3.4)
-        chain(body, [p0, p1, p2, p3], [1.05, 0.75, 0.45, 0.16], 6)
-        # Sucker dots up the stub's inner face.
-        if k % 2 == 0:
-            for p, r in ((p1, 0.2), (p2, 0.16)):
-                ellipsoid(marks, (p[0] - dx * 0.5, p[1] - dy * 0.5, p[2] + 0.5), (r, r, r), 0)
+        chain(body, [p0, p1, p2, p3], [1.15, 0.8, 0.5, 0.2], 6)
+        cone(fins, p3, (p3[0] - dx * 0.5, p3[1] - dy * 0.5, 4.15), 0.18, 4)  # the tip hook, curling inward
+        # Crimson sucker pads up the stub's crest.
+        for p, r in ((p1, 0.3), (p2, 0.24)):
+            ellipsoid(fins, (p[0], p[1], p[2] + 0.62), (r, r, r * 0.6), 1)
+            ellipsoid(marks, (p[0], p[1], p[2] + 0.72), (r * 0.45, r * 0.45, r * 0.3), 0)
 
-    # The beak: two dark hooked halves in the maw between the front stubs,
-    # over a glowing throat.
-    cone(fins, (3.2, 0, 2.6), (4.6, 0, 1.5), 0.75, 6)
-    cone(fins, (3.0, 0, 0.9), (4.3, 0, 1.9), 0.65, 6)
-    ellipsoid(marks, (2.6, 0, 1.8), (1.0, 1.3, 0.9), 1)
+    # The BEAK: two huge hooked horn halves at the waterline - the upper
+    # curling down over a lower that juts up - over a glowing gullet.
+    chain(fins, [(2.9, 0, 3.2), (4.4, 0, 2.3), (5.3, 0, 1.1), (5.0, 0, 0.3)], [1.1, 0.8, 0.45, 0.14], 6)
+    chain(fins, [(2.7, 0, 0.3), (4.1, 0, 0.9), (4.75, 0, 1.8)], [0.95, 0.55, 0.16], 6)
+    ellipsoid(marks, (2.4, 0, 1.7), (1.0, 1.4, 1.0), 1)
 
-    # The eyes: huge, gold, slanted forward under a heavy lid ridge.
-    for s in (-1, 1):
-        ellipsoid(eyes, (1.9, s * 3.6, 3.6), (1.0, 0.55, 0.8), 1)
-        box(body, (2.0, s * 3.7, 4.5), (1.6, 0.9, 0.5), Matrix.Rotation(math.radians(s * 18), 4, "X"))
+    # THE EYE: one enormous baleful primary, set low on the starboard cheek
+    # under a heavy scarred lid, ringed in glow beads (marks) - and three
+    # smaller eyes scattered asymmetrically across the port side.
+    eye_c = Vector((2.1, -3.5, 4.2))
+    out = Vector((0.55, -0.8, 0.25)).normalized()
+    ellipsoid(eyes, eye_c, (1.25, 1.05, 1.15), 1)
+    box(body, (1.9, -3.6, 5.35), (2.1, 1.2, 0.55), Matrix.Rotation(math.radians(-22), 4, "X"))
+    up_v = Vector((0, 0, 1))
+    u = out.cross(up_v).normalized()
+    v = out.cross(u).normalized()
+    for i in range(8):
+        t = (i / 8) * TAU
+        p = eye_c + (u * math.cos(t) + v * math.sin(t)) * 1.3 + out * 0.3
+        ellipsoid(marks, p, (0.15, 0.15, 0.15), 0)
+    for ex, ey, ez, r in ((2.3, 2.6, 3.5, 0.5), (1.2, 3.5, 4.9, 0.36), (2.5, 1.4, 5.4, 0.28)):
+        ellipsoid(eyes, (ex, ey, ez), (r, r * 0.8, r), 1)
+        box(body, (ex - 0.1, ey + 0.1, ez + r * 0.85), (r * 1.9, r * 1.6, 0.3), Matrix.Rotation(math.radians(14), 4, "X"))
 
-    # Storm veins crawling the mantle, and a glowing band where mantle meets
-    # the crown.
-    for s in (-1, 1):
-        chain(marks, [(0.8, s * 3.4, 5.2), (-0.6, s * 3.0, 7.0), (-2.4, s * 2.0, 8.6)], [0.09, 0.07, 0.04], 4)
-    chain(marks, [(2.8, -1.4, 5.4), (3.2, 0, 6.2), (2.8, 1.4, 5.4)], [0.06, 0.08, 0.06], 4)
+    # The story scars: two ancient broken harpoons and a snapped mast spar
+    # still lodged in the hide, rust-red rope trailing off one.
+    for hb, hd, hl in (
+        (Vector((-2.6, 3.4, 6.2)), Vector((-0.4, 0.75, 0.55)).normalized(), 2.6),
+        (Vector((-4.4, -1.6, 7.6)), Vector((-0.75, -0.4, 0.5)).normalized(), 2.2),
+    ):
+        limb(body, hb, hb + hd * hl, 0.14, 0.1, 5)
+        cone(body, hb + hd * hl, hb + hd * (hl + 0.55), 0.2, 4)  # the splintered butt
+        for b in (-1, 1):
+            side = hd.cross(Vector((0, 0, 1))).normalized() * 0.32 * b
+            cone(fins, hb + hd * 0.5 + side, hb + hd * 0.1 + side * 1.5, 0.06, 4)
+    rope = Vector((-2.6, 3.4, 6.2)) + Vector((-0.4, 0.75, 0.55)).normalized() * 2.0
+    chain(fins, [rope, rope + Vector((-0.5, 0.4, -1.1)), rope + Vector((-0.3, 0.9, -2.4))], [0.07, 0.06, 0.03], 4)
+    limb(body, (-4.9, 1.8, 3.4), (-6.3, 2.6, 5.6), 0.22, 0.16, 5)  # the mast spar
+    cone(body, (-6.3, 2.6, 5.6), (-6.7, 2.85, 6.3), 0.24, 4)
+
+    # The peak: a crooked storm-crag tip and a glow bead crowning it (the
+    # maelstrom's axis).
+    cone(body, (-3.6, 0, 10.2), (-4.3, 0.3, 11.3), 0.45, 5)
+    ellipsoid(marks, (-4.4, 0.32, 11.45), (0.22, 0.22, 0.25), 1)
 
     return [
         finish("Kraken_Body", body, MATS["Kraken_Body"]),
@@ -3268,10 +3602,12 @@ def build_kraken():
 
 
 # ---------------------------------------------------------------- Kraken Tentacle (boss part)
-# One planted tentacle: rises from a broad base, curls over toward +X (the
-# player) with a hooked tip, barbs down the outer edge, sucker dots up the
-# inner face. No eyes - CreatureModel only requires _Body. UPRIGHT (stance).
-# ~9.5 tall.
+# One planted tentacle - the same creature as the Kraken's arm-stumps: the
+# same ink hide, the same spiral bioluminescent band winding up the shaft
+# (marks), crimson hooked sucker pads down the inner face, barbs down the
+# outer edge, and a bladed hook at the tip. Readable from every side - the
+# fight plants six on a ring and players melee them. No eyes. UPRIGHT
+# (stance).
 
 
 def build_kraken_tentacle():
@@ -3280,27 +3616,58 @@ def build_kraken_tentacle():
     marks = bmesh.new()
 
     path = [(0, 0, 0.0), (0.15, 0, 2.0), (0.5, 0, 4.0), (1.3, 0.2, 5.9), (2.5, 0.3, 7.2), (3.8, 0.15, 7.8), (4.7, 0, 7.3)]
-    radii = [1.5, 1.2, 1.0, 0.8, 0.6, 0.38, 0.14]
+    radii = [1.5, 1.2, 1.0, 0.8, 0.6, 0.38, 0.16]
     chain(body, path, radii, 7)
     # The base flare: a ring of root knuckles where it erupts.
     for k in range(6):
         a = (k / 6) * TAU
         cone(body, (math.cos(a) * 1.3, math.sin(a) * 1.3, 0.3), (math.cos(a) * 2.1, math.sin(a) * 2.1, 0.05), 0.4, 5)
 
-    # Barbs down the outer (-x) edge of the curl.
-    for i in range(1, 6):
-        px, py, pz = path[i]
-        r = radii[i]
-        cone(fins, (px - r * 0.8, py, pz), (px - r * 0.8 - 0.7, py, pz + 0.25), 0.14, 4)
-    # The hooked tip.
-    cone(fins, path[-1], (5.3, 0, 6.5), 0.16, 5)
+    # Path samplers (piecewise-linear) for wrapping details around the shaft.
+    def sample(u):
+        f = u * (len(path) - 1)
+        i = min(int(f), len(path) - 2)
+        t = f - i
+        p0, p1 = Vector(path[i]), Vector(path[i + 1])
+        return p0.lerp(p1, t), radii[i] + (radii[i + 1] - radii[i]) * t
 
-    # Sucker dots up the inner (+x) face, glowing storm-teal.
+    # THE SPIRAL BAND: the Kraken's bioluminescent coil, wound 2.25 turns up
+    # the shaft's standing half (marks - lit with the boss's own bands).
+    band = []
+    for i in range(13):
+        u = 0.04 + (i / 12) * 0.62
+        c, r = sample(u)
+        a = (i / 12) * TAU * 2.25
+        band.append((c.x + math.cos(a) * (r + 0.08), c.y + math.sin(a) * (r + 0.08) , c.z))
+    chain(marks, band, [0.11 - 0.004 * i for i in range(13)], 4)
+    # A storm-ridge shadowing the band, like the mantle's spiral ridges.
+    ridge = []
+    for i in range(9):
+        u = 0.06 + (i / 8) * 0.56
+        c, r = sample(u)
+        a = (i / 8) * TAU * 2.25 + 2.6
+        ridge.append((c.x + math.cos(a) * (r + 0.1), c.y + math.sin(a) * (r + 0.1), c.z))
+    chain(body, ridge, [0.15 - 0.006 * i for i in range(9)], 4)
+
+    # Crimson hooked sucker pads down the inner (+x, player-facing) face of
+    # the curl - pad, glow throat, hook.
     for i in range(1, 6):
         px, py, pz = path[i]
         r = radii[i]
-        for dy in (-0.3, 0.3):
-            ellipsoid(marks, (px + r * 0.75, py + dy * r, pz + 0.3), (0.16, 0.16, 0.16), 0)
+        pad = Vector((px + r * 0.82, py, pz + 0.25))
+        ellipsoid(fins, pad, (0.3, 0.34, 0.3), 1)
+        ellipsoid(marks, pad + Vector((0.16, 0, 0.03)), (0.15, 0.17, 0.15), 0)
+        cone(fins, pad + Vector((0.05, 0, -0.12)), pad + Vector((0.5, 0, -0.55)), 0.11, 4)
+    # Barbs down the outer (-x) edge.
+    for i in range(1, 6):
+        px, py, pz = path[i]
+        r = radii[i]
+        cone(fins, (px - r * 0.8, py, pz), (px - r * 0.8 - 0.75, py, pz + 0.3), 0.15, 4)
+
+    # The tip: a bladed hook - a scythe plate sweeping forward-down off the
+    # last knuckle, with a barb on its spine.
+    plate(fins, [(4.4, 7.7), (5.5, 7.45), (6.2, 6.6), (5.75, 6.65), (5.1, 7.05), (4.4, 7.05)], 0.18, "xz")
+    cone(fins, (5.3, 0, 7.45), (5.55, 0, 7.95), 0.1, 4)
 
     return [
         finish("KrakenTentacle_Body", body, MATS["KrakenTentacle_Body"]),
