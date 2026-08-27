@@ -226,7 +226,7 @@ Islands.items = {
 		-- skirt (pack HANDOFF 2026-08-27; the old -9.74 was the deleted
 		-- flank rocks). Re-key when a rebuild step dips below the skirt.
 		radius = 640, -- capped so the base mesh imports (Roblox's 2048-stud limit)
-		spawn = Vector3.new(11800, 7, 3101), -- X/Z: rel Z=501 on the +Z ash apron (shore at rel Z=531, tall-spire pack HANDOFF; no dock yet); Y is the probe's fallback
+		spawn = Vector3.new(11800, 7, 3101), -- X/Z: rel Z=501 on the +Z ash apron, right in front of the dock (planks run rel Z=527..592, step-5 HANDOFF); Y is the probe's fallback
 		unlockLevel = 22,
 		-- Pyrelisk guards it (summoned by Caldera's Call, exactly the Brinejaw
 		-- ritual). Its arena still keys off the OLD dock position (open sea
