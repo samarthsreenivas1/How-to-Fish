@@ -2064,6 +2064,32 @@ def _swamp_spawn_clear(x, y, pad=0.0):
     return d > 20.0 + pad
 
 
+def _swamp_prop_ok(x, y, surf, wz, wet=0.8):
+    """The one rule every loose swamp prop obeys: it may only sit AT a
+    waterline - in the water, or on the rim within `wet` studs above it - and
+    never in the boss arena, the spawn shelf or the dock corridor. Open mud
+    stays open, so the lanes between pools read as walkable ground."""
+    if surf is None:
+        return False
+    if surf > wz + wet:
+        return False  # up on dry ground: that is walking mud, keep it clear
+    if _fen_in_arena(x, y, 4.0):
+        return False
+    if not _swamp_spawn_clear(x, y, 10.0):
+        return False
+    return not _near_dock_corridor(math.atan2(y, x), u_at(x, y))
+
+
+def _swamp_spread(pts, spacing):
+    """Thin a candidate list so no two survivors sit within `spacing` studs -
+    props end up spread around the fen instead of piling into one bank."""
+    kept = []
+    for p in pts:
+        if all(math.hypot(p[0] - q[0], p[1] - q[1]) > spacing for q in kept):
+            kept.append(p)
+    return kept
+
+
 def _swamp_marsh():
     """Grow the authored fen into a marsh NETWORK. Extra pools out in the
     quiet quarters, each laced back into the existing chain by a wide channel,
@@ -2171,10 +2197,10 @@ def _swamp_giant(trunk_bm, canopy_bm, ground, x, y, surf, rng, salt, roof_z):
     add_cone(trunk_bm, (x, y, surf - 1.0), r0, r0 * 0.30, h, sides=8, tilt=tilt, yaw=yaw)
 
     knee = surf + rng.uniform(6.0, 12.0)
-    n = rng.randint(5, 7)
+    n = rng.randint(3, 4)  # a FEW arches per tree; the mud between trees stays open
     for k in range(n):
         a = yaw + k * math.tau / n + rng.uniform(-0.22, 0.22)
-        d = rng.uniform(7.0, 13.0)
+        d = rng.uniform(5.0, 8.0)  # tight footprint, hugging the trunk
         fx, fy = x + math.cos(a) * d, y + math.sin(a) * d
         fs = _drop_to_ground(ground, fx, fy)
         if fs is None:
@@ -2209,7 +2235,7 @@ def _swamp_giant(trunk_bm, canopy_bm, ground, x, y, surf, rng, salt, roof_z):
             (rr, rr * rng.uniform(0.8, 1.0), rr * 0.24),
             salt + 3.1 * (k + 1), yaw + 1.1 * (k + 1), 1 - k,
         )
-    _swamp_hanging_moss(canopy_bm, crown.x, crown.y, crown.z - 2.0, r * 0.98, rng, salt, rng.randint(4, 7))
+    _swamp_hanging_moss(canopy_bm, crown.x, crown.y, crown.z - 2.0, r * 0.98, rng, salt, rng.randint(3, 4))
 
 
 def _swamp_roof_anchors():
@@ -2259,8 +2285,8 @@ def _fen_tree(trunk_bm, canopy_bm, ground, x, y, surf, kind, rng, salt):
         r0 = rng.uniform(2.2, 3.4)
         add_cone(trunk_bm, (x, y, surf - 1.4), r0, r0 * 0.22, h, sides=7, tilt=tilt, yaw=yaw)
         add_cone(trunk_bm, (x, y, surf - 1.6), r0 * 1.55, r0 * 0.9, rng.uniform(2.0, 3.4), sides=7, yaw=yaw)
-        for _ in range(rng.randint(4, 7)):  # cypress knees
-            a, d = rng.uniform(0, math.tau), rng.uniform(2.4, 6.5)
+        for _ in range(rng.randint(2, 3)):  # a couple of cypress knees, close in
+            a, d = rng.uniform(0, math.tau), rng.uniform(1.8, 3.2)
             kx, ky = x + math.cos(a) * d, y + math.sin(a) * d
             ks = _drop_to_ground(ground, kx, ky)
             if ks is not None:
@@ -2283,9 +2309,10 @@ def _fen_tree(trunk_bm, canopy_bm, ground, x, y, surf, kind, rng, salt):
         tilt = (math.cos(yaw) * lean, math.sin(yaw) * lean)
         r0 = rng.uniform(1.3, 2.0)
         add_cone(trunk_bm, (x, y, surf - 1.0), r0, r0 * 0.45, h, sides=6, tilt=tilt, yaw=yaw)
-        for k in range(rng.randint(4, 6)):  # stilt roots splaying to the mud
-            a = yaw + k * math.tau / 5 + rng.uniform(-0.3, 0.3)
-            d = rng.uniform(3.0, 5.5)
+        n = rng.randint(2, 3)  # two or three stilts, not a cage
+        for k in range(n):
+            a = yaw + k * math.tau / n + rng.uniform(-0.3, 0.3)
+            d = rng.uniform(2.2, 3.6)
             rx, ry = x + math.cos(a) * d, y + math.sin(a) * d
             rs = _drop_to_ground(ground, rx, ry)
             if rs is None:
@@ -2335,9 +2362,9 @@ def _fen_landmark(trunk_bm, canopy_bm, ground):
     rng = random.Random(99)
     add_cone(trunk_bm, (ix, iy, surf - 2.0), 7.4, 1.5, h, sides=9)
     add_cone(trunk_bm, (ix, iy, surf - 2.4), 11.0, 6.6, 7.0, sides=9)  # the flare
-    for k in range(9):  # buttress roots crawling off the islet
-        a = k * math.tau / 9 + 0.2
-        d = rng.uniform(9.0, 15.0)
+    for k in range(6):  # buttress roots crawling off the islet
+        a = k * math.tau / 6 + 0.2
+        d = rng.uniform(8.0, 12.0)
         rx, ry = ix + math.cos(a) * d, iy + math.sin(a) * d
         rs = _drop_to_ground(ground, rx, ry)
         if rs is None:
@@ -2453,7 +2480,7 @@ def _fen_water_edge_points(rng, count_per_pool=(6, 10)):
             t = rng.uniform(0.25, 0.75)
             cx, cy = a[0] + dx * t, a[1] + dy * t
             for side in (1, -1):
-                if rng.random() < 0.25:  # gaps, so the channel stays readable
+                if rng.random() < 0.58:  # long bare stretches: banks you can walk
                     continue
                 off = (hw + rng.uniform(-0.5, 3.5)) * side
                 pts.append((cx - dy / n * off, cy + dx / n * off, a[2] + (b[2] - a[2]) * t))
@@ -2461,18 +2488,22 @@ def _fen_water_edge_points(rng, count_per_pool=(6, 10)):
 
 
 def build_swamp_props(ground):
-    """Reed brakes hugging every water edge, driftwood and half-sunk logs
-    placed on the banks, mud hummocks breaking up the flats, and bog stones."""
+    """Everything loose in the fen lives at a waterline. Reed clumps hug the
+    pool and channel rims, a handful of half-sunk snags lie in the shallows,
+    and a few low mud swells break the bank - the open mud between pools is
+    left bare on purpose, so the player walks it instead of weaving props."""
     rng = random.Random(777)
 
     reed_bm = bmesh.new()
     stems = 0
-    for x, y, wz in _fen_water_edge_points(rng, count_per_pool=(3, 5)):
+    for x, y, wz in _fen_water_edge_points(rng, count_per_pool=(1, 2)):
         surf = _drop_to_ground(ground, x, y)
-        if surf is None or surf > wz + 2.2 or surf < wz - 1.6:
+        if surf is None or surf > wz + 0.7 or surf < wz - 1.6:
+            continue  # only the wet rim itself, never the dry mud beyond it
+        if not _swamp_spawn_clear(x, y, 8.0):
             continue
-        for _ in range(rng.randint(2, 4)):
-            ox, oy = x + rng.uniform(-2.2, 2.2), y + rng.uniform(-2.2, 2.2)
+        for _ in range(rng.randint(2, 3)):
+            ox, oy = x + rng.uniform(-1.2, 1.2), y + rng.uniform(-1.2, 1.2)
             base = _drop_to_ground(ground, ox, oy)
             if base is None:
                 continue
@@ -2482,18 +2513,20 @@ def build_swamp_props(ground):
     # Saltmarsh tufts: sparse reed clumps out on the mud band, so the ring
     # has ground cover between the thickets instead of bare brown.
     tufts = 0
-    for _ in range(70):
+    for _ in range(18):
         theta = rng.uniform(0, math.tau)
-        u = rng.uniform(0.76, 0.97)
+        u = rng.uniform(0.88, 0.97)  # the shore fringe only - the band stays walkable
         if _near_dock_corridor(theta, u):
             continue
         r = ring_radius(u, theta)
         x, y = math.cos(theta) * r, math.sin(theta) * r
         base = _drop_to_ground(ground, x, y)
-        if base is None or base < 0.2:
+        if base is None or base < 0.2 or base > 2.6:
+            continue
+        if not _swamp_spawn_clear(x, y, 8.0):
             continue
         for _ in range(rng.randint(2, 3)):
-            ox, oy = x + rng.uniform(-2.5, 2.5), y + rng.uniform(-2.5, 2.5)
+            ox, oy = x + rng.uniform(-1.6, 1.6), y + rng.uniform(-1.6, 1.6)
             b = _drop_to_ground(ground, ox, oy)
             if b is None:
                 continue
@@ -2501,14 +2534,16 @@ def build_swamp_props(ground):
             stems += 1
         tufts += 1
 
+    # Snags: EIGHT, and every one of them half-sunk at a rim or lying in the
+    # shallows. They are set dressing for the water, not litter on the mud.
     snag_bm = bmesh.new()
     logs = 0
-    for x, y, wz in _fen_water_edge_points(random.Random(31), count_per_pool=(2, 4)):
-        if logs >= 46:
-            break
+    cand = [
+        (x, y, wz) for x, y, wz in _fen_water_edge_points(random.Random(31), count_per_pool=(1, 2))
+        if _swamp_prop_ok(x, y, _drop_to_ground(ground, x, y), wz, wet=0.4)
+    ]
+    for x, y, wz in _swamp_spread(cand, 46.0)[:8]:
         surf = _drop_to_ground(ground, x, y)
-        if surf is None or _fen_in_arena(x, y, 2.0):
-            continue
         yaw = rng.uniform(0, math.tau)
         if rng.random() < 0.55:  # a log lying half in the water
             add_cone(snag_bm, (x, y, surf + 0.5), rng.uniform(1.0, 1.7), rng.uniform(0.5, 1.0),
@@ -2527,23 +2562,25 @@ def build_swamp_props(ground):
                      sides=6, tilt=(rng.uniform(0.35, 0.9), 0.0), yaw=yaw)
         logs += 1
 
+    # Hummocks: a dozen LOW swells, only along a waterline. Nothing mid-lane.
     hummock_bm = bmesh.new()
     mounds = 0
-    for i in range(90):
-        spot = _interior_spot(ground, 0.10, 0.97, pad=1.0, tries=10)
-        if spot is None:
-            continue
-        x, y, surface = spot
-        if _fen_in_arena(x, y, -8.0):
-            continue
-        s = rng.uniform(2.0, 6.0)
-        add_blob(hummock_bm, (x, y, surface - s * 0.42), (s, s * rng.uniform(0.6, 0.9), s * rng.uniform(0.35, 0.55)),
+    hcand = [
+        (x, y, wz) for x, y, wz in _fen_water_edge_points(random.Random(58), count_per_pool=(1, 2))
+        if _swamp_prop_ok(x, y, _drop_to_ground(ground, x, y), wz, wet=1.0)
+    ]
+    for i, (x, y, _wz) in enumerate(_swamp_spread(hcand, 40.0)[:12]):
+        surface = _drop_to_ground(ground, x, y)
+        s = rng.uniform(2.0, 4.2)
+        add_blob(hummock_bm, (x, y, surface - s * 0.46), (s, s * rng.uniform(0.6, 0.9), s * rng.uniform(0.28, 0.42)),
                  0.4, 700 + i * 4.7, yaw=rng.uniform(0, math.tau))
         mounds += 1
 
     stone_bm = bmesh.new()
     stones = 0
-    for theta, u in ((30, 0.80), (86, 0.92), (160, 0.78), (192, 0.93), (250, 0.90), (322, 0.79), (352, 0.90), (120, 0.72)):
+    # Four deliberate outcrops on the shore band (halved from eight) - big
+    # enough to read as landmarks, few enough to walk between.
+    for theta, u in ((30, 0.80), (160, 0.78), (250, 0.90), (322, 0.79)):
         x, y = _fen_polar(theta, u)
         surf = _drop_to_ground(ground, x, y)
         if surf is None:
