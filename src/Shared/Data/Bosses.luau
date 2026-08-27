@@ -232,6 +232,10 @@ Bosses.items.pyrelisk = {
 	-- open sea past the last plank, and it hauls itself TOWARD the deck the
 	-- way Brinejaw does. (The 2026-08-25 review caught the original 590, which
 	-- put the fight underneath the jetty's mid-span.)
+	-- VOLCANO RESTART NOTE (2026-08-27): the dock these numbers were keyed to
+	-- was deleted with the island's step-1 restart, so this is open sea off
+	-- the +Z shore (rel Z=541) for now - a fine interim water arena (the
+	-- Gnashroot precedent). Re-key when the rebuild's dock step lands.
 	arena = { offset = Vector3.new(0, 0, 680), radius = 30 },
 	aggro = 90,
 	standoff = 14,

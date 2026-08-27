@@ -995,490 +995,17 @@ def add_ribbon_slab(bm, left, right, thickness):
     bm.faces.new((lt[-1], rt[-1], rb[-1], lb[-1]))
 
 
-# ---------------------------------------------------------------- the climb
-#
-# A switchback trail cut into the flank: the route from the ash apron (right
-# where the dock lands) up to the crater lip. Written in polar as a sinusoid in
-# ANGLE over a radius that only ever shrinks, so the plan view is a true zigzag
-# with rounded hairpins and the climb is monotonic. Every cross-section is dead
-# level (both edges share one deck height) so it is genuinely standable, and
-# the deck is benched off the ground through the middle of its own width - half
-# cut, half fill, the way a mountain road is built - so the ledge reads as cut
-# into the slope with the slab's thickness as its retaining wall. Both ends sit
-# on the dock bearing, and CRAG_CALM quiets the crag across the same face.
-TRAIL_CENTER_DEG = 270.0  # the dock/spawn bearing: the climb starts where you land
-TRAIL_SWING_DEG = 42.0
-TRAIL_LEGS = 7  # half-cycles of the sinusoid = number of straight-ish legs
-TRAIL_PHASE = math.pi / 2  # puts BOTH ends of the zigzag on the dock bearing
-TRAIL_R_START = 450.0
-TRAIL_R_END = 126.0  # lands on the crater lip shoulder
-TRAIL_HALF = 11.5  # half-width of the walking surface
-TRAIL_LANDING = 10.0  # extra half-width at each hairpin (a wide turn platform)
-TRAIL_SAMPLES = 240
-TRAIL_THICK = 14.0
-
-# Filled by build_volcano_terraces, read by every prop scatter so nothing is
-# dropped on the path: (x, y, clearance radius).
-TRAIL_FOOTPRINTS = []
-
-
-def _off_trail(x, z, extra=0.0):
-    for tx, ty, rad in TRAIL_FOOTPRINTS:
-        if math.hypot(x - tx, z - ty) < rad + extra:
-            return False
-    return True
-
-
-def _trail_centerline(ground):
-    """(centre point, half-width, deck height) sampled along the whole route."""
-    c = math.radians(TRAIL_CENTER_DEG)
-    swing = math.radians(TRAIL_SWING_DEG)
-    pts, halves, decks = [], [], []
-    for i in range(TRAIL_SAMPLES):
-        t = i / (TRAIL_SAMPLES - 1)
-        phase = math.pi * TRAIL_LEGS * t + TRAIL_PHASE
-        theta = c + swing * math.cos(phase)
-        # A slightly non-linear march inward: the legs bunch as the cone
-        # narrows, the way a real switchback road does, and it breaks the
-        # even "venetian blind" spacing the linear version read as head-on.
-        r = TRAIL_R_START + (TRAIL_R_END - TRAIL_R_START) * (t**1.22)
-        turn = abs(math.cos(phase)) ** 8  # ~1 only in the hairpins
-        half = TRAIL_HALF + TRAIL_LANDING * turn
-        pts.append((math.cos(theta) * r, math.sin(theta) * r))
-        halves.append(half)
-        # Deck height from the HIGHEST ground across the middle of the bench,
-        # so a crag bulge can never break up through the walking surface.
-        peak = -math.inf
-        for k in (-0.55, -0.28, 0.0, 0.28, 0.55):
-            r_s = r + half * k
-            g = _drop_to_ground(ground, math.cos(theta) * r_s, math.sin(theta) * r_s)
-            peak = max(peak, g if g is not None else height_at(math.cos(theta) * r_s, math.sin(theta) * r_s))
-        decks.append(peak)
-
-    def blur(vals, win):
-        out = []
-        for i in range(len(vals)):
-            lo, hi = max(0, i - win), min(len(vals), i + win + 1)
-            out.append(sum(vals[lo:hi]) / (hi - lo))
-        return out
-
-    # Smooth the facet-to-facet jitter into a clean ramp, then lift the deck
-    # back over anything the averaging cut through.
-    smooth = blur(decks, 7)
-    return pts, halves, blur([max(smooth[i], decks[i]) + 1.4 for i in range(len(decks))], 5)
-
-
-def build_volcano_terraces(ground):
-    """The switchback ledge: one continuous ribbon solid up the flank, with a
-    wide landing at every hairpin (somewhere to stand and fight when an
-    eruption raid catches you mid-climb) and a broad platform where it tops out
-    on the crater lip."""
-    bm = bmesh.new()
-    TRAIL_FOOTPRINTS.clear()
-
-    pts, halves, decks = _trail_centerline(ground)
-    n = len(pts)
-    left, right = [], []
-    for i in range(n):
-        x, y = pts[i]
-        px, py = pts[max(0, i - 1)]
-        nx, ny = pts[min(n - 1, i + 1)]
-        tx, ty = nx - px, ny - py
-        length = math.hypot(tx, ty) or 1.0
-        ox, oy = -ty / length, tx / length  # in-plan perpendicular; handles hairpins
-        h, z = halves[i], decks[i]
-        left.append(Vector((x + ox * h, y + oy * h, z)))
-        right.append(Vector((x - ox * h, y - oy * h, z)))
-        if i % 3 == 0:
-            TRAIL_FOOTPRINTS.append((x, y, h + 10.0))
-
-    # The retaining wall is sized per point to REACH the ground under the
-    # ledge's downhill edge - a fixed thickness leaves the bench visibly
-    # floating wherever the flank steepens. Then taper it to nothing at both
-    # ends so the ledge grows out of the apron and dies into the lip, instead
-    # of ending on a blank wall.
-    thick = []
-    for i in range(n):
-        low = math.inf
-        for edge in (left[i], right[i]):
-            gnd = _drop_to_ground(ground, edge.x, edge.y)
-            low = min(low, gnd if gnd is not None else height_at(edge.x, edge.y))
-        need = min(max(TRAIL_THICK, decks[i] - low + 2.5), 46.0)
-        t = i / (n - 1)
-        fade = min(smoothstep(0.0, 0.055, t), smoothstep(1.0, 0.945, t))
-        thick.append(0.9 + (need - 0.9) * fade)
-    add_ribbon_slab(bm, left, right, thick)
-
-    rise = decks[-1] - decks[0]
-    run = sum(math.dist(pts[i], pts[i + 1]) for i in range(n - 1))
-    print(
-        f"[island_gen] terraces: {TRAIL_LEGS} switchback legs on the {TRAIL_CENTER_DEG:.0f} deg face, "
-        f"r {TRAIL_R_START:.0f}->{TRAIL_R_END:.0f}, climbs {rise:.0f} over {run:.0f} "
-        f"({100 * rise / run:.1f}% grade), deck y {decks[0]:.1f} -> {decks[-1]:.1f}"
-    )
-    return object_from_bmesh("Volcano_Terraces", bm, ["M_VolPath"])
-
-
-def build_volcano_rocks(ground):
-    """Obsidian rock, in three places: big angular boulders on the walkable ash
-    apron at the foot (walked among), MASSIVE crag boulders jammed into the
-    steep flanks (read from the beach as broken rock faces), and a crown of
-    tall shattered spires around the summit crater so the silhouette is jagged
-    all the way up. EVERY rock is dropped onto the real base-mesh surface
-    (`ground` raycast) and seated slightly into it, so none float above the
-    crags or hover over the jittered facets. All skip the lava channels and
-    the dock corridor."""
-    bm = bmesh.new()
-
-    # Apron boulders + pebbles at the foot - the ground the player fights on.
-    count = 0
-    tries = 0
-    while count < 300 and tries < 3000:
-        tries += 1
-        theta = random.uniform(0, math.tau)
-        u = random.uniform(0.74, 0.985)
-        if _near_dock_corridor(theta, u):
-            continue
-        r = ring_radius(u, theta)
-        x, z = math.cos(theta) * r, math.sin(theta) * r
-        if not _clear_of_ponds(x, z, 1.0) or not _off_trail(x, z, 12.0):
-            continue
-        surface = _drop_to_ground(ground, x, z)
-        if surface is None:
-            continue
-        pebble = random.random() < 0.6
-        s = random.uniform(1.2, 3.0) if pebble else random.uniform(4.5, 11.0)
-        sz = s * random.uniform(0.5, 0.8)
-        add_blob(
-            bm,
-            (x, z, surface - sz * 0.3),  # seated into the real surface, never hovering
-            (s, s * random.uniform(0.7, 0.95), sz),
-            0.48 if pebble else 0.42,
-            500 + count * 3.7,
-            yaw=random.uniform(0, math.tau),
-        )
-        count += 1
-
-    # Flank crag boulders: huge shattered blocks jammed into the steep cone so
-    # the slopes read as broken rock faces, not a smooth lathe. Sized to be
-    # read from the beach hundreds of studs below.
-    for i in range(34):
-        theta = (i / 34) * math.tau + random.uniform(-0.1, 0.1)
-        u = random.uniform(0.24, 0.62)
-        if notch_cut(theta, min(u, 0.2)) > 2.0:
-            continue  # keep the lava channels clear
-        r = ring_radius(u, theta)
-        x, z = math.cos(theta) * r, math.sin(theta) * r
-        if not _off_trail(x, z, 24.0):
-            continue  # never wall off the switchback
-        surface = _drop_to_ground(ground, x, z)
-        if surface is None:
-            continue
-        s = random.uniform(9.0, 22.0)
-        sz = s * random.uniform(0.8, 1.3)
-        add_blob(
-            bm,
-            (x, z, surface - sz * 0.4),
-            (s, s * random.uniform(0.6, 0.9), sz),
-            0.5,
-            200 + i * 7.0,
-            yaw=random.uniform(0, math.tau),
-        )
-
-    # Summit spires: a crown of tall angular shards around the crater lip so
-    # the very top is a ragged fang line, skipping the notches the lava pours
-    # through.
-    for i in range(14):
-        theta = (i / 14) * math.tau + random.uniform(-0.12, 0.12)
-        u = random.uniform(0.155, 0.195)
-        if notch_cut(theta, 0.17) > 2.0:
-            continue
-        r = ring_radius(u, theta)
-        x, z = math.cos(theta) * r, math.sin(theta) * r
-        if not _off_trail(x, z, 9.0):
-            continue  # the trail tops out here; leave the viewpoint standable
-        surface = _drop_to_ground(ground, x, z)
-        if surface is None:
-            continue
-        s = random.uniform(3.5, 6.5)
-        h = s * random.uniform(2.2, 3.4)  # tall shards, not round blobs
-        add_blob(
-            bm,
-            (x, z, surface + h * 0.15),
-            (s, s * 0.7, h),
-            0.42,
-            900 + i * 5.0,
-            yaw=random.uniform(0, math.tau),
-        )
-
-    # Obsidian shards: small angular fangs stuck upright in the ash between
-    # the boulders - glassy debris rained off the mountain.
-    count = 0
-    tries = 0
-    while count < 70 and tries < 900:
-        tries += 1
-        theta = random.uniform(0, math.tau)
-        u = random.uniform(0.73, 0.985)
-        if _near_dock_corridor(theta, u):
-            continue
-        r = ring_radius(u, theta)
-        x, z = math.cos(theta) * r, math.sin(theta) * r
-        if not _clear_of_ponds(x, z, 1.0) or not _off_trail(x, z, 4.0):
-            continue
-        surface = _drop_to_ground(ground, x, z)
-        if surface is None:
-            continue
-        s = random.uniform(0.9, 2.0)
-        h = s * random.uniform(2.4, 3.6)
-        add_blob(bm, (x, z, surface + h * 0.1), (s, s * 0.6, h), 0.4, 1500 + count * 4.3, yaw=random.uniform(0, math.tau))
-        count += 1
-
-    return object_from_bmesh("Volcano_Rocks", bm, ["M_Obsidian"])
-
-
-def build_volcano_props(ground):
-    """The 'random stuff' riddling the walkable apron (user, 2026-08-24;
-    densified same day after "the base is barren"), in four single-material
-    objects. The apron is ~530k sq studs, so a thin uniform sprinkle reads
-    as empty - the props are GROUPED into landmarks a player walks between:
-    BURNT GROVES of dead snags (plus loners), BASALT COLUMN fields, CINDER
-    VENT clusters, and soft ASH DUNES, with heavy obsidian scree in
-    build_volcano_rocks filling the ground between them. Everything raycasts
-    the real surface, seats slightly into it, and keeps clear of the dock
-    corridor and the molten ponds."""
-
-    def apron_spot(pad=4.0, u_lo=0.73, u_hi=0.97):
-        for _ in range(40):
-            theta = random.uniform(0, math.tau)
-            u = random.uniform(u_lo, u_hi)
-            if _near_dock_corridor(theta, u):
-                continue
-            r = ring_radius(u, theta)
-            x, z = math.cos(theta) * r, math.sin(theta) * r
-            if not _clear_of_ponds(x, z, pad) or not _off_trail(x, z, 4.0):
-                continue
-            surface = _drop_to_ground(ground, x, z)
-            if surface is not None:
-                return x, z, surface
-        return None
-
-    def spot_near(cx, cz, spread):
-        """A ground point near a cluster's centre, still clear of ponds."""
-        for _ in range(12):
-            a = random.uniform(0, math.tau)
-            d = random.uniform(0, spread)
-            x, z = cx + math.cos(a) * d, cz + math.sin(a) * d
-            if not _clear_of_ponds(x, z) or not _off_trail(x, z, 3.0):
-                continue
-            surface = _drop_to_ground(ground, x, z)
-            if surface is not None:
-                return x, z, surface
-        return None
-
-    snag_bm = bmesh.new()
-
-    def snag(x, z, surface, big=False):
-        yaw = random.uniform(0, math.tau)
-        tilt = (random.uniform(-0.09, 0.09), random.uniform(-0.09, 0.09))
-        h = random.uniform(55.0, 75.0) if big else random.uniform(35.0, 60.0)
-        base = Vector((x, z, surface - 1.5))
-        add_cone(snag_bm, base, random.uniform(2.2, 3.4), 0.9, h, sides=6, tilt=tilt, yaw=yaw)
-        axis = cone_axis(tilt, yaw)
-        for _ in range(random.randint(2, 3)):
-            frac = random.uniform(0.45, 0.85)
-            joint = base + axis * (h * frac)
-            b_yaw = random.uniform(0, math.tau)
-            b_tilt = (random.uniform(0.9, 1.3), 0.0)  # near-horizontal snapped-off limbs
-            add_cone(snag_bm, joint, 0.85, 0.25, random.uniform(12.0, 24.0), sides=5, tilt=b_tilt, yaw=b_yaw)
-
-    # Ten burnt groves - a dead forest's stands - plus scattered loners.
-    for _ in range(13):
-        grove = apron_spot(pad=2.0)
-        if grove is None:
-            continue
-        gx, gz, gs = grove
-        snag(gx, gz, gs, big=True)  # every grove has one tall veteran
-        for _ in range(random.randint(4, 7)):
-            member = spot_near(gx, gz, random.uniform(14.0, 32.0))
-            if member:
-                snag(*member)
-    for _ in range(18):
-        loner = apron_spot()
-        if loner:
-            snag(*loner)
-
-    basalt_bm = bmesh.new()
-    for _ in range(24):
-        spot = apron_spot(pad=2.5)
-        if spot is None:
-            continue
-        cx, cz, _ = spot
-        tallest = random.uniform(4.5, 9.0)
-        for c in range(random.randint(4, 8)):
-            a = random.uniform(0, math.tau)
-            d = random.uniform(0, 3.6)
-            x, z = cx + math.cos(a) * d, cz + math.sin(a) * d
-            surface = _drop_to_ground(ground, x, z)
-            if surface is None:
-                continue
-            # Tallest at the cluster's heart, stepping down outward.
-            h = tallest * random.uniform(0.85, 1.0) * (1.0 - d * 0.16)
-            add_post(basalt_bm, x, z, surface - 0.6, surface + max(1.6, h), random.uniform(0.9, 1.5), sides=6)
-
-    vent_bm = bmesh.new()
-    for _ in range(13):
-        spot = apron_spot(pad=2.5)
-        if spot is None:
-            continue
-        cx, cz, surface = spot
-        rb = random.uniform(2.6, 4.4)
-        add_cone(vent_bm, (cx, cz, surface - 0.5), rb, rb * random.uniform(0.35, 0.45), random.uniform(2.2, 4.8), sides=8)
-        # Most fumaroles come with a smaller companion cone alongside.
-        if random.random() < 0.7:
-            mate = spot_near(cx, cz, rb + 3.5)
-            if mate:
-                mr = rb * random.uniform(0.45, 0.65)
-                add_cone(vent_bm, (mate[0], mate[1], mate[2] - 0.4), mr, mr * 0.4, random.uniform(1.4, 2.6), sides=7)
-
-    # Fine scree: hundreds of small angular obsidian chunks half-buried in
-    # the ash - the ground clutter that makes the walk feel volcanic. Cheap
-    # yawed boxes (12 tris each), so the count can be high.
-    scree_bm = bmesh.new()
-    placed_chunks = 0
-    tries = 0
-    while placed_chunks < 460 and tries < 4600:
-        tries += 1
-        theta = random.uniform(0, math.tau)
-        u = random.uniform(0.73, 0.985)
-        if _near_dock_corridor(theta, u):
-            continue
-        r = ring_radius(u, theta)
-        x, z = math.cos(theta) * r, math.sin(theta) * r
-        if not _clear_of_ponds(x, z, 1.0) or not _off_trail(x, z, 2.0):
-            continue
-        surface = _drop_to_ground(ground, x, z)
-        if surface is None:
-            continue
-        s = random.uniform(0.5, 1.6)
-        add_box(
-            scree_bm,
-            (x, z, surface + s * 0.1),  # half-buried
-            (s, s * random.uniform(0.6, 0.9), s * random.uniform(0.5, 0.8)),
-            yaw=random.uniform(0, math.tau),
-        )
-        placed_chunks += 1
-
-    # Soft ash dunes: broad smooth mounds that give the flat apron rolling
-    # ground to walk over (blob roughness kept low so they read as drifts,
-    # not rocks).
-    dune_bm = bmesh.new()
-    for i in range(32):
-        spot = apron_spot(pad=8.0, u_lo=0.74, u_hi=0.96)
-        if spot is None:
-            continue
-        x, z, surface = spot
-        s = random.uniform(7.0, 16.0)
-        add_blob(
-            dune_bm,
-            (x, z, surface - s * 0.12),
-            (s, s * random.uniform(0.55, 0.8), s * random.uniform(0.18, 0.28)),
-            0.12,
-            3000 + i * 11.0,
-            yaw=random.uniform(0, math.tau),
-        )
-
-    return (
-        object_from_bmesh("Volcano_DeadTrees", snag_bm, ["M_Charred"]),
-        object_from_bmesh("Volcano_Basalt", basalt_bm, ["M_Basalt"]),
-        object_from_bmesh("Volcano_Vents", vent_bm, ["M_Cinder"]),
-        object_from_bmesh("Volcano_Scree", scree_bm, ["M_Obsidian"]),
-        object_from_bmesh("Volcano_Dunes", dune_bm, ["M_VolAsh"]),
-    )
-
-
-def build_volcano_dock():
-    """The fishing dock at the BOTTOM of the volcano: an ordinary shore jetty
-    (the tropical build_dock machinery, sized by the DOCK_* overrides) that
-    runs off the ash beach out INTO THE SEA - the player fishes ocean water
-    here, exactly like the starter's dock (user, 2026-08-24: no lava under or
-    around the dock; the lava ponds inland are where volcano-water fish come
-    from). Object names / materials are the volcano's own (Volcano_Dock_Planks
-    / _Posts), which WorldService already colours. DOCK_POST_POSITIONS is left
-    populated so build_foam collars the posts standing in the surf."""
-    return build_dock("Volcano_Dock_Planks", "Volcano_Dock_Posts", "M_VolPlank", "M_VolPost")
-
-
-# Summit-crater lava surface height, and the lake disc's relative radius. The
-# surface sits below the crater lip everywhere except the carved notches, so
-# the lake pours out only through those gashes and runs the full flank.
-LAVA_LEVEL = 40.0
-LAKE_U = 0.36
-
-# Terminal ponds of the flows, recorded by build_lava as (x, y, radius) so the
-# apron scatter (rocks, props) can keep clear of the molten pools. These pools
-# are the volcano island's fishable lava now that the dock is over the sea.
-#
-# LAVA_PONDS IS AN APRON-ONLY LIST. Only pools that come to rest on the walked
-# ash apron (u >= 0.70) go in it: the two things that read it - the prop/rock
-# scatter's keep-clear test and the fishing surface - both only care about
-# ground the player stands on. The purely visual spatter ledges the falls
-# throw off high on the flank (build_lava, `_lava_flow`) are deliberately NOT
-# recorded: nothing scatters up there and nothing is fished off a cliff.
+# The shared pool keep-clear registry (the name is a volcano-era relic): every
+# island's water builder records its pools/lake/bay here as (x, y, radius) -
+# and CLEARS the list at its own start, since it survives across pack islands
+# - so the prop scatters keep off the water. Swamp pools, the gloom lake, the
+# wreck bay and (when the volcano's lava returns with a rebuild step) lava
+# ponds all ride it. WALKED-GROUND POOLS ONLY: record what scatter must avoid.
 LAVA_PONDS = []
 
 
 def _clear_of_ponds(x, z, pad=4.0):
     return all((x - px) ** 2 + (z - py) ** 2 > (pr + pad) ** 2 for px, py, pr in LAVA_PONDS)
-
-
-# THE TWO STANDING USER RULES ON VOLCANO LAVA, enforced here so every scrap of
-# molten geometry - flow, pond, side branch, fall spatter - passes through one
-# gate instead of each site re-deriving the limits (user, 2026-08-26, on the
-# "much more lava" overhaul):
-#
-# (1) NOTHING FACES THE DOCK, AND NOTHING CROSSES THE CLIMB. The dock bearing
-#     and the switchback trail's face are the same 270 deg (TRAIL_CENTER_DEG),
-#     and the trail swings +-42 deg off it, its landings adding ~10 deg more
-#     where the cone narrows. So one wedge covers both duties: +-62 deg around
-#     270 is lava-free at EVERY u - well past the +-30 the dock rule asks for,
-#     and with a 10 deg margin outside the widest hairpin, so the sea in front
-#     of the planks stays plain ocean and the climb is never blocked.
-# (2) LAVA NEVER REACHES THE SEA. No lava geometry past u 0.955. Pool CENTRES
-#     are capped tighter than that - `_pond_fits` measures the pool's real
-#     outer reach, jagged edge included, so a wide pool is pushed inland (or
-#     shrunk) rather than allowed to lick the waterline.
-LAVA_CLEAR_CENTER = math.radians(270.0)
-LAVA_CLEAR_HALF = math.radians(62.0)
-LAVA_MAX_U = 0.955
-LAVA_CORRIDOR = 0.20  # rad: how far any part of a flow may stray from its notch
-
-
-def _lava_theta(theta, theta0):
-    """Gate every lava angle: hold it inside its own notch's corridor (so a
-    cascade wandering pool by pool can't creep sideways into the next flow's
-    ground) and outside the dock/trail wedge - rule (1) above."""
-    d = ((theta - theta0 + math.pi) % math.tau) - math.pi
-    theta = theta0 + max(-LAVA_CORRIDOR, min(LAVA_CORRIDOR, d))
-    da = ((theta - LAVA_CLEAR_CENTER + math.pi) % math.tau) - math.pi
-    if abs(da) < LAVA_CLEAR_HALF:  # never happens for a well-placed notch; the backstop is cheap
-        theta = LAVA_CLEAR_CENTER + math.copysign(LAVA_CLEAR_HALF, da)
-    return theta
-
-
-def _pond_fits(x, z, reach):
-    """True if a pool centred at (x, z) whose ragged edge reaches `reach`
-    studs stays inside u 0.955 - rule (2) above. Samples the outward
-    direction and a fan either side of it, because the coastline's lobes mean
-    the ring at a given u is not a circle."""
-    d = math.hypot(x, z) or 1.0
-    ux, uz = x / d, z / d
-    for a in (-0.5, -0.25, 0.0, 0.25, 0.5):
-        ca, sa = math.cos(a), math.sin(a)
-        ex = x + (ux * ca - uz * sa) * reach
-        ez = z + (ux * sa + uz * ca) * reach
-        if u_at(ex, ez) > LAVA_MAX_U:
-            return False
-    return True
 
 
 def _jagged_disc(bm, cx, cy, rx, ry, z_top, thickness, salt, seg=26):
@@ -1489,179 +1016,6 @@ def _jagged_disc(bm, cx, cy, rx, ry, z_top, thickness, salt, seg=26):
         w = 1 + 0.10 * math.sin(3 * a + salt) + 0.06 * math.sin(7 * a + salt * 2.1)
         points.append((cx + math.cos(a) * rx * w, cy + math.sin(a) * ry * w))
     add_disc_slab(bm, points, z_top, thickness)
-
-
-# The steep upper flank, where the PROFILE runs ~34-40 deg: this is the band a
-# flow can genuinely fall down rather than run down, so it is where the falls
-# are allowed to read (see `_lava_flow`).
-FALL_U = (0.19, 0.40)
-FALL_DROP = 10.0  # studs between two samples; the band averages ~9, so this picks the pitches
-
-
-def _lava_flow(bm, theta0, ground, scale=1.0):
-    """One lava flow from the summit-crater notch at `theta0` down the WHOLE
-    flank. Marches from the crater lip to the foot, riding just above the
-    REAL faceted surface (`ground` raycast at the centre and both edges -
-    the analytic height_at + crag() disagrees with the mesh by tens of studs
-    because of the per-ring radial jitter, which buried earlier flows in the
-    slope), never climbing. Every flow ends in a cascade of molten ponds on
-    the apron - lava never reaches the sea (user, 2026-08-24: the dock and
-    the water around it are plain ocean).
-
-    `scale` widens or narrows the whole river: build_lava derives it from the
-    notch's own gash size, so the widest gash reads as THE main breach in the
-    lip rather than every flow pouring at one stamped width.
-
-    Where the river crosses the steep band (FALL_U) and the ground drops more
-    than FALL_DROP between two samples, the strip FLARES and throws a bright
-    apron of spatter at the pitch's foot - a lava FALL, so the upper flank has
-    events on it instead of one even ribbon. Those spatter ledges are visual
-    only: they sit high on the cliff, far above the walked apron, so they are
-    NOT recorded in LAVA_PONDS (see that list's contract - it is apron pools
-    only, for the scatter keep-clear and the fishing surface)."""
-    u_end = random.uniform(0.78, 0.84)
-    steps = 38  # dense: the straight strip between samples must not dip behind crag bulges
-    us = [0.145 + (u_end - 0.145) * (i / (steps - 1)) for i in range(steps)]
-    wander = random.uniform(0, math.tau)
-    left, right = [], []
-    last_h = LAVA_LEVEL + 0.4  # emerges from the crater lake surface
-    falls = 0
-    flare = 0  # steps of widening still owed to the fall we are in
-    theta = theta0
-    for i, u in enumerate(us):
-        # A BOUNDED wander (a slow sine, +-~3 deg) rather than a random walk:
-        # over 38 steps a walk could drift 20-plus degrees and stray across the
-        # switchback face, which must stay lava-free. _lava_theta is the
-        # backstop that makes that structural rather than merely likely.
-        theta = _lava_theta(theta0 + 0.055 * math.sin(wander + 4.0 * (i / (len(us) - 1))), theta0)
-        r = ring_radius(u, theta)
-        x, z = math.cos(theta) * r, math.sin(theta) * r
-        frac = i / (steps - 1)
-        w = (4.0 + 11.0 * frac) * scale  # wide rivers, not trickles
-        perp = Vector((-math.sin(theta), math.cos(theta), 0))
-        if i == 0:
-            h = last_h
-        else:
-            samples = []
-            for px, py in ((x, z), (x + perp.x * w, z + perp.y * w), (x - perp.x * w, z - perp.y * w)):
-                s = _drop_to_ground(ground, px, py)
-                samples.append(s if s is not None else height_at(px, py) + crag(px, py, u) - notch_cut(theta, u))
-            h = min(max(samples) + 2.2, last_h - 0.4)  # lava only ever runs downhill
-        drop = last_h - h
-        if flare == 0 and falls < 2 and FALL_U[0] <= u <= FALL_U[1] and drop > FALL_DROP:
-            falls += 1
-            flare = 2  # this sample and the next: the lip of the pitch and its foot
-            # The spatter apron at the fall's foot. Thin, small, and NOT a
-            # LAVA_PONDS entry: it hangs on the cliff at u ~0.2-0.4, where
-            # nothing is scattered and nothing is fished.
-            _jagged_disc(bm, x, z, w * 1.9, w * 1.35, h - 0.8, 2.4, salt=theta * 3.7 + u, seg=12)
-        if flare:
-            w *= 1.7  # the river spreads as it goes over the edge
-            flare -= 1
-        last_h = h
-        left.append(Vector((x, z, h)) + perp * w)
-        right.append(Vector((x, z, h)) - perp * w)
-    add_strip_slab(bm, left, right, 1.5)
-    return theta, us[-1], last_h
-
-
-def build_lava(ground):
-    """Lava lives in three places, all one Volcano_Lava object (the name is
-    the fishable-surface contract): the summit crater LAKE, the flows pouring
-    out of its NOTCHES down the whole flank, and the molten PONDS where they
-    die on the apron - the ponds are the island's fishable lava (the dock is
-    over plain sea). `ground` is the base mesh's BVH; the flows raycast it to
-    hug the real faceted slope."""
-    bm = bmesh.new()
-    LAVA_PONDS.clear()
-
-    # Summit crater lake, contained below the lip; jagged edge so its shore
-    # isn't a clean circle.
-    seg = 36
-    lake = []
-    for s in range(seg):
-        theta = (s / seg) * math.tau
-        r = ring_radius(LAKE_U, theta) * (1 + 0.06 * math.sin(5 * theta + 1.0))
-        lake.append((math.cos(theta) * r, math.sin(theta) * r))
-    add_disc_slab(bm, lake, LAVA_LEVEL, SLAB_THICKNESS)
-
-    def spill(a, b, half, thick=2.5):
-        """A wide flat strip of lava joining two pool centres (each an
-        (x, z, top-height) triple), so the cascade reads as one connected
-        sheet rather than a row of separate discs."""
-        seg = Vector((b[0] - a[0], b[1] - a[1], 0))
-        if seg.length <= 1:
-            return
-        perp = Vector((-seg.y, seg.x, 0)).normalized() * half
-        a_pt = Vector((a[0], a[1], a[2] - 0.3))
-        b_pt = Vector((b[0], b[1], b[2] - 0.3))
-        add_strip_slab(bm, [a_pt + perp, b_pt + perp], [a_pt - perp, b_pt - perp], thick)
-
-    def pool(x, z, want_r, top, salt, seg=18):
-        """Lay one apron pool, shrinking it until its ragged edge clears the
-        waterline - USER RULE (2): lava never reaches the sea. Returns the
-        radius actually used, or None if it had to shrink past usefulness (in
-        which case the cascade simply stops short rather than spilling into
-        the surf). Every pool laid here IS an apron pool, so every one is
-        recorded in LAVA_PONDS."""
-        r = want_r
-        while r > 8.0 and not _pond_fits(x, z, r * 1.16):  # 1.16: the jagged edge's worst overshoot
-            r *= 0.85
-        if r <= 8.0 or not _pond_fits(x, z, r * 1.16):
-            return None
-        # Thick slab: the apron slopes, so a thin disc would leave its
-        # downhill edge hovering.
-        _jagged_disc(bm, x, z, r, r * random.uniform(0.7, 0.95), top - 0.2, 4.5, salt=salt, seg=seg)
-        LAVA_PONDS.append((x, z, r))
-        return r
-
-    # One full-flank flow per crater notch. Each flow then SPREADS across the
-    # base as a cascade of 3-5 broad overlapping pools stepping outward and
-    # downhill, joined by wide spill strips, with the occasional SIDE BRANCH -
-    # a pool throwing a smaller pool off at an angle instead of strictly
-    # outward. That is what makes the apron read as threaded with molten
-    # sheets rather than one tidy chain per corner. Every one of these pools
-    # is fishable lava and is recorded in LAVA_PONDS.
-    #
-    # Flow width is derived from the gash that feeds it: a wide, deep notch
-    # pours a visibly bigger river and dies in bigger pools, so the lip has a
-    # main breach and several lesser ones instead of nine identical spouts.
-    for a0, half, depth in NOTCHES:
-        gash = (half / math.radians(12.0)) * (depth / 66.0)  # 1.0 = a middling notch
-        scale = max(0.72, min(1.45, gash))
-        end_theta, end_u, end_h = _lava_flow(bm, a0, ground, scale)
-        ptheta, pu, ph = end_theta, end_u, end_h
-        prev_center = None
-        for k in range(random.randint(3, 5)):
-            ptheta = _lava_theta(ptheta, a0)
-            r = ring_radius(pu, ptheta)
-            x, z = math.cos(ptheta) * r, math.sin(ptheta) * r
-            if k > 0:
-                # Each later pool sits on its own ground, a step lower.
-                ph = min(ph - 0.6, height_at(x, z) + 1.2)
-            want = random.uniform(19.0, 34.0) * scale * (1.0 - 0.11 * k)
-            pr = pool(x, z, want, ph, salt=ptheta + k)
-            if pr is None:
-                break  # the cascade has run out of apron; stop rather than reach the sea
-            if prev_center is not None:
-                spill(prev_center, (x, z, ph), random.uniform(7.0, 12.0))
-            # A short side branch: a second, smaller pool thrown off at an
-            # angle. Kept in polar (a big angular step, a small radial one) so
-            # it is a genuinely sideways spur while still passing through the
-            # same two rules as everything else.
-            if k > 0 and random.random() < 0.45:
-                btheta = _lava_theta(ptheta + random.choice((-1, 1)) * random.uniform(0.09, 0.14), a0)
-                bu = pu + random.uniform(-0.01, 0.025)
-                br_ = ring_radius(bu, btheta)
-                bx, bz = math.cos(btheta) * br_, math.sin(btheta) * br_
-                bh = min(ph - 0.4, height_at(bx, bz) + 1.2)
-                if pool(bx, bz, pr * random.uniform(0.45, 0.65), bh, salt=btheta * 2.3, seg=14):
-                    spill((x, z, ph), (bx, bz, bh), random.uniform(4.5, 7.5), 2.0)
-            prev_center = (x, z, ph)
-            ptheta += random.uniform(-0.06, 0.06)
-            pu = min(LAVA_MAX_U, pu + random.uniform(0.045, 0.075))
-
-    return object_from_bmesh("Volcano_Lava", bm, ["M_Lava"])
 
 
 # ---------------------------------------------------------------- island builds
@@ -1681,53 +1035,30 @@ def build_tropical():
     return objects
 
 
-def print_volcano_handoff():
-    """The numbers the Luau side needs by hand (Islands.luau volcano entry,
-    World.luau dock constants), printed in ROBLOX coordinates relative to the
-    island's origin: Roblox X = Blender x, Roblox Z = -Blender y (the glTF
-    Y-up export's mapping), heights unchanged."""
-    theta = math.radians(DOCK_ANGLE_DEG)
-    d = Vector((math.cos(theta), math.sin(theta), 0))
-    start_r = ring_radius(DOCK_START_U, theta)
-    sx, sy = d.x * start_r, d.y * start_r
-    ex, ey = d.x * (start_r + DOCK_LENGTH), d.y * (start_r + DOCK_LENGTH)
-    print(f"[island_gen] HANDOFF dock start (Roblox rel) X={sx:.1f} Z={-sy:.1f}, end X={ex:.1f} Z={-ey:.1f}, plank top Y={DOCK_TOP}")
-
-    spawn_bx, spawn_by = 0.0, -505.0  # Islands.luau spawn (rel X=0, Z=505) in Blender coords
-    print(f"[island_gen] HANDOFF spawn (rel X=0 Z=505) ground Y~{height_at(spawn_bx, spawn_by):.1f} (+-1.8 beach noise; runtime probe stands the player)")
-
-    lips = []
-    for s in range(180):
-        t = (s / 180) * math.tau
-        if notch_cut(t, 0.155) > 2.0:
-            continue  # a spillway gash, not the lip
-        lips.append(profile_height(0.155) + peak_jag(t, 0.155))
-    rim_r = sum(ring_radius(0.155, (s / 90) * math.tau) for s in range(90)) / 90
-    lake_r = sum(ring_radius(LAKE_U, (s / 90) * math.tau) for s in range(90)) / 90
-    print(
-        f"[island_gen] HANDOFF crater rim height {min(lips):.0f}-{max(lips):.0f} (ragged), radius ~{rim_r:.0f}; "
-        f"summit lake Y={LAVA_LEVEL} radius ~{lake_r:.0f}; apron shelf ~y {profile_height(0.9):.1f} at u 0.90 "
-        f"(boundary-sampler ring: crag-free, tolerance ~4 works)"
-    )
-
-
 def build_volcano():
+    """RESTARTED FROM SCRATCH (2026-08-27, user: "completely start from
+    scratch... a big base island with nothing on it") - the swamp-restart
+    playbook applied to the volcano. The stratovolcano build (switchback
+    trail, nine lava rivers, prop groves, the shore dock) was DELETED with
+    step 1; the rebuild is step-by-step, each step reviewed from PNG previews
+    and in Studio before the next.
+
+    STEP 1 - just the shape: ONE object (Volcano_Base, the three volcanic
+    band materials) off the shared build_island_base machinery - a broad ash
+    apron at sea level rising into a single clean smooth cone with a shallow
+    summit crater dish. No crag, no notches, no lava, no props, no dock, no
+    foam. The cone is deliberately UNDERSTATED so its height/steepness/
+    raggedness can be steered by review instead of re-guessed."""
     base = build_island_base("Volcano_Base", ["M_VolRock", "M_VolAsh", "M_VolWet"])
-    ground = _ground_bvh(base)  # raycast target so every rock seats on the real surface
-    objects = [
-        base,
-        # Terraces first: they record TRAIL_FOOTPRINTS, and lava first after
-        # that: it records LAVA_PONDS. Both are what the rock/prop scatter
-        # keeps clear of.
-        build_volcano_terraces(ground),
-        build_lava(ground),
-        build_volcano_rocks(ground),
-        *build_volcano_props(ground),
-        *build_volcano_dock(),
-        build_foam("Volcano_Foam", "M_VolFoam"),
-    ]
-    print_volcano_handoff()
-    return objects
+    LAVA_PONDS.clear()  # no lava yet; stale pool records must not leak onward
+    shore = ring_radius(1.0, math.radians(270))
+    peak = max(h for _, h in PROFILE)
+    print(
+        f"[island_gen] HANDOFF volcano (restart step 1): peak ~{peak:.0f}, +Z shore at rel Z={shore:.0f}, "
+        f"spawn suggestion X=0 Z={shore - 30:.0f} ground Y~{height_at(0, -(shore - 30)):.1f}; "
+        "no dock/lava/props yet - Pyrelisk's arena keys off the OLD dock, re-key when the dock step lands"
+    )
+    return [base]
 
 
 # ---------------------------------------------------------------- revamp islands (2026-08-25)
@@ -1819,8 +1150,10 @@ def _swamp_height(x, y):
         return h
 
     # Where between bed and islet this spot sits: the field, softened so
-    # banks slope instead of stepping.
-    s = smoothstep(-0.16, 0.20, _swamp_field(x, y))
+    # banks slope instead of stepping. The band is deliberately WIDE - a
+    # narrow one made every islet edge a one-face cliff that read as
+    # pixelated stair-steps (user, marsh v2 review).
+    s = smoothstep(-0.26, 0.30, _swamp_field(x, y))
 
     # The boss mere is forced open water (no islet may grow in the arena),
     # and its bed dips an extra stud so it reads as the marsh's deep heart.
@@ -1867,8 +1200,9 @@ def build_swamp_base():
     def face(verts, outer_u):
         f = bm.faces.new(verts)
         cz = sum(v.co.z for v in verts) / len(verts)
-        if outer_u <= GRASS_U and cz < SWAMP_WATER_Z + 0.45:
-            f.material_index = 2  # under or at the waterline: wet mud
+        -- : pass
+        if outer_u <= GRASS_U and cz < SWAMP_WATER_Z - 0.15:
+            f.material_index = 2  # clearly SUBMERGED floor: wet mud
         else:
             f.material_index = band_material(outer_u)
 
@@ -5194,142 +4528,76 @@ ISLANDS = {
     "tropical": {"model": "Island", "overrides": {}, "build": build_tropical},
     "volcano": {
         "model": "Volcano",
+        # RESTART step 1 (2026-08-27; see build_volcano). Every shape key set
+        # EXPLICITLY (the configure() no-reset rule): the tropical entry
+        # builds first in the pack and its globals would otherwise leak in.
+        # Radius stays 640 - the Roblox 2048-stud import cap.
         "overrides": {
-            # A believable STRATOVOLCANO (2026-08-26 revamp, replacing the
-            # 940-stud needle): a broad 1,280-stud-wide cone with CONCAVE
-            # flanks - ~40 deg under the crater lip easing to ~10 deg where it
-            # meets the apron - topping out at a ragged crater lip around 225.
-            # The mountain is now CLIMBED, not just looked at: a 7-leg
-            # switchback trail (build_volcano_terraces) benches up the face
-            # you land on, with a wide landing at every hairpin, so an
-            # eruption raid has somewhere to happen all the way up. The
-            # playable ground is still the ash apron at the foot, its props
-            # and its molten ponds, and the fishing dock is still the plain
-            # shore jetty into the SEA - both unchanged, so the S4 lane keys
-            # (dock start Z=526.5, deck Y=2.71, spawn ground ~6.6) still hold.
-            # Radius stays capped at 640 for Roblox's 2048-stud import limit.
+            # SEED MUST STAY 7 (the global default): swamp/ice/gloom/wreck do
+            # NOT set their own SEED, so they inherit whatever the volcano
+            # leaves in the global - a different value here reseeds every
+            # downstream island's random scatter (a6 caught wreck's keels
+            # drifting -18.25 -> -18.93 from a draft that set 11). The bare
+            # step-1 volcano draws no randomness at all (CRAG 0), so 7 costs
+            # nothing. If a later volcano step wants its own stream, pin SEED
+            # explicitly on swamp/ice/gloom/wreck FIRST.
+            "SEED": 7,
             "ISLAND_RADIUS": 640,
-            "SEGMENTS": 72,  # a walk-scale facet on the flanks the player crosses
-            "GRASS_U": 0.70,  # basalt cone above, ash apron below
-            "RINGS": [
-                0.0, 0.045, 0.075, 0.110, 0.155, 0.190,  # crater floor -> lip -> shoulder
-                0.25, 0.32, 0.40, 0.48, 0.56, 0.63,  # the concave flank
-                0.70, 0.76, 0.82, 0.90, 1.0, 1.09, 1.28,  # apron -> shore -> skirt
-            ],  # fmt: skip
-            # The stratovolcano silhouette: a crater floor under the lake, a
-            # steep inner wall, the ragged summit lip at 225, then a CONCAVE
-            # outer flank - steepest (~40 deg) just under the lip, easing
-            # steadily to ~10 deg where it meets the apron. That concavity is
-            # what makes it read as a mountain rather than a spike, and it is
-            # what makes the switchback grade a walk (~6%) instead of a
-            # scramble. PEAK_JAG breaks the lip into an asymmetric ridgeline
-            # (+-16 studs), so the rim is 225 +- the jag, not one clean height.
+            "SEGMENTS": 72,
+            # One material boundary: bare volcanic rock cone above, ash apron
+            # (the walked ground) below.
+            "GRASS_U": 0.70,
+            "RINGS": [0.0, 0.05, 0.10, 0.16, 0.24, 0.33, 0.42, 0.51, 0.60, 0.70, 0.79, 0.88, 0.95, 1.0, 1.09, 1.28],
+            # A clean stratovolcano silhouette (round-2 fix: the first draft's
+            # 158-peak dome read as a HILL from the apron): a ~205 summit rim
+            # over a genuinely CONCAVE flank - ~40 deg just under the rim
+            # easing steadily to ~16 deg where the cone lands on the broad
+            # flat ash apron (0.70-1.0, ~190 studs of walked ring). Height/
+            # steepness remain STEP-1 GUESSES for the user to steer.
             "PROFILE": [
-                (0.000, 150.0),  # crater floor (under the summit lava lake)
-                (0.075, 150.0),
-                (0.110, 178.0),  # inner crater wall
-                (0.155, 225.0),  # the summit lip
-                (0.190, 218.0),  # lip shoulder - the trail tops out here
-                (0.250, 186.0),  # ~40 deg
-                (0.320, 152.0),  # ~37 deg
-                (0.400, 118.0),  # ~34 deg
-                (0.480, 88.0),  # ~30 deg
-                (0.560, 62.0),  # ~27 deg
-                (0.630, 44.0),  # ~22 deg
-                (0.700, 30.0),  # cone meets the ash apron
-                (0.760, 13.0),
-                (0.820, 7.0),
-                (0.900, 3.8),
-                (1.000, 1.2),  # shore: ~0.5 studs of rise per 10 approaching the waterline, matching the starter so the tide reads
+                (0.000, 168.0),  # crater dish floor
+                (0.050, 172.0),
+                (0.100, 205.0),  # the summit rim
+                (0.160, 172.0),  # ~40 deg
+                (0.240, 136.0),  # ~35 deg
+                (0.330, 103.0),  # ~30 deg
+                (0.420, 76.0),  # ~25 deg
+                (0.510, 54.0),  # ~21 deg
+                (0.600, 34.0),  # ~19 deg
+                (0.700, 16.0),  # cone meets the ash apron
+                (0.790, 6.5),
+                (0.880, 3.4),
+                (0.950, 1.6),
+                (1.000, 0.9),  # shore: ~0.5 studs per 10, the tide band
                 (1.090, -1.8),
                 (1.280, SKIRT_BOTTOM),
             ],
-            # Crag is suppressed across the apron (the ground the player
-            # actually walks) - the flanks and summit keep every stud of it.
-            "RIM_FLAT": (0.70, 1.0),
-            # The notches carve the SUMMIT crater lip, not the apron.
-            "NOTCH_BAND": (0.10, 0.21),
-            "LAVA_LEVEL": 200.0,  # summit lake, below even the lowest jagged lip
-            "LAKE_U": 0.135,  # laps the inner crater wall; ~170-stud-wide lake
-            # The broken ridgeline: three incommensurate angular waves, up to
-            # ~70 studs of rise/fall around the crater mouth and shoulders.
-            "PEAK_JAG": 16.0,
-            "PEAK_TERMS": [(2, 0.8, 0.45), (3, 2.6, 0.35), (5, 1.1, 0.20)],
-            # Very jagged: strong outline wobble + heavy broad crag on the
-            # flanks + radial jitter, so the cone reads as shattered rock.
-            "COAST_TERMS": [(2, 1.0, 0.12), (3, 3.0, 0.09), (5, 0.5, 0.07), (8, 2.0, 0.06)],
-            "GRASS_TERMS": [(2, 0.9, 0.06), (4, 1.5, 0.05)],
-            "CRAG": 16.0,  # broken rock, but scaled to a 225-stud mountain
-            "CRAG_FREQ": 0.016,  # broad ribs, not fine noise
-            "CRAG_RADIAL": 0.05,  # gentle, so the foam ring still meets the real shore
-            # Quiet the crag across the face the switchbacks are cut into, so
-            # the trail benches into believable ground; the other three
-            # quarters of the cone keep every stud of it.
-            "CRAG_CALM": (math.radians(270), math.radians(52), 0.50),
-            # NINE gashes in the crater lip - "much more lava" (user,
-            # 2026-08-26): one full-flank flow pours out of each and dies in a
-            # cascade of molten pools on the apron, so the flank is threaded
-            # with rivers instead of showing broad grey gaps between four.
-            #
-            # (angle, angular half-width, depth). The three numbers are all
-            # deliberately UNEVEN across the list: spacing runs 20-36 deg,
-            # half-widths 7-16 deg and depths 56-74, so the lip reads as
-            # shattered in different places by different amounts rather than
-            # stamped at nine identical spouts. build_lava reads the width and
-            # depth back out to size each flow - the 16-deg/74-deep gash at 24
-            # is THE main breach and pours the widest river; the narrow
-            # shallow ones at 48/126/158 are seeps beside it. Where two windows
-            # just touch (341/0, 0/24) the lip reads as one long broken
-            # section, which is the intent.
-            #
-            # Depths must drop the 225 lip below the 200 lake (>25, and >41 to
-            # beat the +16 peak jag); peak_jag is also zeroed inside each notch
-            # window so a high ridge beside a gash can't seal it.
-            #
-            # THE ANGLES ARE THE HALF OF USER RULE (1) THAT LIVES IN DATA: the
-            # lava-free wedge is 270 +- 62 deg (the dock bearing and the whole
-            # switchback face, plus margin - see LAVA_CLEAR_HALF), so every
-            # notch centre sits in the clear arc 332..208 going through 0. The
-            # code-side half of the rule (_lava_theta) then holds every flow,
-            # pool and side branch inside that arc no matter how it wanders.
-            "NOTCHES": [
-                (math.radians(341), math.radians(9), 60.0),
-                (math.radians(0), math.radians(10), 66.0),
-                (math.radians(24), math.radians(16), 74.0),  # the main breach
-                (math.radians(48), math.radians(8), 57.0),
-                (math.radians(72), math.radians(12), 65.0),
-                (math.radians(98), math.radians(15), 71.0),
-                (math.radians(126), math.radians(9), 62.0),
-                (math.radians(158), math.radians(7), 56.0),
-                (math.radians(194), math.radians(12), 68.0),
+            "COAST_TERMS": [(2, 1.0, 0.09), (3, 3.0, 0.06), (5, 0.5, 0.05)],
+            "GRASS_TERMS": [(2, 0.9, 0.05), (4, 1.5, 0.04)],
+            # Deliberately SMOOTH for step 1 - raggedness is a later step.
+            "CRAG": 0.0,
+            "CRAG_FREQ": 0.06,
+            "CRAG_RADIAL": 0.0,
+            "CRAG_CALM": None,
+            "RIM_FLAT": None,
+            "NOTCHES": [],
+            "NOTCH_BAND": None,
+            "PEAK_JAG": 0.0,
+            "PEAK_TERMS": [],
+            "PREVIEW_SHOTS": [
+                # Standing on the apron at the old spawn side, looking at the
+                # mountain; and the sail-in from the +Z sea.
+                ("apron", (0.0, -560.0, 10.0), (0.0, 0.0, 140.0), 26),
+                ("approach", (0.0, -1150.0, 45.0), (0.0, 0.0, 110.0), 34),
             ],
-            # The fishing dock: a plain shore jetty into the SEA (build_dock
-            # machinery) at the same Roblox +Z angle as the tropical dock,
-            # starting near the shoreline (the island is huge, so
-            # DOCK_START_U must sit close to 1.0 for the planks to reach open
-            # water).
-            "DOCK_ANGLE_DEG": 270,
-            "DOCK_START_U": 0.97,
-            "DOCK_LENGTH": 110.0,  # long enough to clear the shoreline and end well out over open sea
-            "DOCK_WIDTH": 14.0,
-            "DOCK_END_LENGTH": 20.0,
-            "DOCK_END_WIDTH": 30.0,
-            "DOCK_MIN_TOP": 2.6,  # a normal shore-dock deck; no lava to clear any more
-            "DOCK_POST_SPACING": 8.0,
-            "DOCK_POST_BOTTOM": -6.0,
             "COLORS": {
-                "M_VolRock": (0.17, 0.16, 0.19),  # dark basalt cone
-                "M_VolAsh": (0.31, 0.28, 0.28),  # ash apron
-                "M_VolWet": (0.20, 0.19, 0.21),  # wet ash rim
-                "M_Obsidian": (0.09, 0.09, 0.12),  # apron boulders
-                "M_Lava": (1.00, 0.42, 0.06),  # glowing lava
-                "M_VolFoam": (0.85, 0.85, 0.89),  # pale wet rim / steam
-                "M_VolPlank": (0.46, 0.31, 0.22),  # dock planks (warm charred wood)
-                "M_VolPost": (0.30, 0.20, 0.15),  # dock posts
-                "M_Charred": (0.10, 0.085, 0.08),  # dead burnt snags
-                "M_Basalt": (0.14, 0.15, 0.185),  # hex column clusters
-                "M_Cinder": (0.24, 0.20, 0.19),  # fumarole vent cones
-                "M_VolPath": (0.33, 0.30, 0.29),  # trodden ash of the switchback trail
+                # Step 1 keeps the real volcanic palette (the swamp restart
+                # went grey first, then colored in step 2 - collapsing the two
+                # here since the bands are proven). Prop materials return with
+                # their steps.
+                "M_VolRock": (0.169, 0.161, 0.188),
+                "M_VolAsh": (0.310, 0.278, 0.278),
+                "M_VolWet": (0.200, 0.188, 0.212),
             },
         },
         "build": build_volcano,

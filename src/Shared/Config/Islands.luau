@@ -204,6 +204,13 @@ Islands.items = {
 	-- dormant without one). The fishing dock is a plain shore jetty into the
 	-- SEA (Roblox +Z side); lava pours from the summit into molten PONDS on
 	-- the apron - the island's fishable lava (`waters = "volcano"`).
+	-- RESTARTED FROM SCRATCH (2026-08-27, user) - the swamp-restart playbook:
+	-- the stratovolcano build (trail, lava rivers, props, dock) was deleted
+	-- and the rebuild goes step-by-step, reviewed between steps. STEP 1 is
+	-- the bare landform: a clean ~205-stud cone with a summit crater dish on
+	-- a broad ash apron. NO dock, NO lava (the `waters = "volcano"` roster
+	-- and Phoenix chase are dormant until the lava step - the Volcano_Lava
+	-- contract wiring in World.luau stays for its return), NO props.
 	volcano = {
 		name = "Ashfall Caldera",
 		blurb = "A towering volcano - fish its shore, brave the lava ponds.",
@@ -211,15 +218,17 @@ Islands.items = {
 		-- Leg 3: ~5,600 studs south-east from the ice - the volcano stands
 		-- alone in the middle of the map, visible for miles.
 		worldPosition = Vector3.new(11800, 0, 2600),
-		meshBottom = -9.74, -- flank rocks dip past the -9 skirt (pack 384c971)
+		-- No meshBottom: the bare step-1 landform bottoms at the standard -9
+		-- skirt (pack HANDOFF 2026-08-27; the old -9.74 was the deleted
+		-- flank rocks). Re-key when a rebuild step dips below the skirt.
 		radius = 640, -- capped so the base mesh imports (Roblox's 2048-stud limit)
-		spawn = Vector3.new(11800, 12, 3105), -- X/Z: on the ash apron right in front of the dock (dock starts at rel r~527 on +Z); Y is the probe's reference + fallback only
+		spawn = Vector3.new(11800, 5, 3111), -- X/Z: rel Z=511 on the +Z ash apron (shore at rel Z=541, step-1 pack HANDOFF; no dock yet); Y is the probe's fallback
 		unlockLevel = 22,
 		-- Pyrelisk guards it (summoned by Caldera's Call, exactly the Brinejaw
-		-- ritual) - the progression chain no longer dead-ends here.
+		-- ritual). Its arena still keys off the OLD dock position (open sea
+		-- past rel Z~680) - fine as an interim water arena (the Gnashroot
+		-- precedent); re-key when the dock step lands.
 		boss = "pyrelisk",
-		-- No castRangeMult: the dock fishes open sea and the lava ponds are
-		-- fished standing beside them, so the base reach is right.
 
 		-- The apron between the lava ponds is patrolled; its raids are the
 		-- "eruption raids" flavour (EruptionService's bomb windows run on

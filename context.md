@@ -837,6 +837,55 @@ recover from git before 7165cf4 if a step wants to crib).
   materials/palette, then water, then landforms/props, then the dock,
   then the boss arena re-key. Don't build ahead.
 
+### The volcano restart (2026-08-27, step 1 in the tree, import owed)
+
+User: "completely start from scratch... make a big base island with nothing
+on it. erase the volcano island blender model and start from 0." The swamp
+playbook applied to Ashfall Caldera — reviewed from PNG previews
+(`island_volcano_preview.png` + `_apron`/`_approach`) before landing.
+
+- **Deleted from `island_gen.py`**: the whole stratovolcano build (~700
+  lines) — switchback trail + TRAIL_* globals, terraces, lava
+  (`_lava_flow`/`build_lava`/`_lava_theta`/`_pond_fits`/FALL_*/LAVA_LEVEL/
+  LAKE_U), rock/prop scatters, the shore dock, `print_volcano_handoff`.
+  KEPT because shared: `LAVA_PONDS` (now documented as the cross-island
+  pool keep-clear registry — its name is a relic), `_clear_of_ponds`,
+  `_jagged_disc`, `_pool_disc`, `_interior_spot`, `_near_dock_corridor`,
+  `add_ribbon_slab`.
+- **Step 1 (`build_volcano`)**: ONE `Volcano_Base` object off the shared
+  base machinery — ~205-stud summit rim over a genuinely CONCAVE flank
+  (~40° under the rim easing to ~16°), a shallow crater dish, a broad flat
+  ash apron (u 0.70-1.0, ~190 studs of walked ring), standard tide-band
+  shore. CRAG 0 / no notches — raggedness is a later step. The first draft
+  peaked at 158 and read as a HILL from the apron; the round-2 profile is
+  the fix. 1,080 tris.
+- **THE SEED LEAK (hard-won, a6's catch)**: `SEED` is a global default (7)
+  that only the maelstrom entry overrides — swamp/ice/gloom/wreck INHERIT
+  whatever the volcano leaves in it, and a draft that set `"SEED": 11`
+  reshuffled every downstream island's random scatter (wreck's keels
+  drifted -18.25 → -18.93). The volcano entry now pins `"SEED": 7` with a
+  warning comment; a pack build verified all reference bottoms
+  (ice -9.00 / gloom -16.53 / wreck -18.25 / maelstrom -11.95). **Rule: a
+  mid-order island must never change SEED without first pinning it on
+  every entry after it.**
+- **Luau side**: Islands.volcano — `meshBottom` REMOVED (bare landform
+  bottoms at the -9 skirt), spawn re-keyed to rel Z=511 (pack HANDOFF),
+  restart comments; MESH_COLOR collapsed to the three `Volcano_Base` bands
+  (prop/lava/dock/foam entries deleted — return with their steps;
+  `Volcano_Lava`'s Neon override removed with them); `Volcano_Lava` STAYS
+  in World.FISHABLE_NAMES/WATERS_BY_PART + NON_COLLIDE for its return —
+  the `waters = "volcano"` roster and Phoenix chase are dormant meanwhile.
+  LavaController scans by name and finds nothing (absence-safe by design);
+  EruptionService still runs (its bombs are Hazards events, no lava parts
+  needed). Pyrelisk's arena keys off the DELETED dock — left as an interim
+  open-water arena with a re-key note (the Gnashroot precedent).
+- **Pack regenerated in the same commit** (the a6 rule: whoever lands an
+  island change regens the pack after checking peers' uncommitted hunks).
+  Stale old-design previews (`_dock`/`_tower`) deleted.
+- **Next steps (each its own prompt, wait for the ask)**: shape tuning
+  (height/steepness/crag), then presumably lava + crater, props, the dock
+  (+ Pyrelisk re-key), eruption tie-in. Don't build ahead.
+
 ### The boss redesign: unique movesets, gimmicks, models (2026-08-27, unreviewed)
 
 User: the bosses "all have the exact same moveset... mediocre designs and
