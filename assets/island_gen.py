@@ -1427,21 +1427,25 @@ def build_volcano():
     STEP 2 - the lava (build_lava: crater lake, six notch-fed rivers running
     rim to sea, apron pools + molten deltas); STEP 3 - the dead giants
     (build_volcano_trees); STEP 4 - the rocks (build_volcano_rocks: apron
-    boulders + massive flank masses). Still NO dock, NO foam - each returns
-    with its own reviewed step."""
+    boulders + talus; flanks bare by user order); STEP 5 - the DOCK (the
+    tropical dock verbatim on the 270-deg lane). Still NO foam."""
     base = build_island_base("Volcano_Base", ["M_VolRock", "M_VolAsh", "M_VolWet"])
     ground = _ground_bvh(base)
     lava = build_lava(ground)  # step 2: clears + repopulates LAVA_PONDS itself
     trees = build_volcano_trees(ground)  # step 3: after lava - reads LAVA_PONDS to keep clear
     rocks = build_volcano_rocks(ground)  # step 4: same keep-clears
+    dock = build_dock("Volcano_Dock_Planks", "Volcano_Dock_Posts", "M_VolPlank", "M_VolPost")  # step 5
     shore = ring_radius(1.0, math.radians(270))
+    dock_start = ring_radius(DOCK_START_U, math.radians(270))
+    dock_end = dock_start + DOCK_LENGTH + DOCK_END_LENGTH
     peak = max(h for _, h in PROFILE)
     print(
-        f"[island_gen] HANDOFF volcano (restart step 2): peak ~{peak:.0f}, +Z shore at rel Z={shore:.0f}, "
+        f"[island_gen] HANDOFF volcano: peak ~{peak:.0f}, +Z shore at rel Z={shore:.0f}, "
+        f"dock (Roblox rel) Z={dock_start:.0f}..{dock_end:.0f} plank top Y={DOCK_TOP}, "
         f"spawn suggestion X=0 Z={shore - 30:.0f} ground Y~{height_at(0, -(shore - 30)):.1f}; "
-        "no dock/props yet - Pyrelisk's arena keys off the OLD dock, re-key when the dock step lands"
+        f"Pyrelisk arena suggestion: rel Z={dock_end + 40:.0f} (open sea past the dock end)"
     )
-    return [base, lava, trees, rocks]
+    return [base, lava, trees, rocks, *dock]
 
 
 # ---------------------------------------------------------------- revamp islands (2026-08-25)
@@ -2147,6 +2151,77 @@ def build_swamp_trees():
     ]
 
 
+def build_swamp_dock():
+    """The fen's fishing dock - INSIDE the marsh (user: 'add a dock on the
+    inside of the marsh so that the user can fish off of it inside the
+    swamp'): a slightly rickety boardwalk that starts on the dry spawn
+    shelf and runs INLAND, ending in a wide platform hanging over the
+    southern edge of the boss mere - so you fish the Swamp_Water murk off
+    the planks, and Old Gnashroot rises right in front of the platform
+    (the Brinejaw fought-from-the-deck precedent; his roam disc reaches
+    the platform by design). Two objects, the pre-restart contract names
+    (Swamp_Dock_Planks / Swamp_Dock_Posts), both COLLIDABLE - you walk on
+    a dock - with the Precise import note. Planks get small jitter in yaw
+    and height so the walk reads swamp-rickety, never machine-straight."""
+    plank_bm = bmesh.new()
+    post_bm = bmesh.new()
+    rng = random.Random(6011)
+    x0, y0 = 0.0, -114.0  # start: the dry spawn shelf
+    y_end = -86.0  # end: hanging over the mere's southern water
+    width = 8.0
+    plank_step = 2.6
+    water_deck = SWAMP_WATER_Z + 1.15  # fishing height over the murk
+
+    def deck_at(y):
+        """The boardwalk RIDES the bank - each plank sits just above the
+        local ground where the shelf is high, easing onto the constant
+        fishing height once it is out over the water (the first cut used
+        one flat height and the bank swallowed half the planks)."""
+        return max(water_deck, _swamp_height(x0, y) + 0.42)
+
+    # The walkway planks.
+    y = y0
+    while y < y_end - 4.4:
+        add_box(
+            plank_bm,
+            (x0 + rng.uniform(-0.15, 0.15), y, deck_at(y) + rng.uniform(-0.05, 0.05)),
+            (width, 2.2, 0.35),
+            yaw=rng.uniform(-0.035, 0.035),
+        )
+        y += plank_step
+    # The end platform: three wider rows over the water.
+    deck_z = water_deck
+    for i in range(3):
+        add_box(
+            plank_bm,
+            (x0 + rng.uniform(-0.1, 0.1), y_end - 4.0 + i * 2.7, deck_z + rng.uniform(-0.05, 0.05)),
+            (15.0, 2.5, 0.38),
+            yaw=rng.uniform(-0.02, 0.02),
+        )
+
+    # Posts: pairs down the walkway into the peat/bed, four at the platform
+    # corners, tops standing proud of the deck like the sea docks'.
+    def post(px, py):
+        base = min(_swamp_height(px, py), SWAMP_WATER_Z) - 1.2
+        add_post(post_bm, px, py, base, deck_at(py) + rng.uniform(0.5, 0.8), 0.42, sides=6)
+
+    py = y0 + 0.6
+    while py < y_end - 5.0:
+        post(x0 - width * 0.5 + 0.5, py)
+        post(x0 + width * 0.5 - 0.5, py)
+        py += 6.5
+    for cx_, cy_ in ((-6.6, y_end - 5.0), (6.6, y_end - 5.0), (-6.6, y_end + 3.2), (6.6, y_end + 3.2)):
+        post(x0 + cx_, cy_)
+
+    print(
+        f"[island_gen] HANDOFF swamp dock: start (Roblox rel) X=0 Z={-y0:.0f} -> platform over the mere at Z={-y_end:.0f}, deck top Y={deck_z + 0.18:.2f}"
+    )
+    return [
+        object_from_bmesh("Swamp_Dock_Planks", plank_bm, ["M_SwampPlank"]),
+        object_from_bmesh("Swamp_Dock_Posts", post_bm, ["M_SwampPost"]),
+    ]
+
+
 def build_swamp():
     objects = [
         build_swamp_base(),
@@ -2154,6 +2229,7 @@ def build_swamp():
         *build_swamp_trees(),
         *build_swamp_cattails(),
         *build_swamp_smalls(),
+        *build_swamp_dock(),
     ]
     a = math.radians(270)  # the +Z quadrant the dock will eventually face
     shore = ring_radius(1.0, a)
@@ -5517,9 +5593,24 @@ ISLANDS = {
             # The broken asymmetric ridgeline around the summit.
             "PEAK_JAG": 28.0,
             "PEAK_TERMS": [(2, 0.8, 0.45), (3, 2.6, 0.35), (5, 1.1, 0.20)],
+            # Step 5: THE DOCK - the tropical island's dock verbatim (same
+            # shared build_dock, same dimensions, same warm wood), run out
+            # on the lava-free 270-deg lane (Roblox +Z): planks start on the
+            # dry ash just past the spawn and reach ~37 studs over open sea,
+            # so the volcano fishes the OCEAN off its dock exactly like home.
+            "DOCK_ANGLE_DEG": 270,
+            "DOCK_START_U": 0.97,
+            "DOCK_LENGTH": 52.0,
+            "DOCK_WIDTH": 10.0,
+            "DOCK_END_LENGTH": 13.0,
+            "DOCK_END_WIDTH": 18.0,
+            "DOCK_MIN_TOP": 2.4,
+            "DOCK_POST_SPACING": 7.0,
+            "DOCK_POST_BOTTOM": -6.0,
             "PREVIEW_SHOTS": [
                 # Standing on the apron at the old spawn side, craning up at
-                # the mountain; and the sail-in from the +Z sea.
+                # the mountain; and the sail-in from the +Z sea (the dock in
+                # the foreground).
                 ("apron", (120.0, -620.0, 26.0), (-300.0, -420.0, 45.0), 30),
                 ("approach", (0.0, -1500.0, 60.0), (0.0, 0.0, 420.0), 30),
             ],
@@ -5534,6 +5625,8 @@ ISLANDS = {
                 "M_Lava": (1.000, 0.420, 0.059),  # molten orange (Neon in-game)
                 "M_Charred": (0.102, 0.086, 0.078),  # burnt-black dead giants
                 "M_Obsidian": (0.090, 0.090, 0.122),  # the rock masses
+                "M_VolPlank": (0.690, 0.490, 0.290),  # the tropical dock's wood, verbatim
+                "M_VolPost": (0.455, 0.310, 0.190),
             },
         },
         "build": build_volcano,
@@ -5618,6 +5711,8 @@ ISLANDS = {
                 "M_RootWood": (0.259, 0.208, 0.157),  # sunken logs + cypress knees
                 "M_BogStone": (0.353, 0.365, 0.333),  # mossy bog stones
                 "M_Mushroom": (0.78, 0.46, 0.28),  # toadstool clusters (colour pop)
+                "M_SwampPlank": (0.451, 0.369, 0.251),  # slick dark boardwalk planks
+                "M_SwampPost": (0.310, 0.251, 0.176),
                 "M_TrunkWood": (0.55, 0.42, 0.30),  # smooth tan trunks (the reference look)
                 "M_WillowLeaf": (0.20, 0.26, 0.17),  # drooping blades + hanging strands
             },

@@ -406,7 +406,10 @@ local MESH_COLOR = {
 	Volcano_Base3 = Color3.fromRGB(51, 48, 54), -- M_VolWet
 	Volcano_Lava = Color3.fromRGB(255, 107, 15), -- M_Lava (glows; see MESH_MATERIAL)
 	Volcano_DeadTrees = Color3.fromRGB(26, 22, 20), -- M_Charred (step 3: the dead giants)
-	Volcano_Rocks = Color3.fromRGB(23, 23, 31), -- M_Obsidian (step 4: apron boulders + flank masses)
+	Volcano_Rocks = Color3.fromRGB(23, 23, 31), -- M_Obsidian (step 4: apron boulders + talus)
+	-- Step 5: the tropical dock's wood, verbatim (user: same dock as home).
+	Volcano_Dock_Planks = Color3.fromRGB(176, 125, 74),
+	Volcano_Dock_Posts = Color3.fromRGB(116, 79, 48),
 
 	-- Blackmire Fen - RESTARTED FROM SCRATCH (2026-08-27, user; see
 	-- island_gen.py's swamp section). Step 2 brought the fen palette back
@@ -425,6 +428,10 @@ local MESH_COLOR = {
 	Swamp_Logs = Color3.fromRGB(66, 53, 40), -- half-sunken logs + cypress knees
 	Swamp_Stones = Color3.fromRGB(90, 93, 85), -- mossy bog stones
 	Swamp_Mushrooms = Color3.fromRGB(199, 117, 71), -- toadstool clusters on logs and banks
+	-- The interior marsh boardwalk: spawn shelf -> a platform over the boss
+	-- mere. COLLIDABLE (you walk on a dock) - Precise import fidelity.
+	Swamp_Dock_Planks = Color3.fromRGB(115, 94, 64),
+	Swamp_Dock_Posts = Color3.fromRGB(79, 64, 45),
 	-- The fen's trees, reference-style (user images): smooth tan curved
 	-- trunks - willows w/ drooping blades, bare crooked snags. Trunks are
 	-- deliberately NOT in NON_COLLIDE (a trunk is a real obstacle); the
