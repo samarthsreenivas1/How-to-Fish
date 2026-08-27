@@ -164,13 +164,21 @@ end
 -- One ocean plane covers every placed island (2f's OceanController animates
 -- this single part as the tide). Big enough to reach the farthest island plus
 -- a margin, with a 3000 floor so the starter-only world is unchanged.
+-- How much open water lies beyond the FARTHEST island's shore before the
+-- plane (and the seabed under it) ends. Raised 500 -> 2000 (user,
+-- 2026-08-27: "outside the island should be the vast expansive ocean"):
+-- 500 put the world's visible edge a short swim from the Maelstrom's shore,
+-- while the starter enjoys ~1,400+ studs of horizon - now every island,
+-- the finale included, looks out over open sea past the fog.
+local OCEAN_MARGIN = 2000
+
 local function oceanSpan(): number
 	local reach = 1500
 	for id in placed do
 		local entry = Islands.items[id]
 		local p = entry.worldPosition
 		local d = math.max(math.abs(p.X), math.abs(p.Z)) + (entry.radius or 0)
-		reach = math.max(reach, d + 500)
+		reach = math.max(reach, d + OCEAN_MARGIN)
 	end
 	return reach * 2
 end
