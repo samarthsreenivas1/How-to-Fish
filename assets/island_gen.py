@@ -1649,31 +1649,58 @@ def _tilt_toward(direction):
 
 
 def build_swamp_trees():
-    """The mangrove BASES (user: 'no leaves but just the base of the trees...
-    roots exposed in the marsh itself and the trees should be thick and
-    tall'): each tree is a thick tapered trunk standing on a CAGE of stilt
-    roots - 5-8 woody props rising out of the marsh water to meet the trunk
-    base a couple of studs above the surface, the classic mangrove
-    silhouette - plus two or three bare limb stubs up top for shape. No
-    canopy: leaves are their own later step. One object (Swamp_Trees,
-    M_Mangrove), deliberately NOT in WorldService's NON_COLLIDE - a trunk
-    is a real obstacle - so the import note says PreciseConvexDecomposition
-    (a box hull over a whole forest would be the old invisible-wall bug)."""
-    bm = bmesh.new()
+    """The fen's trees, rebuilt to the user's reference images (which
+    REPLACED the mangrove stilt-root pass - 'exactly like the reference...
+    no exposed roots'): smooth CURVED tan trunks that rise straight out of
+    the ground and taper hard, in two kinds -
+      - WILLOWS (~60%): the crown throws 3-5 arching branches that curve
+        out and DOWN, each hung with long flat leaf blades and a few thin
+        dark strands - the weeping silhouette of the reference
+      - SNAGS (~40%): taller, barer, more crooked - a kinked dead spar
+        with a few short crooked branches and nothing on them
+    Two objects: Swamp_Trees (M_TrunkWood - collidable, Precise import
+    note) and Swamp_TreeLeaves (M_WillowLeaf - blades + strands,
+    NON-COLLIDE: you walk through hanging foliage)."""
+    trunk_bm = bmesh.new()
+    leaf_bm = bmesh.new()
     rng = random.Random(4517)
     mx, my, mr = SWAMP_MERE
     sx, sy = SWAMP_SPAWN
     placed = []
-    trees, attempts = 0, 0
-    while trees < 34 and attempts < 2000:
+
+    def dir_of(az, elev):
+        """Unit vector at azimuth az, elevation elev above horizontal."""
+        c = math.cos(elev)
+        return Vector((math.cos(az) * c, math.sin(az) * c, math.sin(elev)))
+
+    def curved_run(bm, base, direction_list, radii, seg_lengths, sides):
+        """A chain of cone segments, each rotated to its own direction -
+        the curved trunks and arching branches. Returns every joint."""
+        pos = Vector(base)
+        joints = [Vector(pos)]
+        for i, direction in enumerate(direction_list):
+            add_cone(bm, tuple(pos), radii[i], radii[i + 1], seg_lengths[i], sides=sides, tilt=_tilt_toward(direction))
+            pos = pos + direction * seg_lengths[i]
+            joints.append(Vector(pos))
+        return joints
+
+    def leaf_blade(at, drop, width):
+        """One long flat blade hanging under `at` - the reference's big
+        drooping leaves."""
+        add_box(leaf_bm, (at.x, at.y, at.z - drop * 0.5), (0.14, width, drop), yaw=rng.uniform(0, math.tau))
+
+    def strand(at, length):
+        add_cone(leaf_bm, (at.x, at.y, at.z - length), 0.055, 0.03, length, sides=3)
+
+    trees, willows, snags, attempts = 0, 0, 0, 0
+    while trees < 32 and attempts < 2000:
         attempts += 1
         theta = rng.uniform(0, math.tau)
         u = rng.uniform(0.08, SWAMP_RIM_U - 0.02)
         r_world = ring_radius(u, theta)
         x, y = math.cos(theta) * r_world, math.sin(theta) * r_world
         g = _swamp_height(x, y)
-        # Mangroves stand IN the water and on the wet margins.
-        if not (SWAMP_BED_Z - 1.2 <= g <= SWAMP_WATER_Z + 0.5):
+        if not (SWAMP_BED_Z - 1.2 <= g <= SWAMP_WATER_Z + 1.2):
             continue
         if math.hypot(x - mx, y - my) < mr + 9 or math.hypot(x - sx, y - sy) < 26:
             continue
@@ -1681,56 +1708,78 @@ def build_swamp_trees():
             continue
         placed.append((x, y))
         trees += 1
+        willow = rng.random() < 0.6
 
-        # The root hub: where the stilt roots gather under the trunk, a
-        # couple of studs above the water.
-        hub_z = SWAMP_WATER_Z + rng.uniform(2.4, 3.4)
-        trunk_r = rng.uniform(1.7, 2.5)
+        # The trunk: 3 segments bending progressively toward one side (an
+        # S gets a small counter-kink), rising straight out of the ground.
+        bend_az = rng.uniform(0, math.tau)
+        if willow:
+            willows += 1
+            total_h = rng.uniform(14.0, 20.0)
+            r0 = rng.uniform(1.1, 1.7)
+            leans = [rng.uniform(0.04, 0.10), rng.uniform(0.16, 0.30), rng.uniform(0.34, 0.52)]
+        else:
+            snags += 1
+            total_h = rng.uniform(20.0, 30.0)
+            r0 = rng.uniform(0.9, 1.5)
+            leans = [rng.uniform(0.02, 0.10), rng.uniform(0.12, 0.30) * rng.choice((1, -1)), rng.uniform(0.25, 0.5)]
+        directions = [dir_of(bend_az, math.pi * 0.5 - abs(l)) for l in leans]
+        radii = [r0, r0 * 0.66, r0 * 0.4, r0 * 0.16]
+        seg = total_h / 3
+        joints = curved_run(trunk_bm, (x, y, g - 0.4), directions, radii, [seg, seg, seg], 6)
+        crown = joints[-1]
 
-        # The stilt-root cage: each root runs from the mud (underwater -
-        # the exposed-roots read) up and inward to the hub's rim.
-        for k in range(rng.randint(5, 8)):
-            az = (k / 7.0) * math.tau + rng.uniform(-0.35, 0.35)
-            rr = rng.uniform(3.4, 6.2)
-            bx, by = x + math.cos(az) * rr, y + math.sin(az) * rr
-            bz = _swamp_height(bx, by) - 0.35
-            ax, ay = x + math.cos(az) * trunk_r * 0.7, y + math.sin(az) * trunk_r * 0.7
-            d = Vector((ax - bx, ay - by, hub_z - bz))
-            length = d.length + 0.5
-            add_cone(bm, (bx, by, bz), rng.uniform(0.5, 0.7), 0.22, length, sides=4, tilt=_tilt_toward(d / d.length))
+        if willow:
+            # Arching branches off the crown, curving out then down, hung
+            # with blades and strands.
+            for _b in range(rng.randint(4, 6)):
+                baz = rng.uniform(0, math.tau)
+                blen = rng.uniform(4.5, 7.5)
+                b_dirs = [dir_of(baz, rng.uniform(0.5, 0.75)), dir_of(baz, rng.uniform(-0.5, -0.2))]
+                b_radii = [r0 * 0.28, r0 * 0.16, 0.06]
+                b_joints = curved_run(
+                    trunk_bm, tuple(crown - Vector((0, 0, seg * 0.15))), b_dirs, b_radii, [blen * 0.5, blen * 0.5], 4
+                )
+                # Blades hang from the branch's elbow and tip - biggest at
+                # the tip, the reference's teardrop curtain.
+                elbow, tip = b_joints[1], b_joints[2]
+                leaf_blade(tip, rng.uniform(5.0, 7.0), rng.uniform(1.5, 2.1))
+                leaf_blade(tip + dir_of(baz, 0) * 0.9, rng.uniform(3.5, 5.5), rng.uniform(1.1, 1.6))
+                leaf_blade(tip - dir_of(baz + 1.4, 0) * 0.8, rng.uniform(4.0, 6.0), rng.uniform(1.2, 1.8))
+                leaf_blade(elbow, rng.uniform(3.0, 4.5), rng.uniform(1.0, 1.5))
+                leaf_blade(elbow + dir_of(baz - 1.2, 0) * 0.7, rng.uniform(2.5, 4.0), rng.uniform(0.9, 1.3))
+                if rng.random() < 0.7:
+                    strand(tip + dir_of(baz, 0) * rng.uniform(0.3, 1.2), rng.uniform(4.0, 8.0))
+                if rng.random() < 0.4:
+                    strand(elbow, rng.uniform(3.0, 6.0))
+        else:
+            # A snag's few crooked bare branches, some upturned.
+            for _b in range(rng.randint(2, 4)):
+                baz = rng.uniform(0, math.tau)
+                t = rng.uniform(0.55, 0.95)
+                at = joints[0] + (crown - joints[0]) * t
+                add_cone(
+                    trunk_bm,
+                    tuple(at),
+                    r0 * 0.22,
+                    0.05,
+                    rng.uniform(2.5, 5.5),
+                    sides=4,
+                    tilt=_tilt_toward(dir_of(baz, rng.uniform(-0.15, 0.6))),
+                )
 
-        # The trunk: thick and tall, from just under the hub straight up
-        # with a slight lean.
-        height = rng.uniform(19.0, 29.0)
-        lean = (rng.uniform(-0.05, 0.05), rng.uniform(-0.05, 0.05))
-        add_cone(bm, (x, y, hub_z - 0.7), trunk_r, trunk_r * 0.45, height, sides=6, tilt=lean)
-
-        # Bare limb stubs near the crown - silhouette only, no leaves yet.
-        axis = cone_axis(lean, 0.0)
-        for _b in range(rng.randint(2, 3)):
-            t = rng.uniform(0.7, 0.94)
-            bx2 = x + axis.x * height * t
-            by2 = y + axis.y * height * t
-            bz2 = (hub_z - 0.7) + axis.z * height * t
-            ba = rng.uniform(0, math.tau)
-            add_cone(
-                bm,
-                (bx2, by2, bz2),
-                trunk_r * 0.3,
-                0.09,
-                rng.uniform(3.5, 6.5),
-                sides=4,
-                tilt=(math.cos(ba) * rng.uniform(0.7, 1.1), math.sin(ba) * rng.uniform(0.7, 1.1)),
-            )
-    print(f"[island_gen] swamp trees: {trees} mangrove bases (trunks + stilt-root cages, no canopy yet)")
-    return object_from_bmesh("Swamp_Trees", bm, ["M_Mangrove"])
+    print(f"[island_gen] swamp trees: {trees} ({willows} willows, {snags} snags), reference-style, no exposed roots")
+    return [
+        object_from_bmesh("Swamp_Trees", trunk_bm, ["M_TrunkWood"]),
+        object_from_bmesh("Swamp_TreeLeaves", leaf_bm, ["M_WillowLeaf"]),
+    ]
 
 
 def build_swamp():
     objects = [
         build_swamp_base(),
         build_swamp_water(),
-        build_swamp_trees(),
+        *build_swamp_trees(),
         *build_swamp_cattails(),
         *build_swamp_smalls(),
     ]
@@ -5194,7 +5243,8 @@ ISLANDS = {
                 "M_LilyBloom": (0.88, 0.62, 0.75),  # the occasional pale-pink flower
                 "M_RootWood": (0.259, 0.208, 0.157),  # sunken logs + cypress knees
                 "M_BogStone": (0.353, 0.365, 0.333),  # mossy bog stones
-                "M_Mangrove": (0.34, 0.267, 0.196),  # mangrove trunks + stilt roots
+                "M_TrunkWood": (0.55, 0.42, 0.30),  # smooth tan trunks (the reference look)
+                "M_WillowLeaf": (0.20, 0.26, 0.17),  # drooping blades + hanging strands
             },
         },
         "build": build_swamp,
@@ -5577,10 +5627,13 @@ def render_preview(out_png):
         bpy.ops.render.render(write_still=True)
         print(f"[island_gen] {suffix} view rendered to {shot_png}")
 
-    # If the island pours lava, add two more shots: a close look at the dock
-    # over the delta (the fishing spot), and a full-tower postcard from out
-    # at sea - the shot that says "really really tall".
-    if NOTCHES:
+    # LEGACY notch-gated shots (dock/tower/apron cameras keyed to the OLD
+    # pre-restart volcano's dock bearing). An island that declares its own
+    # PREVIEW_SHOTS owns its preview set - without this guard, the restarted
+    # volcano's lava step re-armed NOTCHES and this branch resurrected stale
+    # _dock/_tower renders AND overwrote the declared _apron shot with the
+    # old camera (2026-08-27).
+    if NOTCHES and not PREVIEW_SHOTS:
         a = math.radians(DOCK_ANGLE_DEG)
         outward = Vector((math.cos(a), math.sin(a), 0))
         r_shore = ring_radius(1.0, a)

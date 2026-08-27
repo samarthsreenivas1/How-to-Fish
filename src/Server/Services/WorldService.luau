@@ -313,6 +313,7 @@ local NON_COLLIDE = {
 	"Swamp_LilyBlooms",
 	"Swamp_Logs",
 	"Swamp_Stones",
+	"Swamp_TreeLeaves",
 	-- The open-sea ghost hulks (round 2) and the bay wrecks' rotted sail
 	-- scraps: box/hull collision on a +-700-stud wreck scatter would wall
 	-- off the sea for the boat, and the fiction earns the pass-through -
@@ -398,10 +399,14 @@ local MESH_COLOR = {
 	Swamp_LilyBlooms = Color3.fromRGB(224, 158, 191), -- the occasional pale-pink flower
 	Swamp_Logs = Color3.fromRGB(66, 53, 40), -- half-sunken logs + cypress knees
 	Swamp_Stones = Color3.fromRGB(90, 93, 85), -- mossy bog stones
-	-- Mangrove trunks + stilt roots. Deliberately NOT in NON_COLLIDE (a
-	-- trunk is a real obstacle); the import uses PreciseConvexDecomposition
-	-- so only the actual wood blocks, never a hull over the whole forest.
-	Swamp_Trees = Color3.fromRGB(87, 68, 50),
+	-- The fen's trees, reference-style (user images): smooth tan curved
+	-- trunks - willows w/ drooping blades, bare crooked snags. Trunks are
+	-- deliberately NOT in NON_COLLIDE (a trunk is a real obstacle); the
+	-- import uses PreciseConvexDecomposition so only the actual wood
+	-- blocks, never a hull over the whole forest. The leaves ARE
+	-- non-collide - you walk through hanging foliage.
+	Swamp_Trees = Color3.fromRGB(150, 116, 84),
+	Swamp_TreeLeaves = Color3.fromRGB(56, 72, 47),
 
 	-- Frostmaw Reach (assets/island_ice_gen.py).
 	Frostmaw_Base = Color3.fromRGB(234, 239, 244), -- M_Snow
