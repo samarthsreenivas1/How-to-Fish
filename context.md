@@ -798,21 +798,27 @@ recover from git before 7165cf4 if a step wants to crib).
   level floor.
 - **Step 2 (c171f12)**: the fen palette back on the three base bands
   (M_Peat / M_Mud / M_WetMud, mirrored in `WorldService.MESH_COLOR`).
-- **Step 3 (current): the marsh.** `_swamp_layout` authors 9 pools (the
-  biggest, the boss MERE, deliberately at Old Gnashroot's arena spot —
-  rel X=0 Z=74 r=26) + 7 dry divots; `_swamp_height` carves every basin
-  into the heightfield as a concave WATERBED (min-clamp below the water
-  plane, deeper at centre) plus a gentle interior undulation, and
-  `build_swamp_water` emits every sheet from the same pool list. **The
-  binding rule that fixes the old floating-water bug: a sheet reaches
-  0.75×SWAMP_BANK past its carve so its edge is buried inside the RISING
-  bank (ground above water level) — never draw a sheet smaller than its
-  basin (the slab wall stands proud in the bowl; caught on render), and
-  keep pools ≥2×SWAMP_BANK apart or two coplanar sheets z-fight.**
-  Swamp casting is back ON (`Swamp_Water` exists again, waters="swamp",
-  ocean-dress via `Ocean.INTERIOR_WATER_NAMES`); pools land in LAVA_PONDS
-  (cleared first — the volcano's linger otherwise) for later prop steps.
-  Knobs: SWAMP_WATER_Z 2.2 / BED_DROP 1.6 / BED_DEEP 1.4 / BANK 9.
+- **Step 3 (current): the marsh — one huge flooded interior.** A first
+  cut of 9 discrete circular pools was rejected in the same review
+  ("more random, not just circles... a huge pool that the trees can live
+  in like a mangrove forest") and replaced by a NOISE-FIELD marsh:
+  `_swamp_field` (3 octaves) decides flooded-floor vs ground per point;
+  `_swamp_height` sinks the whole interior floor BELOW the water plane
+  (bed ~0.9 vs water 2.2 — deliberately wadeable) and lifts islets/
+  peninsulas out of it, with the boss MERE (rel X=0 Z=74 r=30, Old
+  Gnashroot's arena) forced open + a dry spawn shelf; the interior faces
+  at/under the waterline paint wet mud. `build_swamp_water` emits ONE
+  ragged sheet out to u≈0.68, where the PROFILE's rim band has already
+  climbed above water level — so the sheet's edge is buried in rising
+  ground on every bearing and the islets simply poke through it.
+  **Binding rule (a first cut reproduced the shipped bug, caught on
+  render): water may only ever emerge FROM ground — never end a sheet
+  over its own bed.** Swamp casting is back ON (`Swamp_Water`,
+  waters="swamp", ocean-dress via `Ocean.INTERIOR_WATER_NAMES`).
+  LAVA_PONDS (cleared first — the volcano's linger otherwise) records
+  ONLY the mere: the rest of the marsh is exactly where the tree step
+  wants to plant, so it stays off the keep-clear list. Knobs:
+  SWAMP_WATER_Z 2.2 / BED_Z 0.9 / ISLET_Z 3.5 / MARSH_U 0.60 / RIM_U 0.70.
 - **Prop entries**: `WorldService.MESH_COLOR` still carries only the base
   bands (+`Swamp_Water` rides the interior-water dress, no entry needed);
   every future prop object must get its entry back when its step lands or
