@@ -111,6 +111,8 @@ export type Ranged = {
 	spread: number?, -- radians of random cone per pellet (shotguns)
 	pellets: number?, -- pellets per shot, each its own ray (shotguns)
 	arc: boolean?, -- bows: ballistic draw + a landing re-check, so a dodged arrow misses
+	projectile: boolean?, -- the shot IS this weapon's Weapon_Mag flying (arrow/bolt/iron):
+	-- RangedFxController clones it as the visible projectile instead of a tracer
 	zoomFov: number?, -- scoped: FOV while aiming (default Tuning.Ranged.DEFAULT_ZOOM_FOV)
 }
 
@@ -353,6 +355,7 @@ Weapons.items.bogwood_bow = {
 		wrap = Color3.fromRGB(74, 88, 58), -- moss-cord grip
 	},
 	ranged = {
+		projectile = true, -- a real arrow/bolt/iron flies, not a tracer
 		projectileSpeed = 90,
 		range = 110,
 		fireMode = "single",
@@ -422,6 +425,7 @@ Weapons.items.gatorjaw_crossbow = {
 		wrap = Color3.fromRGB(58, 70, 48),
 	},
 	ranged = {
+		projectile = true, -- a real arrow/bolt/iron flies, not a tracer
 		projectileSpeed = 140,
 		range = 140,
 		fireMode = "single",
@@ -960,6 +964,7 @@ Weapons.items.abyssal_harpooner = {
 		wrap = Color3.fromRGB(44, 48, 62),
 	},
 	ranged = {
+		projectile = true, -- a real arrow/bolt/iron flies, not a tracer
 		projectileSpeed = 260,
 		range = 140,
 		fireMode = "single",

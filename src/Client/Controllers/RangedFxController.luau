@@ -70,6 +70,122 @@ local function makePart(size: Vector3): Part
 	return part
 end
 
+-- ---------------------------------------------------------------- projectiles
+-- A `ranged.projectile` weapon (bow / crossbow / harpooner) flies a REAL
+-- arrow, not a tracer: the WeaponPack's own <Variant>_Mag mesh - the very
+-- arrow the reload animation nocks - cloned per shot from a small per-variant
+-- pool. Before the pack is imported (or for a variant without a _Mag) a
+-- procedural arrow stands in, recoloured from the row's accent. Both are
+-- authored along the weapon frame's +Y (butt -> tip), so one axis mapping
+-- (+Y onto the flight's -Z look direction) orients either.
+
+local PROJECTILE_POOL = 4 -- per variant; these weapons fire 0.45-1.3s apart
+
+local projectilePools: { [string]: { Model } } = {}
+local projectileCursors: { [string]: number } = {}
+
+local function stripClone(part: BasePart)
+	part.Anchored = true
+	part.CanCollide = false
+	part.CanQuery = false
+	part.CanTouch = false
+	part.CastShadow = false
+	part.Massless = true
+end
+
+-- The stand-in when no mesh is available: a slim shaft, a nose, two crossed
+-- fletching plates - one Part each, welded into a Model along +Y.
+local function proceduralArrow(accent: Color3): Model
+	local model = Instance.new("Model")
+	local shaft = Instance.new("Part")
+	shaft.Size = Vector3.new(0.08, 2.0, 0.08)
+	shaft.Color = Color3.fromRGB(120, 96, 64)
+	shaft.Material = Enum.Material.SmoothPlastic
+	stripClone(shaft)
+	shaft.Parent = model
+	local head = Instance.new("Part")
+	head.Size = Vector3.new(0.16, 0.3, 0.05)
+	head.Color = accent
+	head.Material = Enum.Material.SmoothPlastic
+	stripClone(head)
+	head.CFrame = shaft.CFrame * CFrame.new(0, 1.05, 0)
+	head.Parent = model
+	for i = 0, 1 do
+		local fletch = Instance.new("Part")
+		fletch.Size = Vector3.new(0.02, 0.34, 0.22)
+		fletch.Color = Color3.fromRGB(226, 222, 210)
+		fletch.Material = Enum.Material.SmoothPlastic
+		stripClone(fletch)
+		fletch.CFrame = shaft.CFrame * CFrame.new(0, -0.85, 0) * CFrame.Angles(0, math.rad(90 * i), 0)
+		fletch.Parent = model
+	end
+	model.PrimaryPart = shaft
+	return model
+end
+
+-- One pooled projectile: the pack's <Variant>_Mag clone (recoloured to the
+-- row's accent, like WeaponModel would) or the procedural arrow, wrapped so
+-- the pool only ever handles its primary part's CFrame.
+local function makeProjectile(weapon): BasePart
+	local m = weapon.model
+	local holder: Model? = nil
+	local assets = ReplicatedStorage:FindFirstChild("Assets")
+	local pack = m and m.model and assets and assets:FindFirstChild(m.model)
+	local mag = pack and m.variant and pack:FindFirstChild(m.variant .. "_Mag", true)
+	if mag and mag:IsA("BasePart") then
+		local clone = mag:Clone()
+		clone:ClearAllChildren()
+		stripClone(clone)
+		clone.Color = m.accent
+		holder = Instance.new("Model")
+		clone.Parent = holder
+		holder.PrimaryPart = clone
+	else
+		holder = proceduralArrow(if m then m.accent else Color3.fromRGB(200, 200, 200))
+	end
+	for _, part in holder:GetDescendants() do
+		if part:IsA("BasePart") then
+			part.Transparency = 1
+		end
+	end
+	holder.Parent = ensureFolder()
+	return holder
+end
+
+-- The next pooled projectile MODEL for this weapon (whole models, moved with
+-- PivotTo so multi-part stand-ins travel as one), or nil for a variant-less
+-- row.
+local function takeProjectile(weapon): Model?
+	local variant = weapon.model and weapon.model.variant
+	if not variant then
+		return nil
+	end
+	local pool = projectilePools[variant]
+	if not pool then
+		pool = {}
+		for i = 1, PROJECTILE_POOL do
+			pool[i] = makeProjectile(weapon)
+		end
+		projectilePools[variant] = pool
+		projectileCursors[variant] = 1
+	end
+	local cursor = projectileCursors[variant]
+	projectileCursors[variant] = cursor % PROJECTILE_POOL + 1
+	return pool[cursor]
+end
+
+local function setProjectileVisible(model: Model, visible: boolean)
+	for _, descendant in model:GetDescendants() do
+		if descendant:IsA("BasePart") then
+			descendant.Transparency = if visible then 0 else 1
+		end
+	end
+end
+
+-- Projectiles are authored along the weapon frame's +Y; flight CFrames look
+-- down -Z. This maps one onto the other.
+local PROJECTILE_ORIENT = CFrame.Angles(-math.rad(90), 0, 0)
+
 function RangedFxController.init()
 	ensureFolder()
 	for i = 1, POOL do
@@ -90,7 +206,7 @@ local function muzzleFlash(at: Vector3)
 	flash.part.Transparency = 0.15
 end
 
-local function launchBolt(from: Vector3, to: Vector3, speed: number, arc: boolean)
+local function launchBolt(from: Vector3, to: Vector3, speed: number, arc: boolean, projectile: Model?)
 	local bolt = bolts[boltCursor]
 	boltCursor = boltCursor % POOL + 1
 	bolt.active = true
@@ -100,9 +216,20 @@ local function launchBolt(from: Vector3, to: Vector3, speed: number, arc: boolea
 	bolt.start = os.clock()
 	bolt.flight = math.max((to - from).Magnitude / math.max(speed, 40), 0.03)
 	bolt.apex = if arc then (to - from).Magnitude * ARC_APEX_PER_STUD else 0
-	bolt.part.Size = if arc then ARROW_SIZE else BOLT_SIZE
-	bolt.part.Color = if arc then ARROW_COLOR else BOLT_COLOR
-	bolt.part.Transparency = 0
+	-- Retire whatever model a reused slot still carries.
+	if bolt.model then
+		setProjectileVisible(bolt.model, false)
+	end
+	bolt.model = projectile
+	if projectile then
+		-- The real arrow flies; the neon tracer part stays dark.
+		bolt.part.Transparency = 1
+		setProjectileVisible(projectile, true)
+	else
+		bolt.part.Size = if arc then ARROW_SIZE else BOLT_SIZE
+		bolt.part.Color = if arc then ARROW_COLOR else BOLT_COLOR
+		bolt.part.Transparency = 0
+	end
 end
 
 local function onShotFired(attackerUserId: number, origin, termini, weaponId)
@@ -122,10 +249,14 @@ local function onShotFired(attackerUserId: number, origin, termini, weaponId)
 		from = WeaponViewmodelController.getMuzzlePosition() or origin
 	end
 
-	muzzleFlash(from)
+	-- A bow doesn't flash; its arrow IS the effect.
+	if not ranged.projectile then
+		muzzleFlash(from)
+	end
 	for _, to in termini do
 		if typeof(to) == "Vector3" then
-			launchBolt(from, to, ranged.projectileSpeed, ranged.arc == true)
+			local projectile = if ranged.projectile then takeProjectile(weapon) else nil
+			launchBolt(from, to, ranged.projectileSpeed, ranged.arc == true, projectile)
 		end
 	end
 end
@@ -138,6 +269,10 @@ local function update()
 			if t >= 1 then
 				bolt.active = false
 				bolt.part.Transparency = 1
+				if bolt.model then
+					setProjectileVisible(bolt.model, false)
+					bolt.model = nil
+				end
 			else
 				local at = bolt.from:Lerp(bolt.to, t)
 				if bolt.apex > 0 then
@@ -149,10 +284,11 @@ local function update()
 				if bolt.apex > 0 then
 					ahead += Vector3.new(0, bolt.apex * 4 * aheadT * (1 - aheadT), 0)
 				end
-				if (ahead - at).Magnitude > 0.01 then
-					bolt.part.CFrame = CFrame.lookAt(at, ahead)
+				local cf = if (ahead - at).Magnitude > 0.01 then CFrame.lookAt(at, ahead) else CFrame.new(at)
+				if bolt.model then
+					bolt.model:PivotTo(cf * PROJECTILE_ORIENT)
 				else
-					bolt.part.CFrame = CFrame.new(at)
+					bolt.part.CFrame = cf
 				end
 			end
 		end
