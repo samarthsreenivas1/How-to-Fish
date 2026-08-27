@@ -3595,30 +3595,42 @@ def _ice_pine(trunk_bm, snow_bm, lip_bm, x, z, surface, h, salt):
     stand has to read as many trees, not one tree stamped many times."""
     slim = random.uniform(0.19, 0.40)  # narrow-tall .19 <-> broad-squat .40
     r = h * slim
-    tiers = random.randint(3, 6)
+    # More tiers on taller trees keeps the spacing sane before overlap even
+    # applies (3 tiers on a 50-stud giant put whole skirts of sky between).
+    tiers = random.randint(4, 6) if h < 40.0 else random.randint(5, 7)
     lean = (random.uniform(-0.06, 0.06), random.uniform(-0.06, 0.06))
     trunk_r = h * random.uniform(0.045, 0.075)
-    add_cone(trunk_bm, Vector((x, z, surface - 1.6)), trunk_r, trunk_r * 0.55,
-             h * random.uniform(0.34, 0.52), sides=5, tilt=lean, yaw=salt)
     axis = cone_axis(lean, salt)
     base = Vector((x, z, surface))
     top_t = random.uniform(0.78, 0.90)
     lo_t = random.uniform(0.13, 0.22)
+    # The trunk spans the WHOLE crown (buried tip just under the topmost
+    # snow), not half the tree: a skirt tier must never float with sky
+    # behind it (user, 2026-08-27: "parts connected... gaps or too far
+    # apart").
+    add_cone(trunk_bm, Vector((x, z, surface - 1.6)), trunk_r, trunk_r * 0.45,
+             h * (top_t + 0.04) + 1.6, sides=5, tilt=lean, yaw=salt)
     # Big trees carry heavier snow: the skirts get deeper and whiter with h.
     heavy = smoothstep(18.0, 48.0, h)
+    # Tier height comes FROM the tier spacing, so every cone overlaps the
+    # base of the one above it by ~a third of the gap whatever tiers/h drew -
+    # the stack always reads as one connected tree.
+    gap = h * (top_t - lo_t) / max(tiers - 1, 1)
     for k in range(tiers):
         t = k / max(tiers - 1, 1)
         c = base + axis * (h * (lo_t + (top_t - lo_t) * t))
         rr = r * (1.0 - 0.68 * t) * random.uniform(0.88, 1.10)
-        sh = h * random.uniform(0.12, 0.20) * (1.0 + 0.30 * heavy) * (1.0 - 0.22 * t)
+        sh = gap * random.uniform(1.30, 1.55) * (1.0 + 0.18 * heavy) * (1.0 - 0.10 * t)
         sides = random.choice((6, 7, 8))
         add_cone(lip_bm, c - Vector((0.0, 0.0, sh * 0.18)), rr * 1.18, rr * 0.90,
                  sh * 0.38, sides=sides, tilt=lean, yaw=salt + k * 1.1)
         add_cone(snow_bm, c, rr, rr * random.uniform(0.20, 0.42), sh, sides=sides,
                  tilt=lean, yaw=salt + k * 0.7)
-    tip = base + axis * (h * (top_t + 0.02))
+    # The tip cone roots INSIDE the top tier (not past it) so the crown caps
+    # the stack instead of hovering above it.
+    tip = base + axis * (h * (top_t - 0.03))
     add_cone(snow_bm, tip, r * random.uniform(0.26, 0.40), r * 0.05,
-             h * random.uniform(0.11, 0.20), sides=6, tilt=lean, yaw=salt)
+             h * random.uniform(0.16, 0.24), sides=6, tilt=lean, yaw=salt)
 
 
 def _ice_dead_tree(bm, x, z, surface, h, salt):
