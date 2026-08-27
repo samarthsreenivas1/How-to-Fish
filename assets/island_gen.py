@@ -1350,25 +1350,6 @@ def _volcano_rock(bm, x, y, surface, size, salt, embed):
         )
 
 
-def _volcano_outcrop(bm, x, y, surface, size, salt):
-    """A bedrock LEDGE breaking out of the steep wall - not a loose boulder
-    (user: mid-cliff boulders 'don't actually make sense'; a perched ball
-    would simply fall). Deep-buried, elongated ALONG the slope contour
-    (yawed tangentially), low-profile, protruding maybe a third of its mass
-    - reads as the mountain's own bone showing through."""
-    rng = random.Random(salt)
-    tangent = math.atan2(y, x) + math.pi / 2  # along the contour, not down it
-    for k in range(rng.randint(1, 2)):
-        s = size * (1.0 if k == 0 else rng.uniform(0.4, 0.6))
-        off = 0.0 if k == 0 else rng.uniform(-size * 0.7, size * 0.7)
-        add_blob(
-            bm, (x + math.cos(tangent) * off, y + math.sin(tangent) * off, surface + s * rng.uniform(0.05, 0.2)),
-            (s * rng.uniform(1.4, 2.1), s * rng.uniform(0.6, 0.9), s * rng.uniform(0.45, 0.7)),
-            rng.uniform(0.3, 0.5), salt * 3.7 + k * 5.1,
-            yaw=tangent + rng.uniform(-0.25, 0.25), subdiv=2 if s >= 12.0 else 1,
-        )
-
-
 def build_volcano_rocks(ground):
     bm = bmesh.new()
     placed = []
@@ -1407,15 +1388,13 @@ def build_volcano_rocks(ground):
 
     # Loose rock lives where loose rock CAN live: scattered over the flat
     # apron, and piled thick as a TALUS band where the cone's cliffs meet it
-    # (rockfall collects at the foot of a face). The steep wall itself gets
-    # only embedded bedrock ledges - nothing perched.
+    # (rockfall collects at the foot of a face). The steep wall itself is
+    # BARE by user order (2026-08-27, "remove all rocks on the side of the
+    # volcano" - the embedded-ledge experiment is gone too): nothing above
+    # u 0.64 but mountain, crag and lava.
     apron = scatter(_volcano_rock, 52, 0.76, 0.985, 5.0, 14.0, 0.18, 26.0, 10.0, 4.0, salt0=610.0, embed=0.35)
     talus = scatter(_volcano_rock, 44, 0.64, 0.75, 8.0, 18.0, 0.22, 28.0, 10.0, 1.5, salt0=980.0, embed=0.5)
-    ledges = scatter(_volcano_outcrop, 20, 0.24, 0.58, 12.0, 22.0, 0.2, 30.0, 16.0, 10.0, salt0=1450.0)
-    print(
-        f"[island_gen] HANDOFF volcano rocks: {apron} apron boulders + {talus} talus at the cliff foot "
-        f"+ {ledges} embedded flank ledges (no perched mid-cliff boulders)"
-    )
+    print(f"[island_gen] HANDOFF volcano rocks: {apron} apron boulders + {talus} talus at the cliff foot; flanks bare")
     return object_from_bmesh("Volcano_Rocks", bm, ["M_Obsidian"])
 
 
