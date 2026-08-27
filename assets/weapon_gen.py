@@ -586,7 +586,13 @@ def slab_with_hole(bm, profile, hole, hole_r, y, hole_sides=8):
     "succeeds" structurally and stitches folded garbage that renders as a
     SOLID face (found the hard way: a 0.3-radius wind port near the
     Galecleaver's spine, 2026-08-27) - so this now fails loudly at build
-    time instead."""
+    time instead.
+
+    The inner ring is wound OPPOSITE the outer profile (2026-08-28): built
+    the same sense as a CCW profile, bridge_loops stitched a folded annulus
+    that rendered solid - every hole this helper ever made was silently
+    filled until the icon-match round ray-cast one and hit blade. Reversing
+    the ring gives bridge_loops the opposing sense it needs."""
     n, m = len(profile), hole_sides
     ring = [(hole[0] + math.cos(a) * hole_r, hole[1] + math.sin(a) * hole_r) for a in ((i / m) * TAU for i in range(m))]
     for rx, rz in ring:
@@ -596,6 +602,7 @@ def slab_with_hole(bm, profile, hole, hole_r, y, hole_sides=8):
                 f"(ring point ({rx:.3f}, {rz:.3f}) is outside) - no valid "
                 "annulus exists; shrink or move the hole"
             )
+    ring.reverse()
 
     def loop(yy, pts):
         return [bm.verts.new(Vector((x, yy, z))) for x, z in pts]
@@ -767,44 +774,9 @@ def _wa_scale(bm, center, r, thick=0.045, sides=5, phase=0.0):
     bm.faces.new(b)
 
 
-def _wa_pierce(bm, profile, hole, hole_r, y, hole_sides=8):
-    """slab_with_hole(), but with the hole ring wound the OTHER way.
-
-    The shared slab_with_hole() generates its inner ring counter-clockwise, the
-    same sense as a CCW outer profile - and bridge_loops given two same-sense
-    loops stitches a folded annulus that renders as a SOLID face. It raises on
-    a ring that leaves the profile, so the failure is silent: the geometry is
-    valid, it just has no hole in it (checked 2026-08-28 by ray-casting the
-    Drowncleaver's hanging hole - the ray hit the blade). Reversing the inner
-    ring gives bridge_loops the opposing sense it wants and the hole opens.
-
-    Used by the two icon-canon pierced blades below (Drowncleaver, Fenreaver).
-    Anything else in the file still calling slab_with_hole is very likely
-    carrying a hole that never actually opened - worth an audit."""
-    n, m = len(profile), hole_sides
-    ring = [(hole[0] + math.cos(a) * hole_r, hole[1] + math.sin(a) * hole_r) for a in ((i / m) * TAU for i in range(m))]
-    for rx, rz in ring:
-        if not _point_in_polygon((rx, rz), profile):
-            raise ValueError(f"_wa_pierce: hole at {hole} r={hole_r} leaves the profile at ({rx:.3f}, {rz:.3f})")
-    ring.reverse()
-
-    def loop(yy, pts):
-        return [bm.verts.new(Vector((x, yy, z))) for x, z in pts]
-
-    fo, bo = loop(-y, profile), loop(y, profile)
-    fi, bi = loop(-y, ring), loop(y, ring)
-    for i in range(n):
-        bm.faces.new((fo[i], fo[(i + 1) % n], bo[(i + 1) % n], bo[i]))
-    for i in range(m):
-        bm.faces.new((fi[i], fi[(i + 1) % m], bi[(i + 1) % m], bi[i]))
-
-    def edge(a, b):
-        return bm.edges.get((a, b)) or bm.edges.new((a, b))
-
-    for outer, inner in ((fo, fi), (bo, bi)):
-        edges = [edge(outer[i], outer[(i + 1) % n]) for i in range(n)]
-        edges += [edge(inner[i], inner[(i + 1) % m]) for i in range(m)]
-        bmesh.ops.bridge_loops(bm, edges=edges)
+# _wa_pierce (the locally-corrected slab_with_hole from the icon-match round)
+# was retired 2026-08-28: the ring-winding fix moved into slab_with_hole
+# itself, so the pierced blades call the shared helper again.
 
 
 def _wa_vent(bm, glow_bm, base, direction, height, r0, r1, sides=6):
@@ -1103,7 +1075,7 @@ def build_drowncleaver():
         (-0.36, 3.40),
         (-0.36, 2.40),  # the straight spine
     ]
-    _wa_pierce(p["Edge"], profile, (-0.14, 3.42), 0.085, 0.085)
+    slab_with_hole(p["Edge"], profile, (-0.14, 3.42), 0.085, 0.085)
 
     # Runes struck across the flat, burning on both faces.
     for gx, gz, glyph in DROWNCLEAVER_GLYPHS:
@@ -1470,7 +1442,7 @@ def build_fenreaver():
 
     # The blade, thin on y so the wing and belly ARE the +-x extremes, with the
     # icon's small eye pierced through it just under the waist.
-    _wa_pierce(p["Edge"], FENREAVER_PROFILE, (0.02, 2.32), 0.070, 0.060)
+    slab_with_hole(p["Edge"], FENREAVER_PROFILE, (0.02, 2.32), 0.070, 0.060)
 
     # Sap: a lit line just inside the belly, and a bead in the eye.
     for x, z, h in ((0.25, 2.76, 0.40), (0.31, 3.12, 0.50), (0.22, 3.46, 0.32)):
