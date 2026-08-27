@@ -2174,77 +2174,6 @@ def build_swamp_trees():
     ]
 
 
-def build_swamp_dock():
-    """The fen's fishing dock - INSIDE the marsh (user: 'add a dock on the
-    inside of the marsh so that the user can fish off of it inside the
-    swamp'): a slightly rickety boardwalk that starts on the dry spawn
-    shelf and runs INLAND, ending in a wide platform hanging over the
-    southern edge of the boss mere - so you fish the Swamp_Water murk off
-    the planks, and Old Gnashroot rises right in front of the platform
-    (the Brinejaw fought-from-the-deck precedent; his roam disc reaches
-    the platform by design). Two objects, the pre-restart contract names
-    (Swamp_Dock_Planks / Swamp_Dock_Posts), both COLLIDABLE - you walk on
-    a dock - with the Precise import note. Planks get small jitter in yaw
-    and height so the walk reads swamp-rickety, never machine-straight."""
-    plank_bm = bmesh.new()
-    post_bm = bmesh.new()
-    rng = random.Random(6011)
-    x0, y0 = 0.0, -114.0  # start: the dry spawn shelf
-    y_end = -86.0  # end: hanging over the mere's southern water
-    width = 8.0
-    plank_step = 2.6
-    water_deck = SWAMP_WATER_Z + 1.15  # fishing height over the murk
-
-    def deck_at(y):
-        """The boardwalk RIDES the bank - each plank sits just above the
-        local ground where the shelf is high, easing onto the constant
-        fishing height once it is out over the water (the first cut used
-        one flat height and the bank swallowed half the planks)."""
-        return max(water_deck, _swamp_height(x0, y) + 0.42)
-
-    # The walkway planks.
-    y = y0
-    while y < y_end - 4.4:
-        add_box(
-            plank_bm,
-            (x0 + rng.uniform(-0.15, 0.15), y, deck_at(y) + rng.uniform(-0.05, 0.05)),
-            (width, 2.2, 0.35),
-            yaw=rng.uniform(-0.035, 0.035),
-        )
-        y += plank_step
-    # The end platform: three wider rows over the water.
-    deck_z = water_deck
-    for i in range(3):
-        add_box(
-            plank_bm,
-            (x0 + rng.uniform(-0.1, 0.1), y_end - 4.0 + i * 2.7, deck_z + rng.uniform(-0.05, 0.05)),
-            (15.0, 2.5, 0.38),
-            yaw=rng.uniform(-0.02, 0.02),
-        )
-
-    # Posts: pairs down the walkway into the peat/bed, four at the platform
-    # corners, tops standing proud of the deck like the sea docks'.
-    def post(px, py):
-        base = min(_swamp_height(px, py), SWAMP_WATER_Z) - 1.2
-        add_post(post_bm, px, py, base, deck_at(py) + rng.uniform(0.5, 0.8), 0.42, sides=6)
-
-    py = y0 + 0.6
-    while py < y_end - 5.0:
-        post(x0 - width * 0.5 + 0.5, py)
-        post(x0 + width * 0.5 - 0.5, py)
-        py += 6.5
-    for cx_, cy_ in ((-6.6, y_end - 5.0), (6.6, y_end - 5.0), (-6.6, y_end + 3.2), (6.6, y_end + 3.2)):
-        post(x0 + cx_, cy_)
-
-    print(
-        f"[island_gen] HANDOFF swamp dock: start (Roblox rel) X=0 Z={-y0:.0f} -> platform over the mere at Z={-y_end:.0f}, deck top Y={deck_z + 0.18:.2f}"
-    )
-    return [
-        object_from_bmesh("Swamp_Dock_Planks", plank_bm, ["M_SwampPlank"]),
-        object_from_bmesh("Swamp_Dock_Posts", post_bm, ["M_SwampPost"]),
-    ]
-
-
 def build_swamp():
     objects = [
         build_swamp_base(),
@@ -2252,7 +2181,6 @@ def build_swamp():
         *build_swamp_trees(),
         *build_swamp_cattails(),
         *build_swamp_smalls(),
-        *build_swamp_dock(),
     ]
     a = math.radians(270)  # the +Z quadrant the dock will eventually face
     shore = ring_radius(1.0, a)
@@ -5734,8 +5662,6 @@ ISLANDS = {
                 "M_RootWood": (0.259, 0.208, 0.157),  # sunken logs + cypress knees
                 "M_BogStone": (0.353, 0.365, 0.333),  # mossy bog stones
                 "M_Mushroom": (0.78, 0.46, 0.28),  # toadstool clusters (colour pop)
-                "M_SwampPlank": (0.451, 0.369, 0.251),  # slick dark boardwalk planks
-                "M_SwampPost": (0.310, 0.251, 0.176),
                 "M_TrunkWood": (0.55, 0.42, 0.30),  # smooth tan trunks (the reference look)
                 "M_WillowLeaf": (0.20, 0.26, 0.17),  # the canopy masses
                 "M_HangMoss": (0.451, 0.514, 0.365),  # pale spanish-moss ribbons

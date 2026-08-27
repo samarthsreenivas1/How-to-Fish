@@ -430,10 +430,8 @@ local MESH_COLOR = {
 	Swamp_Logs = Color3.fromRGB(66, 53, 40), -- half-sunken logs + cypress knees
 	Swamp_Stones = Color3.fromRGB(90, 93, 85), -- mossy bog stones
 	Swamp_Mushrooms = Color3.fromRGB(199, 117, 71), -- toadstool clusters on logs and banks
-	-- The interior marsh boardwalk: spawn shelf -> a platform over the boss
-	-- mere. COLLIDABLE (you walk on a dock) - Precise import fidelity.
-	Swamp_Dock_Planks = Color3.fromRGB(115, 94, 64),
-	Swamp_Dock_Posts = Color3.fromRGB(79, 64, 45),
+	-- (The interior boardwalk was tried and REMOVED - user, 2026-08-28:
+	-- "it doesnt fit in properly". The fen is fished from its banks.)
 	-- The fen's trees, reference-style (user images): smooth tan curved
 	-- trunks - willows w/ drooping blades, bare crooked snags. Trunks are
 	-- deliberately NOT in NON_COLLIDE (a trunk is a real obstacle); the
