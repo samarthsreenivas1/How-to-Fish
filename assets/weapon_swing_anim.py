@@ -70,6 +70,100 @@ CLIPS = {
             (0.45, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
         ],
     },
+
+    # ---- The six revamp swing classes (2026-08-27, one per melee family; the
+    # ---- cove's chop/slash above stay frozen per the user). Durations sit
+    # ---- just inside each family's row cooldowns so a full-rate attacker
+    # ---- sees complete swings, not perpetual interrupt blends.
+
+    # Fast diagonal wrist-chop - the machete / hatchet / reaver family
+    # (cooldowns 0.22-0.27): a flick up and out, a snapping bite down across
+    # the centre, a short follow. All wrist, no shoulder.
+    "hack": {
+        "HIT_TIME": 0.09,
+        "KEYS": [
+            (0.00, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
+            (0.045, (18.0, -6.0, -14.0), (0.10, -0.08, 0.10)),  # flick: tip up and out right
+            (0.09, (-34.0, 4.0, 26.0), (-0.22, 0.30, -0.14)),  # bite: snapped down through the centre (HIT_TIME)
+            (0.13, (-38.0, 6.0, 30.0), (-0.24, 0.24, -0.18)),  # short follow
+            (0.22, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
+        ],
+    },
+
+    # A piercing drive - the lance / piercer / spike family (0.40-0.45): coil
+    # back with the tip raised off-line, LUNGE level at the screen centre,
+    # pin the extension for a beat, yank back out. Translation-forward is the
+    # story; the rotations just level the point.
+    "thrust": {
+        "HIT_TIME": 0.14,
+        "KEYS": [
+            (0.00, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
+            (0.07, (26.0, 0.0, -8.0), (0.10, -0.34, 0.06)),  # coil: drawn back, tip raised
+            (0.14, (-8.0, 0.0, 14.0), (-0.16, 0.85, -0.10)),  # lunge: driven level at the centre (HIT_TIME)
+            (0.20, (-6.0, 0.0, 12.0), (-0.14, 0.70, -0.10)),  # pinned a beat at extension
+            (0.28, (10.0, 0.0, -2.0), (0.02, -0.10, 0.04)),  # yanked back out
+            (0.40, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
+        ],
+    },
+
+    # The two-beat overhead crash - the Glacier Maul (0.7): a slow hoist high
+    # over the shoulder, a hang at the apex so the weight reads, then the
+    # crash past horizontal and a buried beat before the slow recover.
+    "smash": {
+        "HIT_TIME": 0.30,
+        "KEYS": [
+            (0.00, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
+            (0.12, (44.0, 0.0, -12.0), (0.10, -0.20, 0.30)),  # hoist
+            (0.22, (58.0, 0.0, -16.0), (0.12, -0.26, 0.42)),  # apex hang - the tell
+            (0.30, (-70.0, 0.0, 22.0), (-0.14, 0.44, -0.34)),  # CRASH (HIT_TIME)
+            (0.40, (-74.0, 0.0, 24.0), (-0.14, 0.36, -0.44)),  # buried beat
+            (0.65, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
+        ],
+    },
+
+    # The wide flat cleave - axe / galecleaver / krakenfang (0.42-0.5): cocked
+    # far out to the right, swept LEVEL through the centre and carried past
+    # off the left edge. Horizontal where the chop is vertical.
+    "sweep": {
+        "HIT_TIME": 0.16,
+        "KEYS": [
+            (0.00, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
+            (0.08, (10.0, -8.0, -30.0), (0.16, -0.14, 0.08)),  # cocked out right
+            (0.16, (-16.0, 6.0, 40.0), (-0.26, 0.38, -0.10)),  # flat sweep through the centre (HIT_TIME)
+            (0.23, (-20.0, 10.0, 56.0), (-0.40, 0.26, -0.14)),  # carried past, off the left edge
+            (0.42, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
+        ],
+    },
+
+    # The fencer's pair - the sabers (0.42-0.45): a rising back-cut up through
+    # the centre with the blade rolled, then the wrist rolls OVER and the real
+    # diagonal cut comes down. Two cuts on screen, one hit on the second -
+    # the Y (roll) channel is what makes it read as swordsmanship.
+    "flourish": {
+        "HIT_TIME": 0.14,
+        "KEYS": [
+            (0.00, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
+            (0.05, (-6.0, -12.0, -22.0), (0.12, -0.06, -0.06)),  # dropped low right
+            (0.10, (22.0, -26.0, 18.0), (-0.06, 0.22, 0.16)),  # rising back-cut, blade rolled
+            (0.14, (-30.0, 24.0, 38.0), (-0.26, 0.34, -0.12)),  # wrist rolls over: the down-cut (HIT_TIME)
+            (0.19, (-34.0, 28.0, 44.0), (-0.30, 0.26, -0.16)),  # follow
+            (0.40, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
+        ],
+    },
+
+    # The gauntlet piston - Magma Gauntlets (0.22): a punch, not a swing.
+    # Translation-dominant: a short cock back, a straight drive at the centre,
+    # a fast retract. Rotation stays near zero so the fist tracks the eyeline.
+    "pummel": {
+        "HIT_TIME": 0.08,
+        "KEYS": [
+            (0.00, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
+            (0.04, (8.0, 0.0, -4.0), (0.06, -0.26, 0.02)),  # cocked
+            (0.08, (-6.0, 0.0, 6.0), (-0.06, 0.72, -0.06)),  # piston out (HIT_TIME)
+            (0.12, (-4.0, 0.0, 4.0), (-0.04, 0.50, -0.04)),  # retract begins
+            (0.20, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
+        ],
+    },
 }
 
 # Preview-only approximation of the in-game pose, in ROBLOX camera axes,
