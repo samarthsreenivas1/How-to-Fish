@@ -9,6 +9,16 @@
 -- just meshes placed far apart on that plane, and "teleporting" moves the
 -- character to the destination's spawn point (no TeleportService, no loading
 -- screen). WorldService sizes the ocean to cover whatever is listed here.
+--
+-- MAP REDESIGN (2026-08-27, user: "huge huge huge ocean... they just take the
+-- boat"): the islands no longer sit on a straight 3000-stud line along X.
+-- They are scattered across one vast open sea in a voyage ARC that wraps
+-- around Starter Cove - each leg of the saga is a real boat crossing, longer
+-- than the last (~4,000 studs for the first, ~8,700 for the run to the
+-- Maelstrom), tuned so every leg takes ~90s at the boat tier that unlocks it.
+-- Boats.luau's speed/seaworthiness ladder is keyed to these legs - move an
+-- island and re-check the leg table in its header. The teleport menu still
+-- works as fast travel on top; the boat is the intended way across.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -106,9 +116,10 @@ Islands.items = {
 		name = "Blackmire Fen",
 		blurb = "Peat, murk, and things with too many teeth. The fen's gulls hunt back.",
 		model = "Swamp",
-		worldPosition = Vector3.new(3000, 0, 0),
+		-- Leg 1 of the voyage: ~4,000 studs NE of the cove (tier-1 crossing).
+		worldPosition = Vector3.new(3700, 0, 1500),
 		radius = 180,
-		spawn = Vector3.new(3000, 4, 130), -- X/Z: on the bank before the dock (planks start Z=148 after the round-2 rebuild; pack 5904cf0 HANDOFF); Y is the probe's fallback
+		spawn = Vector3.new(3700, 4, 1630), -- X/Z: on the bank before the dock (planks start at rel Z=148 after the round-2 rebuild; pack 5904cf0 HANDOFF); Y is the probe's fallback
 		unlockLevel = 8,
 		boss = "old_gnashroot",
 
@@ -147,9 +158,10 @@ Islands.items = {
 		name = "Frostmaw Reach",
 		blurb = "A frozen shelf over black water. Fish the ice-holes - mind the blizzards.",
 		model = "Frostmaw",
-		worldPosition = Vector3.new(6000, 0, 0),
+		-- Leg 2: ~4,800 studs on from the fen, deeper into the north-east.
+		worldPosition = Vector3.new(6800, 0, 5200),
 		radius = 230,
-		spawn = Vector3.new(6000, 8, 174), -- X/Z: shore before the dock (planks run Z=192..238); Y is the probe's fallback (ground ~7.4 after the soft-glacier rebuild)
+		spawn = Vector3.new(6800, 8, 5374), -- X/Z: shore before the dock (planks run rel Z=192..238); Y is the probe's fallback (ground ~7.4 after the soft-glacier rebuild)
 		unlockLevel = 15,
 		boss = "rimefang",
 		ambient = {
@@ -196,10 +208,12 @@ Islands.items = {
 		name = "Ashfall Caldera",
 		blurb = "A towering volcano - fish its shore, brave the lava ponds.",
 		model = "Volcano",
-		worldPosition = Vector3.new(9000, 0, 0),
+		-- Leg 3: ~5,600 studs south-east from the ice - the volcano stands
+		-- alone in the middle of the map, visible for miles.
+		worldPosition = Vector3.new(11800, 0, 2600),
 		meshBottom = -9.74, -- flank rocks dip past the -9 skirt (pack 384c971)
 		radius = 640, -- capped so the base mesh imports (Roblox's 2048-stud limit)
-		spawn = Vector3.new(9000, 12, 505), -- X/Z: on the ash apron right in front of the dock (dock starts at r~527 on +Z); Y is the probe's reference + fallback only
+		spawn = Vector3.new(11800, 12, 3105), -- X/Z: on the ash apron right in front of the dock (dock starts at rel r~527 on +Z); Y is the probe's reference + fallback only
 		unlockLevel = 22,
 		-- Pyrelisk guards it (summoned by Caldera's Call, exactly the Brinejaw
 		-- ritual) - the progression chain no longer dead-ends here.
@@ -244,10 +258,12 @@ Islands.items = {
 		name = "Gloomtrench",
 		blurb = "Where the light gives up. Bring your own, and keep it lit.",
 		model = "Gloomtrench",
-		worldPosition = Vector3.new(12000, 0, 0),
+		-- Leg 4: ~6,400 studs, crossing the equator of the map into the dark
+		-- southern sea.
+		worldPosition = Vector3.new(15400, 0, -2700),
 		meshBottom = -16.53, -- the trench floor is authored well below the -9 skirt (pack 384c971)
 		radius = 200,
-		spawn = Vector3.new(12000, 4, 154), -- X/Z: shore before the dock (planks run Z=172..216); Y is the probe's fallback
+		spawn = Vector3.new(15400, 4, -2546), -- X/Z: shore before the dock (planks run rel Z=172..216); Y is the probe's fallback
 		unlockLevel = 29,
 		boss = "noctyss",
 		ambient = {
@@ -285,13 +301,14 @@ Islands.items = {
 		name = "Wreckwater",
 		blurb = "A graveyard of ghost ships that never finished sinking.",
 		model = "Wreckwater",
-		worldPosition = Vector3.new(15000, 0, 0),
+		-- Leg 5: ~7,400 studs back south-west - the graveyard sea.
+		worldPosition = Vector3.new(12500, 0, -9500),
 		-- Seabed dunes bottom the mesh at -18.25 (sunken keels -16.2); without
 		-- this the bbox pin hoisted the island 9.3 studs and the whole ghost
 		-- fleet hung above the water (user, 2026-08-27). Pack 384c971.
 		meshBottom = -18.25,
 		radius = 210,
-		spawn = Vector3.new(15000, 4, 167), -- X/Z: shore before the dock (planks run Z=185..231); Y is the probe's fallback
+		spawn = Vector3.new(12500, 4, -9333), -- X/Z: shore before the dock (planks run rel Z=185..231); Y is the probe's fallback
 		unlockLevel = 36,
 		boss = "admiral_wrack",
 		ambient = {
@@ -335,9 +352,12 @@ Islands.items = {
 		name = "The Maelstrom",
 		blurb = "The storm at the end of the sea. It is waiting for you.",
 		site = true,
-		worldPosition = Vector3.new(18000, 0, 0),
+		-- Leg 6, the last crossing: ~8,700 studs of open storm-sea from
+		-- Wreckwater, due south of home - the arc closes back toward the cove,
+		-- so the finale rages on the starter island's own horizon.
+		worldPosition = Vector3.new(4800, 0, -13500),
 		radius = 260,
-		spawn = Vector3.new(18000, 6, 44), -- the big rock platform on +Z (buildMaelstromSite)
+		spawn = Vector3.new(4800, 6, -13456), -- the big rock platform on +Z (buildMaelstromSite)
 		unlockLevel = 43,
 		boss = "kraken",
 	},
@@ -346,8 +366,8 @@ Islands.items = {
 -- The island whose footprint contains `position` (XZ distance inside its
 -- radius plus `margin`, default 0), or nil for open sea. Shared (Session 3)
 -- so the server's gates/spawner and the client's raid HUD agree on what "on
--- this island" means. Islands sit 3000 studs apart with radii under 700, so
--- footprints never overlap.
+-- this island" means. Consecutive islands sit 4,000+ studs apart with radii
+-- under 700, so footprints never overlap.
 function Islands.islandAt(position: Vector3, margin: number?): (string?, any)
 	for id, entry in Islands.items do
 		local d = Vector3.new(position.X - entry.worldPosition.X, 0, position.Z - entry.worldPosition.Z).Magnitude

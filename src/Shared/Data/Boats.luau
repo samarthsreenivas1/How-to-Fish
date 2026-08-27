@@ -55,10 +55,17 @@ export type BoatRow = {
 	}?,
 }
 
--- Seaworthiness must clear half the 3000-stud island spacing (the farthest a
--- straight crossing ever puts you from the nearer of the two islands, once
--- the destination itself counts as enterable) with margin for a wobbly
--- course; it grows per tier purely so better hulls FEEL sturdier further out.
+-- Speed + seaworthiness are keyed to the voyage-arc map (Islands.luau,
+-- 2026-08-27): each tier N unlocks the crossing to island N+1, and its
+-- numbers are sized to THAT leg. Leg lengths (centre to centre):
+--   1 cove -> fen      ~4,000    4 volcano -> gloom  ~6,400
+--   2 fen -> ice       ~4,800    5 gloom -> wreck    ~7,400
+--   3 ice -> volcano   ~5,600    6 wreck -> maelstrom ~8,700
+-- Speeds are tuned so every leg is ~90-100s flat out at its tier.
+-- Seaworthiness must clear HALF its leg (open water is measured from the
+-- nearest enterable shore, and once you hold the tier the destination counts
+-- - so a straight crossing peaks at the midpoint) plus ~600 studs of margin
+-- for a wobbly course. Move an island, re-check both columns here.
 Boats.items = {
 	cove_skiff = {
 		id = "cove_skiff",
@@ -66,10 +73,10 @@ Boats.items = {
 		name = "Cove Skiff",
 		blurb = "Brinejaw's bounty - a humble hull, but it floats.",
 		rarity = "Common",
-		speed = 30,
+		speed = 45,
 		turnRate = 70,
 		hullHealth = 100,
-		seaworthiness = 1750,
+		seaworthiness = 2600,
 		model = {
 			variant = "CoveSkiff",
 			length = 14,
@@ -93,10 +100,10 @@ Boats.items = {
 		name = "Ironbog Hull",
 		blurb = "Bog-iron plating shrugs off the fen's snags.",
 		rarity = "Uncommon",
-		speed = 34,
+		speed = 52,
 		turnRate = 74,
 		hullHealth = 150,
-		seaworthiness = 1900,
+		seaworthiness = 3000,
 		model = {
 			variant = "IronbogHull",
 			length = 16,
@@ -120,10 +127,10 @@ Boats.items = {
 		name = "Icebreaker Prow",
 		blurb = "A glacier-shard ram for seas that bite back.",
 		rarity = "Rare",
-		speed = 38,
+		speed = 60,
 		turnRate = 78,
 		hullHealth = 200,
-		seaworthiness = 2050,
+		seaworthiness = 3300,
 		model = {
 			variant = "IcebreakerProw",
 			length = 18,
@@ -147,10 +154,10 @@ Boats.items = {
 		name = "Ashguard Plating",
 		blurb = "Obsidian scales - the caldera's heat slides right off.",
 		rarity = "Rare",
-		speed = 42,
+		speed = 68,
 		turnRate = 82,
 		hullHealth = 260,
-		seaworthiness = 2200,
+		seaworthiness = 3700,
 		model = {
 			variant = "AshguardPlating",
 			length = 20,
@@ -175,10 +182,10 @@ Boats.items = {
 		name = "Abyssal Lanterns",
 		blurb = "Gland-lit lanterns hold the trench dark off the deck.",
 		rarity = "Epic",
-		speed = 46,
+		speed = 76,
 		turnRate = 86,
 		hullHealth = 330,
-		seaworthiness = 2350,
+		seaworthiness = 4200,
 		model = {
 			variant = "AbyssalLanterns",
 			length = 22,
@@ -203,10 +210,10 @@ Boats.items = {
 		name = "Stormbreaker Keel",
 		blurb = "Sailcloth of ghosts, keel of wraiths - fit to cross the Maelstrom.",
 		rarity = "Legendary",
-		speed = 52,
+		speed = 85,
 		turnRate = 90,
 		hullHealth = 420,
-		seaworthiness = 2600,
+		seaworthiness = 4900,
 		model = {
 			variant = "StormbreakerKeel",
 			length = 24,

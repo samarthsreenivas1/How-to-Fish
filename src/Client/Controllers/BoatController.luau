@@ -21,10 +21,12 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local World = require(Shared.Config.World)
 local Tuning = require(Shared.Config.Tuning)
+local Islands = require(Shared.Config.Islands)
 local Boats = require(Shared.Data.Boats)
 local Remotes = require(Shared.Net.Remotes)
 
@@ -41,8 +43,32 @@ local SUMMON_KEY = Enum.KeyCode.R
 local BANNER_Y = 160
 local BANNER_HOLD = 3.0
 
+-- The sailing compass (map redesign, 2026-08-27): islands are now thousands
+-- of studs apart across open sea, so the helm needs a way to FIND land. While
+-- driving, a slim strip along the top of the screen shows a marker for every
+-- placed island within COMPASS_HALF_ANGLE of the bow - name above a tick,
+-- shoreline distance below - sliding as the boat turns, exactly like a
+-- first-person shooter compass. Hidden the moment you leave the seat, so the
+-- no-prompts HUD stays quiet on foot.
+local COMPASS_WIDTH = 640
+local COMPASS_Y = 14
+local COMPASS_HALF_ANGLE = math.rad(110) -- bearings past this slide off the strip's edge
+
+-- One accent per destination so a distant marker reads at a glance.
+local COMPASS_COLOR: { [string]: Color3 } = {
+	tropical = Color3.fromRGB(255, 226, 160), -- sand
+	swamp = Color3.fromRGB(140, 200, 90), -- fen green
+	ice = Color3.fromRGB(170, 226, 250), -- glacier blue
+	volcano = Color3.fromRGB(255, 140, 60), -- ember
+	gloom = Color3.fromRGB(190, 120, 240), -- violet
+	wreck = Color3.fromRGB(206, 160, 92), -- brass
+	maelstrom = Color3.fromRGB(255, 196, 64), -- gold
+}
+
 local gui: ScreenGui
 local banner: TextLabel
+local compass: Frame
+local compassMarkers: { [string]: { frame: Frame, distance: TextLabel } } = {}
 
 -- Live drive state (nil while not at the helm).
 local drive: {
@@ -80,6 +106,137 @@ local function showBanner(text: string)
 	end)
 end
 
+-- ============================================================ compass
+
+-- An island shows on the compass only when it exists in the world: its mesh
+-- is placed under Workspace/World (a missing import stays off the strip), and
+-- the Maelstrom - which has no mesh - only once every island heart is in hand,
+-- mirroring the travel menu's veil so the compass can't leak the finale early.
+local function compassDestinations(): { [string]: any }
+	local out = {}
+	local worldFolder = Workspace:FindFirstChild(World.FOLDER_NAME)
+	if not worldFolder then
+		return out
+	end
+	for id, entry in Islands.items do
+		if entry.site then
+			local revealed = worldFolder:FindFirstChild("Maelstrom") ~= nil
+			for _, orderedId in Islands.order do
+				local ordered = Islands.items[orderedId]
+				if ordered.boss and player:GetAttribute("Heart_" .. ordered.boss) ~= true then
+					revealed = false
+					break
+				end
+			end
+			if revealed then
+				out[id] = entry
+			end
+		elseif worldFolder:FindFirstChild(entry.model) then
+			out[id] = entry
+		end
+	end
+	return out
+end
+
+local function buildCompassMarker(id: string, entry): { frame: Frame, distance: TextLabel }
+	local color = COMPASS_COLOR[id] or Theme.Color.text
+
+	local marker = Instance.new("Frame")
+	marker.Name = "Marker_" .. id
+	marker.AnchorPoint = Vector2.new(0.5, 0)
+	marker.Size = UDim2.fromOffset(120, 44)
+	marker.BackgroundTransparency = 1
+	marker.Visible = false
+	marker.Parent = compass
+
+	local name = Instance.new("TextLabel")
+	name.Name = "IslandName"
+	name.AnchorPoint = Vector2.new(0.5, 0)
+	name.Position = UDim2.new(0.5, 0, 0, 0)
+	name.Size = UDim2.new(1, 0, 0, 14)
+	name.BackgroundTransparency = 1
+	name.Font = Theme.Font.header
+	name.TextSize = 13
+	name.TextColor3 = color
+	name.TextStrokeColor3 = Color3.fromRGB(10, 14, 20)
+	name.TextStrokeTransparency = 0.35
+	name.Text = entry.name
+	name.Parent = marker
+
+	local tick = Instance.new("Frame")
+	tick.Name = "Tick"
+	tick.AnchorPoint = Vector2.new(0.5, 0)
+	tick.Position = UDim2.new(0.5, 0, 0, 17)
+	tick.Size = UDim2.fromOffset(4, 9)
+	tick.BackgroundColor3 = color
+	tick.BorderSizePixel = 0
+	tick.Parent = marker
+	local tickCorner = Instance.new("UICorner")
+	tickCorner.CornerRadius = UDim.new(0, 2)
+	tickCorner.Parent = tick
+
+	local distance = Instance.new("TextLabel")
+	distance.Name = "Distance"
+	distance.AnchorPoint = Vector2.new(0.5, 0)
+	distance.Position = UDim2.new(0.5, 0, 0, 28)
+	distance.Size = UDim2.new(1, 0, 0, 12)
+	distance.BackgroundTransparency = 1
+	distance.Font = Theme.Font.bodyBold
+	distance.TextSize = 11
+	distance.TextColor3 = Theme.Color.text
+	distance.TextStrokeColor3 = Color3.fromRGB(10, 14, 20)
+	distance.TextStrokeTransparency = 0.5
+	distance.Text = ""
+	distance.Parent = marker
+
+	return { frame = marker, distance = distance }
+end
+
+-- Refresh which islands have markers (placed set / hearts can change between
+-- voyages) and show the strip. Called every time the player takes the helm.
+local function showCompass()
+	local destinations = compassDestinations()
+	for id, marker in compassMarkers do
+		if not destinations[id] then
+			marker.frame:Destroy()
+			compassMarkers[id] = nil
+		end
+	end
+	for id, entry in destinations do
+		if not compassMarkers[id] then
+			compassMarkers[id] = buildCompassMarker(id, entry)
+		end
+	end
+	compass.Visible = true
+end
+
+local function hideCompass()
+	compass.Visible = false
+end
+
+-- Slide the markers to their relative bearings. `yaw` is the drive loop's
+-- heading (forward = (-sin yaw, 0, -cos yaw)); a marker dead ahead sits at
+-- the strip's centre, one past COMPASS_HALF_ANGLE to either side hides.
+local function updateCompass(position: Vector3, yaw: number)
+	for id, marker in compassMarkers do
+		local entry = Islands.items[id]
+		local dx = entry.worldPosition.X - position.X
+		local dz = entry.worldPosition.Z - position.Z
+		local bearing = math.atan2(-dx, -dz)
+		local rel = math.atan2(math.sin(bearing - yaw), math.cos(bearing - yaw))
+		if math.abs(rel) > COMPASS_HALF_ANGLE then
+			marker.frame.Visible = false
+		else
+			marker.frame.Visible = true
+			marker.frame.Position = UDim2.new(0.5 - rel / (2 * COMPASS_HALF_ANGLE), 0, 0, 0)
+			local shore = math.max(0, math.sqrt(dx * dx + dz * dz) - (entry.radius or 0))
+			marker.distance.Text = if shore >= 1000
+				then string.format("%.1fk", shore / 1000)
+				else string.format("%d", math.floor(shore))
+		end
+	end
+end
+
 -- ============================================================ driving
 
 local function stopDriving()
@@ -93,6 +250,7 @@ local function stopDriving()
 		drive.move.VectorVelocity = Vector3.zero
 	end
 	drive = nil
+	hideCompass()
 end
 
 local function step(dt: number)
@@ -135,6 +293,8 @@ local function step(dt: number)
 	local forward = Vector3.new(-math.sin(drive.yaw), 0, -math.cos(drive.yaw))
 	drive.move.VectorVelocity = forward * drive.speed + Vector3.new(0, vy, 0)
 	drive.align.CFrame = CFrame.Angles(0, drive.yaw, 0)
+
+	updateCompass(collider.Position, drive.yaw)
 end
 
 local function startDriving(seat: VehicleSeat)
@@ -164,6 +324,7 @@ local function startDriving(seat: VehicleSeat)
 		speed = 0,
 		connection = RunService.Heartbeat:Connect(step),
 	}
+	showCompass()
 end
 
 local function watchCharacter(character: Model)
@@ -241,6 +402,28 @@ function BoatController.init()
 	banner.Text = ""
 	banner.Visible = false
 	banner.Parent = gui
+
+	-- The compass strip: a bare clipping frame the markers slide across, plus
+	-- a centre tick marking dead ahead. No panel box - sleek-HUD rule.
+	compass = Instance.new("Frame")
+	compass.Name = "Compass"
+	compass.AnchorPoint = Vector2.new(0.5, 0)
+	compass.Position = UDim2.new(0.5, 0, 0, COMPASS_Y)
+	compass.Size = UDim2.fromOffset(COMPASS_WIDTH, 44)
+	compass.BackgroundTransparency = 1
+	compass.ClipsDescendants = true
+	compass.Visible = false
+	compass.Parent = gui
+
+	local ahead = Instance.new("Frame")
+	ahead.Name = "Ahead"
+	ahead.AnchorPoint = Vector2.new(0.5, 0)
+	ahead.Position = UDim2.new(0.5, 0, 0, 15)
+	ahead.Size = UDim2.fromOffset(2, 13)
+	ahead.BackgroundColor3 = Theme.Color.text
+	ahead.BackgroundTransparency = 0.45
+	ahead.BorderSizePixel = 0
+	ahead.Parent = compass
 
 	buildTouchButton()
 

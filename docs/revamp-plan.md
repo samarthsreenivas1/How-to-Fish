@@ -83,7 +83,7 @@ The Maelstrom.
 - Boss engine is fully data-driven (`Bosses.luau` + `archetype = "boss"` creature row + `Islands.items[x].boss`); summon-by-bait (`effect.summonsBoss`) already works via `FishingService`.
 - Enemy-side projectile machinery (server `throwGlob`/spit tables + client pooled glob rendering + `CastAim` ray validation) is the reusable basis for player ranged weapons. Melee's `RequestAttack` carries no arguments.
 - No ambient spawner existed before Session 3 (all spawns were fishing-driven) — required for raids.
-- One shared ocean plane, islands 3000 studs apart — boats are physically viable. Boat must key off `World.WATER_Y`, not the tide-animated visual plane.
+- One shared ocean plane; islands scattered on a voyage arc, 4,000–8,700 studs per leg (map redesign 2026-08-27 — was a 3000-stud line) — boats are the intended crossing. Boat must key off `World.WATER_Y`, not the tide-animated visual plane.
 - Persistence (DataService) lands in Session 1 and is the prerequisite for the heart-collection meta.
 - New island meshes require Blender/python-gen art + a **manual Studio import** into `assets/Assets.rbxm` — per-island bottleneck; batch imports, keep procedural fallbacks so code never blocks on art.
 
@@ -114,17 +114,17 @@ The Maelstrom.
 
 ### Level bands & world layout
 
-Keep `XP_BASE 60 / XP_EXPONENT 1.35 / MAX_LEVEL 50`. Islands in a line, 3000 studs apart (ocean auto-sizes via `oceanSpan()`). Travel to island N+1 = unlockLevel AND `Cleared_` island N AND boat tier N (boat gate from Session 3).
+Keep `XP_BASE 60 / XP_EXPONENT 1.35 / MAX_LEVEL 50`. AMENDED 2026-08-27 (map redesign): islands sit on a voyage ARC around the cove — legs grow 4,000 → 8,700 studs, ~90–100s each at the unlocking boat tier; positions below are the current `Islands.luau` values (ocean still auto-sizes via `oceanSpan()`). Travel to island N+1 = unlockLevel AND `Cleared_` island N AND boat tier N (boat gate from Session 3).
 
 | # | Island | id | Band | unlock | Boss bait | worldPosition |
 |---|---|---|---|---|---|---|
 | 1 | Starter Cove | `tropical` | L1–7 | 0 | L7 | (0,0,0) |
-| 2 | Blackmire Fen | `swamp` | L8–14 | 8 | L14 | (3000,0,0) |
-| 3 | Frostmaw Reach | `ice` | L15–21 | 15 | L21 | (6000,0,0) |
-| 4 | Ashfall Caldera | `volcano` | L22–28 | 22 | L28 | (9000,0,0) — final; interim slots during rollout |
-| 5 | Gloomtrench | `gloom` | L29–35 | 29 | L35 | (12000,0,0) |
-| 6 | Wreckwater | `wreck` | L36–42 | 36 | L42 | (15000,0,0) |
-| 7 | The Maelstrom | `maelstrom` | L43–50 | 43 | L48 | (18000,0,0), `site = true`, out of `Islands.order` |
+| 2 | Blackmire Fen | `swamp` | L8–14 | 8 | L14 | (3700,0,1500) |
+| 3 | Frostmaw Reach | `ice` | L15–21 | 15 | L21 | (6800,0,5200) |
+| 4 | Ashfall Caldera | `volcano` | L22–28 | 22 | L28 | (11800,0,2600) — final; interim slots during rollout |
+| 5 | Gloomtrench | `gloom` | L29–35 | 29 | L35 | (15400,0,-2700) |
+| 6 | Wreckwater | `wreck` | L36–42 | 36 | L42 | (12500,0,-9500) |
+| 7 | The Maelstrom | `maelstrom` | L43–50 | 43 | L48 | (4800,0,-13500), `site = true`, out of `Islands.order` |
 
 Within a band, gates: U at A, R at A+1, R at A+3, E at A+4/5, Legendary at band end (heart-gated).
 

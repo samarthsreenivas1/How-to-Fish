@@ -114,6 +114,7 @@ between sessions.
 | **Melee arsenal revamp** (2026-08-27) | built; `weapon.glb` re-import pending | 15 post-cove melee models rebuilt + six per-family swing classes (f309c40/1c1132b) — see "The post-ship days" |
 | **Per-gun reload animations** (2026-08-27) | built, live (code-side) | multi-track clip system: visible mag handling by an appearing left hand, revolver cylinder work, bow nocking... one unique clip per gun (a738a16/4b60215) |
 | **Real projectiles** (2026-08-27) | built, live | bow/crossbow/harpooner fly their own `_Mag` mesh, not tracers (`ranged.projectile`, 648ba2c) |
+| **Voyage-arc map redesign** (2026-08-27) | built, **unreviewed** | islands scattered across one huge sea (legs 4,000→8,700 studs, arc around the cove), boat speeds/seaworthiness retuned per leg, sailing compass on the helm — see "The voyage-arc map" |
 | More archetypes (charger/spitter), style/juggle, arena | not started | see Known gaps |
 
 ### Manual Studio steps — check these first
@@ -683,6 +684,50 @@ eyeballs, the claimed invariants) as the QA standard.
   blind non-author gates with measured z-bounds. Rod frame law, binding:
   the shared 0.95 grip / 7.0 length frame holds, ornament ceiling 7.9
   (the PhoenixAsh precedent), butts hard at z ≥ 0.
+
+### The voyage-arc map (2026-08-27, unreviewed)
+
+User: "huge huge huge ocean where the user will be able to ride their boat
+around... place the various islands across this map... they just take the
+boat." Pure code/data — NO re-imports owed by this slice.
+
+- **The layout** (`Islands.luau` worldPositions — the only place positions
+  live; nothing else hardcoded them, verified by grep): the islands left the
+  3000-stud straight line for an ARC that wraps around Starter Cove —
+  swamp (3700,1500) → ice (6800,5200) → volcano (11800,2600) →
+  gloom (15400,-2700) → wreck (12500,-9500) → maelstrom (4800,-13500).
+  Legs grow with the saga: ~4,000 / 4,800 / 5,600 / 6,400 / 7,400 / 8,700
+  studs centre-to-centre, each ~90–100s flat out at the boat tier that
+  unlocks it (the leg table lives in `Boats.luau`'s header — **move an
+  island, re-check it**). The finale sits due south of home, on the cove's
+  own horizon. Every island's `spawn` moved with its worldPosition (same
+  relative offset; X/Z authoritative, Y still probed). Boss arenas/ambient
+  rings are island-relative and moved for free. The ocean auto-sizes
+  (`oceanSpan` uses max |X|,|Z| per axis, so negative coords are covered) —
+  now ~36k studs square.
+- **Boat ladder retune** (`Boats.luau`): speeds 30–52 → **45–85** studs/s
+  (open-ocean voyaging pace; ACCELERATION/turnRate untouched) and
+  seaworthiness 1750–2600 → **2600–4900**, each tier sized to clear HALF its
+  own leg plus ~600 studs of wobble margin (openSeaDistance measures from
+  the nearest ENTERABLE shore, and holding the tier makes the destination
+  count — so a straight legal crossing peaks at the midpoint). All gates
+  (`mayEnter`, containment sweep, seaworthiness DoT) read data, so nothing
+  else changed server-side. **Teleport menu untouched** — it stays as fast
+  travel per the standing S3 decision; the boat is the intended way across.
+- **Sailing compass** (`BoatController`, no ORDER change — built inside the
+  existing controller): while at the helm, a slim FPS-style strip along the
+  top of the screen shows a marker per island — name over a coloured tick,
+  shoreline distance under it ("3.2k") — sliding as the boat turns
+  (±110° window, dead-ahead centre tick). Shows only PLACED islands
+  (checks `Workspace/World` for the mesh, so un-imported islands stay off
+  it) and veils the Maelstrom until all six hearts, mirroring the travel
+  menu. Rebuilt on every `showCompass()` (helm entry); hidden on foot.
+  Knobs: `COMPASS_*` + `COMPASS_COLOR` at the top of the controller.
+- **Docs amended in place**: `docs/revamp-plan.md`'s island table +
+  "islands in a line" bullets now carry the arc positions.
+- **Unreviewed in Studio.** Likely tuning asks: leg lengths / travel-time
+  feel, boat top speeds, compass size/placement, whether locked islands
+  should show on the compass at all, marker colours.
 
 ### First person, arms, and the viewmodels
 
