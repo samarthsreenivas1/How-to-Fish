@@ -30,7 +30,7 @@ local ORDER = {
 	"BoatService", -- after WorldService (launch points, open-sea distance); grants tiers, summons/parks/sinks the boat
 	"CraftingService", -- after Inventory + Material + Progression + Boat: spends mats/coins, grants rods + weapons + boat tiers
 	"BossService", -- after Creature + Inventory + Progression: raises island bosses when a player qualifies, records the win
-	"AdminService", -- after Progression + Material: dev cheat grants (coins/xp/materials), gated to admins
+	"AdminService", -- after Progression + Material + Inventory + Bait + Boat: dev cheat grants (coins/xp/materials/items/unlock), gated to admins
 	"DropService", -- after Creature + Inventory: rare finished-item drops off the Killed event
 	"SpawnerService", -- after Creature + World: ambient island hostiles off Islands.items[id].ambient
 	"RaidService", -- after Spawner + Creature + Progression: wave raids off Islands.items[id].raid

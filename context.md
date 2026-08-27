@@ -1679,6 +1679,29 @@ of the caller with target = their root, so it arcs in like a real catch
 (`CreatureService.spawn(row, front, rootPos, "Neutral")` - fish and hostiles
 alike). Dev tooling only.
 
+**Admin panel round 2 (2026-08-27, with the voyage-arc map; unreviewed):**
+- **All Items** (`AdminGrant "items"`): every rod + weapon via
+  `InventoryService.grantItem` (idempotent - owned-once) and 99 of every
+  bait via `BaitService.grant`.
+- **Unlock World** (`AdminGrant "unlock"`): max level (`addXp` 10M, capped
+  at MAX_LEVEL), `Cleared_<id>` for every island, `Heart_<bossId>` for every
+  boss, and the Stormbreaker Keel via `BoatService.grantTier` (through the
+  service so any spawned hull retires properly). These are the REAL
+  progression attributes, so DataService persists them - there is no relock;
+  don't press it on a save you care about. **Give Everything** now also runs
+  both.
+- **Flight** (panel button or **`F`**, admins only; non-admins' F passes
+  through): client-side flythrough in `AdminController` - a LinearVelocity
+  on the root (huge force = dictated velocity, gravity included; character
+  stays unanchored so it replicates) driven from `Humanoid.MoveDirection`
+  remapped through the FULL camera frame, so W flies where you look, pitch
+  included; idle = hover. 150 studs/s, **LeftShift = 600** (sized to the
+  4,000-8,700-stud voyage legs). Collision stays on (no noclip). Refused
+  while seated (the seat weld would drag the boat); dropped on respawn and
+  on losing admin. Knobs `FLY_*` at the top of the controller.
+- **Travel To Island** now lists site entries too (the Maelstrom was
+  invisible to admin travel - it sits outside `Islands.order`).
+
 ### Crafting: materials (earn side) + rod / weapon crafting
 
 Design forks the user chose (plan file above): materials are earned **two

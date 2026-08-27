@@ -1,10 +1,12 @@
 --!nonstrict
 -- AdminController.luau
 -- The admin cheat panel. P toggles a floating panel on the left: grant
--- buttons (coins / XP / materials / everything - repeatable), "Spawn
--- Creature" (a rarity-coloured scrolling list of every creature; a click
--- asks AdminService to spawn it in front of you) and "Travel To Island"
--- (every island; AdminTeleport, skipping the normal travel gates).
+-- buttons (coins / XP / materials / all items / unlock world / everything -
+-- repeatable), "Spawn Creature" (a rarity-coloured scrolling list of every
+-- creature; a click asks AdminService to spawn it in front of you), "Travel
+-- To Island" (every island; AdminTeleport, skipping the normal travel gates)
+-- and "Flight" (F) - a client-side camera-steered flythrough for surveying
+-- the voyage-arc map (see the flight section).
 --
 -- Only ever built for admins: the server sets the Player's `IsAdmin`
 -- attribute, and this does nothing unless it's true. The grant / spawn /
@@ -15,6 +17,9 @@
 local ContextActionService = game:GetService("ContextActionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Creatures = require(Shared.Data.Creatures)
@@ -41,8 +46,18 @@ local BUTTONS = {
 	{ action = "coins", label = "+100k Coins", token = "$", style = "gold" },
 	{ action = "xp", label = "+100k XP", token = "XP", style = "primary" },
 	{ action = "materials", label = "Max Materials", token = "MAT", style = "secondary" },
+	{ action = "items", label = "All Items", token = "INV", style = "secondary" },
+	{ action = "unlock", label = "Unlock World", token = "KEY", style = "gold" },
 	{ action = "all", label = "Give Everything", token = "ALL", style = "success" },
 }
+
+-- Flight (map flythrough): base and Shift-boosted speeds, studs/s. The map's
+-- voyage legs run 4,000-8,700 studs, so the boost is sized to cross the whole
+-- world in under a minute.
+local FLY_SPEED = 150
+local FLY_SPEED_BOOST = 600
+local FLY_KEY = Enum.KeyCode.F
+local FLY_ACTION = "AdminFlyToggle"
 
 local PANEL_WIDTH = 240
 local PICKER_WIDTH = 270
@@ -52,7 +67,130 @@ local MARGIN = 24
 local gui: ScreenGui?
 local spawnList: Frame?
 local travelList: Frame?
+local flightButton: TextButton?
 local open = false
+
+-- ============================================================ flight
+
+-- Admin flythrough: hover-and-glide for surveying the map. Client-side only
+-- and deliberately so - Roblox gives the client authority over its own
+-- character, so no server half is needed, and it stays honest dev tooling
+-- behind the same IsAdmin gate as the panel.
+--
+-- Mechanically it's the boat's trick applied to the character: a
+-- LinearVelocity constraint on the root (huge force = it dictates velocity
+-- outright, gravity included) driven every frame from Humanoid.MoveDirection
+-- remapped through the FULL camera frame - so W flies where you're looking,
+-- pitch included, and no input is a rock-solid hover. The character stays
+-- unanchored and physics-simulated, so its position replicates normally
+-- (an anchored root would freeze you on everyone else's screen).
+-- Collision stays ON - steer around the mountains, no noclip.
+local flying = false
+local flyMove: LinearVelocity?
+local flyStep: RBXScriptConnection?
+
+local function isAdmin(): boolean
+	return player:GetAttribute(ADMIN_ATTRIBUTE) == true
+end
+
+local function refreshFlightButton()
+	if flightButton then
+		flightButton.Text = if flying then "Flight: ON  (F)" else "Flight  (F)"
+	end
+end
+
+local function stopFlying()
+	if flyStep then
+		flyStep:Disconnect()
+		flyStep = nil
+	end
+	if flyMove then
+		flyMove.Parent = nil
+		if flyMove.Attachment0 then
+			flyMove.Attachment0:Destroy()
+		end
+		flyMove:Destroy()
+		flyMove = nil
+	end
+	flying = false
+	refreshFlightButton()
+end
+
+local function flightTick()
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local camera = Workspace.CurrentCamera
+	if not (root and humanoid and camera and flyMove and flyMove.Parent) then
+		stopFlying()
+		return
+	end
+
+	-- MoveDirection is WASD in world XZ (camera-yaw relative). Split it into
+	-- forward/strafe against the camera's FLAT axes, then rebuild along the
+	-- camera's TRUE axes - that turns pitch into climb/dive for free.
+	local look = camera.CFrame.LookVector
+	local right = camera.CFrame.RightVector
+	local flatLook = Vector3.new(look.X, 0, look.Z)
+	local flatRight = Vector3.new(right.X, 0, right.Z)
+	local move = (humanoid :: Humanoid).MoveDirection
+	local velocity = Vector3.zero
+	if move.Magnitude > 0.05 and flatLook.Magnitude > 0.05 then
+		local forwardAmount = move:Dot(flatLook.Unit)
+		local strafeAmount = move:Dot(flatRight.Unit)
+		local direction = look * forwardAmount + right * strafeAmount
+		if direction.Magnitude > 0.05 then
+			local speed = if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then FLY_SPEED_BOOST else FLY_SPEED
+			velocity = direction.Unit * speed
+		end
+	end
+	flyMove.VectorVelocity = velocity
+end
+
+local function startFlying()
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not (root and root:IsA("BasePart") and humanoid) then
+		return
+	end
+	-- Not from a seat: the seat weld would drag the whole boat along. Stand
+	-- up first, then toggle flight.
+	if (humanoid :: Humanoid).SeatPart then
+		return
+	end
+
+	stopFlying()
+
+	local attachment = Instance.new("Attachment")
+	attachment.Name = "AdminFly_Attachment"
+	attachment.Parent = root
+
+	local move = Instance.new("LinearVelocity")
+	move.Name = "AdminFly_Move"
+	move.Attachment0 = attachment
+	move.RelativeTo = Enum.ActuatorRelativeTo.World
+	move.VelocityConstraintMode = Enum.VelocityConstraintMode.Vector
+	move.VectorVelocity = Vector3.zero
+	move.ForceLimitsEnabled = false
+	move.Parent = root
+
+	flyMove = move
+	flyStep = RunService.Heartbeat:Connect(flightTick)
+	flying = true
+	refreshFlightButton()
+end
+
+local function toggleFlight()
+	if not isAdmin() then
+		return
+	end
+	if flying then
+		stopFlying()
+	else
+		startFlying()
+	end
+end
 
 -- ============================================================ build
 
@@ -185,7 +323,15 @@ local function buildTravelList(screen: ScreenGui)
 	local panel, body = floatingPanel(screen, "TravelList", "Travel To Island", "MAP", MARGIN + PANEL_WIDTH + 12, 300)
 	panel.Visible = false
 	local scroll = Kit.scroll(body, { name = "List", gap = 4, padding = 2 })
-	for i, id in Islands.order do
+	-- The saga order, plus every site entry (the Maelstrom) that stays out of
+	-- Islands.order - admin travel should reach ALL of the map.
+	local ids = table.clone(Islands.order)
+	for id, entry in Islands.items do
+		if entry.site then
+			table.insert(ids, id)
+		end
+	end
+	for i, id in ids do
 		local entry = Islands.items[id]
 		pickerRow(scroll, i, entry.name, C.accentDark, Kit.monogram(entry.name), function()
 			Remotes.AdminTeleport:FireServer(id)
@@ -208,7 +354,7 @@ local function buildPanel()
 	screen.Enabled = false
 	screen.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
-	local rows = #BUTTONS + 2
+	local rows = #BUTTONS + 3 -- + spawn / travel / flight
 	local _, body = floatingPanel(screen, "Panel", "Admin", "P", MARGIN, 52 + rows * 50 + 12)
 	Kit.listLayout(body, 6)
 
@@ -242,6 +388,16 @@ local function buildPanel()
 		textSize = 15,
 		size = UDim2.new(1, 0, 0, 44),
 	})
+	local fly = Kit.button(body, {
+		name = "FlightToggle",
+		order = #BUTTONS + 3,
+		text = "Flight  (F)",
+		style = "primary",
+		textSize = 15,
+		size = UDim2.new(1, 0, 0, 44),
+	})
+	fly.Activated:Connect(toggleFlight)
+	flightButton = fly
 
 	buildSpawnList(screen)
 	buildTravelList(screen)
@@ -270,10 +426,6 @@ end
 
 -- ============================================================ toggle
 
-local function isAdmin(): boolean
-	return player:GetAttribute(ADMIN_ATTRIBUTE) == true
-end
-
 local function setOpen(state: boolean)
 	if not isAdmin() then
 		state = false
@@ -294,8 +446,11 @@ local function setOpen(state: boolean)
 end
 
 local function refreshAvailability()
-	if not isAdmin() and open then
-		setOpen(false)
+	if not isAdmin() then
+		if open then
+			setOpen(false)
+		end
+		stopFlying()
 	end
 end
 
@@ -316,6 +471,9 @@ end
 function AdminController.init()
 	buildPanel()
 	player:GetAttributeChangedSignal(ADMIN_ATTRIBUTE):Connect(refreshAvailability)
+	-- A fresh character has no fly constraint: drop the mode rather than
+	-- haunting the respawn with a dead connection.
+	player.CharacterAdded:Connect(stopFlying)
 end
 
 function AdminController.start()
@@ -325,6 +483,18 @@ function AdminController.start()
 		end
 		return Enum.ContextActionResult.Sink
 	end, false, Enum.ContextActionPriority.High.Value, Enum.KeyCode.P)
+
+	-- F toggles flight for admins; for everyone else the key passes through
+	-- untouched so it stays free for future gameplay binds.
+	ContextActionService:BindActionAtPriority(FLY_ACTION, function(_, inputState)
+		if not isAdmin() then
+			return Enum.ContextActionResult.Pass
+		end
+		if inputState == Enum.UserInputState.Begin then
+			toggleFlight()
+		end
+		return Enum.ContextActionResult.Sink
+	end, false, Enum.ContextActionPriority.High.Value, FLY_KEY)
 end
 
 return AdminController

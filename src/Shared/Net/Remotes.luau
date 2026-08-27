@@ -78,7 +78,7 @@ local DEFS = {
 
 	-- Admin/dev cheat panel (AdminService / AdminController). Server-gated to
 	-- Studio + an admin allowlist, so the event existing for everyone is safe.
-	{ name = "AdminGrant", class = "RemoteEvent" }, -- client -> server: action ("coins" | "xp" | "materials" | "all")
+	{ name = "AdminGrant", class = "RemoteEvent" }, -- client -> server: action ("coins" | "xp" | "materials" | "items" | "unlock" | "all")
 	{ name = "AdminSpawn", class = "RemoteEvent" }, -- client -> server: creatureId (spawns it in front of the caller)
 
 	-- A rare finished item dropped by a killed creature (DropService), for the
