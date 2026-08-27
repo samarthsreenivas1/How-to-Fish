@@ -234,9 +234,9 @@ Islands.items = {
 		-- precedent); re-key when the dock step lands.
 		boss = "pyrelisk",
 
-		-- The apron between the lava ponds is patrolled; its raids are the
-		-- "eruption raids" flavour (EruptionService's bomb windows run on
-		-- their own clock on top of these waves).
+		-- The apron between the lava ponds is patrolled by these raid waves.
+		-- (EruptionService's bomb windows were removed with the restart, and
+		-- lava deals NO contact damage - both by user order, 2026-08-27.)
 		ambient = {
 			rows = {
 				{ id = "ember_swarm", weight = 3 },

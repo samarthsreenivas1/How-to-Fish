@@ -126,10 +126,11 @@ local DEFS = {
 	-- waves, remaining, seconds }. Clients filter to the island they stand on.
 	{ name = "RaidState", class = "RemoteEvent" }, -- server -> all clients: raid snapshot (see RaidService)
 
-	-- Island events (WeatherService's blizzard, EruptionService's eruption):
-	-- a window opened or closed - { kind, islandId, active }. The client half
-	-- is pure ambience (WeatherController); the gameplay (spawner bias, lava
-	-- bombs) stays server-side.
+	-- Island events (WeatherService's blizzard): a window opened or closed -
+	-- { kind, islandId, active }. The client half is pure ambience
+	-- (WeatherController); the gameplay (spawner bias) stays server-side.
+	-- (EruptionService and its "eruption" kind were REMOVED with the volcano
+	-- restart, 2026-08-27, by user order - don't reintroduce unprompted.)
 	{ name = "WorldEvent", class = "RemoteEvent" }, -- server -> clients: { kind, islandId, active }
 }
 
