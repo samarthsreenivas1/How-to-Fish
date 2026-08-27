@@ -352,12 +352,21 @@ Islands.items = {
 		name = "The Maelstrom",
 		blurb = "The storm at the end of the sea. It is waiting for you.",
 		site = true,
+		-- The authored storm-shoal (2026-08-27, island_gen.py `maelstrom`):
+		-- once Assets/Maelstrom (or the pack's Maelstrom group) is imported,
+		-- buildMaelstromSite places it through placeIsland; until then the
+		-- procedural rock ring stands in. The whirlpool water disc is ALWAYS
+		-- procedural - never part of the mesh.
+		model = "Maelstrom",
+		-- Fight-stack columns and the sunken fleet's keels dip well below the
+		-- -9 skirt (generator HANDOFF, 2026-08-27 build).
+		meshBottom = -11.95,
 		-- Leg 6, the last crossing: ~8,700 studs of open storm-sea from
 		-- Wreckwater, due south of home - the arc closes back toward the cove,
 		-- so the finale rages on the starter island's own horizon.
 		worldPosition = Vector3.new(4800, 0, -13500),
 		radius = 260,
-		spawn = Vector3.new(4800, 6, -13456), -- the big rock platform on +Z (buildMaelstromSite)
+		spawn = Vector3.new(4800, 6, -13456), -- the spawn stack on +Z (authored top Y=6.0; the procedural platform matches)
 		unlockLevel = 43,
 		boss = "kraken",
 	},

@@ -544,6 +544,53 @@ island tables verbatim; the ledger of record stays that file.
   swirl is the one cosmetic TODO); tentacle ring/aggro numbers are first
   guesses — expect a tuning round.
 
+### The Maelstrom built for real (2026-08-27, import owed, unreviewed)
+
+User: "build the complete maelstrom island, it is completely unfinished."
+The site got an AUTHORED mesh — `island_gen.py` grew a `maelstrom` entry
+(builders after build_wreckwater, reusing the `_wr_*` ship toolkit) exported
+standalone as `assets/island_maelstrom.glb` → import as `Assets/Maelstrom`
+(checklist row 1b; also appended to ISLAND_ORDER so the next pack regen
+bundles it). Deliberately NOT a landmass: `Maelstrom_Base` is a fully
+SUBMERGED storm-shoal (dark shallows dishing into a vortex bowl under the
+whirlpool), and everything walkable is a basalt stack.
+
+- **Contracts held** (the mesh section's header comment is the ledger): the
+  `Maelstrom_Water` disc (r75) stays PROCEDURAL — buildMaelstromSite always
+  builds it, MaelstromVfxController spins it BY NAME as a DIRECT child of
+  the "Maelstrom" instance — and nothing is authored inside r<80, so the
+  disc, casting lanes and the Kraken's rise stay clear. Fight stacks ring
+  r 38-52 with FLAT walkable caps at y 3.6-6.0 (arena r34, tentacle ring
+  r26 per the e84f7e9 kraken rewrite); the spawn stack is at rel +Z 44, top
+  exactly 6.0 (the entry's spawn fallback). The 270° bearing (Roblox +Z,
+  home's direction) is a clear sailing lane through both spire belts.
+- **The dressing**: two belts of storm-teeth + three ~90-118-stud TITAN
+  FANGS leaning toward the maw (the finale's from-miles-out silhouette);
+  a five-ship doomed fleet on the spiral (bow/stern/ribcage sections, each
+  yawed just off tangent so the fleet reads as circling in) + two drowned
+  rib rings; three colossal snapped anchor chains arcing off the tallest
+  teeth, dying at r86; a flotsam ring; reef rocks seated against the
+  WATERLINE (first build sat them on the seabed and drowned them — review
+  catch, like the platform column bulging through its cap; both fixed
+  against rendered previews before commit).
+- **Wiring**: `buildMaelstromSite` now places the mesh via `placeIsland`
+  when `Assets/Maelstrom` exists (full MESH_COLOR/collide/meshBottom
+  treatment; the water disc is parented INTO the placed model) and keeps
+  the old procedural ring as the pre-import fallback. Islands entry gained
+  `model = "Maelstrom"` + `meshBottom = -11.95` (keels/columns dip past the
+  -9 skirt — re-key from the HANDOFF line on any regen; the standalone
+  build prints it too, not just the pack). Wrecks/Sails/Chains/Debris/
+  StormGlow are NON_COLLIDE (the SeaHulks boat ruling); Platforms/Spires/
+  Rocks/Base collide — **PreciseConvexDecomposition on Base + Platforms at
+  import** (the fight floor). `Maelstrom_StormGlow` is Neon, electric cyan.
+- **Generator infrastructure added**: `PREVIEW_SHOTS` override (extra named
+  preview cameras per island — maelstrom renders `_arena` and `_approach`
+  shots); the maelstrom ISLANDS entry sets EVERY shape key explicitly (the
+  configure() no-reset rule from the swamp restart — it builds last, after
+  wreck's override set).
+- **Likely tuning asks**: spire/titan counts + heights, wreck placement,
+  glow density, platform cap sizes, the shoal's visible shallowness.
+
 ### The post-ship days (2026-08-26 → 27, all unreviewed-in-Studio unless noted)
 
 The revamp shipped, the user imported everything, the game booted end to

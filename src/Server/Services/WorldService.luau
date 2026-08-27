@@ -302,6 +302,15 @@ local NON_COLLIDE = {
 	-- coordinator 2026-08-26.
 	"Wreckwater_SeaHulks",
 	"Wreckwater_Sails",
+	-- The Maelstrom's doomed fleet + dressing (2026-08-27): same ruling as
+	-- the SeaHulks - hull collision across a 480-stud wreck field would wall
+	-- off the finale for the boat. The fight floor (Maelstrom_Platforms), the
+	-- spires, the reef rocks and the submerged base all stay collidable.
+	"Maelstrom_Wrecks",
+	"Maelstrom_Sails",
+	"Maelstrom_Chains",
+	"Maelstrom_Debris",
+	"Maelstrom_StormGlow",
 }
 
 local function shouldCollide(instanceName: string): boolean
@@ -434,6 +443,24 @@ local MESH_COLOR = {
 	Wreckwater_Dock_Planks = Color3.fromRGB(121, 103, 79),
 	Wreckwater_Dock_Posts = Color3.fromRGB(84, 69, 52),
 	Wreckwater_Foam = Color3.fromRGB(225, 231, 228),
+
+	-- The Maelstrom (assets/island_gen.py `maelstrom`, 2026-08-27). The base
+	-- is a fully SUBMERGED storm-shoal (three materials, so it splits into
+	-- three numbered primitives like every base); the glow is Neon.
+	-- Maelstrom_Water is NOT here - the whirlpool disc stays procedural
+	-- (buildMaelstromSite) and deliberately out of the ocean dress (87's
+	-- 42b73d7: MaelstromVfxController owns its CFrame).
+	Maelstrom_Base = Color3.fromRGB(26, 28, 41), -- M_StormFloor (the vortex bowl)
+	Maelstrom_Base2 = Color3.fromRGB(41, 46, 61), -- M_StormShoal (the pale shelf)
+	Maelstrom_Base3 = Color3.fromRGB(33, 36, 48), -- M_StormWet
+	Maelstrom_Platforms = Color3.fromRGB(46, 48, 60), -- the procedural stacks' grey-blue
+	Maelstrom_Spires = Color3.fromRGB(33, 34, 46),
+	Maelstrom_Rocks = Color3.fromRGB(46, 48, 60),
+	Maelstrom_Wrecks = Color3.fromRGB(35, 28, 25), -- storm-blackened timbers
+	Maelstrom_Sails = Color3.fromRGB(139, 144, 153), -- rain-grey canvas
+	Maelstrom_Chains = Color3.fromRGB(22, 23, 28),
+	Maelstrom_Debris = Color3.fromRGB(51, 42, 31),
+	Maelstrom_StormGlow = Color3.fromRGB(107, 240, 255), -- electric storm-fire
 }
 
 -- Per-part material overrides; anything not listed gets SmoothPlastic (the flat
@@ -443,6 +470,7 @@ local MESH_MATERIAL = {
 	Gloomtrench_GlowCyan = Enum.Material.Neon,
 	Gloomtrench_GlowViolet = Enum.Material.Neon,
 	Wreckwater_GhostGlow = Enum.Material.Neon,
+	Maelstrom_StormGlow = Enum.Material.Neon,
 	-- Frostmaw's big glacial forms glint like real ice; nothing Neon here.
 	Frostmaw_Berg = Enum.Material.Ice,
 	Frostmaw_Arch = Enum.Material.Ice,
@@ -1605,23 +1633,41 @@ end
 
 -- Place every configured island whose mesh exists, recording which landed so
 -- travel can be refused to ones not yet imported. A `site` entry (the
--- Maelstrom - no mesh, built procedurally by its own pass) is skipped here:
--- it normally lives OUT of Islands.order, and even listed it must never
--- reach placeIsland, whose FindFirstChild(entry.model) would throw on nil
--- and take the whole boot down.
--- The Maelstrom: the finale SITE (site = true, no mesh). The whole arena is
--- parts, built deterministically (seeded Random) so every server raises the
--- same storm: a dark whirlpool disc - the fishable "Maelstrom_Water"
--- surface (waters = "maelstrom"; the name is the contract, never split it) -
--- ringed by nine jagged rock platforms the fight is fought from (inside
--- tentacle reach by design), a bigger spawn platform on +Z where travel
--- drops you, and a crown of outer spires for the horizon. Marked `placed`
--- so the shared ocean spans out to it and mayEnter's placement check
--- passes.
+-- Maelstrom) is skipped in the ordered pass: it lives OUT of Islands.order
+-- and builds through buildMaelstromSite below, which places the authored
+-- mesh when imported (via placeIsland - safe now that the entry carries a
+-- `model` name) and falls back to the procedural rock ring otherwise.
+-- The Maelstrom: the finale SITE (site = true). The arena water - the dark
+-- whirlpool disc, the fishable "Maelstrom_Water" surface (waters =
+-- "maelstrom"; the name is the contract, never split it) - is ALWAYS built
+-- procedurally here: MaelstromVfxController spins it by name, and it must be
+-- a DIRECT child of the Instance named "Maelstrom" (the controller
+-- WaitForChilds it, non-recursively).
+--
+-- The land around it comes in two flavours (2026-08-27, "build the complete
+-- maelstrom island"): when the AUTHORED mesh exists
+-- (ReplicatedStorage/Assets/Maelstrom, or the Maelstrom group of the
+-- IslandPack - assets/island_gen.py "maelstrom": the drowned storm-shoal,
+-- basalt fight stacks on the same r 38-52 ring, titan fangs, the doomed
+-- fleet, chains, storm-fire), placeIsland drops it with the full island
+-- treatment (MESH_COLOR, collide rules, the meshBottom pin) and the disc is
+-- parented into that model. Before the import, the original procedural
+-- stand-in - nine jagged rock platforms, a spawn platform on +Z, a crown of
+-- outer spires, deterministically seeded - keeps the finale playable.
+-- Marked `placed` either way so the shared ocean spans out to it and
+-- mayEnter's placement check passes.
 local function buildMaelstromSite(parent: Instance, id: string, entry): boolean
 	local origin = Vector3.new(entry.worldPosition.X, 0, entry.worldPosition.Z)
-	local site = Instance.new("Model")
-	site.Name = "Maelstrom"
+
+	local hasMesh = islandTemplate(entry) ~= nil
+	local container: Model
+	if hasMesh then
+		placeIsland(parent, id, entry)
+		container = placedModels[id]
+	else
+		container = Instance.new("Model")
+		container.Name = "Maelstrom"
+	end
 
 	local function rock(size: Vector3, cf: CFrame, color: Color3, material: Enum.Material?): Part
 		local p = Instance.new("Part")
@@ -1632,7 +1678,7 @@ local function buildMaelstromSite(parent: Instance, id: string, entry): boolean
 		p.Material = material or Enum.Material.Slate
 		p.TopSurface = Enum.SurfaceType.Smooth
 		p.BottomSurface = Enum.SurfaceType.Smooth
-		p.Parent = site
+		p.Parent = container
 		return p
 	end
 
@@ -1647,6 +1693,12 @@ local function buildMaelstromSite(parent: Instance, id: string, entry): boolean
 	water.Name = "Maelstrom_Water"
 	water.Shape = Enum.PartType.Cylinder
 	water.CanCollide = false
+
+	if hasMesh then
+		-- The mesh brought the platforms/spires; nothing procedural to add.
+		placed[id] = true
+		return true
+	end
 
 	local rng = Random.new(180000)
 	for i = 1, 9 do
@@ -1685,7 +1737,7 @@ local function buildMaelstromSite(parent: Instance, id: string, entry): boolean
 		)
 	end
 
-	site.Parent = parent
+	container.Parent = parent
 	placed[id] = true
 	return true
 end

@@ -93,6 +93,12 @@ PEAK_TERMS = []
 # cone stays shattered. None = untouched (every other island).
 CRAG_CALM = None
 
+# Extra preview cameras: (suffix, eye, target, lens) tuples rendered by
+# render_preview after the main overview shot. An island sets this in its
+# overrides when the standard shots can't show its layout (the Maelstrom's
+# arena is read from ON a platform, not from the air). Empty = none.
+PREVIEW_SHOTS = []
+
 # Where the inner material band gives way to the beach, as a relative radius;
 # must be one of RINGS so the boundary lies exactly on a mesh ring (a clean
 # painted edge instead of a stair-stepped one).
@@ -4674,6 +4680,366 @@ def build_wreckwater():
     return objects
 
 
+# ---------------------------------------------------------------- The Maelstrom
+#
+# The finale SITE grown into a real place (2026-08-27; it shipped as nine
+# procedural boxes and twelve spires, "completely unfinished" per the user).
+# There is still NO landmass: the Maelstrom is a drowned storm-shoal - the
+# whole Maelstrom_Base sits BELOW the waterline (a dark shallows you see down
+# into, dishing into a vortex bowl under the whirlpool) - and everything you
+# stand on is a basalt stack rising out of it.
+#
+# GAMEPLAY CONTRACTS this mesh must keep (WorldService/Bosses own the numbers):
+#   * The whirlpool water disc (Maelstrom_Water, r=75) stays PROCEDURAL -
+#     WorldService builds it and MaelstromVfxController spins it. Nothing may
+#     stand inside r<80: the disc must stay clear for casting and the Kraken.
+#   * The Kraken rises at the site centre (arena r=34) and plants its tentacle
+#     ring at r=26; the FIGHT platforms ring r 38-52 with walkable tops at
+#     y 3.6-6.0 - same band as the procedural stand-ins they replace.
+#   * The spawn platform sits at Roblox rel +Z 44 (Blender (0,-44)), top at
+#     y 6.0 = the Islands entry's spawn fallback. Travel probes down onto it.
+#   * Roblox +Z (the approach from home) is Blender -y: the outer teeth leave
+#     a clear sailing lane around 270 deg so a boat can reach the spawn stack.
+#
+# Objects (single-material each; MESH_COLOR/NON_COLLIDE keys in WorldService):
+#   Maelstrom_Base       the drowned shoal + vortex bowl (collidable seabed)
+#   Maelstrom_Platforms  spawn stack + 9 fight stacks (collidable, walked)
+#   Maelstrom_Spires     two belts of storm-teeth (collidable set dressing)
+#   Maelstrom_Rocks      half-sunken reef teeth on the shoal (collidable)
+#   Maelstrom_Wrecks     the doomed fleet spiralling in (NON_COLLIDE, like
+#                        Wreckwater_SeaHulks - boats glide through)
+#   Maelstrom_Sails      their torn storm-grey canvas (NON_COLLIDE)
+#   Maelstrom_Chains     colossal snapped anchor chains diving for the maw
+#                        (NON_COLLIDE)
+#   Maelstrom_Debris     flotsam ring at the waterline (NON_COLLIDE)
+#   Maelstrom_StormGlow  electric storm-fire: wreck ghost-light, crystal
+#                        shards on spires + platform rims (Neon, NON_COLLIDE)
+
+_MAEL_SPIRE_TOPS = []  # (x, y, z_top) of built spires, for chains + glow
+
+
+def _mael_cap_points(cx, cy, r, salt, seg=14):
+    """The ragged outline of a walkable basalt cap."""
+    pts = []
+    for s in range(seg):
+        a = (s / seg) * math.tau
+        w = 1 + 0.11 * math.sin(3 * a + salt) + 0.07 * math.sin(6 * a + salt * 1.7)
+        pts.append((cx + math.cos(a) * r * w, cy + math.sin(a) * r * w))
+    return pts
+
+
+def _mael_platform(bm, x, y, top, cap_r, salt):
+    """One arena stack: a column of stacked angular blobs rising out of the
+    shoal, crowned by a FLAT ragged cap slab - the walkable floor. The cap is
+    a genuine level surface so the fight has honest footing (import step:
+    PreciseConvexDecomposition, like every island)."""
+    rng = random.Random(salt)
+    # The column: three blobs, widest at the seabed, each with its PEAK held
+    # under the cap top - the first build let the top blob bulge through the
+    # cap as a dome, which broke the flat fighting floor (preview review).
+    for k, (rr, zc, sz) in enumerate((
+        (cap_r * 1.45, -6.5, 4.8),  # peaks ~ -1.7
+        (cap_r * 1.15, -1.0, 3.4),  # peaks ~ 2.4
+        (cap_r * 0.90, top - 2.8, 2.4),  # peaks ~ top-0.4, inside the cap slab
+    )):
+        add_blob(
+            bm, (x + rng.uniform(-1.2, 1.2), y + rng.uniform(-1.2, 1.2), zc),
+            (rr, rr * rng.uniform(0.85, 1.1), sz),
+            0.20, salt * 3.1 + k, yaw=rng.uniform(0, math.tau),
+        )
+    add_disc_slab(bm, _mael_cap_points(x, y, cap_r, salt), top, 1.6)
+
+
+def build_mael_platforms():
+    """The spawn stack (+Z, top 6.0) and the nine fight stacks ringing the
+    arena at r 38-52. Two of the nine are pushed out to r~62 where the ring
+    crosses the spawn stack's bearing - they read as the gateway flanking the
+    landing instead of crowding it."""
+    bm = bmesh.new()
+
+    # Spawn stack: Roblox rel +Z 44 = Blender (0, -44); top exactly 6.0 (the
+    # Islands entry's spawn Y fallback). Chunky, with two step blobs down
+    # toward the water so climbing back up from a knockdown is possible.
+    _mael_platform(bm, 0.0, -44.0, 6.0, 13.5, salt=11.0)
+    add_blob(bm, (10.5, -55.0, -0.4), (5.0, 4.2, 2.6), 0.20, 17.0, yaw=0.7)
+    add_blob(bm, (-9.0, -57.5, -1.2), (4.4, 3.8, 2.2), 0.20, 18.5, yaw=2.1)
+
+    spawn_bearing = -math.pi / 2  # Blender angle of (0, -44)
+    for i in range(9):
+        angle = (i / 9) * math.tau + random.uniform(-0.10, 0.10)
+        da = abs(((angle - spawn_bearing + math.pi) % math.tau) - math.pi)
+        if da < math.radians(26):
+            r = random.uniform(60.0, 66.0)  # the gateway pair, clear of the landing
+        else:
+            r = random.uniform(38.0, 52.0)
+        top = random.uniform(3.6, 6.0)
+        _mael_platform(bm, math.cos(angle) * r, math.sin(angle) * r, top, random.uniform(7.0, 10.0), salt=23.0 + i * 7.7)
+    return object_from_bmesh("Maelstrom_Platforms", bm, ["M_StormRock"])
+
+
+def _mael_spire_cluster(bm, ground, x, y, count, h_lo, h_hi, salt):
+    """A family of leaning storm-teeth off one blob base, seated on the real
+    shoal mesh. Records each tooth's top for the chains and the storm-fire."""
+    rng = random.Random(salt)
+    base = _drop_to_ground(ground, x, y)
+    if base is None:
+        return
+    add_blob(bm, (x, y, base + 0.6), (rng.uniform(6.0, 10.0), rng.uniform(5.0, 8.5), rng.uniform(2.6, 4.4)), 0.24, salt * 1.9, yaw=rng.uniform(0, math.tau))
+    for k in range(count):
+        dx, dy = rng.uniform(-5.0, 5.0), rng.uniform(-5.0, 5.0)
+        h = rng.uniform(h_lo, h_hi)
+        tilt = (rng.uniform(-0.16, 0.16), rng.uniform(-0.16, 0.16))
+        yaw = rng.uniform(0, math.tau)
+        # Base radius follows height, so tall teeth read as rock masses and
+        # only the short ones stay slender (preview review: uniform thin
+        # needles read as a spike field, not storm rock).
+        add_cone(bm, (x + dx, y + dy, base), rng.uniform(3.2, 7.0) * (0.5 + h / h_hi * 0.7), 0.4, h, sides=5, tilt=tilt, yaw=yaw)
+        axis = cone_axis(tilt, yaw)
+        top = Vector((x + dx, y + dy, base)) + axis * h
+        _MAEL_SPIRE_TOPS.append((top.x, top.y, top.z))
+
+
+def build_mael_spires(ground):
+    """Two belts of teeth: an inner crown just past the arena and an outer
+    palisade toward the rim, both leaving the 270-deg approach lane open so
+    the sail in from home runs clean to the spawn stack."""
+    _MAEL_SPIRE_TOPS.clear()
+    bm = bmesh.new()
+    lane = -math.pi / 2
+    for i in range(10):  # the inner crown
+        angle = (i / 10) * math.tau + random.uniform(-0.14, 0.14)
+        if abs(((angle - lane + math.pi) % math.tau) - math.pi) < math.radians(20):
+            continue
+        r = random.uniform(95.0, 130.0)
+        _mael_spire_cluster(bm, ground, math.cos(angle) * r, math.sin(angle) * r, random.randint(2, 3), 20.0, 55.0, salt=41.0 + i * 5.3)
+    for i in range(14):  # the outer palisade
+        angle = (i / 14) * math.tau + random.uniform(-0.12, 0.12)
+        if abs(((angle - lane + math.pi) % math.tau) - math.pi) < math.radians(16):
+            continue
+        r = random.uniform(165.0, 232.0)
+        _mael_spire_cluster(bm, ground, math.cos(angle) * r, math.sin(angle) * r, random.randint(2, 4), 14.0, 72.0, salt=97.0 + i * 6.1)
+    # Three TITAN FANGS - the finale's silhouette off the open sea (the
+    # volcano rule: a destination reads from miles out). Broad-based, leaning
+    # a few degrees toward the maw as if the storm is winning, each footed on
+    # a boulder mass that breaks the surface.
+    for k, bearing in enumerate((0.55, 2.65, 4.35)):  # all well off the 270-deg lane
+        r = random.uniform(135.0, 165.0)
+        x, y = math.cos(bearing) * r, math.sin(bearing) * r
+        base = _drop_to_ground(ground, x, y)
+        if base is None:
+            continue
+        h = random.uniform(88.0, 118.0)
+        inward = math.atan2(-y, -x)
+        tilt_mag = math.radians(random.uniform(5.0, 9.0))
+        tilt = (math.sin(inward) * tilt_mag, -math.cos(inward) * tilt_mag)
+        add_blob(bm, (x, y, 0.4), (random.uniform(9.0, 12.0), random.uniform(7.5, 10.0), random.uniform(3.2, 4.6)), 0.24, 301.0 + k * 9.7, yaw=random.uniform(0, math.tau))
+        add_cone(bm, (x, y, base), random.uniform(9.0, 13.0), 0.6, h, sides=6, tilt=tilt, yaw=random.uniform(0, math.tau))
+        add_cone(bm, (x + random.uniform(-6, 6), y + random.uniform(-6, 6), base), random.uniform(4.0, 6.0), 0.4, h * random.uniform(0.35, 0.55), sides=5, tilt=(tilt[0] * 1.6, tilt[1] * 1.6), yaw=random.uniform(0, math.tau))
+        axis = cone_axis(tilt, 0.0)
+        top = Vector((x, y, base)) + axis * h
+        _MAEL_SPIRE_TOPS.append((top.x, top.y, top.z))
+    return object_from_bmesh("Maelstrom_Spires", bm, ["M_StormSpire"])
+
+
+def build_mael_wrecks():
+    """The doomed fleet: five ships caught on the spiral, each further down
+    the drain than the last - bows reared, sterns heeled, one hull picked to
+    the bone - every one yawed just off the tangent so the whole fleet reads
+    as circling INWARD. Their ghost-light goes into the shared storm-glow
+    object; the innermost pieces are the short ones, so nothing reaches past
+    the r=80 clear-water line around the whirlpool."""
+    wood_bm, glow_bm, sail_bm = bmesh.new(), bmesh.new(), bmesh.new()
+    spiral = (
+        # (theta, r, kind); kinds: bow / stern / ribcage / seaqribs
+        (0.5, 200.0, "bow"),
+        (1.9, 176.0, "stern"),
+        (3.2, 154.0, "bow"),
+        (4.5, 132.0, "stern"),
+        (5.6, 112.0, "ribcage"),
+    )
+    for theta, r, kind in spiral:
+        x, y = math.cos(theta) * r, math.sin(theta) * r
+        # Tangent (counter-clockwise) plus a pull toward the maw.
+        yaw = theta + math.pi / 2 + 0.42 + random.uniform(-0.12, 0.12)
+        length = random.uniform(26.0, 36.0)
+        beam = max(14.5, length * random.uniform(0.44, 0.52))
+        if kind == "bow":
+            _wr_bow_section(
+                wood_bm, glow_bm, sail_bm,
+                pos=(x, y, -random.uniform(1.5, 3.0)), yaw=yaw,
+                pitch=math.radians(random.uniform(20.0, 40.0)),
+                length=length, beam=beam, depth=beam * 0.50, ghost=True,
+            )
+        elif kind == "stern":
+            _wr_stern_section(
+                wood_bm, glow_bm, sail_bm,
+                pos=(x, y, -random.uniform(2.0, 3.5)), yaw=yaw,
+                pitch=math.radians(random.uniform(-8.0, 6.0)),
+                roll=math.radians(random.choice((1, -1)) * random.uniform(24.0, 44.0)),
+                length=length * 0.85, beam=beam * 0.92, depth=beam * 0.45, ghost=True,
+            )
+        else:  # the innermost hull, picked clean - shortest reach of the lot
+            _wr_ribcage(
+                wood_bm, glow_bm,
+                pos=(x, y, -random.uniform(1.0, 2.0)), yaw=yaw,
+                pitch=math.radians(random.uniform(-4.0, 6.0)),
+                roll=math.radians(random.uniform(-18.0, 18.0)),
+                length=length * 0.9, beam=beam * 0.85, depth=beam * 0.42,
+            )
+    # Two half-drowned rib rings further out - the storm's older kills.
+    for theta, r in ((2.6, 218.0), (5.1, 205.0)):
+        _wr_sea_ribcage(
+            wood_bm,
+            pos=(math.cos(theta) * r, math.sin(theta) * r, -random.uniform(1.5, 2.5)),
+            yaw=theta + math.pi / 2 + random.uniform(-0.4, 0.4),
+            pitch=math.radians(random.uniform(-6.0, 6.0)),
+            roll=math.radians(random.uniform(-20.0, 20.0)),
+            length=random.uniform(20.0, 28.0), beam=random.uniform(10.0, 13.0),
+            rise=random.uniform(5.0, 8.0),
+        )
+    return (
+        object_from_bmesh("Maelstrom_Wrecks", wood_bm, ["M_DoomWood"]),
+        object_from_bmesh("Maelstrom_Sails", sail_bm, ["M_DoomSail"]),
+        glow_bm,
+    )
+
+
+def build_mael_chains(glow_bm):
+    """Colossal snapped anchor chains, arcing off the tallest teeth and diving
+    for the maw - they end just OUTSIDE the r=80 clear-water line, pointing at
+    the whirlpool rather than crossing it. Links are alternating flat/edge
+    timber-scale beams down a sagging curve; a storm-fire orb rides each
+    anchor point."""
+    bm = bmesh.new()
+    ident = Matrix.Identity(4)
+    anchors = sorted(_MAEL_SPIRE_TOPS, key=lambda p: -p[2])[:8]
+    picked = []
+    for p in anchors:  # spread the three chains around the ring, not one side
+        if all(abs(((math.atan2(p[1], p[0]) - math.atan2(q[1], q[0]) + math.pi) % math.tau) - math.pi) > 1.2 for q in picked):
+            picked.append(p)
+        if len(picked) == 3:
+            break
+    for i, (sx, sy, sz) in enumerate(picked):
+        a = math.atan2(sy, sx)
+        ex, ey = math.cos(a) * 86.0, math.sin(a) * 86.0
+        p0 = Vector((sx, sy, sz - 1.0))
+        p2 = Vector((ex, ey, -1.2))
+        mid = (p0 + p2) / 2
+        p1 = Vector((mid.x, mid.y, min(p0.z, 26.0) * 0.55))  # the sag
+        n = 12
+        prev = p0
+        for k in range(1, n + 1):
+            t = k / n
+            pt = (1 - t) ** 2 * p0 + 2 * (1 - t) * t * p1 + t ** 2 * p2
+            if k % 2 == 0:
+                _wr_beam(bm, ident, prev, pt, 2.2, 0.7)
+            else:
+                _wr_beam(bm, ident, prev, pt, 0.7, 2.2)
+            prev = pt
+        _wr_orb(glow_bm, ident, (sx, sy, sz + 0.8), 1.0)
+    return object_from_bmesh("Maelstrom_Chains", bm, ["M_StormIron"])
+
+
+def build_mael_rocks(ground):
+    """Half-sunken reef teeth strewn over the shoal between the spire belts -
+    the ground clutter that makes the shallows read as wrecking water."""
+    bm = bmesh.new()
+    for i in range(42):
+        angle = random.uniform(0, math.tau)
+        r = random.uniform(88.0, 238.0)
+        x, y = math.cos(angle) * r, math.sin(angle) * r
+        if _drop_to_ground(ground, x, y) is None:
+            continue
+        # Seated against the WATERLINE, not the shoal (the first build sat
+        # them on the seabed and drowned nearly all of them): centres straddle
+        # y=0 so every tooth breaks the surface by 1-5 studs.
+        s = random.uniform(2.2, 6.5)
+        add_blob(bm, (x, y, random.uniform(-1.0, 1.6)), (s, s * random.uniform(0.7, 1.0), s * random.uniform(0.6, 0.9)), 0.26, 131.0 + i * 3.3, yaw=random.uniform(0, math.tau))
+    return object_from_bmesh("Maelstrom_Rocks", bm, ["M_StormRock"])
+
+
+def build_mael_debris():
+    """The flotsam ring: planks, barrels, crates and the odd snapped spar
+    turning on the outer water - sparse, so casting between pieces stays
+    clean, and all of it OUTSIDE the whirlpool's r=80 clear line."""
+    bm = bmesh.new()
+    for i in range(52):
+        angle = random.uniform(0, math.tau)
+        r = random.uniform(85.0, 238.0)
+        frame = _wr_frame(
+            (math.cos(angle) * r, math.sin(angle) * r, 0.12),
+            yaw=random.uniform(0, math.tau),
+            pitch=math.radians(random.uniform(-7.0, 7.0)),
+            roll=math.radians(random.uniform(-7.0, 7.0)),
+        )
+        roll_die = random.random()
+        if roll_die < 0.5:  # drift planks
+            L = random.uniform(4.0, 9.0)
+            _wr_beam(bm, frame, (-L / 2, 0, 0.2), (L / 2, random.uniform(-1.0, 1.0), 0.2 + random.uniform(-0.3, 0.5)), random.uniform(0.8, 1.5), 0.45, twist=random.uniform(0, 1.0))
+        elif roll_die < 0.75:  # barrels
+            _wr_spar(bm, frame, (0, 0, 0.2), (random.uniform(1.8, 2.6), random.uniform(-0.8, 0.8), random.uniform(0.6, 1.4)), 1.3, 1.05, sides=8)
+        elif roll_die < 0.92:  # crates
+            add_box(bm, (math.cos(angle) * r, math.sin(angle) * r, 0.55), (random.uniform(1.6, 2.6),) * 3, yaw=random.uniform(0, math.tau))
+        else:  # a snapped spar still rigged to a scrap of nothing
+            L = random.uniform(7.0, 12.0)
+            _wr_spar(bm, frame, (-L / 2, 0, 0.3), (L / 2, 0, random.uniform(0.8, 2.2)), 0.55, 0.25)
+    return object_from_bmesh("Maelstrom_Debris", bm, ["M_StormDebris"])
+
+
+def build_mael_glow(glow_bm, ground):
+    """Everything electric, in ONE Neon object: the fleet's ghost-light and
+    chain-anchor orbs (already in glow_bm), crystal shards at the spire bases,
+    and small charged shards around each fight platform's rim - the arena
+    reads storm-lit from the water."""
+    rng = random.Random(203.0)
+    # Shards at ~60% of spire tops' bases.
+    for (sx, sy, _sz) in _MAEL_SPIRE_TOPS:
+        if rng.random() > 0.4:
+            continue
+        base = _drop_to_ground(ground, sx, sy)
+        if base is None:
+            continue
+        for _ in range(rng.randint(2, 3)):
+            add_cone(
+                glow_bm,
+                (sx + rng.uniform(-3.0, 3.0), sy + rng.uniform(-3.0, 3.0), base),
+                rng.uniform(0.35, 0.7), 0.06, rng.uniform(1.6, 4.2),
+                sides=4, tilt=(rng.uniform(-0.3, 0.3), rng.uniform(-0.3, 0.3)), yaw=rng.uniform(0, math.tau),
+            )
+    # Charged shards on the fight platforms' rims (positions re-derived from
+    # the same ring band; exact platform centres don't matter for a rim spark).
+    for i in range(14):
+        angle = rng.uniform(0, math.tau)
+        r = rng.uniform(40.0, 58.0)
+        add_cone(glow_bm, (math.cos(angle) * r, math.sin(angle) * r, rng.uniform(2.2, 5.4)), rng.uniform(0.25, 0.45), 0.05, rng.uniform(0.9, 1.8), sides=4, tilt=(rng.uniform(-0.4, 0.4), rng.uniform(-0.4, 0.4)), yaw=rng.uniform(0, math.tau))
+    return object_from_bmesh("Maelstrom_StormGlow", glow_bm, ["M_StormGlow"])
+
+
+def build_maelstrom():
+    base = build_island_base("Maelstrom_Base", ["M_StormFloor", "M_StormShoal", "M_StormWet"])
+    ground = _ground_bvh(base)
+    platforms = build_mael_platforms()
+    spires = build_mael_spires(ground)
+    wrecks, sails, glow_bm = build_mael_wrecks()
+    chains = build_mael_chains(glow_bm)
+    rocks = build_mael_rocks(ground)
+    debris = build_mael_debris()
+    glow = build_mael_glow(glow_bm, ground)
+    objects = [base, platforms, spires, rocks, wrecks, sails, chains, debris, glow]
+    print(
+        "[island_gen] HANDOFF maelstrom: spawn stack top Y=6.0 at rel Z=44 (Roblox); fight stacks r 38-52 "
+        "tops 3.6-6.0 (arena r=34, tentacle ring r=26); water inside r<80 kept clear - the Maelstrom_Water "
+        "disc stays PROCEDURAL (WorldService), never authored here."
+    )
+    # Platform columns and sunken keels are authored well below the -9 skirt,
+    # so this island ALWAYS needs meshBottom in its Islands entry (0f's
+    # "floating ships" rule). build_pack prints this too; printing it here as
+    # well means a standalone island_maelstrom.glb build can't ship without it.
+    low = min(min(v.co.z for v in o.data.vertices) for o in objects if o.data.vertices)
+    print(f"[island_gen] HANDOFF maelstrom: mesh bottom z {low:.2f}  <-- set Islands.luau meshBottom to this")
+    return objects
+
+
 # ---------------------------------------------------------------- island config
 #
 # Each entry overrides the shape-state globals for its island (an empty
@@ -4683,7 +5049,7 @@ def build_wreckwater():
 # Islands to bundle into the one importable pack (assets/island_pack.glb), in
 # order. Adding an island: give it an ISLANDS entry (with a "model" name) and
 # add its id here.
-ISLAND_ORDER = ["tropical", "volcano", "swamp", "ice", "gloom", "wreck"]
+ISLAND_ORDER = ["tropical", "volcano", "swamp", "ice", "gloom", "wreck", "maelstrom"]
 
 ISLANDS = {
     "tropical": {"model": "Island", "overrides": {}, "build": build_tropical},
@@ -4849,12 +5215,17 @@ ISLANDS = {
             # A gentle dome: ~7 studs at the heart easing to the standard
             # shallow shoreline, then the shared underwater skirt.
             "PROFILE": [
-                (0.00, 7.0),
-                (0.25, 6.6),
-                (0.45, 5.8),
-                (0.62, 4.6),
-                (0.76, 3.2),
-                (0.88, 1.4),
+                # Raised from the first 7-stud draft (user, step-1 review:
+                # "add some height"): a real ~22-stud rise at the heart that
+                # reads from the sea, rolling down through a mid shoulder to
+                # the same shallow shoreline so the tide still works.
+                (0.00, 22.0),
+                (0.20, 20.6),
+                (0.38, 17.2),
+                (0.55, 12.6),
+                (0.70, 7.8),
+                (0.82, 4.0),
+                (0.92, 1.6),
                 (1.00, 0.6),
                 (1.09, -1.8),
                 (1.28, SKIRT_BOTTOM),
@@ -5113,6 +5484,70 @@ ISLANDS = {
         },
         "build": build_wreckwater,
     },
+    # ---- The Maelstrom (finale site). A drowned storm-shoal, NOT a landmass:
+    # the whole base sits below the waterline and everything walkable is a
+    # basalt stack (see the maelstrom section's contract comment). Builds
+    # LAST in the pack, and - per the configure() no-reset rule (context.md,
+    # "The swamp restart") - sets EVERY shape key it cares about explicitly,
+    # so nothing leaks in from wreck's override set.
+    "maelstrom": {
+        "model": "Maelstrom",
+        "overrides": {
+            "SEED": 46,
+            "ISLAND_RADIUS": 240,
+            "SEGMENTS": 64,
+            "GRASS_U": 0.42,
+            "RINGS": [0.0, 0.14, 0.27, 0.315, 0.42, 0.54, 0.66, 0.78, 0.90, 1.0, 1.09, 1.28],
+            # All UNDERWATER: a vortex bowl under the whirlpool disc (u<0.31 ~
+            # r<75), a dish lip, then a dark shallows shelf falling away to
+            # the skirt. Max height -2.6, so the base never breaks the surface.
+            "PROFILE": [
+                (0.000, -8.6),  # the vortex bowl floor
+                (0.140, -8.2),
+                (0.270, -7.0),  # bowl wall
+                (0.315, -3.4),  # dish lip, just under the whirlpool's edge
+                (0.420, -2.6),  # the shoal shelf the stacks stand on
+                (0.540, -2.9),
+                (0.660, -3.6),
+                (0.780, -4.4),
+                (0.900, -5.4),
+                (1.000, -6.2),
+                (1.090, -7.2),
+                (1.280, SKIRT_BOTTOM),
+            ],
+            "COAST_TERMS": [(2, 0.8, 0.10), (3, 2.2, 0.07), (7, 1.1, 0.05)],
+            "GRASS_TERMS": [(3, 1.2, 0.05)],
+            "CRAG": 1.4,
+            "CRAG_FREQ": 0.05,
+            "CRAG_RADIAL": 0.04,
+            "CRAG_CALM": None,
+            "RIM_FLAT": None,
+            "NOTCHES": [],
+            "NOTCH_BAND": None,
+            "PEAK_JAG": 0.0,
+            "PEAK_TERMS": [],
+            # The overview cam sits low over a flat site; these two show what
+            # matters: the arena from the spawn stack, and the sail-in down
+            # the clear 270-deg lane (Blender -y = Roblox +Z, home's bearing).
+            "PREVIEW_SHOTS": [
+                ("arena", (0.0, -75.0, 18.0), (0.0, 20.0, 0.0), 24),
+                ("approach", (0.0, -320.0, 18.0), (0.0, 0.0, 6.0), 30),
+            ],
+            "COLORS": {
+                "M_StormFloor": (0.100, 0.110, 0.160),  # vortex bowl / inner shoal
+                "M_StormShoal": (0.160, 0.180, 0.240),  # the pale mid-shelf band
+                "M_StormWet": (0.128, 0.140, 0.190),
+                "M_StormRock": (0.180, 0.188, 0.235),  # platform basalt (the procedural stacks' grey-blue)
+                "M_StormSpire": (0.130, 0.132, 0.180),  # darker teeth
+                "M_DoomWood": (0.137, 0.110, 0.098),  # storm-blackened timbers
+                "M_DoomSail": (0.545, 0.565, 0.600),  # rain-grey tattered canvas
+                "M_StormIron": (0.088, 0.090, 0.110),  # the great chains
+                "M_StormDebris": (0.200, 0.163, 0.122),  # paler drift wood
+                "M_StormGlow": (0.420, 0.940, 1.000),  # electric storm-fire (Neon in-game)
+            },
+        },
+        "build": build_maelstrom,
+    },
 }
 
 
@@ -5177,6 +5612,16 @@ def render_preview(out_png):
     if not os.path.exists(out_png):
         raise RuntimeError(f"preview render did not produce {out_png}")
     print(f"[island_gen] preview rendered to {out_png}")
+
+    # Island-declared extra cameras (PREVIEW_SHOTS override; see the global).
+    for suffix, eye, target, lens in PREVIEW_SHOTS:
+        cam.data.lens = lens
+        cam.location = Vector(eye)
+        cam.rotation_euler = (Vector(target) - Vector(eye)).to_track_quat("-Z", "Y").to_euler()
+        shot_png = os.path.splitext(out_png)[0] + f"_{suffix}.png"
+        scene.render.filepath = shot_png
+        bpy.ops.render.render(write_still=True)
+        print(f"[island_gen] {suffix} view rendered to {shot_png}")
 
     # If the island pours lava, add two more shots: a close look at the dock
     # over the delta (the fishing spot), and a full-tower postcard from out
