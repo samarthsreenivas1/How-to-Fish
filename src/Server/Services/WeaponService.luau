@@ -66,9 +66,10 @@ local function attachWeapon(character: Model, weaponData)
 	for _, descendant in model:GetDescendants() do
 		if descendant:IsA("BasePart") then
 			local relative = gripCFrame:ToObjectSpace(descendant.CFrame)
-			-- Guns carry level (bore forward); melee keeps the blade-up carry.
-			local hold = if weaponData.ranged then WeaponModel.HOLD_OFFSET_RANGED else WeaponModel.HOLD_OFFSET
-			descendant.CFrame = hand.CFrame * hold * relative
+			-- Guns carry level (bore forward); melee defaults to the blade-up
+			-- carry, but a row with a `hold` override (spears, the gauntlet)
+			-- carries the way its viewmodel does - holdOffsetFor picks.
+			descendant.CFrame = hand.CFrame * WeaponModel.holdOffsetFor(weaponData) * relative
 
 			local weld = Instance.new("WeldConstraint")
 			weld.Part0 = hand

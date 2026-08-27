@@ -230,9 +230,9 @@ COLORS = {
     "GlacierMaul_Guard": (0.59, 0.55, 0.49),
     "GlacierMaul_Pommel": (0.59, 0.55, 0.49),
     "GlacierMaul_Grip": (0.41, 0.38, 0.33),
-    "GlacierMaul_Head": (0.59, 0.77, 0.88),
-    "GlacierMaul_Edge": (0.59, 0.77, 0.88),
-    "GlacierMaul_Spike": (0.59, 0.77, 0.88),
+    "GlacierMaul_Head": (0.68, 0.85, 0.94),  # glacier_maul.png's ice is brighter than this was
+    "GlacierMaul_Edge": (0.68, 0.85, 0.94),
+    "GlacierMaul_Spike": (0.68, 0.85, 0.94),
     "GlacierMaul_Glow": (0.47, 0.78, 1.00),
     "FrostbiteRevolver_Haft": (0.35, 0.39, 0.45),
     "FrostbiteRevolver_Guard": (0.35, 0.39, 0.45),
@@ -242,9 +242,11 @@ COLORS = {
     "FrostbiteRevolver_Edge": (0.78, 0.88, 0.94),
     "FrostbiteRevolver_Spike": (0.78, 0.88, 0.94),
     "FrostbiteRevolver_Glow": (0.47, 0.78, 1.00),
-    "RimefangLance_Haft": (0.55, 0.71, 0.82),
-    "RimefangLance_Guard": (0.55, 0.71, 0.82),
-    "RimefangLance_Pommel": (0.55, 0.71, 0.82),
+    # rimefang_lance.png sets its pale ice head on a DARK slate shaft - the
+    # contrast between the two is what makes the head read at all.
+    "RimefangLance_Haft": (0.36, 0.44, 0.52),
+    "RimefangLance_Guard": (0.36, 0.44, 0.52),
+    "RimefangLance_Pommel": (0.36, 0.44, 0.52),
     "RimefangLance_Grip": (0.31, 0.39, 0.49),
     "RimefangLance_Head": (0.93, 0.96, 0.99),
     "RimefangLance_Edge": (0.93, 0.96, 0.99),
@@ -254,10 +256,12 @@ COLORS = {
     "Trenchspike_Guard": (0.27, 0.31, 0.36),
     "Trenchspike_Pommel": (0.27, 0.31, 0.36),
     "Trenchspike_Grip": (0.19, 0.21, 0.26),
-    "Trenchspike_Head": (0.51, 0.49, 0.56),
-    "Trenchspike_Edge": (0.51, 0.49, 0.56),
-    "Trenchspike_Spike": (0.51, 0.49, 0.56),
-    "Trenchspike_Glow": (0.36, 1.00, 0.82),  # the lure on the illicium
+    # trenchspike.png is near-black end to end; the head is barely lighter than
+    # the shaft, and nothing on it is lit.
+    "Trenchspike_Head": (0.36, 0.39, 0.46),
+    "Trenchspike_Edge": (0.36, 0.39, 0.46),
+    "Trenchspike_Spike": (0.36, 0.39, 0.46),
+    "Trenchspike_Glow": (0.45, 0.60, 0.75),
     "AbyssalHarpooner_Haft": (0.24, 0.26, 0.33),
     "AbyssalHarpooner_Guard": (0.24, 0.26, 0.33),
     "AbyssalHarpooner_Pommel": (0.24, 0.26, 0.33),
@@ -276,10 +280,12 @@ COLORS = {
     "VoidglassSaber_Guard": (0.16, 0.14, 0.22),
     "VoidglassSaber_Pommel": (0.16, 0.14, 0.22),
     "VoidglassSaber_Grip": (0.12, 0.10, 0.16),
-    "VoidglassSaber_Head": (0.26, 0.23, 0.35),
-    "VoidglassSaber_Edge": (0.26, 0.23, 0.35),
-    "VoidglassSaber_Spike": (0.26, 0.23, 0.35),
-    "VoidglassSaber_Glow": (0.67, 0.47, 1.00),
+    # voidglass_saber.png is a NEAR-BLACK blade with one vivid purple seam. The
+    # blade has to stay dark or the seam stops being the whole weapon.
+    "VoidglassSaber_Head": (0.15, 0.14, 0.19),
+    "VoidglassSaber_Edge": (0.15, 0.14, 0.19),
+    "VoidglassSaber_Spike": (0.15, 0.14, 0.19),
+    "VoidglassSaber_Glow": (0.64, 0.33, 0.95),
     "GloomcallerDmr_Haft": (0.22, 0.20, 0.28),
     "GloomcallerDmr_Guard": (0.22, 0.20, 0.28),
     "GloomcallerDmr_Pommel": (0.22, 0.20, 0.28),
@@ -288,14 +294,15 @@ COLORS = {
     "GloomcallerDmr_Edge": (1.00, 0.89, 0.51),
     "GloomcallerDmr_Spike": (1.00, 0.89, 0.51),
     "GloomcallerDmr_Glow": (1.00, 0.89, 0.51),
-    "BoardingAxe_Haft": (0.43, 0.38, 0.30),
-    "BoardingAxe_Guard": (0.43, 0.38, 0.30),
-    "BoardingAxe_Pommel": (0.43, 0.38, 0.30),
-    "BoardingAxe_Grip": (0.30, 0.26, 0.21),
-    "BoardingAxe_Head": (0.63, 0.66, 0.69),
-    "BoardingAxe_Edge": (0.63, 0.66, 0.69),
-    "BoardingAxe_Spike": (0.63, 0.66, 0.69),
-    "BoardingAxe_Glow": (0.63, 1.00, 0.82),  # the cold in the snapped arm
+    # boarding_axe.png hangs its head on plain BROWN WOOD, not grey iron.
+    "BoardingAxe_Haft": (0.42, 0.29, 0.19),
+    "BoardingAxe_Guard": (0.42, 0.29, 0.19),
+    "BoardingAxe_Pommel": (0.42, 0.29, 0.19),
+    "BoardingAxe_Grip": (0.28, 0.20, 0.14),
+    "BoardingAxe_Head": (0.66, 0.68, 0.70),
+    "BoardingAxe_Edge": (0.66, 0.68, 0.70),
+    "BoardingAxe_Spike": (0.66, 0.68, 0.70),
+    "BoardingAxe_Glow": (0.78, 0.90, 0.95),  # a cold sheen; the icon lights nothing
     "GraveBlunderbuss_Haft": (0.41, 0.35, 0.26),
     "GraveBlunderbuss_Guard": (0.41, 0.35, 0.26),
     "GraveBlunderbuss_Pommel": (0.41, 0.35, 0.26),
@@ -311,22 +318,25 @@ COLORS = {
     "PhantomRepeater_Edge": (0.63, 1.00, 0.82),
     "PhantomRepeater_Spike": (0.63, 1.00, 0.82),
     "PhantomRepeater_Glow": (0.63, 1.00, 0.82),
-    "CutlassOfTheFleet_Haft": (0.47, 0.53, 0.49),
-    "CutlassOfTheFleet_Guard": (0.47, 0.53, 0.49),
-    "CutlassOfTheFleet_Pommel": (0.47, 0.53, 0.49),
-    "CutlassOfTheFleet_Grip": (0.33, 0.37, 0.35),
-    "CutlassOfTheFleet_Head": (0.78, 0.84, 0.81),
-    "CutlassOfTheFleet_Edge": (0.78, 0.84, 0.81),
-    "CutlassOfTheFleet_Spike": (0.78, 0.84, 0.81),
+    # cutlass_of_the_fleet.png is bright silver furniture as well as blade.
+    "CutlassOfTheFleet_Haft": (0.62, 0.67, 0.63),
+    "CutlassOfTheFleet_Guard": (0.62, 0.67, 0.63),
+    "CutlassOfTheFleet_Pommel": (0.62, 0.67, 0.63),
+    "CutlassOfTheFleet_Grip": (0.40, 0.45, 0.42),
+    "CutlassOfTheFleet_Head": (0.85, 0.89, 0.86),
+    "CutlassOfTheFleet_Edge": (0.85, 0.89, 0.86),
+    "CutlassOfTheFleet_Spike": (0.85, 0.89, 0.86),
     "CutlassOfTheFleet_Glow": (0.63, 1.00, 0.82),
-    "AdmiralsSaber_Haft": (0.38, 0.45, 0.42),
-    "AdmiralsSaber_Guard": (0.38, 0.45, 0.42),
-    "AdmiralsSaber_Pommel": (0.38, 0.45, 0.42),
-    "AdmiralsSaber_Grip": (0.26, 0.31, 0.30),
-    "AdmiralsSaber_Head": (0.90, 0.75, 0.39),
-    "AdmiralsSaber_Edge": (0.90, 0.75, 0.39),
-    "AdmiralsSaber_Spike": (0.90, 0.75, 0.39),
-    "AdmiralsSaber_Glow": (0.63, 1.00, 0.82),
+    # admirals_saber.png is SILVER throughout - a bright steel blade and a pale
+    # jewelled hilt. The gilt accent it used to carry fought the icon outright.
+    "AdmiralsSaber_Haft": (0.60, 0.65, 0.62),
+    "AdmiralsSaber_Guard": (0.60, 0.65, 0.62),
+    "AdmiralsSaber_Pommel": (0.60, 0.65, 0.62),
+    "AdmiralsSaber_Grip": (0.42, 0.47, 0.45),
+    "AdmiralsSaber_Head": (0.88, 0.91, 0.88),
+    "AdmiralsSaber_Edge": (0.88, 0.91, 0.88),
+    "AdmiralsSaber_Spike": (0.88, 0.91, 0.88),
+    "AdmiralsSaber_Glow": (0.80, 0.97, 0.88),
     "Galecleaver_Haft": (0.43, 0.49, 0.55),
     "Galecleaver_Guard": (0.43, 0.49, 0.55),
     "Galecleaver_Pommel": (0.43, 0.49, 0.55),
@@ -350,13 +360,14 @@ COLORS = {
     "ThunderheadCannon_Edge": (0.86, 0.90, 1.00),
     "ThunderheadCannon_Spike": (0.86, 0.90, 1.00),
     "ThunderheadCannon_Glow": (0.86, 0.90, 1.00),
-    "Stormlance_Haft": (0.35, 0.43, 0.59),
-    "Stormlance_Guard": (0.35, 0.43, 0.59),
-    "Stormlance_Pommel": (0.35, 0.43, 0.59),
-    "Stormlance_Grip": (0.24, 0.30, 0.41),
-    "Stormlance_Head": (0.86, 0.90, 1.00),
-    "Stormlance_Edge": (0.86, 0.90, 1.00),
-    "Stormlance_Spike": (0.86, 0.90, 1.00),
+    # stormlance.png: dark navy shaft, pale ice-blue head and wings.
+    "Stormlance_Haft": (0.25, 0.30, 0.40),
+    "Stormlance_Guard": (0.25, 0.30, 0.40),
+    "Stormlance_Pommel": (0.25, 0.30, 0.40),
+    "Stormlance_Grip": (0.20, 0.25, 0.34),
+    "Stormlance_Head": (0.74, 0.87, 0.96),
+    "Stormlance_Edge": (0.74, 0.87, 0.96),
+    "Stormlance_Spike": (0.74, 0.87, 0.96),
     "Stormlance_Glow": (0.55, 0.78, 1.00),
     "Krakenfang_Haft": (0.24, 0.17, 0.33),
     "Krakenfang_Guard": (0.24, 0.17, 0.33),
@@ -365,7 +376,7 @@ COLORS = {
     "Krakenfang_Head": (0.86, 0.82, 0.94),
     "Krakenfang_Edge": (0.86, 0.82, 0.94),
     "Krakenfang_Spike": (0.86, 0.82, 0.94),
-    "Krakenfang_Glow": (0.59, 0.47, 1.00),
+    "Krakenfang_Glow": (0.78, 0.66, 0.95),  # the pale stone in the pommel, not a pearl
 }
 
 # The fifteen ranged variants (see "RANGED REBUILD" near the bottom). Each gun
@@ -756,6 +767,46 @@ def _wa_scale(bm, center, r, thick=0.045, sides=5, phase=0.0):
     bm.faces.new(b)
 
 
+def _wa_pierce(bm, profile, hole, hole_r, y, hole_sides=8):
+    """slab_with_hole(), but with the hole ring wound the OTHER way.
+
+    The shared slab_with_hole() generates its inner ring counter-clockwise, the
+    same sense as a CCW outer profile - and bridge_loops given two same-sense
+    loops stitches a folded annulus that renders as a SOLID face. It raises on
+    a ring that leaves the profile, so the failure is silent: the geometry is
+    valid, it just has no hole in it (checked 2026-08-28 by ray-casting the
+    Drowncleaver's hanging hole - the ray hit the blade). Reversing the inner
+    ring gives bridge_loops the opposing sense it wants and the hole opens.
+
+    Used by the two icon-canon pierced blades below (Drowncleaver, Fenreaver).
+    Anything else in the file still calling slab_with_hole is very likely
+    carrying a hole that never actually opened - worth an audit."""
+    n, m = len(profile), hole_sides
+    ring = [(hole[0] + math.cos(a) * hole_r, hole[1] + math.sin(a) * hole_r) for a in ((i / m) * TAU for i in range(m))]
+    for rx, rz in ring:
+        if not _point_in_polygon((rx, rz), profile):
+            raise ValueError(f"_wa_pierce: hole at {hole} r={hole_r} leaves the profile at ({rx:.3f}, {rz:.3f})")
+    ring.reverse()
+
+    def loop(yy, pts):
+        return [bm.verts.new(Vector((x, yy, z))) for x, z in pts]
+
+    fo, bo = loop(-y, profile), loop(y, profile)
+    fi, bi = loop(-y, ring), loop(y, ring)
+    for i in range(n):
+        bm.faces.new((fo[i], fo[(i + 1) % n], bo[(i + 1) % n], bo[i]))
+    for i in range(m):
+        bm.faces.new((fi[i], fi[(i + 1) % m], bi[(i + 1) % m], bi[i]))
+
+    def edge(a, b):
+        return bm.edges.get((a, b)) or bm.edges.new((a, b))
+
+    for outer, inner in ((fo, fi), (bo, bi)):
+        edges = [edge(outer[i], outer[(i + 1) % n]) for i in range(n)]
+        edges += [edge(inner[i], inner[(i + 1) % m]) for i in range(m)]
+        bmesh.ops.bridge_loops(bm, edges=edges)
+
+
 def _wa_vent(bm, glow_bm, base, direction, height, r0, r1, sides=6):
     """A vent chimney: a short tapering stack of rock with a molten throat -
     a knuckle on the gauntlets, a fumarole on anything volcanic."""
@@ -766,14 +817,14 @@ def _wa_vent(bm, glow_bm, base, direction, height, r0, r1, sides=6):
 
 
 # ---------------------------------------------------------------- Driftwood Club (starter)
-# Not a stick with a lump on it: a BROKEN SHIP'S ANCHOR lashed to a crooked
-# driftwood limb. The iron crown carries one full triangular fluke palm thrown
-# out over the swing side and one arm snapped clean off at the shoulder -
-# which is why it washed up as scrap and ended up as a club - with the mooring
-# shackle still hanging off the back of the crown, barnacles grown over the
-# palm, and the limb's own root-foot splayed at the butt.
-#   silhouette: a hooked iron fluke + a swinging ring, on a bent stick
-#   ornament : the snapped second arm, and the shackle that swings with it
+# ICON (assets/icons/driftwood_club.png, canon): no iron on it at all - one
+# thick sea-worn BRANCH with a gentle S in it, fatter at the striking end than
+# at the butt, a knot swelling at each kink, two snapped branch nubs, a split
+# fork at the far end, and a pale binding tied round the lower third. That is
+# the whole weapon. The 2026-08-27 anchor-salvage build fought the icon (iron
+# fluke, shackle ring, barnacles) and is gone.
+#   silhouette: a fat crooked stick
+#   ornament : the split fork at the head, and the two broken nubs
 
 
 def build_driftwoodclub():
@@ -781,67 +832,75 @@ def build_driftwoodclub():
     length, grip = FRAME[name]["length"], FRAME[name]["grip"]
     p = melee_bms()
 
-    # The limb: three kinked segments with a knot swelling at each kink, and
-    # the sea-worn root splayed at the butt so the club stands like driftwood.
-    _wa_chain(p["Haft"], [Vector(v) for v in ((0.0, 0.0, 0.05), (-0.06, 0.0, 0.92), (0.04, 0.0, 1.72), (-0.02, 0.0, 2.42))], 0.19, 0.13, 6)
-    for x, z, r in ((-0.06, 0.92, 0.16), (0.04, 1.72, 0.14)):
-        ellipsoid(p["Haft"], (x, 0, z), (r, r * 0.85, r * 0.7), subdiv=0)
-    for i in range(3):
-        a = (i / 3) * TAU + 0.4
-        o = Vector((math.cos(a) * 0.85, math.sin(a) * 0.85, -0.5)).normalized()
-        _wa_chain(p["Haft"], _wa_arc((0, 0, 0.26), Vector((0, 0, 0.26)) + o * 0.34, (0, 0, -1), 0.05, 2), 0.075, 0.04, 4)
+    # The limb: one branch, kinked four times, THICKENING toward the head the
+    # way the icon's does (this is what makes it read as a club and not a rod).
+    spine = [
+        Vector((0.00, 0.00, 0.04)),
+        Vector((0.08, 0.01, 0.62)),
+        Vector((0.03, 0.00, 1.26)),
+        Vector((-0.07, -0.01, 1.92)),
+        Vector((-0.03, 0.00, 2.52)),
+        Vector((0.05, 0.01, 3.04)),
+    ]
+    radii = (0.155, 0.175, 0.19, 0.205, 0.225, 0.235)
+    for i in range(len(spine) - 1):
+        limb(p["Haft"], spine[i], spine[i + 1], radii[i], radii[i + 1], 6)
+    for i, r in ((1, 0.20), (3, 0.225)):
+        ellipsoid(p["Haft"], spine[i], (r, r * 0.9, r * 0.75), subdiv=0)
+    # Long shallow bark ridges down the flats - the icon's grain lines.
+    for x, y, z, h in ((0.21, 0.06, 1.50, 1.10), (-0.19, -0.07, 2.10, 0.90), (0.06, 0.21, 2.60, 0.70)):
+        box(p["Haft"], (x, y, z), (0.07, 0.07, h), Matrix.Rotation(math.radians(6), 4, "Y"))
 
-    # Kelp wrap on the hand point.
-    melee_grip(p["Grip"], grip, half=0.52, r=0.22, coils=5, proud=0.03, sides=7)
+    # The binding on the hand point.
+    melee_grip(p["Grip"], grip, half=0.5, r=0.21, coils=5, proud=0.03, sides=7)
 
-    # The anchor. Square shank sleeved over the limb, a crown block, then the
-    # two arms: one whole, one gone.
-    box(p["Head"], (0.0, 0, 2.52), (0.25, 0.25, 0.52))
-    box(p["Head"], (0.02, 0, 2.82), (0.44, 0.36, 0.28))
-    _wa_chain(p["Head"], _wa_arc((0.12, 0, 2.9), (0.5, 0, 3.14), (1, 0, 0.1), 0.12, 3), 0.13, 0.09, 5)
-    slab(p["Head"], [(0.28, 2.9), (0.88, 3.0), (0.74, 3.3), (0.44, length), (0.22, 3.22)], 0.09)
-    # the snapped arm: a stub with a torn, faceted break instead of a palm
-    _wa_chain(p["Head"], _wa_arc((-0.12, 0, 2.88), (-0.44, 0, 3.04), (-1, 0, 0.1), 0.07, 2), 0.13, 0.11, 5)
-    _wa_shard(p["Head"], (-0.44, 0, 3.04), (-0.85, 0.1, 0.5), 0.22, 0.11, flat=0.7, phase=0.4)
-    # the mooring shackle, still through the crown's eye, hanging out the back
-    _wa_ring(p["Head"], (-0.42, 0, 2.66), 0.21, 0.045, normal=(0, 1, 0), seg=7)
-    limb(p["Head"], (-0.16, 0, 2.78), (-0.3, 0, 2.7), 0.05, 0.05, 4)
-    # kelp lashings holding the whole salvage together
-    for z in (2.28, 2.44):
-        coil_band(p["Haft"], z, 0.21, tilt=0.05, thick=0.045, sides=6)
+    # The two snapped-off branch nubs - the only things standing off the limb.
+    for (x, y, z), d, ln in (((0.18, 0.05, 1.72), (0.85, 0.30, 0.44), 0.30), ((-0.20, -0.05, 2.36), (-0.80, -0.25, 0.55), 0.24)):
+        b, o = Vector((x, y, z)), Vector(d).normalized()
+        limb(p["Spike"], b, b + o * ln, 0.085, 0.055, 5)
 
-    # Barnacles: crusted along the palm's back and up the shank, so the iron
-    # reads as something the sea kept for a while.
-    for x, y, z in ((0.44, 0.1, 3.06), (0.62, -0.09, 3.16), (0.3, 0.1, 3.28), (0.05, -0.13, 2.62), (0.14, 0.12, 2.44)):
-        barnacle(p["Spike"], (x, y, z), (x * 0.3, y * 2.4, 0.35), r=0.1)
+    # The head: the branch splits, the long prong carrying the frame's tip.
+    fork = spine[-1]
+    ellipsoid(p["Head"], fork, (0.21, 0.20, 0.15), subdiv=0)
+    limb(p["Head"], fork, (0.13, 0.02, length - 0.02), 0.20, 0.060, 6)
+    limb(p["Head"], fork, (-0.19, -0.02, 3.28), 0.16, 0.06, 5)
 
     return melee_finish(name, p)
 
 
 # ---------------------------------------------------------------- Scaleblade (starter)
-# Pushed past "a blade with scales on it": this blade IS A FISH, head-up and
-# tail-down. A caudal fan of three fin blades folds up over the butt, the
-# crossguard is a gill plate with the gill bars still raised on its flats and a
-# pectoral fin of three rays fanning off each side, the leaf is shingled in
-# overlapping armour scales that lap DOWN toward the guard (each row a half
-# plate off the last, the outermost scale standing a hair past the outline so
-# the edge itself scallops), and the fish's EYE is still set in the blade a
-# hand's width below the point.
-#   silhouette: a leaf that tapers into fins at both ends
-#   ornament : the eye boss, and the tail fan folded over the pommel
+# ICON (assets/icons/scale_blade.png, canon): a BOWIE KNIFE, not a fish. Brown
+# barrel handle with a rounded cap at the butt, a short pale steel crossguard
+# whose spine-side quillon droops back over the hand, and a broad single-edged
+# blade sweeping up into a clip point - with THREE saw notches filed into the
+# spine just above the ricasso. That notch row is the signature; the 2026-08-27
+# fish build (tail fan, gill plate, shingled scales, the eye) is gone.
+#   silhouette: a bowie clip point
+#   ornament : the three filed notches in the spine
 
-# Half-width of the leaf blade at height z (linear between these), used to
-# keep the scale plates inside the silhouette.
-SCALEBLADE_HALF_WIDTH = [(1.42, 0.13), (1.85, 0.33), (2.2, 0.37), (2.65, 0.26), (2.95, 0.1), (3.1, 0.0)]
-
-
-def scaleblade_half_width(z):
-    pts = SCALEBLADE_HALF_WIDTH
-    for (z0, w0), (z1, w1) in zip(pts, pts[1:]):
-        if z0 <= z <= z1:
-            t = (z - z0) / (z1 - z0)
-            return w0 + (w1 - w0) * t
-    return 0.0
+# The blade outline, heel to point and back down the spine. Belly on +x, spine
+# with its three notches on -x, point at z = LENGTH.
+SCALEBLADE_PROFILE = [
+    (-0.16, 1.30),  # heel, spine side
+    (0.15, 1.30),  # heel, edge side
+    (0.24, 1.60),
+    (0.29, 2.06),
+    (0.32, 2.48),  # the belly
+    (0.28, 2.80),
+    (0.15, 3.00),
+    (0.01, 3.10),  # the point
+    (-0.08, 2.96),  # the clip
+    (-0.15, 2.70),
+    (-0.19, 2.38),
+    (-0.20, 2.24),  # three notches filed into the spine
+    (-0.10, 2.16),
+    (-0.21, 2.08),
+    (-0.11, 2.00),
+    (-0.22, 1.92),
+    (-0.12, 1.84),
+    (-0.20, 1.70),
+    (-0.18, 1.46),
+]
 
 
 def build_scaleblade():
@@ -849,70 +908,44 @@ def build_scaleblade():
     length, grip = FRAME[name]["length"], FRAME[name]["grip"]
     p = melee_bms()
 
-    # Handle, and the tail: three caudal fin blades folded UP against the
-    # handle rather than hanging under the butt (nothing lives below z = 0).
-    limb(p["Haft"], (0, 0, 0.16), (0, 0, 1.24), 0.10, 0.135, 6)
-    box(p["Pommel"], (0, 0, 0.09), (0.26, 0.2, 0.14))
-    for i in (-1, 0, 1):
-        a = i * 0.6
-        d = Vector((math.sin(a), 0.0, math.cos(a) * 0.9 + 0.35)).normalized()
-        _wa_shard(p["Pommel"], (0, 0, 0.14), d, 0.54 - abs(i) * 0.09, 0.11, flat=0.24, phase=0.4)
-    melee_grip(p["Grip"], grip, half=0.4, r=0.155, coils=4, proud=0.022, sides=6)
+    # Wooden handle: a slight barrel, closed by a rounded cap at the butt.
+    limb(p["Haft"], (0, 0, 0.20), (0, 0, 0.62), 0.155, 0.175, 7)
+    limb(p["Haft"], (0, 0, 0.62), (0, 0, 1.10), 0.175, 0.150, 7)
+    ellipsoid(p["Pommel"], (0, 0, 0.17), (0.19, 0.18, 0.17), subdiv=1)
+    limb(p["Pommel"], (0, 0, 0.29), (0, 0, 0.35), 0.180, 0.172, 7)
+    melee_grip(p["Grip"], grip, half=0.40, r=0.165, coils=3, proud=0.014, sides=7)
 
-    # Gill-plate guard: a collar with both ends swept back toward the hand,
-    # three raised gill bars across each flat, and a three-ray pectoral fin off
-    # each side (raked back, like a fish holding station).
-    box(p["Guard"], (0, 0, 1.32), (0.62, 0.26, 0.17))
+    # Steel crossguard, in the blade's plane: a short bar with rounded knobs,
+    # the spine-side quillon drooping back over the hand and the edge-side one
+    # swept up along the belly.
+    box(p["Spike"], (0.0, 0, 1.20), (0.56, 0.20, 0.13))
     for s in (-1, 1):
-        box(p["Guard"], (s * 0.36, 0, 1.28), (0.34, 0.24, 0.15), Matrix.Rotation(math.radians(s * 30), 4, "Y"))
-        for i in range(3):
-            if i < 2:  # gill bars raised on the plate's flat
-                box(p["Spike"], (s * 0.06 * i, s * 0.145, 1.29 + i * 0.085), (0.52 - i * 0.1, 0.045, 0.04))
-            d = Vector((s * 0.9, 0.0, -0.5 - i * 0.22)).normalized()
-            _wa_shard(p["Spike"], (s * 0.46, (i - 1) * 0.07, 1.34), d, 0.34 - i * 0.06, 0.05, flat=0.3)
+        ellipsoid(p["Spike"], (s * 0.30, 0, 1.20), (0.11, 0.10, 0.10), subdiv=0)
+    _wa_chain(p["Spike"], _wa_arc((-0.26, 0, 1.16), (-0.42, 0, 0.92), (-1, 0, 0), 0.08, 2), 0.075, 0.050, 5)
+    _wa_chain(p["Spike"], _wa_arc((0.26, 0, 1.24), (0.40, 0, 1.50), (1, 0, 0), 0.06, 2), 0.070, 0.045, 5)
 
-    # The leaf, thin on y so its edges ARE the +-x extremes.
-    profile = [(-0.13, 1.42), (0.13, 1.42)]
-    for z, w in SCALEBLADE_HALF_WIDTH[1:]:
-        profile.append((w, z))
-    for z, w in reversed(SCALEBLADE_HALF_WIDTH[1:-1]):
-        profile.append((-w, z))
-    slab(p["Edge"], profile, 0.05)
+    # Ricasso, then the blade - thin on y so its edges ARE the +-x extremes.
+    box(p["Edge"], (0.0, 0, 1.34), (0.24, 0.12, 0.22))
+    slab(p["Edge"], SCALEBLADE_PROFILE, 0.055)
 
-    # Shingled armour: rows lap down the blade, each offset half a plate and
-    # rotated so the brickwork never grids, plates shrinking toward the point,
-    # and the outermost plate of each row overhangs the outline by a hair so
-    # the cutting edges scallop.
-    row, z = 0, 1.56
-    while z < 2.94:
-        t = (z - 1.56) / 1.38
-        r = 0.145 - 0.05 * t
-        step = r * 1.8
-        half = scaleblade_half_width(z)
-        for i in range(-2, 3):
-            x = (row % 2) * (step / 2) + i * step
-            if abs(x) - r * 0.3 <= half:
-                for side in (-1, 1):
-                    _wa_scale(p["Edge"], (x, side * 0.068, z), r, thick=0.04, sides=4, phase=(row % 2) * 0.79 + 0.39)
-        z += r * 1.75
-        row += 1
-
-    # The eye, still in it.
-    for side in (-1, 1):
-        hex_plate(p["Spike"], (0.0, side * 0.075, 2.74), 0.1, 0.05)
+    # The icon's bevel highlight: a raised strip on both flats just inside the
+    # belly, so the grind reads with the palette off.
+    for s in (-1, 1):
+        for x, z, h in ((0.17, 1.88, 0.48), (0.20, 2.42, 0.54), (0.15, 2.86, 0.36)):
+            box(p["Spike"], (x, s * 0.052, z), (0.06, 0.02, h), Matrix.Rotation(math.radians(-6), 4, "Y"))
 
     return melee_finish(name, p)
 
 
 # ---------------------------------------------------------------- Shellcrusher (barnacle maul)
-# The head is a whole KNOBBED WHELK the size of a man's chest, driven
-# mouth-first onto a spliced driftwood haft - and its whorls coil in the swing
-# plane, so the one thing the eye gets at thirty studs is a spiral. The flared
-# aperture on +x is the striking face; five knobs ride the shoulder of the
-# outer whorl, each with a barnacle grown on it; the haft is two sticks lashed
-# together because the first one already broke.
-#   silhouette: a spiral
-#   ornament : the flared shell mouth as the hammer face, knob by knob
+# ICON (assets/icons/shellcrusher.png, canon): a STONE MAUL. A thin crooked
+# natural branch for a haft, and a big blunt SLAB head - wider than it is tall,
+# hung a little forward of the haft, its top and striking corner chewed into a
+# rough pale crust, with two round studs set in the broad face. The 2026-08-27
+# whelk build (a spiral coiled in the swing plane) is gone: the icon's head is
+# a rectangle and reads as one at any distance.
+#   silhouette: a brick on a stick
+#   ornament : the chipped crust along the top, and the two face studs
 
 
 def build_shellcrusher():
@@ -920,50 +953,61 @@ def build_shellcrusher():
     length, grip = FRAME[name]["length"], FRAME[name]["grip"]
     p = melee_bms()
 
-    # Haft: the original stick, plus the splint lashed alongside where it split.
-    limb(p["Haft"], (0, 0, 0.06), (0, 0, 2.5), 0.18, 0.13, 6)
-    limb(p["Haft"], (-0.14, 0.06, 1.46), (-0.11, 0.05, 2.3), 0.075, 0.06, 5)
-    for z, r in ((1.54, 0.205), (1.68, 0.2), (2.16, 0.19), (2.3, 0.185)):
-        coil_band(p["Guard"], z, r, tilt=0.05, thick=0.045, sides=6)
-    melee_grip(p["Grip"], grip, half=0.62, r=0.26, coils=5, proud=0.03, sides=7)
-    limb(p["Guard"], (0, 0, 2.44), (0, 0, 2.64), 0.24, 0.27, 8)
+    # Haft: one crooked, knotty branch - thin, so the head reads as heavy.
+    spine = [
+        Vector((0.00, 0.00, 0.05)),
+        Vector((0.10, 0.02, 0.66)),
+        Vector((0.02, 0.00, 1.34)),
+        Vector((0.11, -0.02, 2.02)),
+        Vector((0.03, 0.00, 2.62)),
+    ]
+    radii = (0.115, 0.130, 0.125, 0.135, 0.140)
+    for i in range(len(spine) - 1):
+        limb(p["Haft"], spine[i], spine[i + 1], radii[i], radii[i + 1], 6)
+    for i in (1, 3):
+        ellipsoid(p["Haft"], spine[i], (0.155, 0.14, 0.12), subdiv=0)
+    for (x, y, z), d in (((0.12, 0.04, 1.66), (0.8, 0.4, 0.45)), ((-0.02, -0.05, 1.10), (-0.7, -0.4, 0.6))):
+        b, o = Vector((x, y, z)), Vector(d).normalized()
+        limb(p["Haft"], b, b + o * 0.22, 0.06, 0.04, 5)
+    melee_grip(p["Grip"], grip, half=0.55, r=0.185, coils=5, proud=0.026, sides=7)
 
-    # The whelk. Wound about +y so the coil lies in the swing plane, starting
-    # at the mouth on +x and spiralling in to an apex that pokes out the flat.
-    # (the tallest point of the coil plus its tube lands on z = length)
-    turns, r0, r1, cy, cz = 2.35, 0.6, 0.05, -0.22, 2.96
-    _wa_whorl(p["Head"], (0.0, cy, cz), (0, 1, 0), turns, r0, r1, 0.29, 0.045, span=0.52, steps=18, sides=5)
-    # The aperture: a flared lip standing out past the first whorl. This is
-    # what the weapon actually hits with.
-    limb(p["Head"], (0.5, cy, cz), (0.8, cy + 0.04, cz), 0.29, 0.36, 7)
-    limb(p["Head"], (0.78, cy + 0.04, cz), (0.86, cy + 0.05, cz), 0.36, 0.3, 7)
+    # Lashings where the head is bound on.
+    for z, r in ((2.50, 0.160), (2.66, 0.165)):
+        coil_band(p["Guard"], z, r, tilt=0.05, thick=0.05, sides=6)
 
-    # Knobs round the shoulder of the outer whorl, barnacle on each.
-    for i in range(5):
-        t = 0.05 + i * 0.075
-        a = turns * TAU * t
-        o = Vector((math.cos(a), 0.0, -math.sin(a)))
-        c = Vector((0.0, cy + 0.52 * t, cz)) + o * (r0 + (r1 - r0) * t)
-        cone(p["Spike"], c, c + o * 0.28, 0.11, sides=4)
-        barnacle(p["Spike"], c + o * 0.08 + Vector((0, 0.15, 0)), (o.x * 0.3, 1, o.z * 0.3), r=0.075)
-    for x, y, z in ((0.06, -0.2, 2.42), (-0.12, 0.16, 2.6)):
-        barnacle(p["Spike"], (x, y, z), (x, y, 0.2), r=0.085)
+    # The head: one slab of sea stone, canted forward so the +x corner leads.
+    tilt = Matrix.Rotation(math.radians(-9), 4, "Y")
+    box(p["Head"], (0.10, 0, 2.98), (1.34, 0.66, 0.84), tilt)
+    # a second, shallower plate on the striking face so the block is not a cube
+    box(p["Head"], (0.68, 0, 2.94), (0.22, 0.56, 0.66), tilt)
+
+    # The crust: chipped rough blocks riding the top of the slab, the tallest
+    # of them carrying the frame's tip.
+    for i, (x, y, z) in enumerate(((-0.42, 0.00, 3.34), (-0.12, 0.14, 3.44), (0.20, -0.12, 3.44), (0.50, 0.05, 3.32))):
+        box(p["Spike"], (x, y, z), (0.32, 0.50, 0.16), Matrix.Rotation(math.radians(-9 + (i % 2) * 12), 4, "Y"))
+    box(p["Spike"], (0.04, 0, 3.47), (0.30, 0.34, 0.20), Matrix.Rotation(math.radians(-6), 4, "Y"))
+
+    # The two studs set in the broad face, both flats.
+    for s in (-1, 1):
+        for z in (2.84, 3.14):
+            limb(p["Spike"], (0.40, s * 0.31, z), (0.40, s * 0.40, z), 0.10, 0.085, 6)
 
     return melee_finish(name, p)
 
 
 # ---------------------------------------------------------------- Heartrender (brineheart blade)
-# The cove's crown, and the one weapon in the pack with a HOLE through the
-# middle of its blade. Two rib-halves bow apart out of the socket, get
-# cross-tied twice, and close again into a single point - and Brinejaw's heart
-# hangs in the gap between them, held by nothing but four veins, beating. The
-# guard's floating ribs curl forward past the socket, the veins run down the
-# insides of both ribs to the hand, and the butt is a knot of coiled vein.
-#   silhouette: a leaf with its middle missing
-#   ornament : the heart suspended in the hollow on four veins
+# ICON (assets/icons/heartrender.png, canon): a straight, double-edged RED
+# SWORD. Dark maroon grip, an arrowhead pommel pointing back off the butt, a
+# long lozenge blade with a fuller down the middle - and a guard that is not a
+# bar at all but a CLUSTER OF ROUND LOBES, a red quatrefoil knotted round the
+# socket. That lobed guard is the icon's signature, so it is the weapon's: it
+# is Brinejaw's heart, and the beat now lives at its centre instead of hanging
+# in a hole through the blade (the 2026-08-27 split-rib cage is gone).
+#   silhouette: a straight cruciform sword with a knot for a guard
+#   ornament : the lobed heart-guard, lit at its core
 
-# Where the ribs part, meet again, and where the heart hangs between them.
-HEARTRENDER_SPLIT, HEARTRENDER_JOIN, HEARTRENDER_HEART = 1.78, 3.4, 2.6
+# The lobes of the heart-guard: (x, z, radius) in the blade's plane.
+HEARTRENDER_LOBES = ((-0.36, 1.46, 0.24), (0.36, 1.46, 0.24), (0.00, 1.24, 0.22), (-0.20, 1.70, 0.15), (0.20, 1.70, 0.15))
 
 
 def build_heartrender():
@@ -971,72 +1015,61 @@ def build_heartrender():
     length, grip = FRAME[name]["length"], FRAME[name]["grip"]
     p = melee_bms()
 
-    # Heartwood haft, closed by a knot of coiled vein at the butt.
-    limb(p["Haft"], (0, 0, 0.16), (0, 0, 1.46), 0.14, 0.125, 6)
-    for i in range(3):
-        _wa_ring(p["Pommel"], (0, 0, 0.09 + i * 0.062), 0.2 - i * 0.032, 0.034, normal=(0, 0, 1), seg=5)
-    melee_grip(p["Grip"], grip, half=0.55, r=0.19, coils=4, proud=0.028, sides=6)
+    # Dark heartwood grip, and the arrowhead pommel off the butt.
+    limb(p["Haft"], (0, 0, 0.30), (0, 0, 1.28), 0.140, 0.130, 7)
+    cone(p["Spike"], (0, 0, 0.36), (0, 0, 0.01), 0.215, sides=4)
+    limb(p["Spike"], (0, 0, 0.36), (0, 0, 0.42), 0.185, 0.165, 7)
+    melee_grip(p["Grip"], grip, half=0.42, r=0.175, coils=4, proud=0.022, sides=7)
 
-    # Guard: a rib collar with two floating ribs curling forward along the
-    # blade instead of a crossguard's bar.
-    limb(p["Guard"], (0, 0, 1.5), (0, 0, 1.74), 0.24, 0.2, 8)
-    for s in (-1, 1):
-        _wa_chain(p["Guard"], _wa_arc((s * 0.17, 0, 1.62), (s * 0.6, 0, 2.26), (s * 1.0, 0, 0.25), 0.15, 3), 0.1, 0.045, 5)
-        cone(p["Spike"], (s * 0.6, 0, 2.26), (s * 0.7, 0, 2.48), 0.05, sides=4)
+    # The guard: five lobes knotted round the socket, flat on y so the cluster
+    # reads as one rounded knot from the swing side.
+    box(p["Edge"], (0, 0, 1.46), (0.50, 0.22, 0.46))
+    for x, z, r in HEARTRENDER_LOBES:
+        ellipsoid(p["Edge"], (x, 0, z), (r, r * 0.46, r), subdiv=1)
+    limb(p["Edge"], (0, 0, 1.68), (0, 0, 1.82), 0.19, 0.165, 7)
 
-    # The hollow blade. Each half is a lofted rib - tapering in width AND in
-    # thickness - bowed out to +-x and back, so the outer faces are the cutting
-    # edges and the gap between them is the silhouette.
-    ribs = {}
-    for s in (-1, 1):
-        arc = _wa_arc((s * 0.11, 0, HEARTRENDER_SPLIT), (0, 0, HEARTRENDER_JOIN), (s * 1.0, 0, 0), 0.52, steps=6)
-        ribs[s] = arc
-        lofted_blade(p["Edge"], [(v.x, v.z, 0.145 - 0.05 * abs(i / 6 - 0.5) * 2, 0.08 - 0.02 * (i / 6)) for i, v in enumerate(arc)])
-        # barbs off the rib's outer edge, raked back down the swing
-        for i, ln in ((2, 0.26), (4, 0.22)):
-            v = arc[i]
-            cone(p["Spike"], (v.x + s * 0.1, 0, v.z), (v.x + s * (0.1 + ln), 0, v.z - ln * 0.75), 0.055, sides=4)
-    # cross-ties holding the cage open
-    for i in (1, 5):
-        v = ribs[1][i]
-        limb(p["Edge"], (-v.x, 0, v.z), (v.x, 0, v.z), 0.05, 0.05, 4)
-    cone(p["Spike"], (0, 0, 3.34), (0, 0, length), 0.17, sides=4)
+    # The blade: a long double-edged lozenge with near-parallel edges, tapering
+    # in width AND thickness only over the last third, its edges the +-x
+    # extremes and its flats on +-y.
+    lofted_blade(
+        p["Edge"],
+        [
+            (0, 1.76, 0.140, 0.070),
+            (0, 1.98, 0.178, 0.078),
+            (0, 3.00, 0.172, 0.062),
+            (0, 3.44, 0.145, 0.048),
+            (0, 3.74, 0.085, 0.028),
+            (0, length, 0.012, 0.005),
+        ],
+    )
 
-    # The heart in the gap, and the four veins it hangs from.
-    ellipsoid(p["Glow"], (0, 0, HEARTRENDER_HEART), (0.21, 0.15, 0.27), subdiv=1)
-    for i in (1, 5):
-        for s in (-1, 1):
-            v = ribs[s][i]
-            limb(p["Glow"], (s * 0.14, 0, HEARTRENDER_HEART + (0.2 if i > 3 else -0.2)), (v.x * 0.9, 0, v.z), 0.05, 0.03, 4)
-    # veins burning down the inside of each rib, and one into the hand
+    # The beat: the heart's core lit at the centre of the guard knot, a bead in
+    # each of the two big lobes, and the fuller burning down both flats.
+    ellipsoid(p["Glow"], (0, 0, 1.46), (0.19, 0.16, 0.19), subdiv=1)
     for s in (-1, 1):
-        for i in (1, 3, 5):
-            v = ribs[s][i]
-            box(p["Glow"], (v.x - s * 0.09, 0, v.z), (0.06, 0.19, 0.22))
-    box(p["Glow"], (0, 0, 1.62), (0.09, 0.1, 0.3))
+        ellipsoid(p["Glow"], (s * 0.36, 0, 1.46), (0.10, 0.12, 0.10), subdiv=0)
+        box(p["Glow"], (0, s * 0.056, 2.50), (0.050, 0.026, 1.20))
 
     return melee_finish(name, p)
 
 
 # ---------------------------------------------------------------- Drowncleaver (cursed-bone cleaver)
-# Nobody carved this: it is a drowned thing's MANDIBLE, ground into a cleaver.
-# The +x side was taken down to a cutting edge with one bite chipped out of it
-# and a hanging hole punched through the top-back corner - but the -x spine is
-# untouched, and the original tooth row is still in it, four fangs raked back
-# out of scalloped sockets. The brine-rot burns in the sockets the teeth fell
-# out of and in two glyphs cut across the flat, and a fang taken off some other
-# jaw swings from a cord under the guard.
-#   silhouette: a cleaver whose back is a row of teeth
-#   ornament : the lit empty sockets, and the trophy fang on its cord
+# ICON (assets/icons/drowncleaver.png, canon): a plain butcher's CLEAVER in
+# pale sage bone. Straight cutting edge on one side, DEAD STRAIGHT spine on the
+# other - no tooth row, no jaw, no trophy fang; the 2026-08-27 mandible build
+# put a scalloped fang row down the spine and the icon has none. What the icon
+# does have: a rounded ridged bone handle, a stepped notch where the spine runs
+# out at the tip, a hanging hole punched through the top corner, and a line of
+# pale glowing runes struck across the flat.
+#   silhouette: a tall rectangular cleaver
+#   ornament : the punched hole, and the rune line burning across the flat
 
-# Each glyph: strokes of (dx, dz, length, angle) about the glyph's centre.
+# Each glyph: (x, z) on the blade flat, then strokes of (dx, dz, length, angle).
 DROWNCLEAVER_GLYPHS = [
-    [(0.0, 0.0, 0.42, 62), (0.1, -0.08, 0.22, -18)],
-    [(0.0, 0.02, 0.4, -56), (0.12, -0.12, 0.16, 90)],
+    (-0.02, 2.34, [(-0.09, 0.0, 0.34, 90), (0.09, 0.0, 0.34, 90), (0.0, 0.0, 0.20, 0)]),
+    (0.16, 2.88, [(-0.08, 0.0, 0.30, 90), (0.0, 0.14, 0.20, 0), (0.0, -0.14, 0.20, 0)]),
+    (0.04, 3.34, [(-0.07, 0.0, 0.32, 74), (0.07, 0.0, 0.32, -74)]),
 ]
-
-# Spine sockets: (x, z) of each scallop's floor - the runes burn in these.
-DROWNCLEAVER_SOCKETS = ((-0.29, 3.16), (-0.31, 2.72), (-0.32, 2.28))
 
 
 def build_drowncleaver():
@@ -1044,57 +1077,39 @@ def build_drowncleaver():
     length, grip = FRAME[name]["length"], FRAME[name]["grip"]
     p = melee_bms()
 
-    # Bone handle: a long shaft swelling into a femur-knob pommel at the butt.
-    limb(p["Haft"], (0, 0, 0.1), (0, 0, 1.56), 0.12, 0.11, 6)
-    ellipsoid(p["Haft"], (0.1, 0, 0.14), (0.14, 0.13, 0.12), subdiv=0)
-    ellipsoid(p["Haft"], (-0.1, 0, 0.12), (0.14, 0.13, 0.12), subdiv=0)
-    melee_grip(p["Grip"], grip, half=0.42, r=0.165, coils=4, proud=0.022, sides=6)
+    # Bone handle: a rounded shaft with the icon's ridge bands cut into it and
+    # a swollen knob closing the butt.
+    limb(p["Haft"], (0, 0, 0.16), (0, 0, 1.52), 0.135, 0.145, 7)
+    ellipsoid(p["Haft"], (0, 0, 0.17), (0.185, 0.175, 0.16), subdiv=1)
+    for z in (0.42, 0.60, 0.78, 0.96):
+        limb(p["Spike"], (0, 0, z - 0.035), (0, 0, z + 0.035), 0.16, 0.16, 7)
+    melee_grip(p["Grip"], grip, half=0.42, r=0.150, coils=3, proud=0.014, sides=7)
 
-    # The jaw's hinge, kept as the guard: a knuckled bar across the heel with
-    # fangs under it pointing down the cutting-edge side.
-    box(p["Guard"], (0.12, 0, 1.64), (1.1, 0.3, 0.2))
-    ellipsoid(p["Guard"], (-0.44, 0, 1.64), (0.13, 0.17, 0.14), subdiv=0)
-    ellipsoid(p["Guard"], (0.68, 0, 1.64), (0.13, 0.17, 0.14), subdiv=0)
-    for x, fang_len in ((0.2, 0.3), (0.38, 0.34), (0.56, 0.3), (0.72, 0.24)):
-        cone(p["Spike"], (x, 0.0, 1.56), (x + 0.1, 0.0, 1.56 - fang_len), 0.07, sides=4)
+    # Bolster: the step where the bone stops being a handle.
+    box(p["Guard"], (0.06, 0, 1.58), (0.44, 0.28, 0.20))
 
-    # The blade: ground edge on +x, and a SCALLOPED spine on -x - four socket
-    # arches with a tooth still standing in each.
+    # The blade. Cutting edge on +x, spine on -x and STRAIGHT, the front-top
+    # corner rounded off and the spine running out in a step below the tip.
     profile = [
-        (-0.34, 1.72),  # heel, back
-        (0.66, 1.72),  # heel, edge side
-        (0.8, 2.35),  # edge
-        (0.72, 2.55),  # the bite
-        (0.86, 2.72),
-        (0.9, 3.28),  # edge, upper
-        (0.62, 3.5),  # chipped front-top corner
-        (-0.16, length),  # top-back corner (the tip of the frame)
-        (-0.4, 3.34),  # tooth root
-        (-0.29, 3.16),  # empty socket
-        (-0.42, 2.92),  # tooth root
-        (-0.31, 2.72),  # empty socket
-        (-0.44, 2.48),  # tooth root
-        (-0.32, 2.28),  # empty socket
-        (-0.42, 2.02),  # tooth root
+        (-0.34, 1.68),  # heel, spine side
+        (0.50, 1.66),  # heel, edge side
+        (0.56, 2.30),
+        (0.58, 3.20),
+        (0.57, 3.52),  # edge, upper
+        (0.50, 3.64),  # the rounded front-top corner
+        (0.34, length),
+        (-0.22, 3.68),  # the flat top
+        (-0.32, 3.56),  # the step where the spine runs out
+        (-0.36, 3.40),
+        (-0.36, 2.40),  # the straight spine
     ]
-    slab_with_hole(p["Edge"], profile, (-0.12, 3.38), 0.09, 0.07)
-    for x, z, ln in ((-0.4, 3.34, 0.24), (-0.42, 2.92, 0.34), (-0.44, 2.48, 0.36), (-0.42, 2.02, 0.28)):
-        cone(p["Spike"], (x, 0, z), (x - ln, 0, z - ln * 0.3), 0.075, sides=4)
+    _wa_pierce(p["Edge"], profile, (-0.14, 3.42), 0.085, 0.085)
 
-    # The trophy: somebody else's fang, hung off the guard's back knuckle on a
-    # cord, swinging clear of the blade.
-    _wa_chain(p["Spike"], _wa_arc((-0.46, -0.1, 1.58), (-0.6, -0.1, 1.22), (-1, 0, 0), 0.07, 2), 0.022, 0.02, 4)
-    cone(p["Spike"], (-0.6, -0.1, 1.24), (-0.66, -0.1, 0.94), 0.055, sides=4)
-
-    # Brine-rot: burning in the empty sockets (both flats, so it reads from
-    # either side) and in two glyphs cut across the middle of the blade.
-    for x, z in DROWNCLEAVER_SOCKETS:
-        for side in (-1, 1):
-            ellipsoid(p["Glow"], (x, side * 0.075, z), (0.07, 0.04, 0.07), subdiv=0)
-    for k, glyph in enumerate(DROWNCLEAVER_GLYPHS):
+    # Runes struck across the flat, burning on both faces.
+    for gx, gz, glyph in DROWNCLEAVER_GLYPHS:
         for dx, dz, stroke_len, angle in glyph:
             for side in (-1, 1):
-                stroke(p["Glow"], (0.3 + dx, side * 0.1, 2.24 + k * 0.46 + dz), stroke_len, angle)
+                stroke(p["Glow"], (gx + dx, side * 0.10, gz + dz), stroke_len, angle)
 
     return melee_finish(name, p)
 
@@ -1206,16 +1221,14 @@ def barnacle(bm, center, out, r=0.11):
 
 
 # ---------------------------------------------------------------- Obsidian Piercer (volcano rare)
-# A knapped stiletto that never finished cooling: a long triangular point of
-# glass-black obsidian whose flanks break into conchoidal facets, still wet
-# with heat down one hairline crack - and around the socket, a CROWN OF LOOSE
-# FLAKES from the same strike that never fell. Five of them stand off the blade
-# in a ring, held by nothing but the lit collar burning in the gap under them,
-# and a sixth has drifted a foot further up the point. Brass = the Guard bmesh
-# (the row's `color`), the collar AND the butt cap, so the fittings read as one
-# metal.
-#   silhouette: a spike inside a ring of floating splinters
-#   ornament : the gap between the crown and the blade, lit from below
+# ICON (assets/icons/obsidian_piercer.png, canon): ONE PIECE OF GLASS, end to
+# end - no wood, no brass, no crown of floating flakes (all of which the
+# 2026-08-27 build had). A long faceted charcoal lance: a blunt tapered butt,
+# a pinched neck carrying a small closed loop off the spine side and a stubby
+# lug off the edge side, then a very long flat blade running out to a chisel
+# point - with a lit orange CRACK crossing the blade in an X.
+#   silhouette: one long dark lance with a loop at its waist
+#   ornament : the X of heat burning across the flat
 
 
 def build_obsidianpiercer():
@@ -1223,57 +1236,66 @@ def build_obsidianpiercer():
     length, grip = FRAME[name]["length"], FRAME[name]["grip"]
     p = melee_bms()
 
-    # Short handle: dark wood core, corded, brass cap and brass ferrule.
-    limb(p["Haft"], (0, 0, 0.14), (0, 0, 1.2), 0.095, 0.11, 6)
-    melee_grip(p["Grip"], grip, half=0.38, r=0.13, coils=5, proud=0.02)
-    limb(p["Guard"], (0, 0, 0.02), (0, 0, 0.16), 0.145, 0.135, 6)
-    limb(p["Guard"], (0, 0, 1.2), (0, 0, 1.38), 0.15, 0.17, 6)
-    # Two stubby brass quillons swept up along the point.
+    # The butt end: the same glass, knapped down to a five-sided grip that
+    # tapers to a blunt heel.
+    limb(p["Haft"], (0, 0, 0.03), (0, 0, 0.36), 0.105, 0.155, 5)
+    limb(p["Haft"], (0, 0, 0.36), (0, 0, 0.98), 0.155, 0.180, 5)
+    limb(p["Haft"], (0, 0, 0.98), (0, 0, 1.42), 0.180, 0.150, 5)
+    melee_grip(p["Grip"], grip, half=0.36, r=0.170, coils=2, proud=0.012, sides=5)
+
+    # The neck: a pinch, the loop hung off the spine side, one lug off the edge.
+    limb(p["Guard"], (0, 0, 1.42), (0, 0, 1.62), 0.150, 0.115, 5)
+    _wa_ring(p["Guard"], (-0.19, 0, 1.53), 0.145, 0.042, normal=(0, 1, 0), seg=7)
+    box(p["Guard"], (0.17, 0, 1.60), (0.22, 0.14, 0.12), Matrix.Rotation(math.radians(-28), 4, "Y"))
+
+    # The blade: a long flat lance, edges the +-x extremes, flats on +-y.
+    lofted_blade(
+        p["Edge"],
+        [
+            (0, 1.58, 0.130, 0.090),
+            (0, 1.86, 0.250, 0.115),
+            (0, 2.30, 0.275, 0.108),
+            (0, 2.80, 0.250, 0.086),
+            (0, 3.16, 0.190, 0.060),
+            (0, 3.40, 0.105, 0.034),
+            (0, length, 0.018, 0.008),
+        ],
+    )
+    # The chisel bevel the icon cuts across the last hand's width of the point.
+    _wa_shard(p["Spike"], (0.02, 0, 3.16), (0.16, 0.0, 1.0), 0.32, 0.10, flat=0.42, phase=0.4)
+
+    # The crack: an X struck across the flat, burning on both faces, with one
+    # short stray branch off it.
     for s in (-1, 1):
-        box(p["Guard"], (s * 0.19, 0, 1.36), (0.26, 0.12, 0.09), Matrix.Rotation(math.radians(-s * 26), 4, "Y"))
-
-    # The point itself: six twisted triangular rings to an apex at the tip.
-    knapped_point(p["Edge"], 1.36, length, 0.24, 0.035, segs=6, twist=46.0)
-
-    # The crown: five flakes standing clear of the blade in a ring, raked out
-    # and up, each of a different length so the ring reads as struck glass and
-    # not as a machined collar. A bead of heat sits under every one.
-    for i in range(5):
-        a = (i / 5) * TAU + 0.3
-        o = Vector((math.cos(a), math.sin(a) * 0.8, 0.0))
-        base = Vector((0, 0, 1.6)) + o * 0.31
-        _wa_shard(p["Edge"], base, o * 0.5 + Vector((0, 0, 1.0)), 0.44 + 0.09 * math.cos(i * 2.1), 0.09, flat=0.4, phase=i * 0.5)
-        ellipsoid(p["Glow"], base - o * 0.07, (0.05, 0.05, 0.045), subdiv=0)
-    # an inner triad riding higher, tighter to the point
-    for i in range(3):
-        a = (i / 3) * TAU + 1.2
-        o = Vector((math.cos(a), math.sin(a) * 0.8, 0.0))
-        base = Vector((0, 0, 2.0)) + o * 0.2
-        _wa_shard(p["Edge"], base, o * 0.35 + Vector((0, 0, 1.0)), 0.3 + 0.06 * math.sin(i * 1.7), 0.06, flat=0.4, phase=i * 0.7)
-    # the one that drifted
-    _wa_shard(p["Edge"], (0.33, 0.07, 2.34), (0.4, 0.12, 0.92), 0.4, 0.075, flat=0.4, phase=0.8)
-    ellipsoid(p["Glow"], (0.28, 0.06, 2.3), (0.045, 0.045, 0.04), subdiv=0)
-    # the lit collar the crown hangs off
-    _wa_ring(p["Glow"], (0, 0, 1.52), 0.29, 0.03, normal=(0, 0, 1), seg=8)
-
-    # The crack of heat: three offset segments, never quite a straight line.
-    for z, dx in ((1.78, 0.03), (2.38, -0.02), (2.92, 0.02)):
-        box(p["Glow"], (dx, 0, z), (0.025, 0.15, 0.44))
+        y = s * 0.105
+        stroke(p["Glow"], (0.01, y, 2.42), 0.66, 62, thickness=0.05, width=0.10)
+        stroke(p["Glow"], (0.01, y, 2.42), 0.58, -54, thickness=0.05, width=0.10)
+        stroke(p["Glow"], (0.12, y, 2.02), 0.26, 70, thickness=0.05, width=0.08)
 
     return melee_finish(name, p)
 
 
 # ---------------------------------------------------------------- Magma Gauntlets (volcano epic)
-# Worn, not swung, and the only piece in the pack whose silhouette is an ARM.
-# The vambrace is built out of columnar basalt: six-sided lames stacked up the
-# forearm, each rotated half a facet against the last, so the plate reads as
-# jointed rock rather than as a post. Past the wrist cuff and the fist, the
-# knuckles are FUMAROLES - four short chimneys standing off the striking face,
-# each with a molten throat, so the gauntlet visibly breathes where it hits -
-# and three obsidian talons curl forward off them to the tip. Magma runs every
-# seam between every plate.
-#   silhouette: an armoured forearm with four chimneys on the knuckles
-#   ornament : the vents, lit down the throat
+# ICON (assets/icons/magma_gauntlets.png, canon): a clawed gauntlet WORN on the
+# hand - a dark plated glove closed into a fist, a lit cuff round the wrist, a
+# magma crack forking down the back of the hand, gold knuckle bands, and four
+# heavy golden claws standing off the knuckles. Not a vambrace on a pole (the
+# 2026-08-27 build was a forearm with fumaroles for knuckles).
+#
+# AUTHORING CONTRACT (agreed with the hold-animation lane, which pitches this
+# one near-horizontal so authored +Z is camera-forward):
+#   - butt (z = 0) is the ELBOW end; the cuff runs forward from there.
+#   - the closed fist's PALM CENTRE sits exactly on z = GRIP, and the shell is
+#     hollow enough for the block arm's fist to sit inside it.
+#   - the claws RAKE ALONG +Z, never sideways, and reach z = LENGTH.
+#   - knuckles and claws face +X (the pack's blade-edge side); everything else
+#     is kept roughly radially symmetric about the length axis, so the piece
+#     survives any WEAPON_ROLL about its own axis.
+#   silhouette: a fist with four claws raked forward off it
+#   ornament : the magma crack forking down the back of the hand
+
+# Each claw: (y across the knuckles, tip z, tip x). All rake +Z, all bow +X.
+MAGMA_CLAWS = ((-0.30, 2.86, 0.34), (-0.10, 3.20, 0.44), (0.10, 3.12, 0.44), (0.30, 2.70, 0.30))
 
 
 def build_magmagauntlets():
@@ -1281,62 +1303,63 @@ def build_magmagauntlets():
     length, grip = FRAME[name]["length"], FRAME[name]["grip"]
     p = melee_bms()
 
-    # Forearm: an elbow cuff and four six-sided columnar lames, each a little
-    # wider than the last, with a lip yawed across its top so the joins read as
-    # jointed rock rather than as one smooth post.
-    box(p["Haft"], (-0.02, 0, 0.11), (0.36, 0.44, 0.22))
-    for i, z in enumerate((0.32, 0.56, 0.8, 1.02)):
-        w = 0.23 + 0.022 * i
-        limb(p["Haft"], (0.015 * i, 0, z - 0.14), (0.015 * (i + 1), 0, z + 0.14), w, w + 0.02, 6)
-        box(p["Guard"], (0.015 * i + w * 0.95, 0, z + 0.1), (0.1, w + 0.22, 0.07), Matrix.Rotation(math.radians(16 * (1 if i % 2 else -1)), 4, "Z"))
-    # Vent slots out the flanks.
-    for s in (-1, 1):
-        box(p["Spike"], (0.08, s * 0.26, 0.7), (0.3, 0.06, 0.32), Matrix.Rotation(math.radians(14), 4, "Y"))
+    # The forearm cuff: elbow rim at z = 0, tapering forward into the wrist.
+    limb(p["Guard"], (0, 0, 0.00), (0, 0, 0.08), 0.375, 0.355, 8)
+    limb(p["Haft"], (0, 0, 0.06), (0, 0, 0.26), 0.345, 0.310, 8)
+    limb(p["Haft"], (0, 0, 0.26), (0, 0, 0.34), 0.310, 0.265, 8)
+    # cuff plates, spaced round the axis so the cuff stays radially even
+    for i in range(4):
+        a = i * TAU / 4 + math.pi / 4
+        o = Vector((math.cos(a), math.sin(a), 0.0))
+        box(p["Guard"], tuple(o * 0.30 + Vector((0, 0, 0.17))), (0.14, 0.14, 0.22), Matrix.Rotation(a, 4, "Z"))
 
-    # The hand closes inside the vambrace: scale binding on the hand point.
-    melee_grip(p["Grip"], grip, half=0.28, r=0.15, coils=3, proud=0.02)
+    # THE FIST. The palm centre is z = GRIP: a rounded shell big enough for the
+    # block arm's fist, with the wrapped fingers inside it as _Grip.
+    ellipsoid(p["Haft"], (0.02, 0, grip), (0.36, 0.35, 0.37), subdiv=1)
+    box(p["Haft"], (0.02, 0, grip), (0.60, 0.62, 0.60))
+    melee_grip(p["Grip"], grip, half=0.26, r=0.29, coils=3, proud=0.024, sides=7)
+    # back-of-hand plate, on the knuckle side
+    box(p["Guard"], (0.30, 0, grip + 0.04), (0.16, 0.56, 0.56), Matrix.Rotation(math.radians(-6), 4, "Y"))
 
-    # Flared wrist cuff, then the fist: a block with three curled finger bars.
-    limb(p["Guard"], (0, 0, 1.18), (0, 0, 1.36), 0.36, 0.3, 8)
-    box(p["Haft"], (0.08, 0, 1.68), (0.74, 0.58, 0.56))
-    for z in (1.5, 1.68, 1.86):
-        box(p["Guard"], (0.4, 0, z), (0.18, 0.54, 0.13))
-    # The knuckles: four vent chimneys standing off the striking face, each a
-    # different height, each lit down its throat.
-    for i, y in enumerate((-0.2, -0.067, 0.067, 0.2)):
-        _wa_vent(p["Guard"], p["Glow"], (0.3, y, 1.94), (1, 0, 0.2), 0.3 + 0.06 * math.cos(i * 1.9), 0.1, 0.078, sides=6)
+    # The knuckle bands: four gold plates across the front of the fist, the
+    # roots the claws grow out of.
+    for y, _reach, _out in MAGMA_CLAWS:
+        box(p["Edge"], (0.20, y, grip + 0.36), (0.34, 0.14, 0.26), Matrix.Rotation(math.radians(-20), 4, "Y"))
 
-    # Three talons off the knuckles, fanned in the x-z plane as well as across
-    # the knuckles - one thrown far forward, one to the tip, one held upright -
-    # so the claw reads as three claws from any angle.
-    for y, reach, out in ((-0.2, 2.96, 0.74), (0.0, length, 0.5), (0.2, 2.82, 0.26)):
-        pts = [(0.18, y, 1.96), (0.3, y * 1.2, 2.34), (out * 0.85, y * 1.35, (2.34 + reach) / 2 + 0.1), (out, y * 1.45, reach - 0.18)]
-        for (x0, y0, z0), (x1, y1, z1), r0, r1 in zip(pts, pts[1:], (0.15, 0.11, 0.075), (0.11, 0.075, 0.05)):
-            limb(p["Edge"], (x0, y0, z0), (x1, y1, z1), r0, r1, 5)
-        cone(p["Spike"], pts[-1], (out + 0.1, y * 1.5, reach), 0.045, sides=4)
+    # THE CLAWS. Each one leaves its knuckle band raked along +Z and bows out
+    # to +X, so from the camera (which sees +Z) they read as four talons
+    # thrown forward, and the longest lands exactly on z = LENGTH.
+    for y, reach, out in MAGMA_CLAWS:
+        z0 = grip + 0.44
+        pts = []
+        for t in (0.0, 0.34, 0.68, 1.0):
+            z = z0 + (reach - 0.16 - z0) * t
+            pts.append(Vector((0.22 + (out - 0.22) * t**1.7, y * (1.0 + 0.22 * t), z)))
+        for a, b, r0, r1 in zip(pts, pts[1:], (0.180, 0.140, 0.098), (0.140, 0.098, 0.062)):
+            limb(p["Edge"], a, b, r0, r1, 5)
+        cone(p["Spike"], pts[-1], (out + 0.05, y * 1.26, reach), 0.062, sides=4)
 
-    # Magma in every seam: between the lames, round the cuff, across the
-    # knuckles, at the talon roots.
-    for i, z in enumerate((0.43, 0.69, 0.95, 1.19)):
-        box(p["Glow"], (0.04 * i, 0, z), (0.42 + 0.05 * i, 0.56, 0.05))
-    limb(p["Glow"], (0, 0, 1.38), (0, 0, 1.44), 0.31, 0.29, 8)
-    box(p["Glow"], (0.24, 0, 1.86), (0.16, 0.54, 0.06))
-    for y, x in ((-0.2, 0.34), (0.0, 0.28), (0.2, 0.22)):
-        box(p["Glow"], (x, y, 2.16), (0.13, 0.13, 0.22))
+    # Magma: the lit cuff rim, a ring at the wrist, the crack forking down the
+    # back of the hand, and a bead at every claw root.
+    limb(p["Glow"], (0, 0, 0.095), (0, 0, 0.145), 0.352, 0.345, 8)
+    limb(p["Glow"], (0, 0, 0.325), (0, 0, 0.360), 0.272, 0.268, 8)
+    for x, z, ln, ang in ((0.34, grip + 0.06, 0.40, 78), (0.36, grip - 0.20, 0.26, 46), (0.36, grip - 0.20, 0.26, -46)):
+        stroke(p["Glow"], (x, 0, z), ln, ang, thickness=0.09, width=0.09)
+    for y, _reach, _out in MAGMA_CLAWS:
+        ellipsoid(p["Glow"], (0.30, y, grip + 0.46), (0.07, 0.07, 0.07), subdiv=0)
 
     return melee_finish(name, p)
 
 
 # ---------------------------------------------------------------- Rustfang Machete (swamp rare)
-# The fen-cutter with a MOUTH. Nobody hafted a gator's skull to a machete for
-# luck: the blade is the upper jaw - a long snouted slab bitten ragged along
-# its cutting edge, its heel teeth still standing in it - and the LOWER jaw is
-# hinged on the ferrule and gapes open along the swing side, so the thing bites
-# in the same direction it cuts. Scute ridges run the spine and the haft, the
-# eye is still socketed in both flats above the hinge, and someone's fishhook
-# is still snagged on a cord under the guard.
-#   silhouette: a machete with a jaw hanging open under its heel
-#   ornament : the gape - teeth top and bottom, closing on nothing
+# ICON (assets/icons/rustfang_machete.png, canon): a plain brown MACHETE. Short
+# ringed handle with a flared butt and a small bolster, no guard, no gator; the
+# blade widens from a narrow ricasso, its cutting edge one long convex sweep to
+# a clipped point - and a SAW SECTION of four teeth is cut into the SPINE at
+# mid-blade. That saw is the icon's one feature, so it is the weapon's; the
+# 2026-08-27 gator-jaw build (hinged lower jaw, scutes, eye, fishhook) is gone.
+#   silhouette: a broad machete with a bite taken out of its back
+#   ornament : the four-tooth saw filed into the spine
 
 
 def build_rustfangmachete():
@@ -1344,79 +1367,79 @@ def build_rustfangmachete():
     length, grip = FRAME[name]["length"], FRAME[name]["grip"]
     p = melee_bms()
 
-    limb(p["Haft"], (0, 0, 0.13), (0, 0, 1.06), 0.115, 0.10, 6)
-    melee_grip(p["Grip"], grip, half=0.38, r=0.135, coils=4)
-    # Tail-tip pommel: three scute plates shrinking off the butt.
-    for i in range(3):
-        box(p["Pommel"], (0, 0, 0.05 + i * 0.075), (0.3 - i * 0.07, 0.24 - i * 0.055, 0.09))
+    # Handle: a short ringed grip, flared at the butt, with a bolster on top.
+    limb(p["Haft"], (0, 0, 0.14), (0, 0, 1.08), 0.130, 0.115, 7)
+    limb(p["Pommel"], (0, 0, 0.06), (0, 0, 0.22), 0.165, 0.150, 7)
+    melee_grip(p["Grip"], grip, half=0.38, r=0.140, coils=4, proud=0.020, sides=7)
+    limb(p["Guard"], (0, 0, 1.06), (0, 0, 1.20), 0.155, 0.135, 7)
 
-    # The hinge: a ferrule with a knuckle on it, which is what the lower jaw
-    # actually swings on.
-    limb(p["Guard"], (0, 0, 1.02), (0, 0, 1.2), 0.17, 0.16, 6)
-    ellipsoid(p["Guard"], (0.04, 0, 1.2), (0.2, 0.19, 0.14), subdiv=0)
-    # The lower jaw, gaping forward along the cutting side, teeth turned back
-    # up into the mouth.
-    lower = [Vector(v) for v in ((0.16, 0, 1.24), (0.5, 0, 1.48), (0.78, 0, 1.8), (0.95, 0, 2.14))]
-    _wa_chain(p["Guard"], lower, 0.13, 0.055, 5)
-    _wa_teeth(p["Spike"], [v - Vector((0.04, 0, -0.02)) for v in lower[1:]], (-0.5, 0, 0.87), length=0.21, base_r=0.05, taper=0.7)
-    # Scute ridges: down the blade's spine and over the haft.
-    for z in (1.62, 2.02, 2.42, 2.82):
-        box(p["Guard"], (-0.13, 0, z), (0.13, 0.19, 0.11), Matrix.Rotation(math.radians(34), 4, "Y"))
-    for z in (0.24, 0.38):
-        box(p["Haft"], (-0.09, 0, z), (0.1, 0.17, 0.1), Matrix.Rotation(math.radians(28), 4, "Y"))
-
-    # The blade / upper jaw, drawn point by point: a long near-parallel snout,
-    # spine dead straight until it rakes into the tip, and two bites chewed
-    # clean out of the cutting edge at 2.10 and 2.66.
+    # The blade: edge on +x in one convex sweep to a clipped point, spine on -x
+    # straight but for the saw teeth filed into its middle.
     slab(
         p["Edge"],
         [
-            (0.18, 1.28),
-            (0.28, 1.62),
-            (0.31, 2.04),
-            (0.19, 2.12),
-            (0.32, 2.24),
-            (0.34, 2.58),
-            (0.21, 2.68),
-            (0.35, 2.8),
-            (0.37, 3.02),
-            (0.29, 3.18),
-            (0.06, length),
-            (-0.06, 3.14),
-            (-0.1, 2.8),
-            (-0.11, 2.1),
-            (-0.12, 1.28),
+            (-0.17, 1.18),  # heel, spine side
+            (0.15, 1.18),  # heel, edge side
+            (0.22, 1.46),
+            (0.27, 1.92),
+            (0.30, 2.40),
+            (0.29, 2.90),
+            (0.23, 3.14),
+            (0.05, length),  # the clipped point
+            (-0.09, 3.16),
+            (-0.17, 2.96),
+            (-0.19, 2.72),
+            (-0.20, 2.60),  # the saw: four teeth into the spine
+            (-0.09, 2.52),
+            (-0.21, 2.44),
+            (-0.10, 2.36),
+            (-0.22, 2.28),
+            (-0.11, 2.20),
+            (-0.23, 2.12),
+            (-0.21, 1.80),  # spine, straight again
         ],
-        0.05,
+        0.055,
     )
-    # The upper jaw's own teeth, hanging off the heel of the edge into the
-    # gape - which is why the bottom of this blade is serrated and the rest of
-    # it is not.
-    _wa_teeth(p["Spike"], [Vector((0.27, 0, z)) for z in (1.42, 1.66, 1.9)], (0.58, 0, -0.81), length=0.22, base_r=0.052, taper=0.8)
-    # The eye, socketed in both flats over the hinge.
+    # The icon's grind line: a shallow raised strip on both flats, running
+    # parallel to the edge from the ricasso to the clip.
     for s in (-1, 1):
-        hex_plate(p["Spike"], (-0.02, s * 0.055, 1.52), 0.085, 0.04)
-
-    # Rust scabs standing proud of both flats.
-    for x, y, z, rx, rz in ((0.06, 0.07, 1.9, 0.10, 0.13), (-0.02, -0.07, 2.3, 0.08, 0.11), (0.2, 0.07, 2.62, 0.09, 0.12), (0.16, -0.07, 3.0, 0.07, 0.10)):
-        ellipsoid(p["Spike"], (x, y, z), (rx, 0.035, rz), subdiv=0)
-
-    # The snagged fishhook, hung off the ferrule on a cord out the spine side
-    # so it breaks the silhouette (never in _Grip - that part's centre is the
-    # hand point).
-    hook = ((-0.16, 1.16), (-0.3, 0.94), (-0.32, 0.76), (-0.2, 0.66))
-    for (x0, z0), (x1, z1), r in zip(hook, hook[1:], (0.02, 0.033, 0.03)):
-        limb(p["Spike"], (x0, -0.08, z0), (x1, -0.08, z1), r, r * 0.9, 4)
-    cone(p["Spike"], (-0.2, -0.08, 0.66), (-0.15, -0.08, 0.86), 0.028, sides=4)
+        for x, z, h in ((0.13, 1.74, 0.58), (0.17, 2.38, 0.64), (0.15, 2.94, 0.40)):
+            box(p["Spike"], (x, s * 0.052, z), (0.06, 0.02, h), Matrix.Rotation(math.radians(-4), 4, "Y"))
 
     return melee_finish(name, p)
 
 
 # ---------------------------------------------------------------- Fenreaver (swamp legendary)
-# The fen tyrant's reaver: a long forward-swept claw of a blade that hooks out
-# past the haft, its inner edge lit wisp-green with sap, trophy teeth hung off
-# the back, and a guard of live root tendrils curling up out of the bogwood
-# shaft to hold the blade in.
+# ICON (assets/icons/fenreaver.png, canon): a gnarled dark ROOT for a haft -
+# knobbed, bark-ridged, closed by a bulb at the butt - carrying a big pale
+# silver-green FLAME BLADE. The blade's base throws a long rear-swept wing out
+# behind it on the spine side and a short forward hook on the edge side; between
+# them the blade pinches to a waist, then swells into a broad belly and runs out
+# to a fine point, with a small eye pierced through the low blade. The
+# 2026-08-27 build's caged wisp and trophy-tooth row are not in the icon and
+# are gone; the winged base is the signature now.
+#   silhouette: a winged flame blade on a root
+#   ornament : the rear-swept wing, and the eye pierced under the waist
+
+# The blade outline, heel round to the wing. Belly on +x, wing and spine on -x.
+FENREAVER_PROFILE = [
+    (-0.12, 1.98),  # heel, spine side
+    (0.12, 1.98),  # heel, edge side
+    (0.42, 2.10),  # the forward hook
+    (0.30, 2.26),
+    (0.22, 2.50),  # the waist
+    (0.36, 2.86),
+    (0.41, 3.16),  # the belly
+    (0.33, 3.46),
+    (0.17, 3.66),
+    (0.02, 3.80),  # the point
+    (-0.05, 3.60),
+    (-0.13, 3.16),
+    (-0.19, 2.76),
+    (-0.24, 2.46),  # the wing's shoulder
+    (-0.48, 2.06),  # the rear-swept wing tip
+    (-0.24, 2.16),  # the notch behind the wing
+]
 
 
 def build_fenreaver():
@@ -1424,56 +1447,36 @@ def build_fenreaver():
     length, grip = FRAME[name]["length"], FRAME[name]["grip"]
     p = melee_bms()
 
-    # Bogwood shaft with two live roots counter-wound up it - the reaver is
-    # still growing, which is why the guard is roots and not iron.
-    limb(p["Haft"], (0, 0, 0.14), (0, 0, 1.86), 0.115, 0.10, 6)
-    for turns, phase in ((1.4, 0.0), (-1.4, math.pi)):
-        _wa_chain(p["Haft"], _wa_helix(1.24, 1.9, turns, lambda t: 0.132 - 0.02 * t, phase=phase, per_turn=3), 0.05, 0.032, 4)
-    melee_grip(p["Grip"], grip, half=0.5, r=0.15, coils=4)
-    ellipsoid(p["Pommel"], (0, 0, 0.17), (0.19, 0.19, 0.15), subdiv=0)
+    # The root: kinked, knotted, bark-ridged, with a bulb closing the butt.
+    spine = [
+        Vector((0.00, 0.00, 0.20)),
+        Vector((0.09, 0.02, 0.66)),
+        Vector((0.01, -0.01, 1.14)),
+        Vector((0.08, 0.01, 1.58)),
+        Vector((0.00, 0.00, 1.96)),
+    ]
+    radii = (0.130, 0.140, 0.128, 0.138, 0.150)
+    for i in range(len(spine) - 1):
+        limb(p["Haft"], spine[i], spine[i + 1], radii[i], radii[i + 1], 6)
+    for i in (1, 3):
+        ellipsoid(p["Haft"], spine[i], (0.165, 0.15, 0.125), subdiv=0)
+    for turns, phase in ((1.1, 0.0), (-1.1, math.pi)):
+        _wa_chain(p["Haft"], _wa_helix(0.34, 1.86, turns, lambda t: 0.145 - 0.012 * t, phase=phase, per_turn=3), 0.042, 0.030, 4)
+    ellipsoid(p["Pommel"], (0, 0, 0.17), (0.20, 0.19, 0.16), subdiv=1)
+    melee_grip(p["Grip"], grip, half=0.46, r=0.155, coils=4, proud=0.022, sides=7)
 
-    # Root-tendril guard: four roots curling up and out of the socket.
-    limb(p["Guard"], (0, 0, 1.7), (0, 0, 1.94), 0.17, 0.15, 7)
-    for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-        a = (dx * 0.13, dy * 0.13, 1.86)
-        b = (dx * 0.34, dy * 0.34, 2.06)
-        c = (dx * 0.4, dy * 0.4, 2.36)
-        limb(p["Guard"], a, b, 0.062, 0.05, 5)
-        limb(p["Guard"], b, c, 0.05, 0.03, 5)
+    # The socket the blade sits in - a short bark collar, nothing more.
+    limb(p["Guard"], (0, 0, 1.84), (0, 0, 2.02), 0.185, 0.165, 7)
 
-    # The hook: swept hard toward +x, narrowing to a point out past the shaft.
-    def spine(t):
-        return -0.18 + 1.15 * t**1.8
+    # The blade, thin on y so the wing and belly ARE the +-x extremes, with the
+    # icon's small eye pierced through it just under the waist.
+    _wa_pierce(p["Edge"], FENREAVER_PROFILE, (0.02, 2.32), 0.070, 0.060)
 
-    def edge(t):
-        return 0.28 + 1.02 * t**1.6
-
-    slab(p["Edge"], edge_profile(1.95, length, spine, edge, steps=8), 0.06)
-
-    # THE WISP. A fen-light caught alive and slung in the crook of the hook on
-    # a root arm, in a cage of bone bars - the reaper's lantern, hanging clear
-    # out past the cutting edge where nothing else on the rack puts anything.
-    _wa_chain(p["Guard"], _wa_arc((0.18, 0, 2.0), (0.64, 0, 2.32), (0.7, 0, 0.5), 0.12, 3), 0.055, 0.035, 4)
-    _wa_cage(p["Spike"], (0.68, 0, 2.1), 0.2, 0.22, bars=4, bar_r=0.026, hoop_r=0.022, phase=0.4)
-    ellipsoid(p["Glow"], (0.68, 0, 2.1), (0.12, 0.12, 0.13), subdiv=0)
-
-    # Trophy teeth hung along the blade's back, pointing away from the swing,
-    # and moss hanging off the roots.
-    for t in (0.18, 0.36, 0.54, 0.72):
-        z = 1.95 + (length - 1.95) * t
-        x = spine(t)
-        cone(p["Spike"], (x, 0, z), (x - 0.3, 0, z - 0.22), 0.065, sides=4)
-    for s in (-1, 1):
-        cone(p["Spike"], (0, s * 0.14, 1.72), (0, s * 0.2, 1.48), 0.05, sides=4)
-        _wa_chain(p["Guard"], _wa_arc((0, s * 0.4, 2.34), (0.1, s * 0.46, 1.86), (0.5, 0, 0), 0.1, 2), 0.028, 0.016, 4)
-
-    # Sap: a lit line just inside the cutting edge, and two beads in the roots.
-    for i in range(6):
-        t = 0.06 + i * 0.165
-        z = 1.95 + (length - 1.95) * t
-        box(p["Glow"], (edge(t) - 0.05, 0, z), (0.07, 0.075, 0.24))
-    for dx in (0.32, -0.32):
-        ellipsoid(p["Glow"], (dx, 0, 2.2), (0.06, 0.06, 0.07), subdiv=0)
+    # Sap: a lit line just inside the belly, and a bead in the eye.
+    for x, z, h in ((0.25, 2.76, 0.40), (0.31, 3.12, 0.50), (0.22, 3.46, 0.32)):
+        for s in (-1, 1):
+            box(p["Glow"], (x, s * 0.056, z), (0.06, 0.024, h), Matrix.Rotation(math.radians(-8), 4, "Y"))
+    _wa_ring(p["Glow"], (0.02, 0, 2.32), 0.085, 0.026, normal=(0, 1, 0), seg=7)
 
     return melee_finish(name, p)
 
@@ -1656,26 +1659,67 @@ def _wb_ring(bm, center, axis, radius, tube, seg_major=7, seg_minor=3, phase=0.0
             bm.faces.new((a_[k], a_[l], b_[l], b_[k]))
 
 
-def _wb_serrated(z0, z1, x_fn, teeth, depth, taper=0.5):
-    """Sawtooth samples climbing a cutting edge from the heel (z0) to the point
-    (z1): each tooth is a root on the base curve x_fn(t) and a spur standing
-    `depth` proud of it, the spurs shrinking by `taper` toward the point."""
-    pts = []
-    for i in range(teeth):
-        t0 = i / teeth
-        tm = (i + 0.45) / teeth
-        d = depth * (1.0 - taper * (i / teeth))
-        pts.append((x_fn(t0), z0 + (z1 - z0) * t0))
-        pts.append((x_fn(tm) + d, z0 + (z1 - z0) * tm))
-    return pts
+def _wb_arc2(a, b, bow_dir, bow, steps=4):
+    """_wb_arc's flat twin: steps + 1 (x, z) points bowing from a to b. Every
+    axe bit, crescent and horn below is cut from two or three of these, because
+    an icon's axe head is a pair of arcs meeting at a horn and nothing else."""
+    (ax, az), (bx, bz) = a, b
+    dx, dz = bow_dir
+    n = math.hypot(dx, dz) or 1.0
+    dx, dz = dx / n, dz / n
+    out = []
+    for i in range(steps + 1):
+        t = i / steps
+        s = bow * math.sin(t * math.pi)
+        out.append((ax + (bx - ax) * t + dx * s, az + (bz - az) * t + dz * s))
+    return out
+
+
+def _wb_hub_thicks(profile, hub, near=0.095, far=0.014, power=1.0):
+    """A half-thickness per profile vertex for _wb_slab_varied: fat at `hub`
+    (the eye, the socket) and a wafer out at the rim. _wb_lens_thicks grinds a
+    SWORD - edge on one side, spine on the other; this grinds an AXE, which is
+    thick at the eye and thin in every direction away from it."""
+    hx, hz = hub
+    d = [math.hypot(x - hx, z - hz) for x, z in profile]
+    lo, hi = min(d), max(d)
+    span = max(1e-6, hi - lo)
+    return [near + (far - near) * (((v - lo) / span) ** power) for v in d]
+
+
+def _wb_prism(bm, profile, y, shrink=0.72, hub=None):
+    """A bevelled solid: the (x, z) profile at y = 0 and a shrunken copy of it
+    on each flat, closed up. What the icons draw as a STRUCK lump - the maul's
+    ice block, a cut pommel cap - which a flat slab can never be."""
+    if hub is None:
+        hub = (sum(x for x, _ in profile) / len(profile), sum(z for _, z in profile) / len(profile))
+    hx, hz = hub
+    mid = [bm.verts.new(Vector((x, 0.0, z))) for x, z in profile]
+    n = len(profile)
+    for s in (-1, 1):
+        cap = [bm.verts.new(Vector((hx + (x - hx) * shrink, s * y, hz + (z - hz) * shrink))) for x, z in profile]
+        for i in range(n):
+            j = (i + 1) % n
+            bm.faces.new((mid[i], mid[j], cap[j], cap[i]))
+        bm.faces.new(cap)
+
+
+def _wb_flat_line(bm, pts, stand, wide=0.05, thin=0.020):
+    """One narrow raised line laid along an (x, z) curve on BOTH flats of a
+    blade, at y = +-stand. Half these icons paint a lit fuller or a coloured
+    spine band down the blade, and it has to read from either side, so it is
+    two strips and never one."""
+    n = len(pts)
+    for s in (-1, 1):
+        _wb_ribbon(bm, [(x, s * stand, z) for x, z in pts], [thin] * n, wide)
 
 
 # ---------------------------------------------------------------- Icepick Hatchet (ice uncommon)
-# THE ONE THING: the head is not a forged bit at all - it is a single icicle,
-# sheared off along one flat plane raked back over the haft, its whole
-# underside a row of sawtooth rime. Nothing on this weapon was made; it was
-# broken off something and lashed down with three cords, and hoarfrost has
-# already started growing back out of the socket.
+# FROM THE ICON: a plain two-pointed PICKAXE. Pale blue steel head, one bar
+# crossing the haft and falling away to a point at each end; a raised eye block
+# where they cross; a straight unornamented handle. No ice growing on it, no
+# lashings, no bit. The whole silhouette is that one shallow arc, so the arc is
+# built as ONE bar through the eye rather than two spikes bolted to a socket.
 
 
 def build_icepickhatchet():
@@ -1683,62 +1727,47 @@ def build_icepickhatchet():
     length, grip = FRAME[name]["length"], FRAME[name]["grip"]
     p = melee_bms()
 
-    # A plain shaft - everything interesting is the ice on top of it.
-    limb(p["Haft"], (0, 0, 0.06), (0, 0, 1.72), 0.10, 0.085, 6)
-    melee_grip(p["Grip"], grip, half=0.45, r=0.13, coils=5)
+    # A plain straight haft. The icon gives it no taper worth modelling, no
+    # thong, no butt ice - so it gets none.
+    limb(p["Haft"], (0, 0, 0.05), (0, 0, 2.34), 0.095, 0.085, 6)
+    melee_grip(p["Grip"], grip, half=0.46, r=0.125, coils=4, proud=0.018)
+    box(p["Pommel"], (0, 0, 0.06), (0.20, 0.19, 0.12))
 
-    # Butt: cap, belt thong, and one stub of ice frozen onto the heel.
-    box(p["Pommel"], (0, 0, 0.06), (0.22, 0.20, 0.11))
-    thong = ((0.11, 0.15), (0.0, 0.30), (-0.11, 0.15))
-    for (x0, z0), (x1, z1) in zip(thong, thong[1:]):
-        limb(p["Pommel"], (x0, 0, z0), (x1, 0, z1), 0.022, 0.022, 4)
-    _wb_shard(p["Pommel"], (-0.08, 0, 0.17), (-0.34, 0.05, 0.09), 0.05, sides=4)
+    # THE EYE: the raised collar the head is driven through, with the icon's
+    # one stud proud of its forward face and a cheek plate on each flat.
+    box(p["Guard"], (0, 0, 2.26), (0.30, 0.28, 0.46))
+    box(p["Guard"], (0.20, 0, 2.40), (0.17, 0.21, 0.21), Matrix.Rotation(math.radians(18), 4, "Y"))
+    for s in (-1, 1):
+        box(p["Guard"], (0, s * 0.16, 2.12), (0.26, 0.05, 0.17))
 
-    # The socket: a short ferrule and three cords lashing the icicle's root to
-    # it. There is no axe eye, because nothing here was forged.
-    limb(p["Guard"], (0, 0, 1.62), (0, 0, 1.88), 0.135, 0.125, 6)
-    for z, tilt in ((1.66, 0.06), (1.76, -0.06), (1.86, 0.06)):
-        _wb_ring(p["Guard"], (0, 0, z), (tilt, 0.05, 1.0), 0.15, 0.032, seg_major=6, seg_minor=3)
+    # THE HEAD: one bar of pale steel, crowned over the eye and running out to
+    # a point each way - the +x beak longer and finer (the pick), the -x poll
+    # stubbier. Two arcs, one over the top and one back underneath, and that
+    # crescent IS the icon.
+    upper = _wb_arc2((-0.86, 2.00), (1.02, 2.06), (0.0, 1.0), 0.565, 6)  # crown lands just under z = LENGTH
+    lower = _wb_arc2((1.02, 2.06), (-0.86, 2.00), (0.0, 1.0), 0.24, 5)
+    bar = list(upper) + lower[1:-1]
+    _wb_slab_varied(p["Edge"], bar, _wb_hub_thicks(bar, (0.02, 2.30), near=0.088, far=0.014, power=0.85))
 
-    # THE ICICLE. Up the +x underside as sawtooth rime, over the point at
-    # z = LENGTH, then one hard straight shear plane raked back down over the
-    # haft - that diagonal is the whole silhouette.
-    def ice_edge(t):
-        return 0.15 + 0.30 * t
+    # The centre boss over the eye, where the icon thickens the head.
+    box(p["Head"], (0.02, 0, 2.34), (0.44, 0.24, 0.26))
+    for s in (-1, 1):
+        limb(p["Spike"], (0.02, s * 0.11, 2.34), (0.02, s * 0.155, 2.34), 0.055, 0.045, 5)
 
-    profile = [(0.02, 1.68)]
-    profile += _wb_serrated(1.70, 2.50, ice_edge, 6, 0.13, taper=0.55)
-    profile += [(0.32, length), (-0.30, 2.20), (-0.34, 1.98), (-0.22, 1.76)]
-
-    def ice_thick(x, z):
-        up = max(0.0, min(1.0, (z - 1.68) / (length - 1.68)))
-        out = max(0.0, min(1.0, (x + 0.34) / 0.80))
-        return (0.105 - 0.072 * up) * (1.0 - 0.70 * out)
-
-    _wb_slab_varied(p["Edge"], profile, [ice_thick(x, z) for x, z in profile])
-
-    # Hoarfrost feathering: it grows back out of the break. The long one out
-    # the poll is the pick, and it is the same crystal as everything else.
-    for (bx, bz), (tx, ty, tz), r in (
-        ((-0.26, 1.96), (-0.86, 0.02, 1.92), 0.075),
-        ((-0.16, 2.16), (-0.52, 0.05, 2.36), 0.050),
-        ((-0.02, 2.08), (-0.28, -0.05, 2.46), 0.042),
-        ((0.10, 1.80), (0.04, 0.04, 1.42), 0.045),
-    ):
-        _wb_shard(p["Spike"], (bx, 0, bz), (tx, ty, tz), r, sides=4)
-
-    # One seam of cold still running in the core of the ice.
-    for x, z, h in ((-0.06, 1.90, 0.34), (0.02, 2.16, 0.28), (0.10, 2.38, 0.18)):
-        box(p["Glow"], (x, 0, z), (0.05, 0.20, h), Matrix.Rotation(math.radians(-14), 4, "Y"))
+    # A cold seam along the bar's crown - the only light on it, kept to a line
+    # because the icon paints none.
+    for x, z, a in ((-0.40, 2.24, 20), (0.02, 2.38, 0), (0.44, 2.28, -18)):
+        box(p["Glow"], (x, 0, z), (0.36, 0.21, 0.05), Matrix.Rotation(math.radians(a), 4, "Y"))
 
     return melee_finish(name, p)
 
 
 # ---------------------------------------------------------------- Glacier Maul (ice rare)
-# THE ONE THING: the head is a BELL of black ice - six ribs and three hoops
-# cast open, hollow, hung on a whalebone haft - and the clapper inside it is a
-# serpent fry frozen mid-turn, still lit. You do not hit things with a maul
-# head here; you swing a bell with something alive in it, and it rings.
+# FROM THE ICON: one SOLID struck block of pale ice on a wrapped, tapering
+# haft. Irregular, chunky, bevelled all round, wider than it is tall, with
+# white streaks lit in its core and a small faceted nub of the same ice capping
+# the butt. A hollow bell reads as a lantern at any distance; the icon's head
+# is a lump, so it is built as a lump (_wb_prism) and not as a cage.
 
 
 def build_glaciermaul():
@@ -1746,56 +1775,59 @@ def build_glaciermaul():
     length, grip = FRAME[name]["length"], FRAME[name]["grip"]
     p = melee_bms()
 
-    # Whalebone haft with one knuckle swelling.
-    limb(p["Haft"], (0, 0, 0.16), (0, 0, 3.30), 0.15, 0.12, 6)
-    ellipsoid(p["Haft"], (0, 0, 1.90), (0.19, 0.19, 0.12), subdiv=0)
-    melee_grip(p["Grip"], grip, half=0.55, r=0.18, coils=4, proud=0.03)
+    # Plain tapering haft, wrapped nearly its whole length like the icon's.
+    limb(p["Haft"], (0, 0, 0.22), (0, 0, 3.36), 0.145, 0.115, 6)
+    melee_grip(p["Grip"], grip, half=0.62, r=0.165, coils=6, proud=0.028)
 
-    # Vertebra pommel: a knob with two wings.
-    box(p["Pommel"], (0, 0, 0.10), (0.34, 0.34, 0.18))
-    for s in (-1, 1):
-        box(p["Pommel"], (0, s * 0.24, 0.14), (0.16, 0.16, 0.10))
+    # Butt: a banded collar and a faceted nub of the head's own ice.
+    _wb_ring(p["Pommel"], (0, 0, 0.34), (0, 0, 1), 0.155, 0.038, seg_major=6, seg_minor=3)
+    _wb_shard(p["Spike"], (0, 0, 0.34), (0, 0, 0.02), 0.155, sides=5, waist=0.5, bulge=0.9)
 
-    # THE BELL, crown down to rim. Six ribs lofted down the profile and three
-    # hoops binding them, so the head is a cage you can see straight through -
-    # which is the only way the thing inside it reads.
-    bell = ((4.12, 0.14), (4.02, 0.34), (3.88, 0.50), (3.70, 0.57), (3.54, 0.60), (3.38, 0.63))
-    for i in range(6):
-        a = (i / 6) * TAU + 0.26
-        _wb_sweep(p["Head"], [Vector((math.cos(a) * r, math.sin(a) * r, z)) for z, r in bell], [0.055, 0.062, 0.068, 0.072, 0.075, 0.080], sides=3)
-    for z, r in ((3.40, 0.630), (3.72, 0.575), (4.00, 0.390)):
-        _wb_ring(p["Head"], (0, 0, z), (0, 0, 1), r, 0.055, seg_major=8, seg_minor=3)
-    limb(p["Head"], (0, 0, 4.08), (0, 0, length), 0.18, 0.09, 6)
+    # The socket the block is set into, and its band.
+    limb(p["Guard"], (0, 0, 3.08), (0, 0, 3.42), 0.215, 0.195, 7)
+    _wb_ring(p["Guard"], (0, 0, 3.16), (0, 0, 1), 0.215, 0.045, seg_major=7, seg_minor=3)
 
-    # Socket, and two iron straps arching over the bell to clamp it down.
-    limb(p["Guard"], (0, 0, 3.20), (0, 0, 3.46), 0.24, 0.21, 8)
-    for s in (-1, 1):
-        _wb_sweep(p["Guard"], _wb_arc((s * 0.62, 0, 3.38), (0, 0, 4.14), (s * 0.9, 0, 0.4), 0.10, 5), [0.05] * 6, sides=3)
+    # THE BLOCK. One irregular bevelled solid, nearly as tall as it is wide -
+    # the icon's head is a struck lump standing ON the haft, and a wide flat
+    # one reads as a mushroom cap instead. No two rim runs the same length, so
+    # the flats break into facets the way struck ice does.
+    block = [
+        (-0.40, 3.24),
+        (0.20, 3.18),
+        (0.62, 3.38),
+        (0.72, 3.70),
+        (0.62, 4.01),
+        (0.28, 4.20),
+        (-0.18, 4.14),
+        (-0.56, 3.94),
+        (-0.66, 3.62),
+        (-0.56, 3.36),
+    ]
+    _wb_prism(p["Head"], block, 0.34, shrink=0.70, hub=(0.02, 3.68))
 
-    # Icicles hanging off the rim, uneven, the way a shelf breaks.
-    for i in range(5):
-        a = (i / 5) * TAU + 0.6
-        bx, by = math.cos(a) * 0.60, math.sin(a) * 0.60
-        _wb_shard(p["Spike"], (bx, by, 3.38), (bx * 1.06, by * 1.06, 3.38 - (0.32 + 0.17 * (i % 3))), 0.075, sides=4)
+    # Chips calved off it, the way an ice shelf goes.
+    for (bx, bz), (tx, ty, tz), r in (
+        ((-0.58, 3.90), (-0.90, 0.06, 4.04), 0.11),
+        ((0.66, 3.52), (0.94, -0.05, 3.38), 0.10),
+        ((0.16, 3.22), (0.28, 0.04, 2.98), 0.12),
+    ):
+        _wb_shard(p["Spike"], (bx, 0, bz), (tx, ty, tz), r, sides=4)
 
-    # THE CLAPPER: a serpent fry caught mid-turn in the everice, hung from the
-    # crown on one thread. It is what lights the bell, and it is what rings.
-    limb(p["Glow"], (0, 0, 4.04), (0, 0, 3.92), 0.02, 0.025, 4)
-    ellipsoid(p["Glow"], (0, 0, 3.76), (0.15, 0.11, 0.20), subdiv=0)
-    cone(p["Glow"], (0.0, 0, 3.60), (0.15, 0, 3.42), 0.09, sides=4)
-    for s in (-1, 1):
-        box(p["Glow"], (s * 0.13, 0, 3.78), (0.16, 0.03, 0.10), Matrix.Rotation(math.radians(s * 28), 4, "Y"))
-    ellipsoid(p["Glow"], (0.05, 0, 3.87), (0.05, 0.05, 0.05), subdiv=0)  # its eye
+    # The white streaks the icon paints lit inside the ice.
+    for x, z, h, a in ((-0.24, 3.72, 0.56, -22), (0.22, 3.86, 0.48, 14), (0.10, 3.44, 0.30, -8)):
+        box(p["Glow"], (x, 0, z), (0.09, 0.74, h), Matrix.Rotation(math.radians(a), 4, "Y"))
 
     return melee_finish(name, p)
 
 
 # ---------------------------------------------------------------- Rimefang Lance (ice legendary)
-# THE ONE THING: an aurora. A ribbon of light lifts off the socket and spirals
-# the entire fang, rolling as it climbs, standing clear of the blade on every
-# side - the family legendary is the only weapon in the pack whose signature
-# is bigger than its own silhouette. Under it: the serpent's fang on a frozen
-# keel-spar, hoarfrost growing back down out of the socket in a ruff.
+# FROM THE ICON: a spear, and a spare one. A plain dark round shaft; one
+# bright banded ferrule two thirds up; above it a long straight CONE of clear
+# rime, symmetric, needling to the point; a small faceted ice cone capping the
+# butt. No aurora, no ruff, no curve - the icon's head is a plain narrow
+# triangle. Carried level and jabbed from now on, so the shaft's own rhythm
+# (three ferrules) has to carry the length, and the head has four short fins
+# so it still reads coming straight at you.
 
 
 def build_rimefanglance():
@@ -1803,56 +1835,52 @@ def build_rimefanglance():
     length, grip = FRAME[name]["length"], FRAME[name]["grip"]
     p = melee_bms()
 
-    # Keel-spar: square section (limb, 4 sides) with a fin down the flats.
-    limb(p["Haft"], (0, 0, 0.1), (0, 0, 2.94), 0.14, 0.105, 4)
-    box(p["Haft"], (0, 0, 1.82), (0.07, 0.30, 1.92))
-    melee_grip(p["Grip"], grip, half=0.5, r=0.16, coils=4)
-    box(p["Pommel"], (0, 0, 0.09), (0.26, 0.26, 0.18))
-    for i in range(3):  # frost creeping off the counterweight
-        a = (i / 3) * TAU + 0.4
-        _wb_shard(p["Pommel"], (math.cos(a) * 0.11, math.sin(a) * 0.11, 0.20), (math.cos(a) * 0.32, math.sin(a) * 0.32, 0.34), 0.05, sides=4)
+    limb(p["Haft"], (0, 0, 0.30), (0, 0, 3.36), 0.105, 0.092, 6)
+    melee_grip(p["Grip"], grip, half=0.55, r=0.135, coils=5, proud=0.02)
+    for z in (1.62, 2.20, 2.78):
+        _wb_ring(p["Spike"], (0, 0, z), (0, 0, 1), 0.115, 0.030, seg_major=6, seg_minor=3)
 
-    # The socket, and the ruff of hoarfrost that has grown back DOWN the spar
-    # out of it - the tell that the fang is not a trophy, it is still feeding.
-    limb(p["Guard"], (0, 0, 2.88), (0, 0, 3.16), 0.20, 0.17, 7)
-    _wb_ring(p["Guard"], (0, 0, 3.18), (0, 0, 1), 0.20, 0.045, seg_major=7, seg_minor=3)
-    for i in range(6):
-        a = (i / 6) * TAU + 0.3
-        c, s = math.cos(a), math.sin(a)
-        _wb_shard(p["Spike"], (c * 0.16, s * 0.16, 3.10), (c * 0.52, s * 0.52, 2.62 - 0.16 * (i % 2)), 0.055, sides=4)
+    # THE BUTT SPIKE: the same ice as the head, in a banded collar. Held level
+    # this end is beside the player's hip all day, so it is not left bare.
+    _wb_ring(p["Pommel"], (0, 0, 0.36), (0, 0, 1), 0.125, 0.034, seg_major=6, seg_minor=3)
+    _wb_shard(p["Spike"], (0, 0, 0.34), (0, 0, 0.0), 0.115, sides=5, waist=0.45, bulge=0.95)
 
-    # The fang: tapering in width AND thickness to a needle at z = LENGTH.
+    # THE FERRULE: the icon's one strong interruption in the shaft's line.
+    limb(p["Guard"], (0, 0, 3.20), (0, 0, 3.58), 0.185, 0.175, 7)
+    for z in (3.26, 3.50):
+        _wb_ring(p["Guard"], (0, 0, z), (0, 0, 1), 0.19, 0.040, seg_major=7, seg_minor=3)
+
+    # THE FANG: straight and symmetric about the shaft, so it reads the same
+    # from the side and down its own length, tapering in width AND thickness
+    # to the point at z = LENGTH.
     stations = [
-        (0.00, 3.14, 0.220, 0.160),
-        (0.02, 3.55, 0.200, 0.140),
-        (0.06, 3.92, 0.170, 0.115),
-        (0.12, 4.20, 0.120, 0.078),
-        (0.19, 4.44, 0.060, 0.040),
-        (0.24, length, 0.012, 0.010),
+        (0.0, 3.50, 0.235, 0.180),
+        (0.0, 3.86, 0.205, 0.152),
+        (0.0, 4.16, 0.160, 0.115),
+        (0.0, 4.40, 0.098, 0.068),
+        (0.0, length - 0.04, 0.030, 0.022),
+        (0.0, length, 0.008, 0.006),
     ]
     lofted_blade(p["Edge"], stations)
-    # Rime combed back off its spine, following the swing.
-    for x, z, w, _t in stations[1:4]:
-        _wb_shard(p["Spike"], (x - w * 0.6, 0, z), (x - w - 0.34, 0.03, z - 0.26), 0.045, sides=4)
+    for i in range(4):  # rime fins off the ferrule - the head-on read
+        a = (i / 4) * TAU + 0.4
+        c, s = math.cos(a), math.sin(a)
+        _wb_shard(p["Spike"], (c * 0.17, s * 0.17, 3.54), (c * 0.42, s * 0.42, 3.24), 0.05, sides=4)
 
-    # THE AURORA. A ribbon of cold light lifts off the socket, rolls as it goes
-    # and spirals the whole fang - the only thing on the rack whose ornament
-    # leaves the weapon's own outline. Read it at thirty studs and you know
-    # which one this is before you can see the blade.
-    aurora = _wb_helix(3.10, length - 0.06, 1.15, lambda t: 0.30 + 0.12 * math.sin(t * math.pi), phase=0.7, per_turn=9, drift=lambda t: (0.24 * t * t, 0.0))
-    _wb_ribbon(p["Glow"], aurora, [0.15 - 0.10 * (i / (len(aurora) - 1)) for i in range(len(aurora))], 0.016, twist=120.0)
-    # and the vein of cold in the fang's own core.
-    for x, z, w, t in stations[:4]:
-        box(p["Glow"], (x, 0, z + 0.18), (w * 0.5, t * 2.0, 0.26), Matrix.Rotation(math.radians(-10), 4, "Y"))
+    # The cold in the fang's core, and the ferrule lit from inside it.
+    for z, y, w in ((3.68, 0.40, 0.10), (4.02, 0.28, 0.09), (4.30, 0.17, 0.07)):
+        box(p["Glow"], (0, 0, z), (w, y, 0.32))
+    _wb_ring(p["Glow"], (0, 0, 3.38), (0, 0, 1), 0.20, 0.030, seg_major=7, seg_minor=3)
 
     return melee_finish(name, p)
 
 
 # ---------------------------------------------------------------- Trenchspike (gloom uncommon)
-# THE ONE THING: an illicium. The weapon is one giant angler tooth still seated
-# in its knuckled jaw-socket, and out of that socket a bare stalk arches
-# forward over the whole blade to dangle a lit lure a hand's width in front of
-# the point. Nothing else in the pack has anything hanging OFF it in front.
+# FROM THE ICON: a near-black spear with a BARBED DART head - a broad flat
+# triangle, straight edges to the point, and two spurs swept back and down off
+# its shoulders. Almost the whole weapon is bare shaft; there is no lure, no
+# jaw, no light. So the barbs are the entire signature, and the only thing
+# added is the pair of shaft ferrules the level carry needs.
 
 
 def build_trenchspike():
@@ -1860,50 +1888,48 @@ def build_trenchspike():
     length, grip = FRAME[name]["length"], FRAME[name]["grip"]
     p = melee_bms()
 
-    limb(p["Haft"], (0, 0, 0.08), (0, 0, 1.10), 0.13, 0.16, 6)
-    melee_grip(p["Grip"], grip, half=0.45, r=0.165, coils=3, proud=0.035)
-    box(p["Pommel"], (0, 0, 0.07), (0.24, 0.24, 0.12))
-    cone(p["Pommel"], (-0.06, 0, 0.13), (-0.32, 0, 0.05), 0.08, sides=4)
+    limb(p["Haft"], (0, 0, 0.10), (0, 0, 1.96), 0.10, 0.088, 6)
+    melee_grip(p["Grip"], grip, half=0.46, r=0.13, coils=3, proud=0.016)
+    ellipsoid(p["Pommel"], (0, 0, 0.11), (0.115, 0.115, 0.10), subdiv=0)
+    for z in (1.20, 1.64):
+        _wb_ring(p["Spike"], (0, 0, z), (0, 0, 1), 0.105, 0.026, seg_major=6, seg_minor=3)
 
-    # The jaw-socket the tooth is still seated in, gum knuckles and all.
-    limb(p["Guard"], (0, 0, 1.06), (0, 0, 1.34), 0.19, 0.22, 7)
-    for i in range(4):
-        a = (i / 4) * TAU + 0.5
-        ellipsoid(p["Guard"], (math.cos(a) * 0.18, math.sin(a) * 0.18, 1.30), (0.09, 0.09, 0.07), subdiv=0)
+    # The socket: one short step. The icon keeps it almost invisible.
+    limb(p["Guard"], (0, 0, 1.88), (0, 0, 2.12), 0.135, 0.125, 6)
 
-    # THE TOOTH: one fang, fat at the gum, needling forward to z = LENGTH.
+    # THE DART: symmetric, widest at the shoulders, straight edges running to
+    # the point at z = LENGTH. A full third of the weapon, the way the icon
+    # weights it - a smaller head just reads as a stick.
     stations = [
-        (0.00, 1.30, 0.200, 0.170),
-        (0.02, 1.72, 0.180, 0.150),
-        (0.07, 2.14, 0.145, 0.120),
-        (0.15, 2.52, 0.100, 0.080),
-        (0.24, 2.84, 0.050, 0.040),
-        (0.30, length, 0.012, 0.010),
+        (0.0, 2.06, 0.115, 0.070),
+        (0.0, 2.26, 0.300, 0.092),
+        (0.0, 2.55, 0.225, 0.072),
+        (0.0, 2.80, 0.140, 0.048),
+        (0.0, length - 0.04, 0.038, 0.019),
+        (0.0, length, 0.008, 0.006),
     ]
     lofted_blade(p["Head"], stations)
-    for x, z, w, _t in stations[1:4]:
-        cone(p["Spike"], (x - w, 0, z), (x - w - 0.26, 0, z - 0.20), 0.05, sides=4)
 
-    # THE LURE. The stalk lifts off the back of the socket, arches out over the
-    # tooth and hangs its bulb beside the point, filaments trailing under it.
-    stalk = _wb_arc((-0.14, 0.0, 1.30), (0.46, 0.0, 2.74), (0.9, 0.0, 0.5), 0.46, 6)
-    _wb_sweep(p["Spike"], stalk, [0.055 - 0.030 * (i / 6) for i in range(7)], sides=4)
-    bulb = stalk[-1]
-    ellipsoid(p["Glow"], bulb, (0.13, 0.12, 0.13), subdiv=0)
-    for i in range(3):
-        a = (i / 3) * TAU + 0.3
-        cone(p["Glow"], bulb, bulb + Vector((math.cos(a) * 0.20, math.sin(a) * 0.16, -0.22)), 0.03, sides=3)
-    ellipsoid(p["Glow"], (0, 0, 1.24), (0.10, 0.10, 0.08), subdiv=0)  # the light bleeding back into the root
+    # THE BARBS: flat spurs off both shoulders, swept back and down.
+    for sx in (-1, 1):
+        barb = [(sx * 0.26, 2.30), (sx * 0.74, 1.98), (sx * 0.60, 1.87), (sx * 0.19, 2.12)]
+        _wb_slab_varied(p["Edge"], barb, [0.060, 0.014, 0.014, 0.052])
+
+    # One dim line down the midrib - the icon gives this weapon no light at
+    # all, so it gets the least the row's neon part can be.
+    for z, y in ((2.40, 0.21), (2.66, 0.15), (2.86, 0.09)):  # z + half-height stays under LENGTH
+        box(p["Glow"], (0, 0, z), (0.055, y, 0.22))
 
     return melee_finish(name, p)
 
 
 # ---------------------------------------------------------------- Voidglass Saber (gloom epic)
-# THE ONE THING: a slot of night. The blade is TWO crescents - the cutting one
-# and a bare outboard rail behind it - bridged by three struts, and floating in
-# the gap between them is a seam of galaxy: a lit thread with flecks of star
-# caught off it. In monochrome the saber reads as a crescent with a hole of
-# dark torn out of the middle, which is the whole idea of the material.
+# FROM THE ICON: ONE deep-bellied black scimitar - no outboard rail, no slot,
+# no struts - and a single vivid PURPLE LINE running the whole length of it
+# parallel to the spine, echoed as a band at the guard, the grip and the
+# pommel. The hilt is deliberately plain: a smooth cylinder, a plain
+# crossblock, a round knob. That line is the entire identity, so it is the one
+# thing built with care and everything else gets out of its way.
 
 
 def build_voidglasssaber():
@@ -1911,58 +1937,51 @@ def build_voidglasssaber():
     length, grip = FRAME[name]["length"], FRAME[name]["grip"]
     p = melee_bms()
 
-    limb(p["Haft"], (0, 0, 0.18), (0, 0, 1.26), 0.085, 0.095, 6)
-    melee_grip(p["Grip"], grip, half=0.44, r=0.115, coils=5, proud=0.018)
-    # Pommel: a knapped lump of the same glass, faceted - not a turned knob.
-    _wb_shard(p["Pommel"], (0, 0, 0.30), (0, 0, 0.0), 0.12, sides=5, waist=0.5, bulge=1.15)
+    limb(p["Haft"], (0, 0, 0.22), (0, 0, 1.30), 0.10, 0.10, 6)
+    melee_grip(p["Grip"], grip, half=0.42, r=0.125, coils=3, proud=0.014)
+    ellipsoid(p["Pommel"], (0, 0, 0.16), (0.165, 0.155, 0.155), subdiv=0)
+    box(p["Pommel"], (0, 0, 0.30), (0.20, 0.19, 0.08))
 
-    # Guard: two arms of glass sweeping forward off the collar, thinning to
-    # whiskers - it grew, it wasn't filed.
-    limb(p["Guard"], (0, 0, 1.28), (0, 0, 1.36), 0.16, 0.14, 6)
-    for s in (-1, 1):
-        _wb_sweep(p["Guard"], _wb_arc((0, s * 0.10, 1.32), (0.30, s * 0.30, 1.74), (0.4, s * 0.5, -0.6), 0.22, 4), [0.055, 0.048, 0.040, 0.032, 0.022], sides=4)
+    # Crossblock: a plain slab with a short nub each way, and nothing else.
+    box(p["Guard"], (0, 0, 1.36), (0.44, 0.22, 0.14))
+    for sx in (-1, 1):
+        box(p["Guard"], (sx * 0.28, 0, 1.36), (0.16, 0.17, 0.10), Matrix.Rotation(math.radians(sx * 20), 4, "Y"))
 
+    # THE CRESCENT: wide at the root, bellied out, sweeping up to a raked
+    # point at z = LENGTH.
     def spine(t):
-        return 0.06 + 0.92 * t**1.90
+        return -0.12 + 1.04 * t**2.00
 
     def edge(t):
-        return 0.26 + 1.02 * t**1.75
+        return 0.30 + 1.08 * t - 0.34 * t * t
 
-    def rail_x(t):
-        return spine(t) - 0.40 + 0.06 * t
+    steps = 9
+    prof = edge_profile(1.44, length, spine, edge, steps=steps)
+    _wb_slab_varied(p["Edge"], prof, _wb_lens_thicks(steps, edge=0.016, tip=0.008, spine_root=0.060, spine_tip=0.024))
 
-    def rail_z(t):
-        return 1.46 + (length - 0.30 - 1.46) * t
+    # A facet break parallel to the spine, so the black flat is not one dead
+    # plane - the icon shades the blade in two tones.
+    ridge = [(spine(t) + 0.10, 1.44 + (length - 1.44) * t) for t in (0.06, 0.36, 0.66, 0.92)]
+    _wb_flat_line(p["Head"], ridge, 0.050, wide=0.042, thin=0.018)
 
-    steps = 8
-    prof = edge_profile(1.38, length, spine, edge, steps=steps)
-    _wb_slab_varied(p["Edge"], prof, _wb_lens_thicks(steps, edge=0.014, tip=0.007, spine_root=0.050, spine_tip=0.022))
-
-    # The outboard rail, and the three struts that are all that hold it there.
-    rail = [(rail_x(i / 8), rail_z(i / 8)) for i in range(9)]
-    rail += [(rail_x(i / 8) - 0.13, rail_z(i / 8)) for i in range(8, -1, -1)]
-    _wb_slab_varied(p["Head"], rail, [0.026] * 18)
-    for t in (0.06, 0.50, 0.94):
-        limb(p["Head"], (rail_x(t), 0, rail_z(t)), (spine(t), 0, 1.38 + (length - 1.38) * t), 0.035, 0.030, 4)
-
-    # THE GALAXY SEAM, floating in the gap: a thread of light with flecks of
-    # star knocked off it onto both flats.
-    for i in range(6):
-        t = 0.05 + i * 0.18
-        box(p["Glow"], (rail_x(t) + 0.20, 0, 1.44 + (length - 0.34 - 1.44) * t), (0.05, 0.05, 0.30), Matrix.Rotation(math.radians(-24), 4, "Y"))
-    for i, (dx, dy, dt) in enumerate(((-0.06, 0.05, 0.14), (0.02, -0.05, 0.34), (-0.10, 0.05, 0.52), (0.05, -0.05, 0.70), (-0.03, 0.05, 0.88))):
-        box(p["Glow"], (rail_x(dt) + 0.20 + dx, dy, 1.44 + (length - 0.34 - 1.44) * dt), (0.055, 0.03, 0.055), Matrix.Rotation(math.radians(20 + i * 25), 4, "Y"))
+    # THE PURPLE SEAM: one line the length of the blade, then the same line
+    # again as a band on the guard, the grip and the pommel.
+    seam = [(spine(t) * 0.60 + edge(t) * 0.40, 1.44 + (length - 1.44) * t) for t in (0.04, 0.26, 0.50, 0.74, 0.94)]
+    _wb_flat_line(p["Glow"], seam, 0.046, wide=0.055, thin=0.022)
+    box(p["Glow"], (0.10, 0, 1.44), (0.34, 0.27, 0.06))
+    _wb_ring(p["Glow"], (0, 0, 0.62), (0, 0, 1), 0.142, 0.028, seg_major=6, seg_minor=3)
+    _wb_ring(p["Glow"], (0, 0, 0.24), (0, 0, 1), 0.175, 0.030, seg_major=6, seg_minor=3)
 
     return melee_finish(name, p)
 
 
 # ---------------------------------------------------------------- Boarding Axe (wreck uncommon)
-# THE ONE THING: it IS an anchor. Not an axe pattern - half a snapped
-# admiralty anchor with a handle on it. The shank is the haft, the stock is the
-# crossguard, the ring is still shackled through the butt with a stub of cable
-# whipped to it, one arm sweeps out and opens into a fluke whose palm is the
-# cutting bit, and the other arm is a raw break - three splinters of iron and
-# a rag of cold light where the ship it held tore it in half.
+# FROM THE ICON: a classic single-bit BEARDED AXE on a plain brown wooden
+# haft. The head is one steel crescent off the forward side - an upper horn, a
+# long bowed cutting arc, a lower horn (the beard) and a concave notch back in
+# under the eye - with a banded eye, a langet strapping it down the haft, a
+# short peak over the crown and a small spur off the back. Not an anchor: the
+# icon draws no ring, no stock, no break, and the haft is WOOD.
 
 
 def build_boardingaxe():
@@ -1970,57 +1989,51 @@ def build_boardingaxe():
     length, grip = FRAME[name]["length"], FRAME[name]["grip"]
     p = melee_bms()
 
-    # The shank, cut down to a haft.
-    limb(p["Haft"], (0, 0, 0.10), (0, 0, 2.70), 0.105, 0.115, 6)
-    melee_grip(p["Grip"], grip, half=0.48, r=0.135, coils=7, proud=0.03)
+    limb(p["Haft"], (0, 0, 0.06), (0, 0, 2.98), 0.115, 0.105, 6)
+    melee_grip(p["Grip"], grip, half=0.52, r=0.145, coils=5, proud=0.022)
+    box(p["Pommel"], (0, 0, 0.07), (0.24, 0.23, 0.14))
 
-    # The anchor's own ring, still shackled through the butt, cable and all.
-    box(p["Pommel"], (0, 0, 0.06), (0.22, 0.22, 0.12))
-    _wb_ring(p["Pommel"], (0, 0, 0.30), (0, 1, 0), 0.17, 0.038, seg_major=7, seg_minor=3)
-    _wb_sweep(p["Pommel"], _wb_arc((0.0, 0.05, 0.44), (0.30, 0.05, 0.92), (0.9, 0.1, -0.4), 0.16, 4), [0.050, 0.046, 0.042, 0.038, 0.030], sides=4)
+    # THE EYE, its two bands, and the langet strapping the head down the haft.
+    # The eye is deliberately TALL: the bit meets it across that whole span,
+    # and a bit joined to the haft over a short one hangs off it like a flag.
+    limb(p["Guard"], (0, 0, 2.52), (0, 0, 3.30), 0.175, 0.165, 7)
+    for z in (2.60, 3.24):
+        _wb_ring(p["Guard"], (0, 0, z), (0, 0, 1), 0.18, 0.040, seg_major=7, seg_minor=3)
+    box(p["Guard"], (0.15, 0, 2.30), (0.10, 0.17, 0.46))
 
-    # The stock: the crossbar, still through the shank.
-    for s in (-1, 1):
-        limb(p["Guard"], (0, 0, 2.48), (0, s * 0.44, 2.44), 0.07, 0.05, 5)
-        box(p["Guard"], (0, s * 0.46, 2.44), (0.14, 0.09, 0.14))
+    # THE BIT. Three arcs: a slightly HOLLOW shoulder out to the upper horn (a
+    # hollow one leaves a point there; a convex one rounds it into a flag), the
+    # bowed cutting face down to the beard, then a deeply concave sweep back in
+    # under the eye - that notch is what makes it read bearded and not just
+    # broad. Ground the way an axe is: fat at the eye, a wafer at the arc.
+    top = _wb_arc2((0.14, 3.26), (0.92, 3.32), (0.0, -1.0), 0.06, 3)
+    face = _wb_arc2((0.92, 3.32), (0.88, 2.36), (1.0, 0.0), 0.20, 5)
+    beard = _wb_arc2((0.88, 2.36), (0.34, 2.62), (0.4, 1.0), 0.13, 3)
+    bit = list(top) + face[1:] + beard[1:] + [(0.14, 2.58)]
+    _wb_slab_varied(p["Edge"], bit, _wb_hub_thicks(bit, (0.18, 2.95), near=0.095, far=0.014, power=0.85))
 
-    # The crown, where the two arms met.
-    box(p["Head"], (0, 0, 2.80), (0.30, 0.26, 0.44))
-    box(p["Head"], (0, 0, 3.02), (0.22, 0.22, 0.22), Matrix.Rotation(math.radians(24), 4, "Y"))
-    # THE ARM THAT SURVIVED: it sweeps out of the crown and opens into a fluke,
-    # and the fluke's palm is the bit that cuts.
-    _wb_sweep(p["Head"], _wb_arc((0.10, 0.0, 2.74), (0.62, 0.0, 3.02), (0.3, 0.0, -0.9), 0.16, 4), [0.150, 0.135, 0.120, 0.105, 0.090], sides=5)
+    # The eye cheeks and the short peak over the crown.
+    box(p["Head"], (0.06, 0, 3.14), (0.30, 0.25, 0.36), Matrix.Rotation(math.radians(-10), 4, "Y"))
+    cone(p["Head"], (0.04, 0, 3.30), (0.10, 0, length), 0.13, sides=5)
 
-    fluke = [(0.44, 2.86), (0.86, 2.78), (1.02, 3.02), (0.96, 3.24), (0.66, length), (0.42, 3.24), (0.34, 3.04)]
-    _wb_slab_varied(p["Edge"], fluke, [0.075, 0.030, 0.022, 0.022, 0.018, 0.060, 0.075])
-    box(p["Edge"], (0.66, 0, 3.06), (0.42, 0.14, 0.10), Matrix.Rotation(math.radians(-28), 4, "Y"))  # the palm ridge
+    # The back spur, and the two rivets through the cheeks.
+    _wb_sweep(p["Spike"], _wb_arc((-0.10, 0, 3.04), (-0.50, 0, 2.80), (-0.2, 0, -0.9), 0.10, 3), [0.09, 0.075, 0.055, 0.030], sides=4)
+    for z in (2.74, 3.10):
+        limb(p["Spike"], (0.12, -0.15, z), (0.12, 0.15, z), 0.035, 0.035, 4)
 
-    # THE ARM THAT DIDN'T: a stub off the other side of the crown, the break
-    # left raw - three splinters, no filing, no forging.
-    limb(p["Spike"], (-0.08, 0, 2.78), (-0.46, 0, 2.92), 0.13, 0.115, 5)
-    for dx, dy, dz in ((-0.12, 0.06, 0.10), (-0.10, -0.07, -0.02), (-0.08, 0.02, -0.10)):
-        cone(p["Spike"], (-0.44, dy, 2.92 + dz), (-0.44 + dx * 1.8, dy * 1.9, 2.92 + dz * 2.0), 0.05, sides=4)
-    for c, out, r in (
-        ((0.30, 0.07, 2.62), (0.1, 1, 0.1), 0.09),
-        ((0.72, -0.05, 2.94), (0.2, -1, 0), 0.075),
-        ((0.09, 0, 1.86), (1, 0.2, 0), 0.08),
-        ((-0.09, 0, 2.22), (-1, 0.3, 0), 0.07),
-    ):
-        barnacle(p["Spike"], c, out, r)
-
-    # A rag of cold in the break - what is left of the ship it was holding.
-    box(p["Glow"], (-0.46, 0, 2.92), (0.06, 0.17, 0.17))
+    # A cold sheen down the cutting arc. The icon lights nothing, so this is
+    # the least the row's neon part can be and still exist.
+    _wb_flat_line(p["Glow"], [(x - 0.07, z) for x, z in face[1:-1]], 0.030, wide=0.032, thin=0.014)
 
     return melee_finish(name, p)
 
 
 # ---------------------------------------------------------------- Cutlass of the Fleet (wreck epic)
-# THE ONE THING: the basket is ROPE. Three lengths of rigging run from the
-# crossblock down to the pommel, crossing each other on the way, seized twice
-# with marline - the drowned fleet mends with what it has, and it has miles of
-# cordage and no smith. Second tell: a tarnished doubloon out of the fleet's
-# own pay chest, welded flat THROUGH the forte, proud on both flats, ringed in
-# ghost-fire. Everyone who carried one of these was owed.
+# FROM THE ICON: a proper cutlass in pale silver. The guard is a clean forged
+# D - a knuckle bow off the crossblock, out past the hand and back into the
+# pommel - with a second quillon curling FORWARD alongside the blade root. The
+# blade is broad, strongly upswept, and carries a hatched fuller near the
+# spine. No rope, no coin: the icon draws a smith's work, not a bosun's.
 
 
 def build_cutlassofthefleet():
@@ -2028,67 +2041,54 @@ def build_cutlassofthefleet():
     length, grip = FRAME[name]["length"], FRAME[name]["grip"]
     p = melee_bms()
 
-    limb(p["Haft"], (0, 0, 0.14), (0, 0, 1.24), 0.10, 0.11, 6)
-    melee_grip(p["Grip"], grip, half=0.40, r=0.14, coils=5)
-    ellipsoid(p["Pommel"], (0, 0, 0.14), (0.17, 0.17, 0.14), subdiv=0)
-    box(p["Pommel"], (0, 0, 0.26), (0.19, 0.19, 0.07))
+    limb(p["Haft"], (0, 0, 0.30), (0, 0, 1.28), 0.095, 0.10, 6)
+    melee_grip(p["Grip"], grip, half=0.40, r=0.125, coils=5, proud=0.02)
+    ellipsoid(p["Pommel"], (0, 0, 0.26), (0.15, 0.14, 0.13), subdiv=0)
+    box(p["Pommel"], (0, 0, 0.15), (0.17, 0.16, 0.12))
 
-    # THE ROPE BASKET: three strands, each spiralling its own way down from the
-    # crossblock to the pommel collar, seized across with two turns of marline.
-    box(p["Guard"], (0, 0, 1.30), (0.50, 0.20, 0.12))
-    for k in range(3):
-        ph = -0.55 + k * 0.55
-        _wb_sweep(
-            p["Guard"],
-            [
-                Vector((0.10 + 0.16 * math.cos(ph), 0.20 * math.sin(ph), 1.30)),
-                Vector((0.36 + 0.10 * math.cos(ph + 1.2), 0.30 * math.sin(ph + 1.2), 1.04)),
-                Vector((0.42 + 0.08 * math.cos(ph + 2.4), 0.30 * math.sin(ph + 2.4), 0.72)),
-                Vector((0.28 + 0.08 * math.cos(ph + 3.6), 0.24 * math.sin(ph + 3.6), 0.46)),
-                Vector((0.06, 0.10 * math.sin(ph + 4.4), 0.30)),
-            ],
-            [0.050, 0.055, 0.055, 0.050, 0.040],
-            sides=4,
-        )
-    for x, z in ((0.40, 1.02), (0.40, 0.62)):  # the seizings
-        limb(p["Guard"], (x, -0.30, z), (x, 0.30, z), 0.035, 0.035, 4)
+    # THE D-BOW: one bar off the crossblock, bowed out past the knuckles and
+    # landing back on the pommel, plus the forward-curling quillon the icon
+    # runs up alongside the blade root.
+    box(p["Guard"], (0, 0, 1.32), (0.46, 0.20, 0.11))
+    bow = _wb_arc((0.24, 0, 1.32), (0.02, 0, 0.24), (1.0, 0, 0.0), 0.42, 6)
+    _wb_sweep(p["Guard"], bow, [0.055, 0.055, 0.052, 0.050, 0.048, 0.045, 0.042], sides=4)
+    curl = _wb_arc((-0.20, 0, 1.32), (-0.10, 0, 1.74), (-1.0, 0, 0.1), 0.30, 5)
+    _wb_sweep(p["Guard"], curl, [0.050, 0.048, 0.044, 0.040, 0.036, 0.030], sides=4)
 
+    # THE BLADE: broad at the root, strongly upswept, the point raking back.
     def spine(t):
-        return -0.20 + 0.52 * t**1.80
+        return -0.18 + 0.62 * t**1.85
 
     def edge(t):
-        return 0.36 + 0.58 * t - 0.58 * t * t
+        return 0.30 + 0.74 * t - 0.44 * t * t
 
-    steps = 8
-    prof = edge_profile(1.38, length, spine, edge, steps=steps)
-    _wb_slab_varied(p["Edge"], prof, _wb_lens_thicks(steps, edge=0.020, tip=0.009, spine_root=0.075, spine_tip=0.032))
-    cone(p["Spike"], (0.12, 0, 3.32), (0.28, 0, length), 0.07, sides=4)  # the clipped false edge
-    for z in (1.42, 1.54):  # rope whipping on the ricasso
-        _wb_ring(p["Spike"], (0.06, 0, z), (0.12, 0, 1), 0.13, 0.028, seg_major=6, seg_minor=3)
+    steps = 9
+    prof = edge_profile(1.44, length, spine, edge, steps=steps)
+    _wb_slab_varied(p["Edge"], prof, _wb_lens_thicks(steps, edge=0.016, tip=0.007, spine_root=0.065, spine_tip=0.026))
 
-    # THE COIN, welded through the forte and standing proud on both flats.
-    limb(p["Head"], (0.16, -0.085, 1.74), (0.16, 0.085, 1.74), 0.17, 0.17, 8)
-    _wb_ring(p["Head"], (0.16, 0, 1.74), (0, 1, 0), 0.165, 0.026, seg_major=8, seg_minor=3)
-
-    # Ghost-fire: the coin's face burning on both sides, then up the fuller.
-    for s in (-1, 1):
-        limb(p["Glow"], (0.16, s * 0.088, 1.74), (0.16, s * 0.112, 1.74), 0.09, 0.075, 6)
-    for i in range(4):
-        t = 0.30 + i * 0.18  # stops short of the point: the strokes have width, and nothing may overshoot z = LENGTH
-        z = 1.38 + (length - 1.38) * t
-        x = (spine(t) + edge(t)) / 2
+    # THE FULLER and the hatch marks the icon rules across it near the forte.
+    fuller = [(spine(t) * 0.68 + edge(t) * 0.32, 1.44 + (length - 1.44) * t) for t in (0.08, 0.36, 0.64, 0.90)]
+    _wb_flat_line(p["Head"], fuller, 0.046, wide=0.045, thin=0.018)
+    for t in (0.12, 0.24, 0.36, 0.48):
+        x = spine(t) * 0.55 + edge(t) * 0.45
+        z = 1.44 + (length - 1.44) * t
         for s in (-1, 1):
-            stroke(p["Glow"], (x, s * 0.045, z), 0.05, 0, thickness=0.03, width=0.30)
+            box(p["Spike"], (x, s * 0.054, z), (0.17, 0.024, 0.035), Matrix.Rotation(math.radians(-16), 4, "Y"))
+
+    # Ghost-fire down the edge, kept to a hairline - the icon's blade is bright
+    # steel, not a lit one.
+    _wb_flat_line(p["Glow"], [(edge(t) - 0.045, 1.44 + (length - 1.44) * t) for t in (0.10, 0.42, 0.72, 0.94)], 0.026, wide=0.030, thin=0.013)
 
     return melee_finish(name, p)
 
 
 # ---------------------------------------------------------------- Admiral's Saber (wreck legendary)
-# THE ONE THING: Wrack struck his colours and they came up STEEL. The blade's
-# spine still hangs in three slack folds of cloth - the wave is in the outline
-# and the doubled cloth is fat at every crest - and a gilt swallow-tail is
-# still flying off the forte on both flats, rolling as it trails. Under it, a
-# spectral line burns the whole edge, brightest at the point.
+# FROM THE ICON: a long, slender, only gently curved SILVER saber - straight
+# for two thirds and then easing up to the point - with a fine jewelled hilt:
+# a closely wound grip, a small crossblock with a short down-turned quillon
+# each way, beads round the block, and a faceted cut pommel. There are no
+# colours, no swallow-tails and no tassel in the icon, and the blade is not
+# gilt: it is bright steel with a hatched fuller near the forte.
 
 
 def build_admiralssaber():
@@ -2096,69 +2096,53 @@ def build_admiralssaber():
     length, grip = FRAME[name]["length"], FRAME[name]["grip"]
     p = melee_bms()
 
-    limb(p["Haft"], (0, 0, 0.2), (0, 0, 1.3), 0.085, 0.10, 6)
-    melee_grip(p["Grip"], grip, half=0.42, r=0.125, coils=6, proud=0.018)
-    ellipsoid(p["Pommel"], (0, 0, 0.18), (0.14, 0.14, 0.16), subdiv=0)
-    box(p["Pommel"], (0, 0, 0.06), (0.2, 0.2, 0.09))
+    limb(p["Haft"], (0, 0, 0.24), (0, 0, 1.34), 0.09, 0.098, 6)
+    melee_grip(p["Grip"], grip, half=0.44, r=0.115, coils=8, proud=0.018)
+    _wb_ring(p["Pommel"], (0, 0, 0.30), (0, 0, 1), 0.135, 0.032, seg_major=7, seg_minor=3)
+    _wb_shard(p["Pommel"], (0, 0, 0.30), (0, 0, 0.04), 0.145, sides=6, waist=0.5, bulge=0.95)
 
-    # Gilt furniture: crossblock, knuckle bow, a quillon curling back, and four
-    # short rays off the block - a flag officer's, and nobody else's.
-    box(p["Guard"], (0, 0, 1.34), (0.44, 0.18, 0.10))
-    bow = ((0.24, 1.34), (0.42, 1.04), (0.38, 0.66), (0.18, 0.40), (0.02, 0.28))
-    for (x0, z0), (x1, z1) in zip(bow, bow[1:]):
-        limb(p["Guard"], (x0, 0, z0), (x1, 0, z1), 0.04, 0.04, 5)
-    quillon = ((-0.2, 1.34), (-0.38, 1.16), (-0.36, 0.96))
-    for (x0, z0), (x1, z1) in zip(quillon, quillon[1:]):
-        limb(p["Guard"], (x0, 0, z0), (x1, 0, z1), 0.045, 0.038, 5)
-    for s in (-1, 1):
-        for dz in (-0.09, 0.09):
-            limb(p["Guard"], (0.02, s * 0.09, 1.34), (0.06, s * 0.26, 1.34 + dz), 0.035, 0.02, 4)
+    # The crossblock, its two short down-turned quillons, and the beads.
+    box(p["Guard"], (0, 0, 1.38), (0.42, 0.18, 0.10))
+    for sx in (-1, 1):
+        _wb_sweep(p["Guard"], _wb_arc((sx * 0.20, 0, 1.38), (sx * 0.34, 0, 1.14), (sx * 0.6, 0, -0.5), 0.10, 3), [0.055, 0.048, 0.040, 0.032], sides=4)
+    for i in range(4):
+        a = (i / 4) * TAU + 0.5
+        ellipsoid(p["Spike"], (math.cos(a) * 0.11, math.sin(a) * 0.11, 1.38), (0.05, 0.05, 0.05), subdiv=0)
 
-    # THE COLOURS, TURNED STEEL. The sine in spine() is the slack of the cloth;
-    # the thickness bump below fattens every crest, because that is where the
-    # flag doubles over on itself.
+    # THE BLADE: slender, nearly straight at the forte, easing up to the point.
     def spine(t):
-        return -0.13 + 0.32 * t**1.60 + 0.052 * math.sin(t * 9.4)
+        return -0.12 + 0.34 * t**1.55
 
     def edge(t):
-        return 0.18 + 0.46 * t - 0.38 * t * t
+        return 0.16 + 0.40 * t - 0.28 * t * t
 
-    steps = 12
-    prof = edge_profile(1.42, length, spine, edge, steps=steps)
-    thicks = _wb_lens_thicks(steps, edge=0.018, tip=0.008, spine_root=0.075, spine_tip=0.030)
-    for k in range(steps):  # the spine entries walk back down from the point
-        thicks[steps + 1 + k] *= 1.0 + 0.55 * max(0.0, math.sin(((steps - 1 - k) / steps) * 9.4))
-    _wb_slab_varied(p["Edge"], prof, thicks)
+    steps = 10
+    prof = edge_profile(1.46, length, spine, edge, steps=steps)
+    _wb_slab_varied(p["Edge"], prof, _wb_lens_thicks(steps, edge=0.015, tip=0.007, spine_root=0.060, spine_tip=0.024))
 
-    # The swallow-tail, still flying off the forte on both flats.
-    for s in (-1, 1):
-        _wb_ribbon(p["Head"], _wb_arc((0.02, s * 0.05, 1.62), (-0.60, s * 0.30, 1.06), (-0.5, s * 0.6, -0.3), 0.26, 5), [0.22, 0.20, 0.17, 0.14, 0.10, 0.05], 0.014, twist=40.0 * s)
+    # The fuller, and the icon's hatching ruled across it above the forte.
+    fuller = [(spine(t) * 0.66 + edge(t) * 0.34, 1.46 + (length - 1.46) * t) for t in (0.06, 0.34, 0.62, 0.90)]
+    _wb_flat_line(p["Head"], fuller, 0.042, wide=0.038, thin=0.016)
+    for t in (0.14, 0.24, 0.34):
+        x = spine(t) * 0.52 + edge(t) * 0.48
+        z = 1.46 + (length - 1.46) * t
+        for s in (-1, 1):
+            box(p["Spike"], (x, s * 0.050, z), (0.13, 0.022, 0.030), Matrix.Rotation(math.radians(-10), 4, "Y"))
 
-    # The pennant tassel, hung beside the pommel (not in _Grip).
-    ellipsoid(p["Spike"], (0, -0.16, 0.56), (0.07, 0.06, 0.07), subdiv=0)
-    for i, dx in enumerate((-0.06, 0.0, 0.06)):
-        box(p["Spike"], (dx, -0.16, 0.34), (0.05, 0.035, 0.42), Matrix.Rotation(math.radians(6 - i * 6), 4, "Y"))
-
-    # Spectral fire down the edge, brightest at the point, and a lit hem
-    # running out along the swallow-tail.
-    for i in range(7):
-        t = 0.06 + i * 0.14
-        z = 1.42 + (length - 1.42) * t
-        box(p["Glow"], (edge(t) - 0.03, 0, z), (0.05, 0.055, 0.3))
-    ellipsoid(p["Glow"], (edge(1.0) - 0.02, 0, length - 0.08), (0.05, 0.05, 0.1), subdiv=0)
-    for s in (-1, 1):
-        box(p["Glow"], (-0.32, s * 0.22, 1.32), (0.38, 0.03, 0.05), Matrix.Rotation(math.radians(40), 4, "Y"))
+    # A hairline of spectral fire down the edge, brightest at the point.
+    _wb_flat_line(p["Glow"], [(edge(t) - 0.035, 1.46 + (length - 1.46) * t) for t in (0.08, 0.40, 0.70, 0.94)], 0.024, wide=0.028, thin=0.012)
+    ellipsoid(p["Glow"], (edge(1.0) - 0.03, 0, length - 0.14), (0.045, 0.045, 0.10), subdiv=0)
 
     return melee_finish(name, p)
 
 
 # ---------------------------------------------------------------- Galecleaver (maelstrom uncommon)
-# THE ONE THING: THREE PORTS OF DAYLIGHT. A second blade - the shear rail -
-# stands off the spine on three short spars, and the gale goes through the
-# three gaps between them instead of shoving the swing off line. That is what
-# whistles, and it is what you see: in monochrome at thirty studs this is the
-# only weapon on the rack with a row of holes in its outline. Wind-shear
-# grooves are cut down both flats to feed them.
+# FROM THE ICON: a symmetric DOUBLE-BIT battle axe in pale storm steel. Two
+# mirrored crescents off one head, each with an upper and a lower horn and a
+# bowed cutting arc between them; a small peak on the crown; a banded eye; a
+# wrapped haft ending in a bulbous knob. An etched crescent is cut into each
+# bit's flat. Not a ported cleaver: the icon has one head, two bits, and no
+# holes anywhere in its outline.
 
 
 def build_galecleaver():
@@ -2166,62 +2150,52 @@ def build_galecleaver():
     length, grip = FRAME[name]["length"], FRAME[name]["grip"]
     p = melee_bms()
 
-    limb(p["Haft"], (0, 0, 0.12), (0, 0, 1.66), 0.12, 0.105, 6)
-    melee_grip(p["Grip"], grip, half=0.52, r=0.145, coils=5)
-    box(p["Pommel"], (0, 0, 0.08), (0.26, 0.14, 0.16))
-    box(p["Pommel"], (-0.16, 0, 0.24), (0.26, 0.07, 0.14), Matrix.Rotation(math.radians(34), 4, "Y"))
+    limb(p["Haft"], (0, 0, 0.26), (0, 0, 3.16), 0.115, 0.10, 6)
+    melee_grip(p["Grip"], grip, half=0.56, r=0.14, coils=5, proud=0.024)
+    ellipsoid(p["Pommel"], (0, 0, 0.20), (0.20, 0.20, 0.17), subdiv=0)
+    _wb_ring(p["Pommel"], (0, 0, 0.36), (0, 0, 1), 0.135, 0.032, seg_major=6, seg_minor=3)
 
-    # Collar with two wing fins, so the haft already reads as swept.
-    box(p["Guard"], (0, 0, 1.70), (0.44, 0.22, 0.14))
-    for s in (-1, 1):
-        box(p["Guard"], (s * 0.30, 0, 1.76), (0.34, 0.06, 0.10), Matrix.Rotation(math.radians(-s * 26), 4, "Y"))
+    # The eye, banded above and below, the bits driven through it.
+    limb(p["Guard"], (0, 0, 2.66), (0, 0, 3.58), 0.185, 0.175, 7)
+    for z in (2.74, 3.50):
+        _wb_ring(p["Guard"], (0, 0, z), (0, 0, 1), 0.19, 0.038, seg_major=7, seg_minor=3)
 
-    # The body: a broad cleaver, chip out of the edge at 2.86, point raked
-    # forward, and ground as a real lens - a wafer at the edge, a wedge at the
-    # spine, so the light breaks across the flat instead of sliding off a card.
-    body = [
-        (0.12, 1.80),
-        (0.54, 1.90),
-        (0.68, 2.28),
-        (0.72, 2.72),
-        (0.60, 2.86),  # the chip
-        (0.74, 3.02),
-        (0.80, 3.28),
-        (0.64, length),  # the raked point
-        (0.30, 3.44),
-        (0.06, 3.16),
-        (-0.02, 2.60),
-        (-0.06, 2.06),
-    ]
-    _wb_slab_varied(p["Edge"], body, [0.014, 0.014, 0.016, 0.016, 0.020, 0.016, 0.016, 0.012, 0.050, 0.075, 0.080, 0.075])
+    # THE DOUBLE BIT: one profile, built once on +x and mirrored onto -x, so
+    # the two crescents are the same forging and not two parts bolted on. Each
+    # bit is nearly as TALL as it is wide with hollow shoulders top and bottom,
+    # because that is what leaves four horns; a short wide bit rounds off into
+    # a mushroom no matter how the arc is bowed. Fat at the eye, wafer at both
+    # cutting arcs.
+    half = _wb_arc2((0.20, 2.82), (0.58, 2.68), (0.0, 1.0), 0.11, 2)
+    half += _wb_arc2((0.58, 2.68), (0.62, 3.68), (1.0, 0.0), 0.18, 4)[1:]
+    half += _wb_arc2((0.62, 3.68), (0.22, 3.54), (0.0, -1.0), 0.11, 2)[1:]
+    head = [(0.0, 2.86)] + half + [(0.0, 3.60)] + [(-x, z) for x, z in reversed(half)]
+    _wb_slab_varied(p["Edge"], head, _wb_hub_thicks(head, (0.0, 3.20), near=0.105, far=0.014, power=0.9))
 
-    # THE SHEAR RAIL and its three spars - the three ports are the gaps.
-    rail = [(-0.22, 2.02), (-0.14, 3.20), (-0.44, 3.42), (-0.56, 2.14)]
-    _wb_slab_varied(p["Head"], rail, [0.050, 0.040, 0.040, 0.050])
-    for z in (2.20, 2.68, 3.12):
-        limb(p["Head"], (-0.24, 0, z), (-0.02, 0, z + 0.04), 0.05, 0.05, 4)
-    for z, ln in ((2.30, 0.30), (2.86, 0.26), (3.26, 0.20)):  # trailing feathers
-        box(p["Head"], (-0.58, 0, z), (ln, 0.05, 0.07), Matrix.Rotation(math.radians(18), 4, "Y"))
+    # The crown peak and the eye cheeks.
+    cone(p["Head"], (0.0, 0, 3.56), (0.0, 0, length), 0.15, sides=5)
+    box(p["Head"], (0, 0, 3.18), (0.34, 0.31, 0.44))
 
-    # Wind-shear grooves down both flats, standing just proud of the lens.
-    for i, (z, ln) in enumerate(((2.24, 0.70), (2.72, 0.60), (3.18, 0.45))):
-        for s in (-1, 1):
-            box(p["Spike"], (0.16 + 0.06 * i, s * 0.045, z), (0.10, 0.020, ln), Matrix.Rotation(math.radians(-9), 4, "Y"))
+    # The etched crescent the icon cuts into each bit, on both flats.
+    for sx in (-1, 1):
+        motif = [(sx * 0.34, 2.98), (sx * 0.54, 3.20), (sx * 0.42, 3.42)]
+        for sy in (-1, 1):
+            _wb_ribbon(p["Spike"], [(x, sy * 0.062, z) for x, z in motif], [0.022] * 3, 0.045)
 
-    # The whistle: the air standing in each port lights up as it tears through.
-    for z in (2.44, 2.90, 3.30):
-        box(p["Glow"], (-0.15, 0, z), (0.16, 0.05, 0.20), Matrix.Rotation(math.radians(-12), 4, "Y"))
+    # Storm sheen down both cutting arcs.
+    for sx in (-1, 1):
+        _wb_flat_line(p["Glow"], [(sx * (x - 0.06), z) for x, z in half[2:6]], 0.028, wide=0.028, thin=0.013)
 
     return melee_finish(name, p)
 
 
 # ---------------------------------------------------------------- Stormlance (maelstrom epic)
-# THE ONE THING: A CAGED CORE. Halfway up the shaft the haft opens into a
-# lantern - four iron ribs bulging out between two insulator discs, two hoops
-# binding them - and standing loose inside it, touching nothing, is a live core
-# of the storm throwing arcs at the ribs it never reaches. The tapped charge
-# then spirals up the shaft on a cable into the collector at the point. The
-# silhouette is a spear with a lamp swallowed halfway down it.
+# FROM THE ICON: a WINGED lance. A dark slate shaft, a narrow luminous leaf of
+# storm-ice at the top, and - the thing that makes it this weapon - two tiers
+# of swept-back ice wings, a big pair flaring off the blade's root and a
+# smaller pair further down the bare shaft. No lantern, no cage, no core. The
+# two tiers are also exactly what a level-carried spear needs: the ornament is
+# spread down the shaft instead of piled on the tip.
 
 
 def build_stormlance():
@@ -2229,56 +2203,52 @@ def build_stormlance():
     length, grip = FRAME[name]["length"], FRAME[name]["grip"]
     p = melee_bms()
 
-    limb(p["Haft"], (0, 0, 0.10), (0, 0, 3.52), 0.115, 0.095, 6)
-    melee_grip(p["Grip"], grip, half=0.5, r=0.15, coils=4)
-    box(p["Pommel"], (0, 0, 0.08), (0.24, 0.24, 0.16))
-    _wb_ring(p["Pommel"], (0, 0, 0.28), (0, 0, 1), 0.15, 0.035, seg_major=6, seg_minor=3)
+    limb(p["Haft"], (0, 0, 0.34), (0, 0, 3.40), 0.105, 0.09, 6)
+    melee_grip(p["Grip"], grip, half=0.55, r=0.135, coils=5, proud=0.02)
+    _wb_ring(p["Pommel"], (0, 0, 0.38), (0, 0, 1), 0.12, 0.032, seg_major=6, seg_minor=3)
+    _wb_shard(p["Spike"], (0, 0, 0.36), (0, 0, 0.0), 0.11, sides=5, waist=0.45, bulge=0.95)
+    for z in (1.50, 2.16):
+        _wb_ring(p["Spike"], (0, 0, z), (0, 0, 1), 0.11, 0.026, seg_major=6, seg_minor=3)
 
-    # THE CAGE: four ribs lofted out and back, two hoops, an insulator disc
-    # capping each end so the charge inside has nowhere to earth.
-    cage = ((1.72, 0.12), (1.94, 0.30), (2.24, 0.37), (2.56, 0.37), (2.86, 0.30), (3.06, 0.12))
-    for i in range(4):
-        a = (i / 4) * TAU + 0.4
-        _wb_sweep(p["Head"], [Vector((math.cos(a) * r, math.sin(a) * r, z)) for z, r in cage], [0.045, 0.050, 0.055, 0.055, 0.050, 0.045], sides=3)
-    for z in (2.06, 2.74):
-        _wb_ring(p["Head"], (0, 0, z), (0, 0, 1), 0.345, 0.040, seg_major=6, seg_minor=3)
-    for z in (1.68, 3.10):
-        limb(p["Guard"], (0, 0, z - 0.055), (0, 0, z + 0.055), 0.20, 0.20, 6)
+    limb(p["Guard"], (0, 0, 3.28), (0, 0, 3.58), 0.165, 0.155, 7)
+    _wb_ring(p["Guard"], (0, 0, 3.34), (0, 0, 1), 0.17, 0.036, seg_major=7, seg_minor=3)
 
-    # The core, loose in the middle of it, and the arcs it throws at the ribs.
-    ellipsoid(p["Glow"], (0, 0, 2.40), (0.19, 0.19, 0.24), subdiv=0)
-    for i in range(4):
-        a = (i / 4) * TAU + 0.4
-        c, s = math.cos(a), math.sin(a)
-        box(p["Glow"], (c * 0.26, s * 0.26, 2.40 + 0.12 * (1 if i % 2 else -1)), (0.28 if abs(c) > 0.5 else 0.05, 0.28 if abs(s) > 0.5 else 0.05, 0.045))
+    # THE LEAF: symmetric about the shaft, so it reads the same in profile and
+    # coming straight at you, needling to z = LENGTH.
+    stations = [
+        (0.0, 3.52, 0.140, 0.090),
+        (0.0, 3.78, 0.215, 0.115),
+        (0.0, 4.08, 0.180, 0.092),
+        (0.0, 4.34, 0.115, 0.058),
+        (0.0, length - 0.05, 0.038, 0.022),
+        (0.0, length, 0.008, 0.006),
+    ]
+    lofted_blade(p["Edge"], stations)
 
-    # The tapped charge: a cable spiralling out of the cage's cap and up into
-    # the collector.
-    coil = _wb_helix(3.12, 3.50, 1.9, lambda t: 0.155, phase=0.2, per_turn=6)
-    _wb_sweep(p["Spike"], coil, [0.05] * len(coil), sides=3)
+    # THE WINGS, two tiers, swept back and down off both sides.
+    for sx in (-1, 1):
+        big = [(sx * 0.10, 3.70), (sx * 0.58, 3.56), (sx * 0.66, 3.26), (sx * 0.44, 3.14), (sx * 0.24, 3.32), (sx * 0.09, 3.46)]
+        _wb_slab_varied(p["Head"], big, [0.055, 0.020, 0.014, 0.018, 0.030, 0.050])
+        small = [(sx * 0.09, 3.08), (sx * 0.42, 2.98), (sx * 0.46, 2.78), (sx * 0.26, 2.72), (sx * 0.09, 2.90)]
+        _wb_slab_varied(p["Head"], small, [0.045, 0.018, 0.014, 0.022, 0.042])
 
-    # Collector head: socket, rod to the point, four vanes swept back over it.
-    limb(p["Head"], (0, 0, 3.52), (0, 0, 3.92), 0.19, 0.15, 7)
-    limb(p["Head"], (0, 0, 3.92), (0, 0, 4.34), 0.09, 0.05, 6)
-    cone(p["Head"], (0, 0, 4.34), (0, 0, length), 0.05, sides=5)
-    for i in range(4):
-        a = (i / 4) * TAU + 0.4
-        c, s = math.cos(a), math.sin(a)
-        _wb_sweep(p["Spike"], _wb_arc((c * 0.13, s * 0.13, 3.88), (c * 0.30, s * 0.30, 4.46), (c, s, 0.0), 0.24, 4), [0.055, 0.050, 0.045, 0.038, 0.030], sides=3)
-        box(p["Glow"], (c * 0.30, s * 0.30, 4.48), (0.10, 0.10, 0.10))
-        box(p["Glow"], (c * 0.17, s * 0.17, 4.44), (0.30 if abs(c) > 0.5 else 0.045, 0.30 if abs(s) > 0.5 else 0.045, 0.035))
+    # The storm in the leaf's core, and a lit rib down each wing.
+    for z, y, w in ((3.82, 0.26, 0.075), (4.10, 0.21, 0.070), (4.34, 0.13, 0.055)):
+        box(p["Glow"], (0, 0, z), (w, y, 0.28))
+    for sx in (-1, 1):
+        box(p["Glow"], (sx * 0.34, 0, 3.44), (0.34, 0.09, 0.07), Matrix.Rotation(math.radians(-sx * 22), 4, "Y"))
+        box(p["Glow"], (sx * 0.26, 0, 2.92), (0.26, 0.08, 0.06), Matrix.Rotation(math.radians(-sx * 20), 4, "Y"))
 
     return melee_finish(name, p)
 
 
 # ---------------------------------------------------------------- Krakenfang (maelstrom legendary)
-# THE ONE THING: THE ARM CAME WITH IT. The tooth was not pulled out clean - a
-# whole tentacle is still wrapped round it, climbing the curve of the fang in a
-# turn and a half with its suckers on the outward face, and its last two
-# fingers reach out PAST the point to hold a storm pearl in front of the blade.
-# The pack's best weapon owes the pack's best rod (Krakenheart) that move, and
-# it is the only melee silhouette that carries something out ahead of its own
-# tip. Under the arm: the Maw's light still moving in the fang's veins.
+# FROM THE ICON: a big single-edged FALCHION in pale lavender - broad at the
+# root, bellied out, curving up to the point - carrying a dark purple band
+# along its spine that is the same colour as the hilt. The guard is the tell:
+# an S-flare, one horn rising forward along the edge side and one falling back
+# on the spine side. The pommel is a cut block with one small pale stone in it.
+# No tentacle, no suckers, no pearl held out past the tip.
 
 
 def build_krakenfang():
@@ -2286,67 +2256,43 @@ def build_krakenfang():
     length, grip = FRAME[name]["length"], FRAME[name]["grip"]
     p = melee_bms()
 
-    # The root: a wrinkled taper with growth rings.
-    limb(p["Haft"], (0, 0, 0.12), (0, 0, 1.58), 0.2, 0.15, 6)
-    for z in (0.3, 1.15, 1.42):
-        limb(p["Haft"], (0, 0, z - 0.04), (0, 0, z + 0.04), 0.21, 0.21, 6)
-    ellipsoid(p["Pommel"], (0, 0, 0.15), (0.22, 0.22, 0.14), subdiv=0)  # z >= 0.14: the butt must not dip under z = 0
+    limb(p["Haft"], (0, 0, 0.30), (0, 0, 1.42), 0.105, 0.115, 6)
+    melee_grip(p["Grip"], grip, half=0.46, r=0.14, coils=6, proud=0.022)
 
-    # Grip: the tentacle sleeve, sucker discs symmetric on both flats so the
-    # part's centre stays on the hand point.
-    limb(p["Grip"], (0, 0, grip - 0.5), (0, 0, grip + 0.5), 0.17, 0.17, 7)
-    for s in (-1, 1):
-        for z in (grip - 0.3, grip, grip + 0.3):
-            limb(p["Grip"], (0, s * 0.15, z), (0, s * 0.22, z), 0.055, 0.045, 6)
+    # A squared, faceted cap with the icon's one small stone set in it.
+    _wb_prism(p["Pommel"], [(-0.17, 0.05), (0.17, 0.07), (0.19, 0.30), (-0.15, 0.28)], 0.16, shrink=0.72, hub=(0.01, 0.18))
+    ellipsoid(p["Glow"], (0.0, 0, 0.18), (0.075, 0.185, 0.075), subdiv=0)
 
-    # The gum collar the fang comes out of, with a ragged lip.
-    limb(p["Guard"], (0, 0, 1.55), (0, 0, 1.76), 0.26, 0.22, 7)
-    for dx, dy in ((0.18, 0.1), (-0.16, 0.12), (0.02, -0.2)):
-        box(p["Guard"], (dx, dy, 1.8), (0.12, 0.12, 0.12))
+    # THE S-FLARE: one horn up the edge side, one down the spine side.
+    box(p["Guard"], (0, 0, 1.46), (0.36, 0.25, 0.13))
+    _wb_sweep(p["Guard"], _wb_arc((0.14, 0, 1.46), (0.44, 0, 1.86), (0.9, 0, -0.2), 0.16, 4), [0.085, 0.075, 0.062, 0.048, 0.034], sides=4)
+    _wb_sweep(p["Guard"], _wb_arc((-0.12, 0, 1.44), (-0.44, 0, 1.16), (-0.9, 0, 0.2), 0.14, 4), [0.080, 0.070, 0.058, 0.045, 0.032], sides=4)
 
-    stations = [
-        (0.0, 1.7, 0.32, 0.24),
-        (0.04, 2.1, 0.31, 0.23),
-        (0.12, 2.55, 0.28, 0.2),
-        (0.24, 3.0, 0.24, 0.16),
-        (0.4, 3.45, 0.18, 0.12),
-        (0.58, 3.85, 0.11, 0.075),
-        (0.76, 4.2, 0.05, 0.035),
-        (0.88, length, 0.012, 0.01),
-    ]
-    lofted_blade(p["Edge"], stations)
+    # THE BLADE: broad root, deep belly, closing to the point at z = LENGTH.
+    def spine(t):
+        return -0.24 + 0.86 * t**1.80
 
-    # THE ARM. It climbs the fang's own curve - drift() feeds the helix the
-    # blade's x at every height, so the coil hugs a blade that is sliding out
-    # from under it - thinning as it goes, suckers on its outward face.
-    def fang_x(t):
-        return 0.88 * (t**1.9)
+    def edge(t):
+        return 0.36 + 0.98 * t - 0.66 * t * t
 
-    coil = _wb_helix(1.86, 4.02, 1.45, lambda t: 0.34 - 0.17 * t, phase=1.1, per_turn=8, drift=lambda t: (fang_x(t), 0.0))
-    n = len(coil)
-    _wb_sweep(p["Head"], coil, [0.17 - 0.10 * (i / (n - 1)) for i in range(n)], sides=5)
-    for i in range(1, n - 1, 3):
-        c = coil[i]
-        out = Vector((c.x - fang_x(i / (n - 1)), c.y, 0.0))
-        if out.length < 1e-5:
-            continue
-        out.normalize()
-        t = i / (n - 1)
-        r = 0.17 - 0.10 * t
-        limb(p["Head"], c + out * (r * 0.8), c + out * (r * 1.5), 0.075 - 0.030 * t, 0.050 - 0.020 * t, 5)
+    steps = 10
+    prof = edge_profile(1.54, length, spine, edge, steps=steps)
+    _wb_slab_varied(p["Edge"], prof, _wb_lens_thicks(steps, edge=0.018, tip=0.008, spine_root=0.075, spine_tip=0.028))
 
-    # The last two fingers, reaching past the point, and what they are holding.
-    pearl = Vector((1.14, 0.0, 4.18))
-    for s in (-1, 1):
-        _wb_sweep(p["Spike"], _wb_arc(coil[-1] + Vector((0, s * 0.10, 0)), pearl + Vector((0, s * 0.14, 0.02)), (0.5, s * 0.5, 0.5), 0.24, 4), [0.075, 0.065, 0.055, 0.045, 0.035], sides=4)
-    ellipsoid(p["Glow"], pearl, (0.20, 0.20, 0.20), subdiv=0)
-    _wb_ring(p["Glow"], pearl, (0.3, -0.4, 1.0), 0.28, 0.030, seg_major=7, seg_minor=3)
+    # THE SPINE BAND, in the hilt's own dark purple (hence _Guard, which takes
+    # the row's `color`) - the icon paints the two the same and that pairing is
+    # half of why the blade reads as lavender at all.
+    band = [(spine(t) + 0.10, 1.54 + (length - 1.54) * t) for t in (0.05, 0.32, 0.60, 0.86)]
+    _wb_flat_line(p["Guard"], band, 0.052, wide=0.070, thin=0.024)
 
-    # Hook barbs off the fang's back, and the Maw's light in its veins.
-    for x, z, w, _t in stations[2:5]:
-        cone(p["Spike"], (x - w, 0, z), (x - w - 0.30, 0, z - 0.20), 0.06, sides=4)
-    for x, z, w, t in stations[:5]:
-        box(p["Glow"], (x, 0, z + 0.14), (w * 0.5, t * 2.2, 0.22), Matrix.Rotation(math.radians(-16), 4, "Y"))
+    # The bevel break between band and edge, and the small eye set in the flat.
+    bevel = [(spine(t) * 0.35 + edge(t) * 0.65, 1.54 + (length - 1.54) * t) for t in (0.10, 0.42, 0.72, 0.92)]
+    _wb_flat_line(p["Head"], bevel, 0.036, wide=0.040, thin=0.016)
+    for sy in (-1, 1):
+        _wb_ring(p["Spike"], (0.30, sy * 0.048, 2.70), (0, 1, 0), 0.085, 0.026, seg_major=6, seg_minor=3)
+
+    # A hairline of the Maw's light under the band, and nothing else lit.
+    _wb_flat_line(p["Glow"], [(spine(t) + 0.19, 1.54 + (length - 1.54) * t) for t in (0.08, 0.46, 0.84)], 0.030, wide=0.026, thin=0.013)
 
     return melee_finish(name, p)
 

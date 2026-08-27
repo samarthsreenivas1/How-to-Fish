@@ -173,7 +173,7 @@ Weapons.items.driftwood_club = {
 		length = 3.4,
 		grip = 0.7,
 		color = Color3.fromRGB(150, 112, 72),
-		accent = Color3.fromRGB(124, 106, 92), -- the salvaged anchor fluke is rust-grey iron, not wood (2026-08-27 remodel)
+		accent = Color3.fromRGB(124, 105, 73), -- fork + knots: the icon's club is all wood, no iron (icon-match 2026-08-27)
 		wrap = Color3.fromRGB(86, 140, 84),
 	},
 	recipe = {
@@ -201,7 +201,7 @@ Weapons.items.scale_blade = {
 		length = 3.1,
 		grip = 0.6,
 		color = Color3.fromRGB(128, 96, 62), -- wooden guard + pommel
-		accent = Color3.fromRGB(184, 209, 230), -- the scale plates
+		accent = Color3.fromRGB(159, 190, 208), -- bowie steel, sampled from the icon
 		wrap = Color3.fromRGB(96, 70, 46), -- bound wooden handle
 	},
 	recipe = {
@@ -235,7 +235,7 @@ Weapons.items.shellcrusher = {
 		length = 3.6,
 		grip = 0.8,
 		color = Color3.fromRGB(140, 107, 68), -- driftwood haft
-		accent = Color3.fromRGB(198, 178, 150), -- the head is a whole whelk shell now - warm, not cold chitin (2026-08-27 remodel)
+		accent = Color3.fromRGB(110, 132, 129), -- blue-grey sea stone: the icon's maul head (icon-match 2026-08-27)
 		wrap = Color3.fromRGB(74, 86, 78), -- bound grip
 	},
 	recipe = {
@@ -268,8 +268,8 @@ Weapons.items.drowncleaver = {
 		variant = "Drowncleaver",
 		length = 3.7, -- a tall cleaver blade; matches weapon_gen.py FRAME
 		grip = 0.7,
-		color = Color3.fromRGB(150, 140, 110), -- bone handle
-		accent = Color3.fromRGB(209, 205, 182), -- pale bone blade
+		color = Color3.fromRGB(178, 180, 150), -- sage bone handle (icon-match)
+		accent = Color3.fromRGB(190, 191, 159), -- the cleaver slab, icon's sage bone
 		wrap = Color3.fromRGB(56, 66, 56), -- brine-dark grip
 		glow = Color3.fromRGB(115, 242, 140), -- the runes
 		neon = { "Weapon_Glow" },
@@ -305,7 +305,7 @@ Weapons.items.heartrender = {
 		length = 3.9,
 		grip = 0.72,
 		color = Color3.fromRGB(92, 62, 66), -- dark heartwood grip
-		accent = Color3.fromRGB(196, 78, 82), -- the red blade
+		accent = Color3.fromRGB(165, 77, 75), -- blade + lobe guard + arrow pommel: the icon's brights all live on accent now
 		wrap = Color3.fromRGB(58, 40, 44),
 		glow = Color3.fromRGB(255, 96, 104), -- the beat
 		neon = { "Weapon_Glow" },
@@ -387,8 +387,8 @@ Weapons.items.rustfang_machete = {
 		variant = "RustfangMachete",
 		length = 3.3,
 		grip = 0.62,
-		color = Color3.fromRGB(96, 78, 54), -- bog-oak handle
-		accent = Color3.fromRGB(164, 98, 62), -- the rust-eaten blade
+		color = Color3.fromRGB(104, 72, 48), -- warm brown ringed handle (icon-match)
+		accent = Color3.fromRGB(148, 86, 47), -- the icon's plain rust blade
 		wrap = Color3.fromRGB(64, 70, 50),
 	},
 	recipe = {
@@ -497,7 +497,7 @@ Weapons.items.fenreaver = {
 		length = 3.8,
 		grip = 0.7,
 		color = Color3.fromRGB(58, 66, 46), -- moss-black root wood
-		accent = Color3.fromRGB(150, 235, 200), -- the wisp-lit edge
+		accent = Color3.fromRGB(206, 216, 206), -- pale silver-green flame blade (icon); the wisp light stays on glow
 		wrap = Color3.fromRGB(44, 48, 36),
 		glow = Color3.fromRGB(150, 235, 200),
 		neon = { "Weapon_Glow" },
@@ -540,10 +540,18 @@ Weapons.items.obsidian_piercer = {
 		variant = "ObsidianPiercer",
 		length = 3.5,
 		grip = 0.64,
-		color = Color3.fromRGB(140, 107, 68), -- driftwood haft
-		accent = Color3.fromRGB(48, 44, 60), -- glass-black obsidian
-		wrap = Color3.fromRGB(60, 52, 46), -- dark binding
-		glow = Color3.fromRGB(240, 132, 52), -- the hairline crack of heat inside the glass
+		-- SPEAR CARRY (2026-08-27): "the spear should just be held
+		-- horizontally and jabbed forward" (user). Near-level instead of the
+		-- default 70-degree upright, point a touch up, couched lower and
+		-- nearer screen centre so the shaft runs under the arm and the jab
+		-- clip's forward travel reads along it.
+		hold = { pitch = 10, yaw = 12, position = Vector3.new(1.28, -1.55, -2.3) },
+		-- ONE monolithic piece of glass, end to end (icon-match 2026-08-27):
+		-- no wood, no brass - haft, grip and lance are all obsidian shades.
+		color = Color3.fromRGB(56, 50, 64),
+		accent = Color3.fromRGB(45, 42, 61),
+		wrap = Color3.fromRGB(46, 42, 54),
+		glow = Color3.fromRGB(240, 132, 52), -- the icon's orange X crack
 		neon = { "Weapon_Glow" },
 	},
 	recipe = {
@@ -576,10 +584,18 @@ Weapons.items.magma_gauntlets = {
 		variant = "MagmaGauntlets",
 		length = 3.2,
 		grip = 0.62,
-		color = Color3.fromRGB(70, 58, 56), -- dark vent-metal haft
-		accent = Color3.fromRGB(226, 206, 88), -- sulfur-cured claws
-		wrap = Color3.fromRGB(150, 186, 210), -- fish-scale binding
-		glow = Color3.fromRGB(244, 96, 40), -- the magma vein
+		-- FIST-FORWARD carry (2026-08-27): a gauntlet is not a blade held up
+		-- beside the eye, it is a fist cocked in front of you. Near-level and
+		-- pulled in toward centre so the punch clip drives straight down the
+		-- crosshair. roll 180 (vs the blades' -90) puts the authored +Z - the
+		-- claws the remodel lane runs over the knuckles - DOWN-and-forward
+		-- like the back of a fist, instead of splayed off to screen left.
+		-- One knob: 0 puts them screen-up if the import lands mirrored.
+		hold = { pitch = 8, yaw = 10, roll = 180, position = Vector3.new(1.15, -1.45, -2.05) },
+		color = Color3.fromRGB(71, 66, 62), -- charred plate (icon-match)
+		accent = Color3.fromRGB(240, 178, 58), -- gold knuckle bands + claws
+		wrap = Color3.fromRGB(74, 56, 46), -- dark leather glove, per the icon
+		glow = Color3.fromRGB(244, 96, 40), -- the magma crack down the hand's back
 		neon = { "Weapon_Glow" },
 	},
 	recipe = {
@@ -735,7 +751,7 @@ Weapons.items.icepick_hatchet = {
 		color = Color3.fromRGB(120, 134, 150),
 		accent = Color3.fromRGB(210, 228, 240),
 		wrap = Color3.fromRGB(90, 104, 120),
-		glow = Color3.fromRGB(140, 220, 255), -- rime seam in the icicle's core (2026-08-27 remodel)
+		glow = Color3.fromRGB(140, 220, 255), -- cold seam in the pick's steel (icon-match)
 		neon = { "Weapon_Glow" },
 	},
 	recipe = {
@@ -813,7 +829,7 @@ Weapons.items.glacier_maul = {
 		length = 4.2,
 		grip = 0.8,
 		color = Color3.fromRGB(150, 140, 124),
-		accent = Color3.fromRGB(150, 196, 224),
+		accent = Color3.fromRGB(173, 217, 240), -- struck ice block (icon-match)
 		wrap = Color3.fromRGB(104, 96, 84),
 		glow = Color3.fromRGB(120, 200, 255),
 		neon = { "Weapon_Glow" },
@@ -893,7 +909,11 @@ Weapons.items.rimefang_lance = {
 		variant = "RimefangLance",
 		length = 4.6,
 		grip = 0.9,
-		color = Color3.fromRGB(140, 180, 210),
+		-- Couched lance carry - see obsidian_piercer. 3.7 studs of shaft
+		-- ahead of the hand, so it sits a shade flatter and further back than
+		-- the shorter spears or the point walks off the top of the frame.
+		hold = { pitch = 9, yaw = 12, position = Vector3.new(1.22, -1.58, -2.15) },
+		color = Color3.fromRGB(92, 112, 133), -- dark shaft so the rime cone reads (icon-match)
 		accent = Color3.fromRGB(236, 246, 252),
 		wrap = Color3.fromRGB(80, 100, 126),
 		glow = Color3.fromRGB(80, 220, 255),
@@ -933,10 +953,15 @@ Weapons.items.trenchspike = {
 		variant = "Trenchspike",
 		length = 3.0,
 		grip = 0.6,
+		-- Spear carry - the icon is a hafted point, not a dagger, so it takes
+		-- the same horizontal hold. Shortest shaft of the four (2.4 studs
+		-- ahead of the hand), so a degree or two more elevation to keep the
+		-- point visible against the crosshair.
+		hold = { pitch = 11, yaw = 12, position = Vector3.new(1.3, -1.52, -2.35) },
 		color = Color3.fromRGB(70, 78, 92),
-		accent = Color3.fromRGB(130, 124, 142),
+		accent = Color3.fromRGB(92, 99, 117), -- near-black barbed dart (icon-match)
 		wrap = Color3.fromRGB(48, 54, 66),
-		glow = Color3.fromRGB(92, 255, 210), -- the angler lure dangling past the point (2026-08-27 remodel)
+		glow = Color3.fromRGB(115, 153, 191), -- one dim midrib; the icon lights nothing loud (icon-match)
 		neon = { "Weapon_Glow" },
 	},
 	recipe = {
@@ -1037,9 +1062,9 @@ Weapons.items.voidglass_saber = {
 		length = 3.8,
 		grip = 0.7,
 		color = Color3.fromRGB(40, 36, 56),
-		accent = Color3.fromRGB(66, 58, 90),
+		accent = Color3.fromRGB(38, 36, 48), -- the blade stays near-black or the seam stops being the weapon (icon-match)
 		wrap = Color3.fromRGB(30, 26, 42),
-		glow = Color3.fromRGB(170, 120, 255),
+		glow = Color3.fromRGB(163, 84, 242), -- the single vivid purple line (icon-match)
 		neon = { "Weapon_Glow" },
 	},
 	recipe = {
@@ -1120,10 +1145,10 @@ Weapons.items.boarding_axe = {
 		variant = "BoardingAxe",
 		length = 3.4,
 		grip = 0.7,
-		color = Color3.fromRGB(110, 96, 76),
-		accent = Color3.fromRGB(160, 168, 176),
-		wrap = Color3.fromRGB(76, 66, 54),
-		glow = Color3.fromRGB(160, 255, 210), -- ghost-fleet light in the snapped anchor arm's break (2026-08-27 remodel)
+		color = Color3.fromRGB(107, 74, 48), -- brown wooden haft (icon-match)
+		accent = Color3.fromRGB(168, 173, 179), -- bearded axe steel
+		wrap = Color3.fromRGB(71, 51, 36),
+		glow = Color3.fromRGB(199, 230, 242), -- cold edge light (icon-match)
 		neon = { "Weapon_Glow" },
 	},
 	recipe = {
@@ -1231,9 +1256,9 @@ Weapons.items.cutlass_of_the_fleet = {
 		variant = "CutlassOfTheFleet",
 		length = 3.6,
 		grip = 0.65,
-		color = Color3.fromRGB(120, 134, 124),
-		accent = Color3.fromRGB(214, 186, 132), -- the doubloon welded through the forte reads tarnished gold (2026-08-27 remodel)
-		wrap = Color3.fromRGB(84, 94, 88),
+		color = Color3.fromRGB(158, 171, 161), -- forged D knuckle-bow (icon-match)
+		accent = Color3.fromRGB(217, 227, 219), -- silver blade; the icon has no doubloon (icon-match)
+		wrap = Color3.fromRGB(102, 115, 107),
 		glow = Color3.fromRGB(160, 255, 210),
 		neon = { "Weapon_Glow" },
 	},
@@ -1268,10 +1293,10 @@ Weapons.items.admirals_saber = {
 		variant = "AdmiralsSaber",
 		length = 4.0,
 		grip = 0.7,
-		color = Color3.fromRGB(96, 116, 108),
-		accent = Color3.fromRGB(230, 190, 100),
-		wrap = Color3.fromRGB(66, 80, 76),
-		glow = Color3.fromRGB(160, 255, 210),
+		color = Color3.fromRGB(153, 166, 158), -- jewelled silver hilt (icon-match)
+		accent = Color3.fromRGB(224, 232, 224), -- the icon is silver throughout, not gilt (icon-match)
+		wrap = Color3.fromRGB(107, 120, 115),
+		glow = Color3.fromRGB(204, 247, 224),
 		neon = { "Weapon_Glow" },
 	},
 	recipe = {
@@ -1310,7 +1335,7 @@ Weapons.items.galecleaver = {
 		color = Color3.fromRGB(110, 124, 140),
 		accent = Color3.fromRGB(200, 214, 228),
 		wrap = Color3.fromRGB(76, 86, 100),
-		glow = Color3.fromRGB(184, 235, 255), -- air tearing through the three spine ports (2026-08-27 remodel)
+		glow = Color3.fromRGB(184, 235, 255), -- the etched crescent on each bit (icon-match)
 		neon = { "Weapon_Glow" },
 	},
 	recipe = {
@@ -1407,9 +1432,11 @@ Weapons.items.stormlance = {
 		variant = "Stormlance",
 		length = 4.6,
 		grip = 0.9,
-		color = Color3.fromRGB(90, 110, 150),
-		accent = Color3.fromRGB(220, 230, 255),
-		wrap = Color3.fromRGB(62, 76, 104),
+		-- Couched lance carry, same geometry as the Rimefang Lance.
+		hold = { pitch = 9, yaw = 12, position = Vector3.new(1.22, -1.58, -2.15) },
+		color = Color3.fromRGB(64, 77, 102), -- dark shaft under the ice wings (icon-match)
+		accent = Color3.fromRGB(189, 222, 245), -- leaf blade + wing tiers
+		wrap = Color3.fromRGB(51, 64, 87),
 		glow = Color3.fromRGB(140, 200, 255),
 		neon = { "Weapon_Glow" },
 	},
@@ -1446,7 +1473,7 @@ Weapons.items.krakenfang = {
 		color = Color3.fromRGB(60, 44, 84),
 		accent = Color3.fromRGB(220, 210, 240),
 		wrap = Color3.fromRGB(44, 34, 60),
-		glow = Color3.fromRGB(150, 120, 255),
+		glow = Color3.fromRGB(199, 168, 242), -- the pale set stone in the pommel (icon-match)
 		neon = { "Weapon_Glow" },
 	},
 	recipe = {

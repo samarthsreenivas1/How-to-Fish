@@ -63,6 +63,25 @@ local WEAPON_YAW = math.rad(6)
 -- the same roll for the welded world copy.
 local WEAPON_ROLL = math.rad(-90)
 
+-- PER-WEAPON HOLD OVERRIDE (2026-08-27). A melee row's model table may carry
+--   hold = { pitch = <deg>, yaw = <deg>?, roll = <deg>?, position = Vector3? }
+-- and any field it leaves out falls back to the four constants above. This is
+-- what makes a SPEAR a spear: the four thrust weapons carry near-level
+-- (pitch ~10 instead of 70) and lower/nearer centre, so the shaft reads
+-- couched under the arm and the jab clip's forward translation runs along it.
+-- Guns never consult it - `ranged` rows take the GUN_* branch below.
+-- Degrees in the data, radians out, so the rows read like the comments do.
+local function holdPose(hold): (Vector3, number, number, number)
+	if not hold then
+		return GRIP_POSITION, WEAPON_PITCH, WEAPON_YAW, WEAPON_ROLL
+	end
+	-- `or` is safe on all four: a 0 is truthy in Luau, so `roll = 0` overrides.
+	return hold.position or GRIP_POSITION,
+		if hold.pitch then math.rad(hold.pitch) else WEAPON_PITCH,
+		if hold.yaw then math.rad(hold.yaw) else WEAPON_YAW,
+		if hold.roll then math.rad(hold.roll) else WEAPON_ROLL
+end
+
 -- Which way the forearm runs, elbow to fist. Same as the rod's so swapping
 -- between the two reads as the same arm.
 local FOREARM_DIRECTION = Vector3.new(-0.25, 0.55, -0.8).Unit
@@ -117,10 +136,15 @@ local LEFT_GROUP = "reloadHand"
 
 -- ---------------------------------------------------------------- swing trail
 
-local TRAIL_LIFETIME = 0.12
-local TRAIL_COLOR = Color3.fromRGB(255, 255, 255)
+-- Toned down hard on 2026-08-27: "there is too much of the white motion
+-- stuff" (user). The ribbon was a near-opaque WHITE streak that lived an
+-- eighth of a second - on a fast weapon two of them overlapped and the
+-- screen was mostly smear. Now it is a short, faint, WEAPON-COLOURED hint of
+-- travel: barely-there at birth, gone by the time the follow-through ends.
+local TRAIL_LIFETIME = 0.07
+local TRAIL_FALLBACK_COLOR = Color3.fromRGB(190, 196, 206) -- soft grey, for a row with no accent
 local TRAIL_TRANSPARENCY = NumberSequence.new({
-	NumberSequenceKeypoint.new(0, 0.4),
+	NumberSequenceKeypoint.new(0, 0.7),
 	NumberSequenceKeypoint.new(1, 1),
 })
 local TRAIL_WIDTH = NumberSequence.new({
@@ -128,11 +152,28 @@ local TRAIL_WIDTH = NumberSequence.new({
 	NumberSequenceKeypoint.new(1, 0.4),
 })
 
+-- A THRUST is a line, not an arc: the point travels straight down the axis
+-- the ribbon is stretched along, so a trail on a jab draws nothing readable -
+-- it just smears the middle of the screen. The four spear clips get no trail
+-- at all. Keyed by `swing` (the clip name) rather than the row id so a new
+-- spear reusing a thrust clip inherits the rule.
+local NO_TRAIL_SWINGS = {
+	glass_pierce = true,
+	rime_lance = true,
+	trench_stab = true,
+	storm_lance = true,
+}
+
 -- The ribbon spans from just above the hand to the tip. The grip part's
 -- local frame is the weapon's authored frame (butt at -grip, tip at
--- length - grip along +Y), so both attachments can live on it.
-local function makeTrail(grip: BasePart, weaponData): Trail
+-- length - grip along +Y), so both attachments can live on it. Returns nil
+-- for a thrust weapon, which wants no ribbon; the caller and onRenderStep
+-- both already treat a nil trail as "no ribbon this weapon".
+local function makeTrail(grip: BasePart, weaponData): Trail?
 	local m = weaponData.model
+	if weaponData.swing and NO_TRAIL_SWINGS[weaponData.swing] then
+		return nil
+	end
 
 	local a0 = Instance.new("Attachment")
 	a0.Position = Vector3.new(0, 0.8, 0)
@@ -146,10 +187,13 @@ local function makeTrail(grip: BasePart, weaponData): Trail
 	trail.Attachment1 = a1
 	trail.Lifetime = TRAIL_LIFETIME
 	trail.MinLength = 0.05
-	trail.Color = ColorSequence.new(TRAIL_COLOR)
+	-- The weapon's own accent, not white: a rusted machete leaves a rust
+	-- streak, a rime blade leaves a pale blue one, and none of them wash the
+	-- screen out.
+	trail.Color = ColorSequence.new(m.accent or TRAIL_FALLBACK_COLOR)
 	trail.Transparency = TRAIL_TRANSPARENCY
 	trail.WidthScale = TRAIL_WIDTH
-	trail.LightEmission = 0.6
+	trail.LightEmission = 0.25
 	trail.FaceCamera = false
 	trail.Enabled = false
 	trail.Parent = grip
@@ -236,17 +280,19 @@ local GUN_ROLL = math.rad(90)
 -- to where we want the weapon to point (same construction as the rod's),
 -- then rolled about that axis so the blade's edge leads - or, for a gun,
 -- so the bore runs forward and the sights sit up.
-local function gripInCameraSpace(isRanged: boolean?): CFrame
+-- `hold` is the melee row's optional override (see holdPose). It is ignored
+-- on the gun branch by construction: a ranged row never reaches past the
+-- early return, so the GUN_* pose is byte-for-byte what it was.
+local function gripInCameraSpace(isRanged: boolean?, hold): CFrame
 	if isRanged then
 		local direction = CFrame.Angles(0, GUN_YAW, 0)
 			* CFrame.Angles(GUN_PITCH - math.rad(90), 0, 0)
 			* CFrame.Angles(0, GUN_ROLL, 0)
 		return CFrame.new(GUN_GRIP_POSITION) * direction
 	end
-	local direction = CFrame.Angles(0, WEAPON_YAW, 0)
-		* CFrame.Angles(WEAPON_PITCH - math.rad(90), 0, 0)
-		* CFrame.Angles(0, WEAPON_ROLL, 0)
-	return CFrame.new(GRIP_POSITION) * direction
+	local position, pitch, yaw, roll = holdPose(hold)
+	local direction = CFrame.Angles(0, yaw, 0) * CFrame.Angles(pitch - math.rad(90), 0, 0) * CFrame.Angles(0, roll, 0)
+	return CFrame.new(position) * direction
 end
 
 local function buildRig(character: Model, weaponData)
@@ -264,7 +310,12 @@ local function buildRig(character: Model, weaponData)
 
 	local newRig = Viewmodel.newRig("WeaponViewmodel")
 
-	local gripCamera = gripInCameraSpace(weaponData.ranged ~= nil)
+	-- The melee hold override, read once here so the grip placement, the hand
+	-- and the swing pivot all agree on where the weapon is carried. Nil for a
+	-- gun (and for any melee row that has not asked for one).
+	local isRanged = weaponData.ranged ~= nil
+	local hold = if isRanged then nil else weaponData.model.hold
+	local gripCamera = gripInCameraSpace(isRanged, hold)
 	local gripLocal = grip.CFrame
 	weapon.Parent = newRig.model
 	reload = nil
@@ -306,8 +357,13 @@ local function buildRig(character: Model, weaponData)
 	end
 
 	-- Arm: a block hand + forearm in the player's skin colour, hand closed
-	-- on the grip, arm running back along FOREARM_DIRECTION.
-	local arm = Viewmodel.buildArm(newRig, character, "Right", GROUP, GRIP_POSITION, FOREARM_DIRECTION)
+	-- on the grip, arm running back along FOREARM_DIRECTION. The hand goes
+	-- where the GRIP went, so a row that couched its spear lower and nearer
+	-- centre gets the fist there too - otherwise the shaft floats out of the
+	-- hand. holdPose(nil) is GRIP_POSITION, so every unchanged row and every
+	-- gun builds the identical arm it did before.
+	local handAt = if isRanged then GRIP_POSITION else (holdPose(hold))
+	local arm = Viewmodel.buildArm(newRig, character, "Right", GROUP, handAt, FOREARM_DIRECTION)
 
 	-- Swing pivot: the elbow, so a swing moves the arm and the weapon together.
 	swingPivot = CFrame.new(arm.elbow)

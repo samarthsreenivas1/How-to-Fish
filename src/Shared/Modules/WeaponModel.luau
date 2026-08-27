@@ -39,6 +39,25 @@ WeaponModel.HOLD_OFFSET = CFrame.Angles(math.rad(-70), 0, 0) * CFrame.Angles(0, 
 -- roll to sit up (the -90 first guess carried guns upside down).
 WeaponModel.HOLD_OFFSET_RANGED = CFrame.Angles(math.rad(-90), 0, 0) * CFrame.Angles(0, math.rad(90), 0)
 
+-- The per-row hold. A melee row's model table may carry
+-- hold = { pitch = <deg>, roll = <deg>?, ... } (the viewmodel's per-weapon
+-- hold override, 2026-08-27: spears carry near-level and jab, the gauntlet
+-- rides the fist) - the third-person copy must agree or a spear reads
+-- upright to everyone but its owner. Same convention as the constants
+-- above: viewmodel pitch P maps to Angles(-P) here, viewmodel roll R to the
+-- trailing own-axis turn. Position/yaw are screen-framing knobs with no
+-- third-person meaning, deliberately ignored.
+function WeaponModel.holdOffsetFor(weaponData): CFrame
+	if weaponData.ranged then
+		return WeaponModel.HOLD_OFFSET_RANGED
+	end
+	local hold = weaponData.model and weaponData.model.hold
+	if not hold then
+		return WeaponModel.HOLD_OFFSET
+	end
+	return CFrame.Angles(math.rad(-(hold.pitch or 70)), 0, 0) * CFrame.Angles(0, math.rad(hold.roll or -90), 0)
+end
+
 local MATERIAL = Enum.Material.SmoothPlastic
 
 -- A block at (0, y, 0) in weapon space, sized (x, y, z).

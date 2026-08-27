@@ -270,80 +270,114 @@ CLIPS = {
     },
 
     # ================================================================ THRUSTS
-    # Forward. Translation is the story: coil BACK (-y), drive a long way
-    # forward (+y), and drag back out. Rotation only levels the point.
+    # ---------------------------------------------------------------- 2026-08-27, second pass
+    # "the spear should be like a jab forward. the spear should just be held
+    # horizontally and jabbed forward." (user)
+    #
+    # The first pass built these as thrusts wrapped in choreography - big pitch
+    # coils, twists, three-beat barb shudders - on top of a hold that carried
+    # the spear UPRIGHT beside the eye. From that hold a thrust had to swing
+    # the point down to level first, so the rotation channels carried as much
+    # of the motion as the translation did and none of it read as a jab.
+    #
+    # Both halves are fixed. Weapons.luau now gives all four rows a `hold`
+    # that carries the shaft NEAR-LEVEL (pitch ~10 deg), so pure forward
+    # translation IS a jab straight down the shaft, and these clips are
+    # rewritten as exactly that and nothing else:
+    #
+    #   1. a SHORT quick pull-back      ~0.18-0.25 studs of -y, 1-2 frames
+    #   2. a hard straight JAB          1.05-1.30 studs of +y, 2 frames of
+    #                                   transit (never a one-frame pop)
+    #   3. a brief HOLD at extension    2-3 sampled frames, so contact reads
+    #   4. a straight pull back to carry, then an eased settle
+    #
+    # Rotation is now DECORATION ONLY - it never exceeds 14 degrees on any
+    # channel anywhere in a jab, against 30-54 in the clips these replace. The
+    # character is in the TIMING, not the shape: the lance's dead shoulder-set
+    # beat, the stormlance's crackle at extension, the trenchspike's one-frame
+    # coil, the piercer's small twist at full depth. Everything else - the
+    # coils, the arcs, the barb shudders - is gone on purpose.
 
-    # Obsidian Piercer (cd 0.40) - glass on a haft. It drives in and then
-    # TWISTS at full extension (that is how obsidian punches through) before a
-    # fast clean withdraw.
+    # Obsidian Piercer (cd 0.40) - glass on a haft. Straight jab; the only
+    # flourish is a small TWIST held at full extension (that is how obsidian
+    # punches through), then a fast clean withdraw.
     "glass_pierce": {
-        "HIT_TIME": 0.18,
+        "HIT_TIME": 0.1667,
         "KEYS": [
-            (0.000, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
-            (0.080, (30.0, -14.0, -20.0), (0.16, -0.40, 0.10)),  # coiled back, point raised off-line
-            (0.180, (-14.0, 6.0, 18.0), (-0.20, 1.00, -0.12)),  # DRIVE - point level at the centre (HIT_TIME)
-            (0.230, (-12.0, -30.0, 20.0), (-0.22, 1.06, -0.10)),  # the twist at full extension
-            (0.300, (-4.0, -10.0, 12.0), (-0.12, 0.62, -0.06)),  # withdraw begins
-            (0.390, (14.0, 4.0, -6.0), (0.06, -0.14, 0.06)),  # pulled clear past the guard
-            (0.490, (4.0, 1.0, -2.0), (0.02, -0.04, 0.02)),  # settling
-            (0.600, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
+            (0.0000, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle - the horizontal carry
+            (0.0667, (4.0, 0.0, -2.0), (0.02, -0.22, 0.02)),  # frame 2 - the short pull-back, that is all of it
+            (0.1333, (-2.0, 0.0, 4.0), (-0.04, 0.55, -0.03)),  # frame 4 - the jab at speed, half way out
+            (0.1667, (-4.0, 0.0, 7.0), (-0.08, 1.15, -0.05)),  # frame 5 - FULL EXTENSION (HIT_TIME)
+            (0.2000, (-4.0, -14.0, 7.0), (-0.08, 1.18, -0.05)),  # frame 6 - held out, and the twist bites
+            (0.2333, (-4.0, -12.0, 7.0), (-0.08, 1.14, -0.05)),  # frame 7 - still buried, twist holding
+            (0.3000, (-1.0, -4.0, 3.0), (-0.03, 0.42, -0.02)),  # frame 9 - drawn straight back
+            (0.3667, (3.0, 0.0, -1.0), (0.01, -0.08, 0.01)),  # frame 11 - back at the carry, a hair past
+            (0.4333, (1.0, 0.0, 0.0), (0.00, -0.02, 0.00)),  # frame 13 - settling
+            (0.5333, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
         ],
     },
 
-    # Rimefang Lance (cd 0.42) - the couched lance. The signature is the SET: a
-    # dead beat where the haft locks into the shoulder and nothing moves at
-    # all, then the longest drive in the game.
+    # Rimefang Lance (cd 0.42) - the couched lance. The signature survives the
+    # rewrite because it was always timing, not shape: the SET, a dead beat
+    # where the haft locks into the shoulder and NOTHING moves, then the
+    # longest jab in the game out of a standing start.
     "rime_lance": {
-        "HIT_TIME": 0.22,
+        "HIT_TIME": 0.2000,
         "KEYS": [
-            (0.000, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
-            (0.070, (34.0, -8.0, -14.0), (0.14, -0.34, 0.18)),  # couched: point up, haft drawn to the shoulder
-            (0.140, (32.0, -8.0, -12.0), (0.15, -0.42, 0.16)),  # the SET - the shoulder locks, a held beat
-            (0.220, (-12.0, 4.0, 16.0), (-0.18, 1.14, -0.14)),  # the DRIVE, level and long (HIT_TIME)
-            (0.280, (-10.0, -8.0, 15.0), (-0.17, 1.08, -0.12)),  # pinned at extension, a shiver
-            (0.370, (10.0, 6.0, 4.0), (-0.02, 0.34, 0.02)),  # dragged back out
-            (0.470, (16.0, 2.0, -6.0), (0.08, -0.16, 0.10)),  # recovered high
-            (0.560, (5.0, 0.0, -2.0), (0.02, -0.05, 0.03)),  # settling
-            (0.6333, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
+            (0.0000, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle - the horizontal carry
+            (0.0667, (5.0, 0.0, -3.0), (0.03, -0.24, 0.03)),  # frame 2 - drawn back to the shoulder
+            (0.1333, (5.0, 0.0, -3.0), (0.03, -0.25, 0.03)),  # frame 4 - the SET: two frames where nothing moves
+            (0.1667, (0.0, 0.0, 3.0), (-0.03, 0.50, -0.02)),  # frame 5 - the jab breaks, half way out
+            (0.2000, (-5.0, 0.0, 8.0), (-0.09, 1.30, -0.06)),  # frame 6 - FULL EXTENSION, the longest reach (HIT_TIME)
+            (0.2333, (-5.0, 2.0, 8.0), (-0.09, 1.32, -0.06)),  # frame 7 - pinned there
+            (0.2667, (-4.0, 0.0, 7.0), (-0.08, 1.28, -0.05)),  # frame 8 - still pinned
+            (0.3333, (0.0, 0.0, 3.0), (-0.02, 0.46, -0.02)),  # frame 10 - hauled straight back
+            (0.4000, (4.0, 0.0, -2.0), (0.02, -0.10, 0.02)),  # frame 12 - recovered to the carry
+            (0.4667, (1.0, 0.0, -1.0), (0.01, -0.03, 0.01)),  # frame 14 - settling
+            (0.5667, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
         ],
     },
 
-    # Trenchspike (cd 0.42) - "It has no tricks. It doesn't need one." Barely
-    # any wind-up, a savage straight stab buried to the hand, and then the
-    # barbed chitin SHUDDERS three times on the pull-out before tearing free.
+    # Trenchspike (cd 0.42) - "It has no tricks. It doesn't need one." The
+    # snappiest of the four and the one that most needed the rewrite: the
+    # three-beat barb shudder was the single busiest thing on screen. Now the
+    # coil is ONE frame, the stab lands on frame 4, and the pull-out is a
+    # straight line. The tricklessness is the character.
     "trench_stab": {
-        "HIT_TIME": 0.16,
+        "HIT_TIME": 0.1333,
         "KEYS": [
-            (0.000, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
-            (0.060, (22.0, 0.0, -10.0), (0.10, -0.30, 0.06)),  # the least coil that reads
-            (0.160, (-10.0, 0.0, 16.0), (-0.18, 1.10, -0.10)),  # STAB (HIT_TIME)
-            (0.220, (-12.0, 4.0, 18.0), (-0.20, 1.16, -0.12)),  # buried to the hand
-            (0.270, (-6.0, -14.0, 14.0), (-0.14, 0.94, -0.06)),  # shudder 1 - the barbs catch
-            (0.310, (-14.0, 12.0, 18.0), (-0.20, 1.04, -0.12)),  # shudder 2 - shoved back in
-            (0.350, (-8.0, -8.0, 15.0), (-0.16, 0.86, -0.08)),  # shudder 3, smaller
-            (0.430, (14.0, 2.0, 2.0), (-0.02, 0.06, 0.08)),  # torn free
-            (0.520, (4.0, 0.0, 0.0), (0.00, -0.04, 0.02)),  # settling
-            (0.600, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
+            (0.0000, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle - the horizontal carry
+            (0.0333, (4.0, 0.0, -2.0), (0.02, -0.18, 0.02)),  # frame 1 - the least pull-back that reads
+            (0.1000, (-1.0, 0.0, 4.0), (-0.04, 0.60, -0.03)),  # frame 3 - already half way out
+            (0.1333, (-5.0, 0.0, 8.0), (-0.09, 1.22, -0.06)),  # frame 4 - FULL EXTENSION (HIT_TIME)
+            (0.1667, (-5.0, 0.0, 8.0), (-0.09, 1.25, -0.06)),  # frame 5 - buried to the hand
+            (0.2000, (-4.0, 0.0, 7.0), (-0.08, 1.20, -0.05)),  # frame 6 - still buried
+            (0.2667, (0.0, 0.0, 3.0), (-0.02, 0.42, -0.02)),  # frame 8 - pulled straight back out
+            (0.3333, (3.0, 0.0, -1.0), (0.01, -0.06, 0.01)),  # frame 10 - back at the carry
+            (0.4000, (1.0, 0.0, 0.0), (0.00, -0.02, 0.00)),  # frame 12 - settling
+            (0.5000, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
         ],
     },
 
-    # Stormlance (cd 0.45) - a live current down the haft, so the coil
-    # CRACKLES: the wind-up jitters on the roll channel at frame rate before
-    # the drive, and the discharge kicks the lance back out of the wound.
+    # Stormlance (cd 0.45) - a live current down the haft. The crackle stays,
+    # but it MOVED: it used to jitter the wind-up (which read as the player
+    # fumbling the weapon), and now it is a tiny roll-channel buzz on the
+    # three frames the lance is held in the wound - the discharge going off
+    # where the point is, which is where the story is.
     "storm_lance": {
-        "HIT_TIME": 0.20,
+        "HIT_TIME": 0.1667,
         "KEYS": [
-            (0.000, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
-            (0.060, (28.0, -10.0, -12.0), (0.12, -0.32, 0.14)),  # coiled, the charge building
-            (0.110, (34.0, 8.0, -16.0), (0.16, -0.40, 0.18)),  # crackle - the haft kicks one way
-            (0.150, (30.0, -12.0, -12.0), (0.12, -0.44, 0.14)),  # crackle - and back the other
-            (0.200, (-12.0, 2.0, 16.0), (-0.18, 1.08, -0.12)),  # the DRIVE (HIT_TIME)
-            (0.250, (-14.0, 10.0, 18.0), (-0.20, 1.14, -0.14)),  # the discharge, held in the wound
-            (0.310, (6.0, -12.0, 8.0), (-0.06, 0.30, 0.04)),  # the arc kicks the lance back out
-            (0.400, (20.0, 6.0, -6.0), (0.08, -0.18, 0.12)),  # recovered high, still buzzing
-            (0.480, (8.0, -4.0, -3.0), (0.03, -0.08, 0.05)),  # the buzz decaying
-            (0.580, (2.0, 1.0, -1.0), (0.01, -0.02, 0.01)),  # settling
-            (0.6667, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
+            (0.0000, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle - the horizontal carry
+            (0.0667, (5.0, 0.0, -3.0), (0.03, -0.25, 0.03)),  # frame 2 - the pull-back, charge gathering
+            (0.1333, (0.0, 0.0, 4.0), (-0.04, 0.58, -0.03)),  # frame 4 - the jab at speed, half way out
+            (0.1667, (-5.0, 0.0, 8.0), (-0.09, 1.25, -0.06)),  # frame 5 - FULL EXTENSION (HIT_TIME)
+            (0.2000, (-5.0, 6.0, 8.0), (-0.10, 1.30, -0.06)),  # frame 6 - crackle: the haft kicks one way
+            (0.2333, (-4.0, -6.0, 7.0), (-0.08, 1.26, -0.05)),  # frame 7 - and back the other, still extended
+            (0.2667, (-4.0, 3.0, 7.0), (-0.09, 1.22, -0.06)),  # frame 8 - the last flick of the discharge
+            (0.3333, (2.0, 0.0, 2.0), (-0.02, 0.38, -0.01)),  # frame 10 - the arc shoves it back out
+            (0.4000, (4.0, 0.0, -2.0), (0.02, -0.10, 0.02)),  # frame 12 - recovered to the carry
+            (0.4667, (1.0, -2.0, -1.0), (0.01, -0.03, 0.01)),  # frame 14 - the buzz decaying
+            (0.5667, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
         ],
     },
 
@@ -459,16 +493,26 @@ CLIPS = {
     # Magma Gauntlets (cd 0.22) - cock to the cheek, piston straight out,
     # knuckles turn over on impact, and the retract carries a MICRO-JAB - the
     # flurry twitch that says the heat is still building.
+    #
+    # Retuned 2026-08-27 alongside the spears: the row's new `hold` carries the
+    # gauntlet FIST-FORWARD (pitch 8) instead of upright, so the punch no
+    # longer needs 14 degrees of pitch to point the fist at the crosshair - it
+    # is already there. Pitch content is roughly a third of what it was and
+    # the punch is nearly pure forward translation, with the knuckle roll kept
+    # (that one is real hand mechanics, not decoration) and the extension now
+    # held across three sampled frames instead of popping on one.
     "magma_piston": {
-        "HIT_TIME": 0.09,
+        "HIT_TIME": 0.1000,
         "KEYS": [
-            (0.000, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
-            (0.045, (14.0, 0.0, -8.0), (0.10, -0.34, 0.06)),  # cocked back to the cheek
-            (0.090, (-8.0, 0.0, 10.0), (-0.10, 0.96, -0.08)),  # PUNCH - straight out at the centre (HIT_TIME)
-            (0.130, (-6.0, -16.0, 8.0), (-0.08, 0.86, -0.06)),  # knuckles turn over on impact
-            (0.180, (6.0, 4.0, -2.0), (0.02, 0.16, 0.02)),  # retract
-            (0.240, (-4.0, -4.0, 4.0), (-0.04, 0.34, -0.02)),  # the micro-jab - the flurry twitch
-            (0.290, (2.0, 0.0, 0.0), (0.00, 0.06, 0.01)),  # settling
+            (0.0000, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle - the fist-forward carry
+            (0.0333, (5.0, 0.0, -3.0), (0.03, -0.26, 0.03)),  # frame 1 - cocked to the cheek, one frame
+            (0.0667, (0.0, 0.0, 3.0), (-0.03, 0.52, -0.02)),  # frame 2 - the arm at speed, half way out
+            (0.1000, (-4.0, 0.0, 6.0), (-0.07, 1.05, -0.04)),  # frame 3 - FULL EXTENSION (HIT_TIME)
+            (0.1333, (-4.0, -12.0, 6.0), (-0.07, 1.08, -0.04)),  # frame 4 - the knuckles turn over on impact
+            (0.1667, (-3.0, -8.0, 5.0), (-0.06, 1.00, -0.04)),  # frame 5 - still out, rolling back
+            (0.2000, (1.0, 0.0, 2.0), (-0.01, 0.30, 0.00)),  # frame 6 - retract
+            (0.2333, (-2.0, 0.0, 3.0), (-0.03, 0.52, -0.02)),  # frame 7 - the micro-jab, the flurry twitch
+            (0.2667, (2.0, 0.0, 0.0), (0.01, 0.02, 0.01)),  # frame 8 - back at the guard
             (0.3333, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
         ],
     },
