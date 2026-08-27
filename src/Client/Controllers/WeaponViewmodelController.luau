@@ -26,6 +26,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Equipment = require(Shared.Config.Equipment)
 local Weapons = require(Shared.Data.Weapons)
 local WeaponSwingAnim = require(Shared.Data.WeaponSwingAnim)
+local GunReloadAnim = require(Shared.Data.GunReloadAnim)
 local WeaponModel = require(Shared.Modules.WeaponModel)
 
 local Viewmodel = require(script.Parent.Parent.Modules.Viewmodel)
@@ -81,6 +82,35 @@ local CLIPS = {}
 for name, clip in WeaponSwingAnim.CLIPS do
 	CLIPS[name] = Viewmodel.loadClip(clip.FRAMES)
 end
+
+-- ---------------------------------------------------------------- reloads
+-- Multi-track reload clips (assets/gun_reload_anim.py), one per gun variant
+-- plus the Generic fallback. Track semantics: `weapon` moves the whole rig
+-- about the elbow (the swing contract); `mag` / `action` move that part
+-- LOCAL about its own home (rotation spins it in place, translation is
+-- camera axes); `hand` moves the parked LEFT arm the same way. Playback is
+-- time-scaled so the clip fills the row's server reloadTime exactly - the
+-- visual always fits the window CombatService enforces, never extends it.
+
+local RELOAD_CLIPS = {}
+for name, clip in GunReloadAnim.CLIPS do
+	local tracks = {}
+	for trackName, frames in clip.TRACKS do
+		tracks[trackName] = Viewmodel.loadClip(frames)
+	end
+	RELOAD_CLIPS[name] = { duration = clip.DURATION, tracks = tracks }
+end
+
+-- The parked left arm: rests off the bottom of the screen between reloads,
+-- rises to handle the mag when a clip keys it up. Rest pose sits at the
+-- gun's fore-end, mirrored forearm.
+local LEFT_HAND_REST = Vector3.new(0.75, -1.35, -3.1)
+local LEFT_FOREARM_DIRECTION = Vector3.new(0.45, 0.5, -0.74).Unit
+local LEFT_HAND_PARK = CFrame.new(-0.3, -2.6, 0.6) -- applied while idle
+
+local MAG_GROUP = "mag"
+local ACTION_GROUP = "action"
+local LEFT_GROUP = "reloadHand"
 
 -- ---------------------------------------------------------------- swing trail
 
@@ -152,6 +182,17 @@ local muzzlePart: BasePart? = nil -- the Weapon_Muzzle marker, when the mesh car
 local swingPivot: CFrame = CFrame.new(GRIP_POSITION)
 local swing = nil
 
+-- The reload in flight: { clip, startedAt, scale } (scale stretches the
+-- authored DURATION onto the row's real reloadTime), plus the camera-space
+-- home positions the mag/action/hand tracks pivot about. All torn down with
+-- the rig - a weapon swap mid-reload just leaves the countdown to the
+-- server, exactly as before this system existed.
+local reload = nil
+local magHome: Vector3? = nil
+local actionHome: Vector3? = nil
+local leftHome: Vector3? = nil
+local hasLeftArm = false
+
 local function clearRig()
 	if rig then
 		rig:destroy()
@@ -216,15 +257,40 @@ local function buildRig(character: Model, weaponData)
 	local gripCamera = gripInCameraSpace(weaponData.ranged ~= nil)
 	local gripLocal = grip.CFrame
 	weapon.Parent = newRig.model
+	reload = nil
+	magHome, actionHome, leftHome = nil, nil, nil
+	hasLeftArm = false
 	for _, part in weapon:GetDescendants() do
 		if part:IsA("BasePart") then
 			Viewmodel.stripPart(part)
-			newRig:add(part, gripCamera * gripLocal:ToObjectSpace(part.CFrame), GROUP)
+			local offset = gripCamera * gripLocal:ToObjectSpace(part.CFrame)
+			-- Mag and action live in their own rig groups so the reload
+			-- clips can pull the magazine out of the gun and cycle the bolt;
+			-- idle (identity extras) they sit exactly where GROUP would put
+			-- them.
+			local group = GROUP
+			if part.Name == "Weapon_Mag" then
+				group = MAG_GROUP
+				magHome = offset.Position
+			elseif part.Name == "Weapon_Action" then
+				group = ACTION_GROUP
+				actionHome = offset.Position
+			end
+			newRig:add(part, offset, group)
 			-- The gun-mesh contract's muzzle marker: the flash / tracer origin.
 			if part.Name == "Weapon_Muzzle" then
 				muzzlePart = part
 			end
 		end
+	end
+
+	-- Guns get the parked LEFT arm the reload clips raise into frame; it
+	-- idles below the screen edge (LEFT_HAND_PARK every frame).
+	if weaponData.ranged then
+		local leftArm =
+			Viewmodel.buildArm(newRig, character, "Left", LEFT_GROUP, LEFT_HAND_REST, LEFT_FOREARM_DIRECTION)
+		leftHome = leftArm.handCFrame.Position
+		hasLeftArm = true
 	end
 
 	-- Arm: a block hand + forearm in the player's skin colour, hand closed
@@ -338,6 +404,26 @@ function WeaponViewmodelController.kick(strength: number?)
 	recoil = math.min(recoil + (strength or 1) * 0.55, RECOIL_MAX)
 end
 
+-- Play the gun's reload choreography, stretched to fill `seconds` (the
+-- row's server-enforced reloadTime, or - for reloadTime-0 loaders like the
+-- bow - the slice of the cooldown the caller gives it). RangedController
+-- calls this: at reload start for magazine guns, after each shot for the
+-- per-shot loaders. Purely cosmetic - the server's clock is untouched.
+function WeaponViewmodelController.reloadAnim(variant: string?, seconds: number)
+	if not rig or seconds <= 0 then
+		return
+	end
+	local clip = (variant and RELOAD_CLIPS[variant]) or RELOAD_CLIPS.Generic
+	if not clip then
+		return
+	end
+	reload = {
+		clip = clip,
+		startedAt = os.clock(),
+		scale = seconds / clip.duration,
+	}
+end
+
 -- The muzzle's world position (the built weapon's tip), for the tracer's
 -- start. Nil when no modelled weapon is up - the caller falls back to the
 -- camera.
@@ -380,6 +466,45 @@ function WeaponViewmodelController.swing(name: string): number?
 	return clip.HIT_TIME
 end
 
+-- A track sample applied LOCAL about a part's home point: the rotation
+-- spins the part in place, the translation moves it in camera axes -
+-- which is what lets a clip pull a magazine straight down out of its well
+-- or roll a revolver cylinder about its own axle.
+local function localAbout(home: Vector3, sample: CFrame): CFrame
+	local rotation = sample - sample.Position
+	return CFrame.new(sample.Position) * CFrame.new(home) * rotation * CFrame.new(-home)
+end
+
+-- The reload's per-frame contribution: extras for the mag / action / hand
+-- groups plus the whole-weapon track (composed about the elbow like a
+-- swing). Retires itself when the scaled clip runs out.
+local function reloadOffsets(now: number, extras: { [string]: CFrame }): CFrame
+	if not reload then
+		return CFrame.identity
+	end
+	local t = (now - reload.startedAt) / reload.scale
+	if t >= reload.clip.duration then
+		reload = nil
+		return CFrame.identity
+	end
+	local tracks = reload.clip.tracks
+	local fps = GunReloadAnim.FPS
+	if tracks.mag and magHome then
+		extras[MAG_GROUP] = localAbout(magHome, Viewmodel.sampleClip(tracks.mag, fps, t))
+	end
+	if tracks.action and actionHome then
+		extras[ACTION_GROUP] = localAbout(actionHome, Viewmodel.sampleClip(tracks.action, fps, t))
+	end
+	if tracks.hand and leftHome then
+		extras[LEFT_GROUP] = localAbout(leftHome, Viewmodel.sampleClip(tracks.hand, fps, t))
+	end
+	if tracks.weapon then
+		local raw = Viewmodel.sampleClip(tracks.weapon, fps, t)
+		return swingPivot * raw * swingPivot:Inverse()
+	end
+	return CFrame.identity
+end
+
 -- ---------------------------------------------------------------- per frame
 
 local function onRenderStep(dt: number)
@@ -395,10 +520,17 @@ local function onRenderStep(dt: number)
 	end
 	rig:setVisible(true)
 
-	-- The recoil spring decays every frame; swings and recoil compose about
-	-- the same elbow pivot.
+	-- The recoil spring decays every frame; swings, recoil and the reload's
+	-- weapon track all compose about the same elbow pivot. The parked left
+	-- arm idles off-screen unless a reload track raises it.
 	recoil *= math.exp(-RECOIL_DECAY * dt)
-	rig:pin(pin, { [GROUP] = swingOffset(os.clock()) * recoilOffset() })
+	local extras: { [string]: CFrame } = {}
+	if hasLeftArm then
+		extras[LEFT_GROUP] = LEFT_HAND_PARK
+	end
+	local reloadWeapon = reloadOffsets(os.clock(), extras)
+	extras[GROUP] = swingOffset(os.clock()) * recoilOffset() * reloadWeapon
+	rig:pin(pin, extras)
 
 	-- swingOffset has already retired a finished clip, so this also switches
 	-- the trail off on time.

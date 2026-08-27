@@ -173,6 +173,14 @@ local function tryFire()
 	if mirror.shotsInMag <= 0 and ranged.reloadTime > 0 then
 		mirror.reloadUntil = now + ranged.reloadTime
 		Sfx.play("gunReload")
+		-- The reload choreography (mag out by hand, cylinder work...) fills
+		-- the server's reload window exactly.
+		WeaponViewmodelController.reloadAnim(weapon.model and weapon.model.variant, ranged.reloadTime)
+	elseif ranged.reloadTime <= 0 then
+		-- Per-shot loaders (bow, crossbow, flintlock, harpooner): the
+		-- cooldown IS the reload, so the re-nock / re-ram plays after every
+		-- shot inside it, leaving a beat of aim time at the end.
+		WeaponViewmodelController.reloadAnim(weapon.model and weapon.model.variant, weapon.cooldown * 0.85)
 	end
 
 	local camera = Workspace.CurrentCamera
