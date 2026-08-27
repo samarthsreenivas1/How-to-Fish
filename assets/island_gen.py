@@ -1255,10 +1255,78 @@ def build_swamp_water():
     return object_from_bmesh("Swamp_Water", bm, ["M_SwampWater"])
 
 
+def build_swamp_cattails():
+    """Cattail brakes along the marsh margins: clusters seeded ONLY where
+    the ground sits within a stud or so of the waterline (the shallow
+    fringe of every islet, inlet and bank - which is where real cattails
+    live, and it makes the wandering water/land boundary read at ground
+    level). Each stalk is a thin 4-sided cone with 2-3 blade cones and a
+    brown seed head riding the same lean. Two objects, one material each
+    (Swamp_Cattails = stalks + blades, Swamp_CattailHeads = the heads);
+    both go NON-COLLIDE in WorldService - you wade through a reed brake,
+    never bounce off it. Keeps clear of the boss mere and the spawn shelf."""
+    stalk_bm = bmesh.new()
+    head_bm = bmesh.new()
+    rng = random.Random(2711)
+    clusters, stalks, attempts = 0, 0, 0
+    while clusters < 32 and attempts < 1200:
+        attempts += 1
+        theta = rng.uniform(0, math.tau)
+        u = rng.uniform(0.10, SWAMP_RIM_U + 0.02)
+        r_world = ring_radius(u, theta)
+        cx, cy = math.cos(theta) * r_world, math.sin(theta) * r_world
+        g = _swamp_height(cx, cy)
+        if not (SWAMP_WATER_Z - 0.9 <= g <= SWAMP_WATER_Z + 0.6):
+            continue  # not a margin: open deep water or high ground
+        mx, my, mr = SWAMP_MERE
+        if math.hypot(cx - mx, cy - my) < mr + 6:
+            continue  # the boss arena stays open
+        sx, sy = SWAMP_SPAWN
+        if math.hypot(cx - sx, cy - sy) < 26:
+            continue  # the spawn shelf stays clear
+        clusters += 1
+        for _ in range(rng.randint(4, 7)):
+            a = rng.uniform(0, math.tau)
+            d = rng.uniform(0.0, 4.2)
+            x, y = cx + math.cos(a) * d, cy + math.sin(a) * d
+            g2 = _swamp_height(x, y)
+            if not (SWAMP_WATER_Z - 1.0 <= g2 <= SWAMP_WATER_Z + 0.8):
+                continue
+            stalks += 1
+            h = rng.uniform(3.4, 5.4)
+            lean = (rng.uniform(-0.09, 0.09), rng.uniform(-0.09, 0.09))
+            base = (x, y, g2 - 0.4)  # rooted a little under the mud
+            add_cone(stalk_bm, base, 0.15, 0.055, h, sides=4, tilt=lean)
+            # Blade leaves: shorter, thinner cones fanning off the root.
+            for _b in range(rng.randint(2, 3)):
+                ba = rng.uniform(0, math.tau)
+                add_cone(
+                    stalk_bm,
+                    (x + math.cos(ba) * 0.3, y + math.sin(ba) * 0.3, base[2]),
+                    0.17,
+                    0.02,
+                    h * rng.uniform(0.45, 0.75),
+                    sides=3,
+                    tilt=(math.cos(ba) * 0.17, math.sin(ba) * 0.17),
+                )
+            # The seed head: a stubby brown cylinder ~3/4 of the way up,
+            # seated on the stalk's own axis so it rides the lean.
+            axis = cone_axis(lean, 0.0)
+            hz = h * rng.uniform(0.68, 0.76)
+            head_base = (base[0] + axis.x * hz, base[1] + axis.y * hz, base[2] + axis.z * hz)
+            add_cone(head_bm, head_base, 0.17, 0.15, rng.uniform(0.8, 1.15), sides=5, tilt=lean)
+    print(f"[island_gen] swamp cattails: {stalks} stalks in {clusters} brakes")
+    return [
+        object_from_bmesh("Swamp_Cattails", stalk_bm, ["M_Cattail"]),
+        object_from_bmesh("Swamp_CattailHeads", head_bm, ["M_CattailHead"]),
+    ]
+
+
 def build_swamp():
     objects = [
         build_swamp_base(),
         build_swamp_water(),
+        *build_swamp_cattails(),
     ]
     a = math.radians(270)  # the +Z quadrant the dock will eventually face
     shore = ring_radius(1.0, a)
@@ -4701,6 +4769,8 @@ ISLANDS = {
                 # wears the ocean's dress via Ocean.INTERIOR_WATER_NAMES; this
                 # is the preview color).
                 "M_SwampWater": (0.153, 0.239, 0.196),
+                "M_Cattail": (0.478, 0.525, 0.259),  # dusty reed green
+                "M_CattailHead": (0.369, 0.243, 0.137),  # the brown seed heads
             },
         },
         "build": build_swamp,

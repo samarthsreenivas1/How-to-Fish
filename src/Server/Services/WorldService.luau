@@ -305,6 +305,10 @@ local NON_COLLIDE = {
 	"Frostmaw_IceHoles",
 	"Gloomtrench_DarkWater",
 	"Wreckwater_Bay",
+	-- The fen's cattail brakes (swamp restart): you wade through reeds,
+	-- never bounce off them.
+	"Swamp_Cattails",
+	"Swamp_CattailHeads",
 	-- The open-sea ghost hulks (round 2) and the bay wrecks' rotted sail
 	-- scraps: box/hull collision on a +-700-stud wreck scatter would wall
 	-- off the sea for the boat, and the fiction earns the pass-through -
@@ -382,6 +386,8 @@ local MESH_COLOR = {
 	Swamp_Base = Color3.fromRGB(61, 77, 50), -- M_Peat (dark waterlogged moss-peat)
 	Swamp_Base2 = Color3.fromRGB(101, 85, 60), -- M_Mud (the mud "beach")
 	Swamp_Base3 = Color3.fromRGB(74, 63, 47), -- M_WetMud
+	Swamp_Cattails = Color3.fromRGB(122, 134, 66), -- reed-green stalks + blades
+	Swamp_CattailHeads = Color3.fromRGB(94, 62, 35), -- the brown seed heads
 
 	-- Frostmaw Reach (assets/island_ice_gen.py).
 	Frostmaw_Base = Color3.fromRGB(234, 239, 244), -- M_Snow
