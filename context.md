@@ -32,11 +32,14 @@ LANDED (all six packs; the game boots and plays end to end), three review
 rounds closed every lane, and the project moved into **post-ship
 iteration** (2026-08-26→27): two island visual-overhaul rounds, a bipedal
 creature redesign, the guns rebuilt as guns, the melee arsenal rebuilt
-with per-family swing classes, a per-gun reload-animation system, and real
-arrow projectiles — see "The post-ship days". Standing re-imports owed at
+with per-family swing classes, a per-gun reload-animation system, real
+arrow projectiles, the voyage-arc map, and the **boss redesign** (every
+post-cove boss got a unique moveset + gimmick + bespoke model — see "The
+boss redesign") — see "The post-ship days". Standing re-imports owed at
 any moment are tracked in `docs/import-checklist.md`; as of this rewrite:
-`weapon.glb` (the 15 new melee models) and `rod.glb` (the 25 bespoke
-rods, be82f72).
+`weapon.glb` (the 15 new melee models), `rod.glb` (the 25 bespoke
+rods, be82f72), `island_pack.glb`, and `creatures.glb` (the 7 rebuilt
+boss models, ba93efb).
 
 ## Working style — read this before starting any slice
 
@@ -115,6 +118,7 @@ between sessions.
 | **Per-gun reload animations** (2026-08-27) | built, live (code-side) | multi-track clip system: visible mag handling by an appearing left hand, revolver cylinder work, bow nocking... one unique clip per gun (a738a16/4b60215) |
 | **Real projectiles** (2026-08-27) | built, live | bow/crossbow/harpooner fly their own `_Mag` mesh, not tracers (`ranged.projectile`, 648ba2c) |
 | **Voyage-arc map redesign** (2026-08-27) | built, **unreviewed** | islands scattered across one huge sea (legs 4,000→8,700 studs, arc around the cove), boat speeds/seaworthiness retuned per leg, sailing compass on the helm — see "The voyage-arc map" |
+| **Boss redesign: 6 unique movesets + gimmicks + models** (2026-08-27) | built, **unreviewed / creatures.glb re-import pending** | e84f7e9 (engine+data+client) + ba93efb (art): every post-cove boss has its own attack book on a new parameterized boss arsenal, a one-of-a-kind gimmick, and a bespoke Blender model — see "The boss redesign" |
 | More archetypes (charger/spitter), style/juggle, arena | not started | see Known gaps |
 
 ### Manual Studio steps — check these first
@@ -475,10 +479,10 @@ island tables verbatim; the ledger of record stays that file.
   Summons). **Every rod sits on the RodPack's shared 7.0-length/0.95-grip
   frame** — the generator builds all variants on one frame, so a row that
   deviates puts the mesh wrong in the hand and breaks the tip tracker.
-- **Bosses**: Rimefang (26k, dives UNDER the ice sheet — weighted double in
-  phase 2), Noctyss (60k, opens with the pull — her lure is the only light;
-  enrage douses it client-side), Admiral Wrack (85k, brood = a boarding
-  party, weighted double; volley is a 7-glob broadside). All three arenas
+- **Bosses**: Rimefang (26k), Noctyss (60k; enrage douses her lure
+  client-side), Admiral Wrack (85k). **Movesets described here were
+  REPLACED by the 2026-08-27 boss redesign** — see "The boss redesign"
+  section for the current kits. All three arenas
   sit off the dock end (the Pyrelisk stable-spot precedent — inland pools
   move with every mesh regen) except Wrack's, in the island's stable
   central bay at offset (0,0,-20).
@@ -728,6 +732,78 @@ boat." Pure code/data — NO re-imports owed by this slice.
 - **Unreviewed in Studio.** Likely tuning asks: leg lengths / travel-time
   feel, boat top speeds, compass size/placement, whether locked islands
   should show on the compass at all, marker colours.
+
+### The boss redesign: unique movesets, gimmicks, models (2026-08-27, unreviewed)
+
+User: the bosses "all have the exact same moveset... mediocre designs and
+gimmicks... redesign all of the bosses except the first one" + rebuild the
+Blender models. Landed as e84f7e9 (engine + data + client) and ba93efb
+(art). **Brinejaw is untouched** and still runs the original name-is-handler
+book; **`creatures.glb` re-import owed** (until then the new FIGHTS run on
+the old meshes — movesets are code-side and live).
+
+- **The boss arsenal** (`CreatureService`, section "the boss arsenal"): the
+  per-island movesets are built from new parameterized primitives in
+  `BOSS_ATTACKS` — `charge` (line rush; optional `leap`, `slamRadius`,
+  hazard `trail`), `beam` (swept jet, ticks WITHOUT i-frame bypass, optional
+  `chill`), `poolvolley` (globs leaving pools), `barrage` (telegraphed
+  strikes: patterns `scatter` / `everyone` / `line`+`fan` / `wall` /
+  `rings` — rings are annulus novas with their own damage rule), `snaretrap`,
+  `decoys` (proximity mines, optional `drift` — the server mirrors drifting
+  positions to clients via low-cadence `decoyMove`), `phantom` (buried
+  teleport-to-flank ambush), `undertow` (long pull + raining globs),
+  `anchortoss` (spine-visual throw whose strike fires a `chain`). A
+  Bosses.luau attack names its engine behaviour with **`p.handler`** (no
+  handler field ⇒ the attack NAME is the handler — Brinejaw's rule),
+  borrows a stock telegraph with **`p.tell`**, and colors client effects
+  with **`p.skin`**. `dive` gained `p.shatter` (pool at the burst);
+  `pickBossAttack`'s empty-pool fallback returns the phase's FIRST attack
+  (the hardcoded "snap" would nil-crash books that renamed their bite).
+- **Three timed systems on the creature struct**, ticked in `update()`
+  beside globs/puffs so they run mid-attack and die with the boss:
+  `pools` (lingering ground hazards: damage tick and/or a broadcast
+  `chill`), `strikes` (tell at `tellAt`, hit at `hitAt`; disc or annulus;
+  optional snare/chain/pool/hitEvent riders), `lures` (decoys/kegs:
+  detonate on proximity, fizzle on expiry).
+- **The kits** (each boss's gimmick is one-of-a-kind): **Old Gnashroot** —
+  the fen grabs you: `snaretrap` roots players in place, `deathroll` charge
+  leaves slowing sludge, `bogspit` pools, `rootwave` marching line.
+  **Rimefang** — the cold: `frostbreath` beam + frost-slick trails/shatters
+  all apply chill SLOW; `breach` airborne charge, `bergfall`, `shardnova`
+  rings, `undersheet` dive weighted double. **Pyrelisk** — heat: `lavawake`
+  charge trail, `magmajet` beam, `slagspit`, `ventstorm` (bomb on EVERY
+  player), `cinderring` novas — standable ground burns away. **Noctyss** —
+  light: `falselight` detonating decoy lures, `inkveil` (client blind via
+  `inkBlast`), `phantom` lights-out ambush, `lurepull`→`needlefangs`.
+  **Admiral Wrack** — naval: `broadside` ranked walls, `anchortoss` CHAINS
+  the target to the spot (client leash), `powderkeg` drifting mines,
+  `keelrush` ram, `boarding` brood (his identity; the only boss brood
+  kept). **Kraken** — the storm: `tentaclelash` (strike under EVERY
+  player), `stormcall`, `wreckhurl`, `inknova`, `undertow` (the maelstrom
+  weaponized); the tentacle-ring exposure gimmick is unchanged.
+- **Client** (`CreatureEventController`): `SKIN` palette (peat/root/frost/
+  lava/ink/lure/ember/wreck/storm); new moments `poolSpawn`, `strikeHit`,
+  `inkBlast`, `chill`, `snare`, `chain`, `decoy`/`decoyMove`/`decoyPop`,
+  `beam`, `phantomOut`/`phantomIn`; telegraph kinds `mark` (point ring) +
+  `ringTell` (annulus band). **Movement effects follow the pull's
+  client-applied pattern**: each client roots/slows/leashes its OWN
+  character if inside the broadcast radius; one walkspeed effect at a time
+  (harshest mult holds while overlapping, captured base restored exactly,
+  everything cleared on respawn). The chain clamps the root's CFrame to
+  the leash circle per Heartbeat.
+- **Art** (`creatures_gen.py`, two-lane fleet with per-model render review;
+  bboxes all within ±20% of baseline so rows/hitRadius hold): Gnashroot
+  gator-oak (fungal shelf canopy, glowing snare-root Marks), Rimefang
+  16-segment ice-slab serpent (crystal crown, frost-crack glow), Pyrelisk
+  obsidian plates over a literal molten `_Marks` core chain, Noctyss
+  angler queen (mostly maw; caged glowing lure bulb is the focal point),
+  Admiral Wrack fused into his flagship's bow (real fouled anchor + chain,
+  glowing gunports), Kraken storm-crag mantle with spiral biolum bands +
+  matching rebuilt tentacle. Pack build green: 68 species, 32,427 polys.
+- **Unreviewed in Studio.** Likely tuning asks: every new number (arm
+  windows, pool durations, chill mult, chain leash, undertow strength),
+  decoy readability vs the real lure, whether snare needs a jump lock,
+  ringTell clarity, and the usual arena-fit pass per island.
 
 ### First person, arms, and the viewmodels
 
