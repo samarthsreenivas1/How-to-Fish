@@ -1,6 +1,8 @@
 # Icon generation prompt (Gemini) — all 72 rod + weapon icons, one sheet
 
-REWRITTEN 2026-08-27 for the revamp's final content (user request): every rod
+REWRITTEN 2026-08-27, refined same day after the first generation (labels
+and the ALL-CAPS emphasis leaked into the art as captions/callouts, and the
+background rendered as grey per-cell tiles instead of alpha): every rod
 (36) and every weapon (36) as flat vector-style icons on a TRANSPARENT
 background, in one 9×8 contact sheet, matched closely to the Blender models.
 Supersedes the old 36-cell sheet (which referenced pre-revamp/cut content;
@@ -29,27 +31,39 @@ low-poly-render icons keeps the whole inventory uniform in the new style.
 
 ```
 Generate ONE single image: a 9×8 contact sheet of 72 equal-sized square cells
-in a strict grid, read left-to-right then top-to-bottom, with even generous
-empty spacing between cells so they can be auto-cropped at regular intervals.
-No grid lines, no dividers, no captions, no text anywhere. Each cell contains
-exactly ONE self-contained object, centered, filling ~70% of its cell; no two
-cells may touch or overlap.
+in a strict invisible grid, read left-to-right then top-to-bottom, with even
+generous empty spacing between cells so they can be auto-cropped at regular
+intervals. Each cell contains exactly ONE self-contained object, centered,
+filling ~70% of its cell; no two cells may touch or overlap.
 
-BACKGROUND: fully transparent (true PNG alpha). No backdrop, no ground plane,
-no drop shadows, no vignette — every pixel outside the objects must be
-transparent.
+ABSOLUTELY NO TEXT OF ANY KIND anywhere in the image: no letters, numbers,
+words, captions, labels, subtitles, arrows, leader lines, callouts, or
+diagram annotations. The item list below is instructions for YOU only — it
+contains capitalized words and parenthetical notes as emphasis, and none of
+those words may ever appear rendered in the image. If a description names a
+feature, DRAW the feature; never write it. Cell identity comes purely from
+grid position, so labels are unnecessary.
 
-STYLE — identical for all 72 cells: clean flat VECTOR-illustration game icons.
-Crisp uniform dark outline (same weight everywhere), flat saturated color
-fills with at most two tones per surface (base + one darker shade for form),
-no gradients, no photorealism, no texture noise. The objects are faithful
-2D portraits of low-poly 3D models: keep their chunky faceted silhouettes,
-straight facet edges, and exact proportions from the two attached reference
-renders (a 36-rod lineup and a 36-weapon lineup) — match each item's
-silhouette to its reference model closely. Rods pose diagonally (butt lower-
-left, tip upper-right); melee weapons pose diagonally edge-forward; guns pose
-in clean side profile, muzzle right. Anything marked GLOWS gets a bright
-emissive fill plus a soft outer glow halo — clearly lit, not just bright fill.
+BACKGROUND: one single fully TRANSPARENT background (true PNG alpha) across
+the entire sheet. No backdrop, no per-cell tiles or panels, no cell shading,
+no ground planes, no drop shadows, no vignette — every pixel outside the
+objects themselves must be transparent. If transparency is genuinely
+unsupported, the only acceptable fallback is one perfectly uniform solid
+chroma-green (#00FF00) across the whole sheet with zero per-cell variation,
+so it can be keyed out in one pass.
+
+STYLE — identical for all 72 cells: clean flat VECTOR-illustration game
+icons. Crisp uniform dark outline (same weight everywhere), flat saturated
+color fills with at most two tones per surface (base + one darker shade for
+form), no gradients, no photorealism, no texture noise. The objects are
+faithful 2D portraits of low-poly 3D models: keep their chunky faceted
+silhouettes, straight facet edges, and exact proportions from the two
+attached reference renders (a 36-rod lineup and a 36-weapon lineup) — where
+these descriptions and the reference images disagree, follow the images.
+Rods pose diagonally (butt lower-left, tip upper-right); melee weapons pose
+diagonally edge-forward; guns pose in clean side profile, muzzle right.
+Anything marked GLOWS gets a bright emissive fill plus a soft outer glow
+halo — clearly lit from within, not just a bright flat color.
 
 ROW-BY-ROW CONTENTS (hex colors are exact):
 
@@ -98,8 +112,9 @@ ROW 2 — volcano + Blackmire Fen rods:
    discrete hanging ICICLE spikes, frozen collar rings, GLOWS white-blue.
 
 ROW 3 — Frostmaw + Gloomtrench rods:
-19 Silverscale: sleek silver blank #C8D4E0 shingled in overlapping fish-
-   scale lamination, cork grip, spinning reel, pear float.
+19 Silverscale: sleek silver blank #C8D4E0 armored in small overlapping
+   fish scales lying flat along the shaft like roof shingles, cork grip,
+   spinning reel below, pear float.
 20 Aurora: blue blank #608CBE hung with stacked BILLOWING translucent
    curtain bands (aurora sheets), GLOWS teal #96E6C8 + pink accents.
 21 Frostheart: ice-blade blank wrapped in an open crystal DOUBLE-HELIX
@@ -133,8 +148,9 @@ ROW 4 — Wreckwater + Maelstrom rods:
    fire HEART CAGED in curved ribs at the masthead, flame wisps licking
    the blank, ship's-wheel reel, figurehead bust at the butt — crown piece
    of the wreck island.
-32 Squallcaster: storm-bent grey cane #6B7C8C, permanent wind-lean curve,
-   thorn spurs, small pennant block.
+32 Squallcaster: storm-bent grey cane #6B7C8C curved hard by wind, thorn
+   spurs along it, one small triangular flag streaming sideways off the
+   upper blank as if in a gale.
 33 Riptide: current-swept blue blank #506E8C, floating diamond storm-panes,
    a prominent LIFE RING hung on it, GLOWS tide-blue #8CC8FF.
 34 Thunderhead: charged mast #465064 with stacked flat RING COLLARS
