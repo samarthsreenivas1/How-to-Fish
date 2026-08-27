@@ -539,12 +539,41 @@ def slab(bm, profile, y):
     bm.faces.new(back)
 
 
+def _point_in_polygon(pt, poly):
+    """Even-odd ray cast in the x-z plane."""
+    x, z = pt
+    inside = False
+    n = len(poly)
+    for i in range(n):
+        x0, z0 = poly[i]
+        x1, z1 = poly[(i + 1) % n]
+        if (z0 > z) != (z1 > z):
+            cross = x0 + (z - z0) / (z1 - z0) * (x1 - x0)
+            if x < cross:
+                inside = not inside
+    return inside
+
+
 def slab_with_hole(bm, profile, hole, hole_r, y, hole_sides=8):
     """slab(), but with a round through-hole at `hole` = (x, z): the side
     walls and the hole's walls are quads, and each broad face is the annulus
-    between the outer loop and the hole loop (bridge_loops)."""
+    between the outer loop and the hole loop (bridge_loops).
+
+    The hole circle must lie STRICTLY INSIDE the profile polygon. A ring
+    that pokes past the outline has no valid annulus - bridge_loops still
+    "succeeds" structurally and stitches folded garbage that renders as a
+    SOLID face (found the hard way: a 0.3-radius wind port near the
+    Galecleaver's spine, 2026-08-27) - so this now fails loudly at build
+    time instead."""
     n, m = len(profile), hole_sides
     ring = [(hole[0] + math.cos(a) * hole_r, hole[1] + math.sin(a) * hole_r) for a in ((i / m) * TAU for i in range(m))]
+    for rx, rz in ring:
+        if not _point_in_polygon((rx, rz), profile):
+            raise ValueError(
+                f"slab_with_hole: hole at {hole} r={hole_r} leaves the profile "
+                f"(ring point ({rx:.3f}, {rz:.3f}) is outside) - no valid "
+                "annulus exists; shrink or move the hole"
+            )
 
     def loop(yy, pts):
         return [bm.verts.new(Vector((x, yy, z))) for x, z in pts]
