@@ -175,12 +175,15 @@ local OCEAN_MARGIN = 2000
 -- The sea should read as INFINITE (user, 2026-08-27: "make the ocean infinite
 -- in size... make the ocean texture continue throughout the entire map"): a
 -- true infinite plane doesn't exist in Roblox, so the span gets a hard floor
--- instead - the nearest edge sits ~15,000 studs of open water past the
--- farthest island, minutes of sailing at the top boat tier and far beyond the
--- fog, while staying one single part (the caustics Texture tiles its whole
--- top face, so the water looks the same over every stud of the map). Kept
--- well under ~131k studs total, where float precision starts to shimmer.
-local OCEAN_MIN_SPAN = 60000
+-- instead. 60k left the edge ~14k from the outer islands - crisply visible
+-- from shore in Studio's edit camera, where no Atmosphere haze runs (user,
+-- 2026-08-27: "the water does not continue on for the entire map"). At 128k
+-- the nearest edge sits ~45,000 studs of open water past the farthest island:
+-- past the fog in play, below the horizon-blur in edit, and beyond any
+-- realistic sail, while staying one single part (the caustics Texture tiles
+-- its whole top face, so the water looks the same over every stud of the
+-- map). Kept at ~131k studs total, where float precision starts to shimmer.
+local OCEAN_MIN_SPAN = 128000
 
 local function oceanSpan(): number
 	local reach = 1500
