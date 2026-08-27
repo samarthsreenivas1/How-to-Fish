@@ -925,7 +925,19 @@ playbook applied to Ashfall Caldera — reviewed from PNG previews
   `waters = "volcano"` + Phoenix chase are LIVE again; Volcano_Lava back
   in MESH_COLOR + Neon. LavaController dresses it automatically (bubbles,
   scrolling crust) — it scans `*Lava` by name.
-- **Next steps (each its own prompt, wait for the ask)**: props/scatter,
+- **Step 3 — THE DEAD GIANTS (same day; user: "huge dead trees with
+  branches branching out largely, randomly across the base")**: one
+  `Volcano_DeadTrees` object (M_Charred), 46 snags on the apron, heights
+  40-95 with THICK trunks (r = 0.062·h — the first pass at 0.042 read
+  spindly at this island's scale): kinked two-segment trunks + root
+  flares, 4-6 primary limbs flung 50-80° off vertical, gnarled
+  secondaries. Placement keeps clear of the lava rivers (angular
+  corridors per LAVA_FLOWS bearing via `_volcano_clear_of_rivers`), the
+  recorded ponds/deltas, and the 270° spawn corridor; raycast-seated,
+  ≥24 studs apart. COLLIDABLE — PreciseConvexDecomposition at import (a
+  box hull over a spread crown is an invisible wall). The `_apron`
+  preview camera now walks the tree band at eye level.
+- **Next steps (each its own prompt, wait for the ask)**: rocks/scatter,
   the dock (+ Pyrelisk re-key), foam, eruption tie-in. Don't build ahead.
 
 ### The boss redesign: unique movesets, gimmicks, models (2026-08-27, unreviewed)

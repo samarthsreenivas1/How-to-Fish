@@ -1225,14 +1225,14 @@ def _dead_tree(bm, x, y, base_z, h, salt):
     wide-flung primary limbs and gnarled secondaries. All add_cone segments;
     children seat on their parent's axis via cone_axis."""
     rng = random.Random(salt)
-    trunk_r = max(1.7, h * 0.042)
+    trunk_r = max(2.4, h * 0.062)  # THICK - 'huge' needs mass, not just height
 
     # Root flares: short fat cones leaning outward from the base.
     for _ in range(3):
         a = rng.uniform(0, math.tau)
         add_cone(
             bm, (x + math.cos(a) * trunk_r * 0.9, y + math.sin(a) * trunk_r * 0.9, base_z - 0.6),
-            trunk_r * 0.55, 0.25, rng.uniform(3.5, 6.0), sides=5,
+            trunk_r * 0.6, 0.3, rng.uniform(5.0, 8.5), sides=5,
             tilt=(math.sin(a) * 0.9, -math.cos(a) * 0.9), yaw=0.0,
         )
 
@@ -1258,7 +1258,7 @@ def _dead_tree(bm, x, y, base_z, h, salt):
         yaw = yaw0 + k * (math.tau / limbs) + rng.uniform(-0.4, 0.4)
         spread = math.radians(rng.uniform(50.0, 80.0))
         tilt = (math.sin(yaw) * spread, -math.cos(yaw) * spread)
-        length = h * rng.uniform(0.32, 0.55) * (1.15 - 0.35 * f)  # lower limbs reach furthest
+        length = h * rng.uniform(0.38, 0.62) * (1.15 - 0.35 * f)  # lower limbs reach furthest
         limb_r = trunk_r * rng.uniform(0.32, 0.45)
         add_cone(bm, tuple(seat), limb_r, 0.22, length, sides=5, tilt=tilt, yaw=0.0)
         # One or two gnarled secondaries per limb.
@@ -1274,7 +1274,7 @@ def build_volcano_trees(ground):
     bm = bmesh.new()
     placed = []
     made, attempts = 0, 0
-    while made < 40 and attempts < 2400:
+    while made < 46 and attempts < 2600:
         attempts += 1
         theta = random.uniform(0, math.tau)
         u = random.uniform(0.73, 0.97)
@@ -1293,11 +1293,11 @@ def build_volcano_trees(ground):
         if base is None or base < 0.5:
             continue
         # Mostly huge, a few true giants towering over the apron.
-        h = random.uniform(38.0, 62.0) if random.random() < 0.75 else random.uniform(62.0, 85.0)
+        h = random.uniform(40.0, 64.0) if random.random() < 0.7 else random.uniform(64.0, 95.0)
         _dead_tree(bm, x, y, base - 0.8, h, salt=attempts * 3.7 + made)
         placed.append((x, y))
         made += 1
-    print(f"[island_gen] HANDOFF volcano trees: {made} dead giants on the apron (heights 38-85)")
+    print(f"[island_gen] HANDOFF volcano trees: {made} dead giants on the apron (heights 40-95)")
     return object_from_bmesh("Volcano_DeadTrees", bm, ["M_Charred"])
 
 
@@ -5230,7 +5230,7 @@ ISLANDS = {
             "PREVIEW_SHOTS": [
                 # Standing on the apron at the old spawn side, craning up at
                 # the mountain; and the sail-in from the +Z sea.
-                ("apron", (0.0, -560.0, 10.0), (0.0, 0.0, 460.0), 26),
+                ("apron", (120.0, -620.0, 26.0), (-300.0, -420.0, 45.0), 30),
                 ("approach", (0.0, -1500.0, 60.0), (0.0, 0.0, 420.0), 30),
             ],
             "COLORS": {
