@@ -62,6 +62,13 @@ SEGMENTS = 64  # angular resolution; facet size is the low-poly dial
 CRAG = 0.0  # vertical crag amplitude, studs
 CRAG_FREQ = 0.06  # spatial frequency of the crag noise
 CRAG_RADIAL = 0.0  # per-ring radial wobble (fraction of the ring radius)
+# The wobble noise's (angular, vertical) frequencies. The defaults reproduce
+# the original hardcoded (6.0, 4.0) byte-for-byte on every island that does
+# not override them. A tall cliff island raises the SECOND number so the
+# outline wanders as you climb - bulges and ledges instead of vertical
+# columns (the volcano restart's round-3 finding: with u varying only 4.0
+# noise units top-to-bottom, a 900-stud flank reads as fluted stone).
+CRAG_RADIAL_FREQS = (6.0, 4.0)
 
 # Rim spillway notches (for the volcano): each (centre angle rad, angular
 # half-width rad, depth studs) carves a gap in the rim so lava pours out
@@ -522,7 +529,8 @@ def build_island_base(base_name, material_names):
             r = ring_radius(u, theta)
             # Per-ring radial wobble so the outline is jagged, not a circle.
             if CRAG > 0 and CRAG_RADIAL > 0:
-                r *= 1 + noise.noise(Vector((math.cos(theta) * 6.0, math.sin(theta) * 6.0, u * 4.0))) * CRAG_RADIAL
+                af, uf = CRAG_RADIAL_FREQS
+                r *= 1 + noise.noise(Vector((math.cos(theta) * af, math.sin(theta) * af, u * uf))) * CRAG_RADIAL
             x, z = math.cos(theta) * r, math.sin(theta) * r
             h = height_at(x, z) + crag(x, z, u) - notch_cut(theta, u) + peak_jag(theta, u)
             ring.append(bm.verts.new(Vector((x, z, h))))
@@ -4546,52 +4554,67 @@ ISLANDS = {
             # explicitly on swamp/ice/gloom/wreck FIRST.
             "SEED": 7,
             "ISLAND_RADIUS": 640,
-            "SEGMENTS": 72,
+            "SEGMENTS": 96,  # finer facets so the shattered rock reads on 900-stud cliffs
             # One material boundary: bare volcanic rock cone above, ash apron
             # (the walked ground) below.
             "GRASS_U": 0.70,
-            "RINGS": [0.0, 0.05, 0.10, 0.16, 0.24, 0.33, 0.42, 0.51, 0.60, 0.70, 0.79, 0.88, 0.95, 1.0, 1.09, 1.28],
-            # A clean stratovolcano silhouette (round-2 fix: the first draft's
-            # 158-peak dome read as a HILL from the apron): a ~205 summit rim
-            # over a genuinely CONCAVE flank - ~40 deg just under the rim
-            # easing steadily to ~16 deg where the cone lands on the broad
-            # flat ash apron (0.70-1.0, ~190 studs of walked ring). Height/
-            # steepness remain STEP-1 GUESSES for the user to steer.
+            "RINGS": [0.0, 0.05, 0.11, 0.155, 0.19, 0.25, 0.32, 0.40, 0.48, 0.56, 0.63, 0.70, 0.76, 0.82, 0.90, 1.0, 1.09, 1.28],
+            # Round 3 (user: "too uniform... taller and more jagged... really
+            # really really tall... the whole shape more randomized"): a ~895
+            # summit lip (up to ~950 with the jag) over near-vertical craggy
+            # flanks - the same towering proportions the pre-restart design
+            # was approved at - dropping to the broad flat ash apron
+            # (0.70-1.0, ~190 studs of walked ring). Randomness comes from
+            # THREE stacked systems, all over the WHOLE mountain, not just
+            # the rim: CRAG (broad noise ribs over the full flank band,
+            # u 0.22-0.92), CRAG_RADIAL (the plan outline wobbles per ring,
+            # so the silhouette wanders at every height), and PEAK_JAG (the
+            # upper cone's ridgeline rises/falls per angle).
             "PROFILE": [
-                (0.000, 168.0),  # crater dish floor
-                (0.050, 172.0),
-                (0.100, 205.0),  # the summit rim
-                (0.160, 172.0),  # ~40 deg
-                (0.240, 136.0),  # ~35 deg
-                (0.330, 103.0),  # ~30 deg
-                (0.420, 76.0),  # ~25 deg
-                (0.510, 54.0),  # ~21 deg
-                (0.600, 34.0),  # ~19 deg
-                (0.700, 16.0),  # cone meets the ash apron
-                (0.790, 6.5),
-                (0.880, 3.4),
-                (0.950, 1.6),
-                (1.000, 0.9),  # shore: ~0.5 studs per 10, the tide band
+                (0.000, 830.0),  # crater dish floor
+                (0.050, 836.0),
+                (0.110, 852.0),  # inner crater wall
+                (0.155, 895.0),  # the summit lip
+                (0.190, 812.0),  # near-vertical under the lip
+                (0.250, 655.0),
+                (0.320, 492.0),
+                (0.400, 338.0),
+                (0.480, 215.0),
+                (0.560, 122.0),
+                (0.630, 62.0),
+                (0.700, 27.0),  # cone meets the ash apron
+                (0.760, 12.0),
+                (0.820, 6.5),
+                (0.900, 3.2),
+                (1.000, 1.0),  # shore: ~0.5 studs per 10, the tide band
                 (1.090, -1.8),
                 (1.280, SKIRT_BOTTOM),
             ],
-            "COAST_TERMS": [(2, 1.0, 0.09), (3, 3.0, 0.06), (5, 0.5, 0.05)],
-            "GRASS_TERMS": [(2, 0.9, 0.05), (4, 1.5, 0.04)],
-            # Deliberately SMOOTH for step 1 - raggedness is a later step.
-            "CRAG": 0.0,
-            "CRAG_FREQ": 0.06,
-            "CRAG_RADIAL": 0.0,
+            # Strongly irregular outline + apron boundary.
+            "COAST_TERMS": [(2, 1.0, 0.12), (3, 3.0, 0.09), (5, 0.5, 0.07), (8, 2.0, 0.06)],
+            "GRASS_TERMS": [(2, 0.9, 0.06), (4, 1.5, 0.05)],
+            # Heavy broad crag over the whole flank; the apron stays level
+            # (RIM_FLAT fades it across the walked ground only).
+            "CRAG": 68.0,
+            "CRAG_FREQ": 0.016,  # broad shattered ribs, scaled to a 900-stud mountain
+            "CRAG_RADIAL": 0.13,  # the outline wanders hard at every height...
+            # ...and the wobble's frequencies are cranked (angular 6 -> 13,
+            # height 4 -> 18) so spurs and gullies alternate around the cone
+            # AND the wander CHANGES as you climb: bulges, set-back ledges,
+            # no two heights alike - the whole shape randomized, per the user.
+            "CRAG_RADIAL_FREQS": (13.0, 18.0),
             "CRAG_CALM": None,
-            "RIM_FLAT": None,
+            "RIM_FLAT": (0.72, 1.0),
             "NOTCHES": [],
             "NOTCH_BAND": None,
-            "PEAK_JAG": 0.0,
-            "PEAK_TERMS": [],
+            # The broken asymmetric ridgeline around the summit.
+            "PEAK_JAG": 28.0,
+            "PEAK_TERMS": [(2, 0.8, 0.45), (3, 2.6, 0.35), (5, 1.1, 0.20)],
             "PREVIEW_SHOTS": [
-                # Standing on the apron at the old spawn side, looking at the
-                # mountain; and the sail-in from the +Z sea.
-                ("apron", (0.0, -560.0, 10.0), (0.0, 0.0, 140.0), 26),
-                ("approach", (0.0, -1150.0, 45.0), (0.0, 0.0, 110.0), 34),
+                # Standing on the apron at the old spawn side, craning up at
+                # the mountain; and the sail-in from the +Z sea.
+                ("apron", (0.0, -560.0, 10.0), (0.0, 0.0, 460.0), 26),
+                ("approach", (0.0, -1500.0, 60.0), (0.0, 0.0, 420.0), 30),
             ],
             "COLORS": {
                 # Step 1 keeps the real volcanic palette (the swamp restart
@@ -4992,6 +5015,13 @@ def configure(overrides):
         g["SCALE"] = g["ISLAND_RADIUS"] / _BASE_RADIUS
     if "TREE_SCALE" not in overrides:
         g["TREE_SCALE"] = g["SCALE"] * 1.6
+    # Unlike the legacy shape keys (which every entry must pin by hand - the
+    # no-reset rule), this newer knob RESETS to its default here: gloom and
+    # wreck use the radial wobble without setting frequencies, and inheriting
+    # the volcano's cranked pair drifted their mesh bottoms (-16.53 -> -16.86
+    # / -18.25 -> -18.22, caught by the pack HANDOFF check, 2026-08-27).
+    if "CRAG_RADIAL_FREQS" not in overrides:
+        g["CRAG_RADIAL_FREQS"] = (6.0, 4.0)
     random.seed(SEED)
 
 

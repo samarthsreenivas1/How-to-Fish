@@ -207,10 +207,13 @@ Islands.items = {
 	-- RESTARTED FROM SCRATCH (2026-08-27, user) - the swamp-restart playbook:
 	-- the stratovolcano build (trail, lava rivers, props, dock) was deleted
 	-- and the rebuild goes step-by-step, reviewed between steps. STEP 1 is
-	-- the bare landform: a clean ~205-stud cone with a summit crater dish on
-	-- a broad ash apron. NO dock, NO lava (the `waters = "volcano"` roster
-	-- and Phoenix chase are dormant until the lava step - the Volcano_Lava
-	-- contract wiring in World.luau stays for its return), NO props.
+	-- the bare landform, resized on review ("really really really tall...
+	-- jagged... more randomized"): a ~895-stud shattered spire (broken
+	-- ridgeline to ~950) with heavy crag + a height-varying outline over the
+	-- WHOLE cone, a summit crater dish, and a broad flat ash apron. NO dock,
+	-- NO lava (the `waters = "volcano"` roster and Phoenix chase are dormant
+	-- until the lava step - the Volcano_Lava contract wiring in World.luau
+	-- stays for its return), NO props.
 	volcano = {
 		name = "Ashfall Caldera",
 		blurb = "A towering volcano - fish its shore, brave the lava ponds.",
@@ -222,7 +225,7 @@ Islands.items = {
 		-- skirt (pack HANDOFF 2026-08-27; the old -9.74 was the deleted
 		-- flank rocks). Re-key when a rebuild step dips below the skirt.
 		radius = 640, -- capped so the base mesh imports (Roblox's 2048-stud limit)
-		spawn = Vector3.new(11800, 5, 3111), -- X/Z: rel Z=511 on the +Z ash apron (shore at rel Z=541, step-1 pack HANDOFF; no dock yet); Y is the probe's fallback
+		spawn = Vector3.new(11800, 7, 3101), -- X/Z: rel Z=501 on the +Z ash apron (shore at rel Z=531, tall-spire pack HANDOFF; no dock yet); Y is the probe's fallback
 		unlockLevel = 22,
 		-- Pyrelisk guards it (summoned by Caldera's Call, exactly the Brinejaw
 		-- ritual). Its arena still keys off the OLD dock position (open sea

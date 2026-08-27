@@ -853,12 +853,25 @@ playbook applied to Ashfall Caldera — reviewed from PNG previews
   `_jagged_disc`, `_pool_disc`, `_interior_spot`, `_near_dock_corridor`,
   `add_ribbon_slab`.
 - **Step 1 (`build_volcano`)**: ONE `Volcano_Base` object off the shared
-  base machinery — ~205-stud summit rim over a genuinely CONCAVE flank
-  (~40° under the rim easing to ~16°), a shallow crater dish, a broad flat
-  ash apron (u 0.70-1.0, ~190 studs of walked ring), standard tide-band
-  shore. CRAG 0 / no notches — raggedness is a later step. The first draft
-  peaked at 158 and read as a HILL from the apron; the round-2 profile is
-  the fix. 1,080 tris.
+  base machinery. Shape went FOUR rounds against previews: 158-peak dome
+  (read as a hill) → 205 concave cone (user: "too uniform... really really
+  really tall... jagged... more randomized") → **~895-stud shattered
+  spire** (broken ridgeline to ~950 via PEAK_JAG 28, near-vertical craggy
+  flanks CRAG 68/FREQ 0.016, SEGMENTS 96) with a summit crater dish and
+  the broad flat ash apron (u 0.70-1.0; RIM_FLAT keeps it level), standard
+  tide-band shore. ~1,630 tris.
+- **NEW GENERATOR KNOB `CRAG_RADIAL_FREQS` (angular, height)** — the radial
+  outline wobble's noise frequencies, default (6.0, 4.0) = the old
+  hardcoded pair. The volcano cranks them to (13, 18) so the silhouette
+  wanders DIFFERENTLY at every height (spurs/gullies/ledges, not vertical
+  fluting — the round-3 finding: with u varying only 4 noise units over
+  900 studs, cliffs read as columns). **Unlike the legacy shape keys this
+  one RESETS in configure()** when not overridden — the first pack build
+  leaked the volcano's pair into gloom/wreck (which use the wobble without
+  setting frequencies; bottoms drifted -16.53→-16.86 / -18.25→-18.22,
+  caught by the HANDOFF check). Prefer this reset-in-configure pattern for
+  any FUTURE new shape global; the legacy keys keep the pin-every-entry
+  rule.
 - **THE SEED LEAK (hard-won, a6's catch)**: `SEED` is a global default (7)
   that only the maelstrom entry overrides — swamp/ice/gloom/wreck INHERIT
   whatever the volcano leaves in it, and a draft that set `"SEED": 11`
