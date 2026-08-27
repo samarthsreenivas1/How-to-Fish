@@ -305,10 +305,14 @@ local NON_COLLIDE = {
 	"Frostmaw_IceHoles",
 	"Gloomtrench_DarkWater",
 	"Wreckwater_Bay",
-	-- The fen's cattail brakes (swamp restart): you wade through reeds,
-	-- never bounce off them.
+	-- The fen's cattail brakes and small dressing (swamp restart): you wade
+	-- through reeds, step over lilies, logs and stones - no prop walls.
 	"Swamp_Cattails",
 	"Swamp_CattailHeads",
+	"Swamp_Lilies",
+	"Swamp_LilyBlooms",
+	"Swamp_Logs",
+	"Swamp_Stones",
 	-- The open-sea ghost hulks (round 2) and the bay wrecks' rotted sail
 	-- scraps: box/hull collision on a +-700-stud wreck scatter would wall
 	-- off the sea for the boat, and the fiction earns the pass-through -
@@ -390,6 +394,10 @@ local MESH_COLOR = {
 	Swamp_Base3 = Color3.fromRGB(74, 63, 47), -- M_WetMud
 	Swamp_Cattails = Color3.fromRGB(122, 134, 66), -- reed-green stalks + blades
 	Swamp_CattailHeads = Color3.fromRGB(94, 62, 35), -- the brown seed heads
+	Swamp_Lilies = Color3.fromRGB(115, 164, 81), -- floating pads: the fen's colour pop
+	Swamp_LilyBlooms = Color3.fromRGB(224, 158, 191), -- the occasional pale-pink flower
+	Swamp_Logs = Color3.fromRGB(66, 53, 40), -- half-sunken logs + cypress knees
+	Swamp_Stones = Color3.fromRGB(90, 93, 85), -- mossy bog stones
 
 	-- Frostmaw Reach (assets/island_ice_gen.py).
 	Frostmaw_Base = Color3.fromRGB(234, 239, 244), -- M_Snow

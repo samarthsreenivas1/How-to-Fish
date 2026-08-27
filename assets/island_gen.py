@@ -1487,11 +1487,159 @@ def build_swamp_cattails():
     ]
 
 
+def build_swamp_smalls():
+    """The fen's small dressing - everything little that isn't a tree
+    (user: "lily pads and other swamp decoration stuff... smaller stuff"):
+      - Swamp_Lilies: rafts of flat pads floating on the open water
+      - Swamp_LilyBlooms: a flower on roughly one pad in six
+      - Swamp_Logs: half-sunken rotted logs in the shallows + clusters of
+        cypress KNEES (little woody cones poking out of the water near the
+        margins) - one object, both are M_RootWood
+      - Swamp_Stones: mossy bog stones on the islets and banks
+    All four go NON-COLLIDE in WorldService (the restart's no-prop-walls
+    rule). Everything keeps clear of the boss mere and the spawn shelf."""
+    lily_bm = bmesh.new()
+    bloom_bm = bmesh.new()
+    log_bm = bmesh.new()
+    stone_bm = bmesh.new()
+    rng = random.Random(3313)
+    mx, my, mr = SWAMP_MERE
+    sx, sy = SWAMP_SPAWN
+
+    def clear(x, y, pad):
+        return math.hypot(x - mx, y - my) >= mr + pad and math.hypot(x - sx, y - sy) >= 24
+
+    def marsh_spot(lo, hi, tries=40):
+        """A point in the marsh whose ground height sits in [lo, hi]."""
+        for _ in range(tries):
+            theta = rng.uniform(0, math.tau)
+            u = rng.uniform(0.08, SWAMP_RIM_U)
+            r_world = ring_radius(u, theta)
+            x, y = math.cos(theta) * r_world, math.sin(theta) * r_world
+            g = _swamp_height(x, y)
+            if lo <= g <= hi and clear(x, y, 4):
+                return x, y, g
+        return None
+
+    # Lily rafts: pads float on genuinely open water (bed well below the
+    # surface), in loose drifts. Flat low-poly hexagon slabs a hair above
+    # the sheet so they never z-fight it.
+    pads, blooms, rafts = 0, 0, 0
+    while rafts < 26:
+        spot = marsh_spot(SWAMP_BED_Z - 1.2, SWAMP_WATER_Z - 0.45)
+        if not spot:
+            break
+        rafts += 1
+        cx, cy, _ = spot
+        for _ in range(rng.randint(5, 11)):
+            a = rng.uniform(0, math.tau)
+            d = rng.uniform(0, 6.5)
+            x, y = cx + math.cos(a) * d, cy + math.sin(a) * d
+            if _swamp_height(x, y) > SWAMP_WATER_Z - 0.4 or not clear(x, y, 3):
+                continue
+            pads += 1
+            pr = rng.uniform(0.8, 1.6)
+            yaw0 = rng.uniform(0, math.tau)
+            points = []
+            for s in range(6):
+                ang = yaw0 + (s / 6) * math.tau
+                w = 1 + 0.12 * math.sin(2.7 * ang + pr * 9)
+                points.append((x + math.cos(ang) * pr * w, y + math.sin(ang) * pr * w))
+            add_disc_slab(lily_bm, points, SWAMP_WATER_Z + 0.08, 0.1)
+            if rng.random() < 0.16:
+                blooms += 1
+                add_cone(bloom_bm, (x, y, SWAMP_WATER_Z + 0.1), 0.28, 0.05, rng.uniform(0.4, 0.6), sides=5)
+
+    # Half-sunken logs: lying in the shallows and on the low banks, tilted
+    # nearly flat, a couple of stub branches each.
+    logs = 0
+    while logs < 20:
+        spot = marsh_spot(SWAMP_WATER_Z - 0.7, SWAMP_WATER_Z + 1.1)
+        if not spot:
+            break
+        logs += 1
+        x, y, g = spot
+        yaw = rng.uniform(0, math.tau)
+        length = rng.uniform(5.0, 9.0)
+        r0 = rng.uniform(0.5, 0.75)
+        # An add_cone tilted ~88 degrees lies the frustum on its side.
+        tilt = (math.cos(yaw) * 1.52, math.sin(yaw) * 1.52)
+        add_cone(log_bm, (x, y, g + r0 * 0.35), r0, r0 * 0.55, length, sides=5, tilt=tilt)
+        axis = cone_axis(tilt, 0.0)
+        for _b in range(rng.randint(1, 3)):
+            t = rng.uniform(0.25, 0.8)
+            bx, by, bz = x + axis.x * length * t, y + axis.y * length * t, g + r0 * 0.35 + axis.z * length * t
+            add_cone(
+                log_bm,
+                (bx, by, bz),
+                r0 * 0.35,
+                0.05,
+                rng.uniform(1.2, 2.4),
+                sides=3,
+                tilt=(rng.uniform(-0.9, 0.9), rng.uniform(-0.9, 0.9)),
+            )
+
+    # Cypress knees: little woody cones huddling in the shallow water off
+    # the margins - the closest thing to trees this step allows itself.
+    knees = 0
+    for _ in range(26):
+        spot = marsh_spot(SWAMP_WATER_Z - 1.0, SWAMP_WATER_Z - 0.15)
+        if not spot:
+            break
+        cx, cy, _ = spot
+        for _k in range(rng.randint(3, 5)):
+            a = rng.uniform(0, math.tau)
+            d = rng.uniform(0.4, 2.6)
+            x, y = cx + math.cos(a) * d, cy + math.sin(a) * d
+            g = _swamp_height(x, y)
+            if g > SWAMP_WATER_Z:
+                continue
+            knees += 1
+            add_cone(
+                log_bm,
+                (x, y, g),
+                rng.uniform(0.28, 0.45),
+                0.06,
+                (SWAMP_WATER_Z - g) + rng.uniform(0.5, 1.4),
+                sides=4,
+                tilt=(rng.uniform(-0.12, 0.12), rng.uniform(-0.12, 0.12)),
+            )
+
+    # Bog stones: mossy lumps on the islets and banks, half-buried.
+    stones = 0
+    while stones < 30:
+        spot = marsh_spot(SWAMP_WATER_Z + 0.25, 99.0)
+        if not spot:
+            break
+        stones += 1
+        x, y, g = spot
+        s = rng.uniform(0.6, 1.6)
+        add_blob(
+            stone_bm,
+            (x, y, g + s * 0.25),
+            (s, s * rng.uniform(0.75, 1.0), s * rng.uniform(0.5, 0.75)),
+            0.25,
+            salt=stones * 3.7,
+            yaw=rng.uniform(0, math.tau),
+        )
+
+    print(
+        f"[island_gen] swamp smalls: {pads} lily pads ({blooms} blooms) in {rafts} rafts, {logs} logs, {knees} knees, {stones} stones"
+    )
+    return [
+        object_from_bmesh("Swamp_Lilies", lily_bm, ["M_Lily"]),
+        object_from_bmesh("Swamp_LilyBlooms", bloom_bm, ["M_LilyBloom"]),
+        object_from_bmesh("Swamp_Logs", log_bm, ["M_RootWood"]),
+        object_from_bmesh("Swamp_Stones", stone_bm, ["M_BogStone"]),
+    ]
+
+
 def build_swamp():
     objects = [
         build_swamp_base(),
         build_swamp_water(),
         *build_swamp_cattails(),
+        *build_swamp_smalls(),
     ]
     a = math.radians(270)  # the +Z quadrant the dock will eventually face
     shore = ring_radius(1.0, a)
@@ -4949,6 +5097,10 @@ ISLANDS = {
                 "M_SwampWater": (0.153, 0.239, 0.196),
                 "M_Cattail": (0.478, 0.525, 0.259),  # dusty reed green
                 "M_CattailHead": (0.369, 0.243, 0.137),  # the brown seed heads
+                "M_Lily": (0.451, 0.643, 0.318),  # lily pads: the fen's colour pop
+                "M_LilyBloom": (0.88, 0.62, 0.75),  # the occasional pale-pink flower
+                "M_RootWood": (0.259, 0.208, 0.157),  # sunken logs + cypress knees
+                "M_BogStone": (0.353, 0.365, 0.333),  # mossy bog stones
             },
         },
         "build": build_swamp,
