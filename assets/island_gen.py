@@ -2032,6 +2032,8 @@ def build_swamp_trees():
     canopies are NON-COLLIDE; mere + spawn keep-clears hold."""
     bms = [bmesh.new(), bmesh.new(), bmesh.new()]
     leaf_bms = [bmesh.new(), bmesh.new(), bmesh.new()]
+    moss_bm = bmesh.new()  # pale hanging moss ribbons off the branch tips
+    vine_bm = bmesh.new()  # darker, longer vines - a few reach for the water
     rng = random.Random(4517)
     mx, my, mr = SWAMP_MERE
     sx, sy = SWAMP_SPAWN
@@ -2140,7 +2142,26 @@ def build_swamp_trees():
                     yaw=rng.uniform(0, math.tau),
                 )
 
-    print(f"[island_gen] swamp trees: {trees} trees, horizontal knitted canopy roof, 3x2 objects")
+            # The hanging garden: pale moss ribbons off roughly half the
+            # tips, and the odd long vine dropping toward the water.
+            for k, t_ in enumerate(tips):
+                if rng.random() < 0.5:
+                    ml = rng.uniform(2.5, 6.0)
+                    add_cone(moss_bm, (t_.x, t_.y, t_.z - ml), 0.1, 0.04, ml, sides=3)
+                if rng.random() < 0.22:
+                    vl = rng.uniform(6.0, 12.0)
+                    va = rng.uniform(0, math.tau)
+                    add_cone(
+                        vine_bm,
+                        (t_.x, t_.y, t_.z - vl),
+                        0.08,
+                        0.05,
+                        vl,
+                        sides=3,
+                        tilt=(math.cos(va) * rng.uniform(0.03, 0.12), math.sin(va) * rng.uniform(0.03, 0.12)),
+                    )
+
+    print(f"[island_gen] swamp trees: {trees} trees, knitted roof + hanging moss/vines, 3x2+2 objects")
     return [
         object_from_bmesh("Swamp_Trees", bms[0], ["M_TrunkWood"]),
         object_from_bmesh("Swamp_Trees2", bms[1], ["M_TrunkWood"]),
@@ -2148,6 +2169,8 @@ def build_swamp_trees():
         object_from_bmesh("Swamp_TreeLeaves", leaf_bms[0], ["M_WillowLeaf"]),
         object_from_bmesh("Swamp_TreeLeaves2", leaf_bms[1], ["M_WillowLeaf"]),
         object_from_bmesh("Swamp_TreeLeaves3", leaf_bms[2], ["M_WillowLeaf"]),
+        object_from_bmesh("Swamp_HangMoss", moss_bm, ["M_HangMoss"]),
+        object_from_bmesh("Swamp_Vines", vine_bm, ["M_Vine"]),
     ]
 
 
@@ -5714,7 +5737,9 @@ ISLANDS = {
                 "M_SwampPlank": (0.451, 0.369, 0.251),  # slick dark boardwalk planks
                 "M_SwampPost": (0.310, 0.251, 0.176),
                 "M_TrunkWood": (0.55, 0.42, 0.30),  # smooth tan trunks (the reference look)
-                "M_WillowLeaf": (0.20, 0.26, 0.17),  # drooping blades + hanging strands
+                "M_WillowLeaf": (0.20, 0.26, 0.17),  # the canopy masses
+                "M_HangMoss": (0.451, 0.514, 0.365),  # pale spanish-moss ribbons
+                "M_Vine": (0.20, 0.27, 0.17),  # long dark vines reaching down
             },
         },
         "build": build_swamp,

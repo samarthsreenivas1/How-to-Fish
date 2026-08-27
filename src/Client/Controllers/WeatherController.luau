@@ -63,6 +63,12 @@ local LANTERN_RODS: { [string]: boolean } = {
 	gloomheart_rod = true,
 }
 
+-- The fen's standing mist (swamp restart, 2026-08-28): client-only like the
+-- gloom dark - being on the island IS the weather. Lighter than a blizzard,
+-- greener than anything else: humid air under the canopy roof.
+local MIST_DENSITY = 0.42
+local MIST_FOG_END = 340
+
 local BLIZZARD_DENSITY = 0.55
 local BLIZZARD_FOG_END = 190
 
@@ -242,6 +248,31 @@ local function applyBlizzard()
 	setSnow(true)
 end
 
+-- The fen: a green-grey haze hanging between the trunks, the light dimmed
+-- and warmed a step - humid, hushed, never as blinding as a blizzard nor as
+-- black as the trench.
+local function applyMist()
+	tweenLighting({
+		Ambient = Color3.fromRGB(36, 42, 32),
+		OutdoorAmbient = Color3.fromRGB(96, 106, 86),
+		ClockTime = defaults.ClockTime,
+		Brightness = defaults.Brightness * 0.8,
+	})
+	tweenFog({
+		Density = MIST_DENSITY,
+		Color = Color3.fromRGB(142, 152, 128),
+		Decay = Color3.fromRGB(104, 116, 96),
+		Haze = 2.4,
+		Glare = 0,
+	}, {
+		FogEnd = MIST_FOG_END,
+		FogStart = 18,
+		FogColor = Color3.fromRGB(134, 144, 120),
+	})
+	setLamp(false, 0)
+	setSnow(false)
+end
+
 local function applyGloom(lanternHeld: boolean)
 	tweenLighting({
 		Ambient = Color3.fromRGB(14, 12, 22),
@@ -270,6 +301,8 @@ local function refresh()
 	local mode = "clear"
 	if here == "gloom" then
 		mode = "gloom"
+	elseif here == "swamp" then
+		mode = "mist"
 	elseif here and blizzards[here] then
 		mode = "blizzard"
 	end
@@ -279,6 +312,8 @@ local function refresh()
 	elseif mode ~= currentMode then
 		if mode == "blizzard" then
 			applyBlizzard()
+		elseif mode == "mist" then
+			applyMist()
 		else
 			applyClear()
 		end
