@@ -1428,13 +1428,17 @@ def build_volcano():
     rim to sea, apron pools + molten deltas); STEP 3 - the dead giants
     (build_volcano_trees); STEP 4 - the rocks (build_volcano_rocks: apron
     boulders + talus; flanks bare by user order); STEP 5 - the DOCK (the
-    tropical dock verbatim on the 270-deg lane). Still NO foam."""
+    tropical dock verbatim on the 270-deg lane); STEP 6 - the shoreline
+    foam (the standard thin white tide line + dock-post collars). The
+    rebuild's geometry is COMPLETE; EruptionService was removed and lava
+    deals no damage, both by user order."""
     base = build_island_base("Volcano_Base", ["M_VolRock", "M_VolAsh", "M_VolWet"])
     ground = _ground_bvh(base)
     lava = build_lava(ground)  # step 2: clears + repopulates LAVA_PONDS itself
     trees = build_volcano_trees(ground)  # step 3: after lava - reads LAVA_PONDS to keep clear
     rocks = build_volcano_rocks(ground)  # step 4: same keep-clears
     dock = build_dock("Volcano_Dock_Planks", "Volcano_Dock_Posts", "M_VolPlank", "M_VolPost")  # step 5
+    foam = build_foam("Volcano_Foam", "M_VolFoam")  # step 6: after the dock - it collars the wet posts
     shore = ring_radius(1.0, math.radians(270))
     dock_start = ring_radius(DOCK_START_U, math.radians(270))
     dock_end = dock_start + DOCK_LENGTH + DOCK_END_LENGTH
@@ -1445,7 +1449,7 @@ def build_volcano():
         f"spawn suggestion X=0 Z={shore - 30:.0f} ground Y~{height_at(0, -(shore - 30)):.1f}; "
         f"Pyrelisk arena suggestion: rel Z={dock_end + 40:.0f} (open sea past the dock end)"
     )
-    return [base, lava, trees, rocks, *dock]
+    return [base, lava, trees, rocks, *dock, foam]
 
 
 # ---------------------------------------------------------------- revamp islands (2026-08-25)
@@ -2174,6 +2178,18 @@ def build_swamp_trees():
     ]
 
 
+def build_swamp_foam():
+    """The scummy pale rim where the fen meets the sea - the shared
+    shoreline-foam builder on the standard coast ring. The swamp has NO
+    sea dock, and build_foam collars whatever DOCK_POST_POSITIONS holds -
+    which, in a pack build, is still the PREVIOUS island's posts (the
+    same configure() carry-over family as the shape keys) - so the list
+    is cleared first or the fen's rim grows phantom collars out at the
+    volcano's dock coordinates."""
+    DOCK_POST_POSITIONS.clear()
+    return build_foam("Swamp_Foam", "M_SwampFoam")
+
+
 def build_swamp():
     objects = [
         build_swamp_base(),
@@ -2181,6 +2197,7 @@ def build_swamp():
         *build_swamp_trees(),
         *build_swamp_cattails(),
         *build_swamp_smalls(),
+        build_swamp_foam(),
     ]
     a = math.radians(270)  # the +Z quadrant the dock will eventually face
     shore = ring_radius(1.0, a)
@@ -5578,6 +5595,7 @@ ISLANDS = {
                 "M_Obsidian": (0.090, 0.090, 0.122),  # the rock masses
                 "M_VolPlank": (0.690, 0.490, 0.290),  # the tropical dock's wood, verbatim
                 "M_VolPost": (0.455, 0.310, 0.190),
+                "M_VolFoam": (0.851, 0.851, 0.890),  # ash-tinged surf line
             },
         },
         "build": build_volcano,
@@ -5662,6 +5680,7 @@ ISLANDS = {
                 "M_RootWood": (0.259, 0.208, 0.157),  # sunken logs + cypress knees
                 "M_BogStone": (0.353, 0.365, 0.333),  # mossy bog stones
                 "M_Mushroom": (0.78, 0.46, 0.28),  # toadstool clusters (colour pop)
+                "M_SwampFoam": (0.851, 0.878, 0.831),  # scummy pale rim, not white surf
                 "M_TrunkWood": (0.55, 0.42, 0.30),  # smooth tan trunks (the reference look)
                 "M_WillowLeaf": (0.20, 0.26, 0.17),  # the canopy masses
                 "M_HangMoss": (0.451, 0.514, 0.365),  # pale spanish-moss ribbons

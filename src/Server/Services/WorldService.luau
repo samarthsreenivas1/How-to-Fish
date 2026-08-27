@@ -412,6 +412,7 @@ local MESH_COLOR = {
 	-- Step 5: the tropical dock's wood, verbatim (user: same dock as home).
 	Volcano_Dock_Planks = Color3.fromRGB(176, 125, 74),
 	Volcano_Dock_Posts = Color3.fromRGB(116, 79, 48),
+	Volcano_Foam = Color3.fromRGB(217, 217, 227), -- M_VolFoam (step 6: the surf line; NON_COLLIDE via "_Foam")
 
 	-- Blackmire Fen - RESTARTED FROM SCRATCH (2026-08-27, user; see
 	-- island_gen.py's swamp section). Step 2 brought the fen palette back
@@ -432,6 +433,7 @@ local MESH_COLOR = {
 	Swamp_Mushrooms = Color3.fromRGB(199, 117, 71), -- toadstool clusters on logs and banks
 	-- (The interior boardwalk was tried and REMOVED - user, 2026-08-28:
 	-- "it doesnt fit in properly". The fen is fished from its banks.)
+	Swamp_Foam = Color3.fromRGB(217, 224, 212), -- scummy pale shoreline rim (non-collide via the _Foam substring)
 	-- The fen's trees, reference-style (user images): smooth tan curved
 	-- trunks - willows w/ drooping blades, bare crooked snags. Trunks are
 	-- deliberately NOT in NON_COLLIDE (a trunk is a real obstacle); the
