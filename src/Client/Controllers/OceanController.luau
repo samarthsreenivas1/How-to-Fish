@@ -43,22 +43,28 @@ local TIDE = Ocean.TIDE
 -- prefixed `<Id>_Foam` (see assets/island_gen.py's naming rule).
 local FOAM_MATCH = "Foam"
 
--- { texture = Texture, config = Ocean.LAYERS[i] }
+-- { texture = Texture, config = Ocean.LAYERS[i], part = BasePart }
 local layers = {}
 
--- The water plane and its resting CFrame.
-local ocean: BasePart? = nil
-local oceanRest: CFrame? = nil
+-- How far from the camera (studs, XZ) water still animates. The sea is a GRID
+-- of ~2040-stud tiles (WorldService.buildOcean - the engine caps one part at
+-- 2048 studs, so a single plane was never possible); animating a thousand
+-- tiles' CFrames and texture offsets every frame is pure waste when a 0.35
+-- stud tide and a 0.35 stud/s drift are invisible past the fog. Tiles beyond
+-- this radius hold their resting pose and pattern - the caustics tile repeats
+-- every 40 studs and OCEAN_TILE is a multiple of it, so still and moving
+-- tiles always line up at the seam.
+local ANIMATE_RADIUS = 4500
 
 -- The island's white foam rims, which ride the water up and down.
 -- { part, rest = CFrame }
 local bands = {}
 
--- Interior island waters (Ocean.INTERIOR_WATER_NAMES - the fen pools, ice
--- holes, gloom lake, wreck bay): each is dressed by the server exactly like
--- the sea, and here it MOVES exactly like the sea too - its caustics layers
--- join `layers` for the drift, and the part itself rides the same tide.
--- { part, rest = CFrame }
+-- Every part that rides the tide and drifts its caustics: the sea's grid
+-- tiles (each named World.OCEAN_NAME) and the interior island waters
+-- (Ocean.INTERIOR_WATER_NAMES - the fen pools, ice holes, gloom lake, wreck
+-- bay; each dressed by the server exactly like the sea). One list because
+-- they move identically. { part, rest = CFrame, lifted = boolean? }
 local waters = {}
 
 local elapsed = 0
@@ -107,7 +113,7 @@ local function trackWater(part: BasePart)
 					end
 				end
 				if not known then
-					table.insert(layers, { texture = texture, config = config })
+					table.insert(layers, { texture = texture, config = config, part = part })
 				end
 			end
 		end
@@ -121,7 +127,7 @@ local function scanWorld(world: Instance)
 		if descendant:IsA("BasePart") then
 			if string.find(descendant.Name, FOAM_MATCH, 1, true) then
 				trackFoam(descendant)
-			elseif Ocean.INTERIOR_WATER_NAMES[descendant.Name] then
+			elseif Ocean.INTERIOR_WATER_NAMES[descendant.Name] or descendant.Name == World.OCEAN_NAME then
 				trackWater(descendant)
 			end
 		end
@@ -133,9 +139,23 @@ end
 local function step(dt: number)
 	elapsed += dt
 
-	-- Texture drift.
+	local camera = Workspace.CurrentCamera
+	local camPos = camera and camera.CFrame.Position
+	local function isNear(part: BasePart): boolean
+		if not camPos then
+			return true
+		end
+		local dx = part.Position.X - camPos.X
+		local dz = part.Position.Z - camPos.Z
+		return dx * dx + dz * dz < ANIMATE_RADIUS * ANIMATE_RADIUS
+	end
+
+	-- Texture drift (near layers only - see ANIMATE_RADIUS).
 	local wobble = math.sin(elapsed * TAU / Ocean.WOBBLE_PERIOD)
 	for index, layer in layers do
+		if layer.part and (not layer.part.Parent or not isNear(layer.part)) then
+			continue
+		end
 		local config = layer.config
 		-- Alternate layers wobble opposite ways so, if there is ever more
 		-- than one, they shear against each other instead of sliding in
@@ -153,10 +173,6 @@ local function step(dt: number)
 	local tide = tideAt(elapsed)
 	local lift = tide * TIDE.HEIGHT
 
-	if ocean and oceanRest then
-		ocean.CFrame = oceanRest + Vector3.new(0, lift, 0)
-	end
-
 	-- The shoreline rim rides the water up and down. Vertical ONLY, on
 	-- purpose: an earlier version also scaled the mesh inward to chase the
 	-- water's edge across the sand, but setting a MeshPart's Size scales it
@@ -173,12 +189,19 @@ local function step(dt: number)
 		end
 	end
 
-	-- The interior waters breathe with the same swell. Visual-only, exactly
-	-- like the sea plane: gameplay keeps using the surface Y the server
-	-- probed, and the lift is too small to disagree visibly.
+	-- The sea tiles and interior waters breathe with the same swell.
+	-- Visual-only: gameplay keeps using the surface Y the server probed, and
+	-- the lift is too small to disagree visibly. Far tiles hold their resting
+	-- pose (reset once on the way out so none freezes mid-lift).
 	for _, entry in waters do
 		if entry.part.Parent then
-			entry.part.CFrame = entry.rest + Vector3.new(0, lift, 0)
+			if isNear(entry.part) then
+				entry.part.CFrame = entry.rest + Vector3.new(0, lift, 0)
+				entry.lifted = true
+			elseif entry.lifted then
+				entry.part.CFrame = entry.rest
+				entry.lifted = nil
+			end
 		end
 	end
 end
@@ -196,19 +219,12 @@ function OceanController.init()
 		return
 	end
 
-	ocean = water
-	oceanRest = water.CFrame
-
-	-- Missing layers are expected until the texture is uploaded; the server
-	-- already warned with the steps, so stay quiet here.
-	for _, config in Ocean.LAYERS do
-		local texture = water:FindFirstChild(config.name)
-		if texture and texture:IsA("Texture") then
-			table.insert(layers, { texture = texture, config = config })
-		end
-	end
-
-	-- The islands (and so the foam rims and interior waters) may still be
+	-- The sea is a grid of tiles all sharing OCEAN_NAME; the WaitForChild
+	-- above is only the sync point ("the server has built the ocean"). The
+	-- scan below adopts every tile - trackWater picks up each one's caustics
+	-- layers too, and missing layers are expected until the texture is
+	-- uploaded (the server already warned with the steps, so stay quiet here).
+	-- The islands (and so the foam rims and interior waters) may also still be
 	-- replicating, so take what is there now and pick up the rest as it
 	-- arrives.
 	scanWorld(world)
@@ -236,7 +252,7 @@ function OceanController.init()
 			return
 		end
 		local isFoam = string.find(descendant.Name, FOAM_MATCH, 1, true) ~= nil
-		local isWater = Ocean.INTERIOR_WATER_NAMES[descendant.Name] == true
+		local isWater = Ocean.INTERIOR_WATER_NAMES[descendant.Name] == true or descendant.Name == World.OCEAN_NAME
 		if isFoam or isWater then
 			-- Defer a frame: a part's Size/CFrame can still be settling on the
 			-- frame it appears, and those are captured as its resting pose.

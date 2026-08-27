@@ -175,15 +175,20 @@ local OCEAN_MARGIN = 2000
 -- The sea should read as INFINITE (user, 2026-08-27: "make the ocean infinite
 -- in size... make the ocean texture continue throughout the entire map"): a
 -- true infinite plane doesn't exist in Roblox, so the span gets a hard floor
--- instead. 60k left the edge ~14k from the outer islands - crisply visible
--- from shore in Studio's edit camera, where no Atmosphere haze runs (user,
--- 2026-08-27: "the water does not continue on for the entire map"). At 128k
--- the nearest edge sits ~45,000 studs of open water past the farthest island:
--- past the fog in play, below the horizon-blur in edit, and beyond any
--- realistic sail, while staying one single part (the caustics Texture tiles
--- its whole top face, so the water looks the same over every stud of the
--- map). Kept at ~131k studs total, where float precision starts to shimmer.
-local OCEAN_MIN_SPAN = 128000
+-- instead.
+--
+-- WHY EVERY EARLIER SPAN INCREASE DID NOTHING (user, 2026-08-28: "the water
+-- still isnt there"): Roblox SILENTLY CLAMPS every BasePart to 2048 studs per
+-- axis. The old single-part ocean asked for 60k, then 128k - and the engine
+-- pinned it at 2048x2048 without an error every time, which is exactly the
+-- small sheet whose edge kept showing up in screenshots. The ocean is
+-- therefore built as a GRID of maximum-size tiles now (buildOcean below);
+-- OCEAN_TILE stays a multiple of the caustics tileStuds (40) so the texture
+-- pattern runs seamlessly across tile seams, and every tile shares the
+-- OCEAN_NAME so CastAim / splash checks / the client tide treat the grid
+-- exactly like the one plane they were written against.
+local OCEAN_TILE = 2040 -- <= 2048 engine cap, and 51 repeats of the 40-stud caustics tile
+local OCEAN_MIN_SPAN = 65280 -- 32x32 tiles; nearest edge ~16k past the farthest island
 
 local function oceanSpan(): number
 	local reach = 1500
@@ -198,40 +203,52 @@ end
 
 local function buildOcean(parent: Instance)
 	local span = oceanSpan()
+	local tiles = math.ceil(span / OCEAN_TILE)
+	local origin = -tiles * OCEAN_TILE / 2
 
-	-- A single flat part rather than terrain water. Terrain at this scale costs
-	-- real memory and streaming time, and nothing here needs buoyancy or
-	-- swimming - the creatures never actually travel through it. The stylised
-	-- look is painted on: one tiling caustics texture from assets/water_gen.py
-	-- over a flat bright blue.
-	local ocean = part({
-		Name = World.OCEAN_NAME, -- CastAim finds the water by this name
-		Size = Vector3.new(span, 4, span),
-		CFrame = CFrame.new(0, World.WATER_Y - 2, 0),
-		Color = Ocean.COLOR,
-		Material = Enum.Material.SmoothPlastic,
-		Reflectance = Ocean.REFLECTANCE,
-		Parent = parent,
-	})
-	-- In its own group so the boat (BOAT group) passes through the slab and
-	-- floats on code-held Y instead; players still stand on the surface.
-	-- Assigning an unregistered group throws, and init must not die on it.
-	pcall(function()
-		ocean.CollisionGroup = WATER_GROUP
-	end)
+	-- Flat parts rather than terrain water. Terrain at this scale costs real
+	-- memory and streaming time, and nothing here needs buoyancy or swimming -
+	-- the creatures never actually travel through it. The stylised look is
+	-- painted on: one tiling caustics texture from assets/water_gen.py over a
+	-- flat bright blue. A GRID of parts because the engine caps any one part
+	-- at 2048 studs (see the OCEAN_TILE note above); every tile carries the
+	-- same name, group, and layers, so nothing downstream can tell the
+	-- difference.
+	for i = 0, tiles - 1 do
+		for j = 0, tiles - 1 do
+			local cx = origin + (i + 0.5) * OCEAN_TILE
+			local cz = origin + (j + 0.5) * OCEAN_TILE
+			local ocean = part({
+				Name = World.OCEAN_NAME, -- CastAim finds the water by this name
+				Size = Vector3.new(OCEAN_TILE, 4, OCEAN_TILE),
+				CFrame = CFrame.new(cx, World.WATER_Y - 2, cz),
+				Color = Ocean.COLOR,
+				Material = Enum.Material.SmoothPlastic,
+				Reflectance = Ocean.REFLECTANCE,
+				Parent = parent,
+			})
+			-- In its own group so the boat (BOAT group) passes through the slab
+			-- and floats on code-held Y instead; players still stand on the
+			-- surface. Assigning an unregistered group throws, and init must
+			-- not die on it.
+			pcall(function()
+				ocean.CollisionGroup = WATER_GROUP
+			end)
 
-	addWaterLayers(ocean)
+			addWaterLayers(ocean)
 
-	-- Seabed, so looking over the rail shows a floor instead of the void.
-	part({
-		Name = "Seabed",
-		Size = Vector3.new(span, 4, span),
-		CFrame = CFrame.new(0, World.SEABED_Y, 0),
-		Color = Color3.fromRGB(30, 45, 55),
-		Material = Enum.Material.SmoothPlastic,
-		CanCollide = false,
-		Parent = parent,
-	})
+			-- Seabed, so looking over the rail shows a floor instead of the void.
+			part({
+				Name = "Seabed",
+				Size = Vector3.new(OCEAN_TILE, 4, OCEAN_TILE),
+				CFrame = CFrame.new(cx, World.SEABED_Y, cz),
+				Color = Color3.fromRGB(30, 45, 55),
+				Material = Enum.Material.SmoothPlastic,
+				CanCollide = false,
+				Parent = parent,
+			})
+		end
+	end
 end
 
 -- ============================================================ Island mesh
