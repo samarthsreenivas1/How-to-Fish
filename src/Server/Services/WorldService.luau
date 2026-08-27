@@ -318,6 +318,7 @@ local NON_COLLIDE = {
 	"Swamp_Stones",
 	"Swamp_TreeLeaves",
 	"Swamp_TreeLeaves2",
+	"Swamp_TreeLeaves3",
 	-- The open-sea ghost hulks (round 2) and the bay wrecks' rotted sail
 	-- scraps: box/hull collision on a +-700-stud wreck scatter would wall
 	-- off the sea for the boat, and the fiction earns the pass-through -
@@ -412,9 +413,11 @@ local MESH_COLOR = {
 	-- blocks, never a hull over the whole forest. The leaves ARE
 	-- non-collide - you walk through hanging foliage.
 	Swamp_Trees = Color3.fromRGB(150, 116, 84),
-	Swamp_Trees2 = Color3.fromRGB(150, 116, 84), -- the forest is split over two meshes (triangle budget)
+	Swamp_Trees2 = Color3.fromRGB(150, 116, 84), -- the forest is split over three meshes (triangle budget)
+	Swamp_Trees3 = Color3.fromRGB(150, 116, 84),
 	Swamp_TreeLeaves = Color3.fromRGB(56, 72, 47),
 	Swamp_TreeLeaves2 = Color3.fromRGB(56, 72, 47), -- canopy split like the wood (triangle budget)
+	Swamp_TreeLeaves3 = Color3.fromRGB(56, 72, 47),
 
 	-- Frostmaw Reach (assets/island_ice_gen.py).
 	Frostmaw_Base = Color3.fromRGB(234, 239, 244), -- M_Snow
