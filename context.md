@@ -911,15 +911,16 @@ playbook applied to Ashfall Caldera — reviewed from PNG previews
   separated"): a 168×7 grid (`_lava_sheet`) where EVERY vertex raycasts
   its own ground and rides above it — a strip's interpolated middle let
   crag facets poke through; the grid conforms to every facet, coats
-  spurs, sinks into gullies, and its 7-stud underside/edge walls stay
-  inside the rock so nothing ever separates. Two hard-won rules: row
-  spacing ~3.5 studs (on a 70° wall a 7-stud row is ~20 studs of drop and
-  facets clip through mid-cell), and **the lift is SLOPE-SCALED**
-  (`LAVA_LIFT` 1.8 + 0.5×the local drop per row, capped +10): a vertical
-  offset of L on a wall of slope θ is only L·cosθ of true clearance —
-  ~¼ of L on these cliffs — which is why a constant lift still read as
-  "blending into the rock". Tight on the flat apron, tall on the
-  plunging walls, constant TRUE clearance everywhere. Widths 7→27+ studs, bulging
+  spurs, sinks into gullies, and its 10-stud underside/edge walls stay
+  inside the rock so nothing ever separates. Rules stacked over three
+  "blending into the rock" rounds: row spacing ~3.5 studs (on a 70° wall
+  a 7-stud row is ~20 studs of drop and facets clip through mid-cell);
+  **the lift is SLOPE-SCALED** (+0.5×the local drop per row, capped +12:
+  a vertical offset of L on a wall of slope θ is only L·cosθ of true
+  clearance — ~¼ of L on these cliffs); and **`LAVA_LIFT` = 3.6** (user:
+  "a thicker sheet… its own object layered on top") so ~3.6 studs of
+  molten side wall stand proud of the rock everywhere — the exposed edge
+  is what sells the lava as a distinct slab resting on the mountain. Widths 7→27+ studs, bulging
   mid-flank, ×1.35 on the main breach (48°).
   `waters = "volcano"` + Phoenix chase are LIVE again; Volcano_Lava back
   in MESH_COLOR + Neon. LavaController dresses it automatically (bubbles,

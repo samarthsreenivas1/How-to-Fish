@@ -1048,7 +1048,10 @@ def _jagged_disc(bm, cx, cy, rx, ry, z_top, thickness, salt, seg=26):
 
 LAVA_LAKE_LEVEL = 842.0  # crater lake surface; dish floor 830-836, inner lip 852
 LAVA_LAKE_R = 48.0
-LAVA_LIFT = 1.8  # how far the sheet's top rides above its own raycast rock
+LAVA_LIFT = 3.6  # base ride height above the raycast rock: a THICK visible
+# layer (user round 3: "a thicker sheet... its own object layered on top of
+# the rock") - the exposed side wall under the top surface is what sells the
+# lava as a distinct slab resting on the mountain rather than paint on it.
 LAVA_COLUMNS = 7  # lateral samples per row - every one conforms to the ground
 
 # (bearing_deg, notch_half_width_deg, notch_depth, width_scale). Deliberately
@@ -1143,7 +1146,7 @@ def _lava_river(bm, ground, bearing_deg, half_width_deg, width_scale):
             # (resting on it), tall on the plunging walls (where the offset
             # reads as thickness, never as floating).
             drop = abs(raw - prev_raw[j]) if prev_raw is not None else 0.0
-            row.append(Vector((ex, ey, raw + LAVA_LIFT + min(10.0, 0.5 * drop))))
+            row.append(Vector((ex, ey, raw + LAVA_LIFT + min(12.0, 0.5 * drop))))
             raws[j] = raw
         prev_raw, raws = raws, [0.0] * LAVA_COLUMNS
         rows.append(row)
@@ -1153,7 +1156,7 @@ def _lava_river(bm, ground, bearing_deg, half_width_deg, width_scale):
         if pool_at is None and u_at(cx, cy) >= 0.80:
             pool_at = (cx, cy, _lava_surface(ground, cx, cy))
 
-    _lava_sheet(bm, rows, 7.0)
+    _lava_sheet(bm, rows, 10.0)
     end = rows[-1][LAVA_COLUMNS // 2]
     return (end.x, end.y), pool_at
 
