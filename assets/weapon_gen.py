@@ -65,34 +65,34 @@ FRAME = {
     # Same frame rule as everything above - butt at z = 0, muzzle / upper limb
     # tip at z = LENGTH, _Grip centred on the hand point. The Weapons.luau
     # ranged rows must copy these numbers (source of truth until they land).
-    "BogwoodBow": {"length": 3.4, "grip": 1.7},
-    "GatorjawCrossbow": {"length": 3.0, "grip": 0.8},
-    "MireFlintlock": {"length": 2.3, "grip": 0.5},
-    "CinderlockCarbine": {"length": 3.2, "grip": 0.9},
-    "BasaltScattergun": {"length": 3.0, "grip": 0.85},
-    "VulkanRepeater": {"length": 3.6, "grip": 0.95},
+    "BogwoodBow": {"length": 2.8, "grip": 0.62},
+    "GatorjawCrossbow": {"length": 2.8, "grip": 0.75},
+    "MireFlintlock": {"length": 1.8, "grip": 0.4},
+    "CinderlockCarbine": {"length": 3.25, "grip": 1.05},
+    "BasaltScattergun": {"length": 2.6, "grip": 0.7},
+    "VulkanRepeater": {"length": 3.6, "grip": 1.05},
     # Revamp S4 melee + ranged (islands 3/5/6 + Maelstrom) - f4's pass; the
     # Weapons.luau rows already carry these numbers (16's frame contract).
     "RustfangMachete": {"length": 3.3, "grip": 0.62},
     "Fenreaver": {"length": 3.8, "grip": 0.7},
     "IcepickHatchet": {"length": 2.6, "grip": 0.5},
-    "FrostboreRifle": {"length": 3.6, "grip": 0.9},
+    "FrostboreRifle": {"length": 3.9, "grip": 1.05},
     "GlacierMaul": {"length": 4.2, "grip": 0.8},
-    "FrostbiteRevolver": {"length": 1.7, "grip": 0.45},
+    "FrostbiteRevolver": {"length": 1.8, "grip": 0.34},
     "RimefangLance": {"length": 4.6, "grip": 0.9},
     "Trenchspike": {"length": 3.0, "grip": 0.6},
-    "AbyssalHarpooner": {"length": 3.4, "grip": 0.95},
-    "RiptideSmg": {"length": 2.4, "grip": 0.6},
+    "AbyssalHarpooner": {"length": 3.2, "grip": 0.85},
+    "RiptideSmg": {"length": 1.9, "grip": 0.62},
     "VoidglassSaber": {"length": 3.8, "grip": 0.7},
-    "GloomcallerDmr": {"length": 3.5, "grip": 0.85},
+    "GloomcallerDmr": {"length": 3.8, "grip": 1.3},
     "BoardingAxe": {"length": 3.4, "grip": 0.7},
-    "GraveBlunderbuss": {"length": 2.9, "grip": 0.75},
-    "PhantomRepeater": {"length": 3.1, "grip": 0.8},
+    "GraveBlunderbuss": {"length": 2.85, "grip": 0.8},
+    "PhantomRepeater": {"length": 3.45, "grip": 1.1},
     "CutlassOfTheFleet": {"length": 3.6, "grip": 0.65},
     "AdmiralsSaber": {"length": 4.0, "grip": 0.7},
     "Galecleaver": {"length": 3.8, "grip": 0.7},
-    "CycloneRifle": {"length": 3.3, "grip": 0.85},
-    "ThunderheadCannon": {"length": 2.0, "grip": 0.5},
+    "CycloneRifle": {"length": 3.45, "grip": 1.25},
+    "ThunderheadCannon": {"length": 2.2, "grip": 0.5},
     "Stormlance": {"length": 4.6, "grip": 0.9},
     "Krakenfang": {"length": 4.4, "grip": 0.75},
 }
@@ -143,6 +143,10 @@ COLORS = {
     "BogwoodBow_Grip": (0.3, 0.36, 0.28),  # gator-hide binding
     "BogwoodBow_Edge": (0.8, 0.76, 0.6),  # sinew string
     "BogwoodBow_Spike": (0.72, 0.68, 0.55),  # bone tips, arrowhead, fletching
+    "BogwoodBow_Mag": (0.46, 0.36, 0.24),  # the nocked arrow (the reload part)
+    "BogwoodBow_Action": (0.86, 0.82, 0.66),  # the sinew string (the draw part)
+    "BogwoodBow_Sight": (0.72, 0.68, 0.55),  # arrow rest + bone sight pin
+    "BogwoodBow_Muzzle": (0.72, 0.68, 0.55),  # projectile-origin marker
     "GatorjawCrossbow_Haft": (0.42, 0.32, 0.21),  # bogwood stock
     "GatorjawCrossbow_Grip": (0.27, 0.31, 0.26),  # dark hide binding
     "GatorjawCrossbow_Pommel": (0.42, 0.32, 0.21),
@@ -151,6 +155,10 @@ COLORS = {
     "GatorjawCrossbow_Edge": (0.44, 0.51, 0.36),  # gator-scute prod + string
     "GatorjawCrossbow_Spike": (0.85, 0.82, 0.69),  # gator teeth + the bolt
     "GatorjawCrossbow_Glow": (0.55, 0.85, 0.73),  # wisp-light sight
+    "GatorjawCrossbow_Mag": (0.42, 0.32, 0.21),  # bolt clip + spare bolts
+    "GatorjawCrossbow_Action": (0.86, 0.82, 0.69),  # string + claw trigger
+    "GatorjawCrossbow_Sight": (0.35, 0.33, 0.29),  # rail sights
+    "GatorjawCrossbow_Muzzle": (0.35, 0.33, 0.29),
     "MireFlintlock_Haft": (0.36, 0.26, 0.18),  # swamp-walnut stock
     "MireFlintlock_Grip": (0.27, 0.2, 0.15),  # oiled leather wrap
     "MireFlintlock_Pommel": (0.7, 0.56, 0.29),  # brass butt cap
@@ -352,6 +360,53 @@ COLORS = {
     "Krakenfang_Spike": (0.86, 0.82, 0.94),
     "Krakenfang_Glow": (0.59, 0.47, 1.00),
 }
+
+# The fifteen ranged variants (see "RANGED REBUILD" near the bottom). Each gun
+# now emits four more part suffixes than the melee contract had - _Mag,
+# _Action, _Sight, _Muzzle - and make_material() looks EVERY finished part name
+# up in COLORS, so a missing entry is a hard KeyError at build time. Rather
+# than hand-write sixty more preview colours, derive each gun's full set from
+# the layers its Weapons.luau row already mirrors above: color (Haft/Guard/
+# Pommel), wrap (Grip), accent (the metal: Head/Edge/Spike and all four new
+# suffixes) and glow. setdefault, so every hand-tuned line above still wins.
+RANGED_VARIANTS = (
+    "FrostboreRifle",
+    "GloomcallerDmr",
+    "CycloneRifle",
+    "CinderlockCarbine",
+    "PhantomRepeater",
+    "MireFlintlock",
+    "FrostbiteRevolver",
+    "ThunderheadCannon",
+    "GraveBlunderbuss",
+    "BasaltScattergun",
+    "BogwoodBow",
+    "GatorjawCrossbow",
+    "AbyssalHarpooner",
+    "RiptideSmg",
+    "VulkanRepeater",
+)
+
+for _variant in RANGED_VARIANTS:
+    _color = COLORS.get(f"{_variant}_Haft") or COLORS[f"{_variant}_Guard"]
+    _wrap = COLORS.get(f"{_variant}_Grip", _color)
+    _accent = COLORS.get(f"{_variant}_Edge") or COLORS.get(f"{_variant}_Spike") or _color
+    _glow = COLORS.get(f"{_variant}_Glow", _accent)
+    for _suffix, _rgb in (
+        ("Haft", _color),
+        ("Guard", _color),
+        ("Pommel", _color),
+        ("Grip", _wrap),
+        ("Head", _accent),
+        ("Edge", _accent),
+        ("Spike", _accent),
+        ("Mag", _accent),
+        ("Action", _accent),
+        ("Sight", _accent),
+        ("Muzzle", _accent),
+        ("Glow", _glow),
+    ):
+        COLORS.setdefault(f"{_variant}_{_suffix}", _rgb)
 
 GLOW_PARTS = {  # emissive in the preview only
     "Drowncleaver_Glow",
@@ -879,341 +934,6 @@ def build_magmagauntlets():
     ]
 
 
-# ---------------------------------------------------------------- Bogwood Bow (swamp ranged, uncommon)
-# Tier-1 ranged: a braced bogwood recurve. The stave is a parabola with the
-# grip at its centre and both tips swept forward (+x); the sinew string runs
-# tip to tip, and a nocked bone-headed arrow lies across the grip so the
-# silhouette reads "bow" from any angle. Uncommon tier: no glow.
-
-
-def build_bogwoodbow():
-    f = FRAME["BogwoodBow"]
-    length, grip = f["length"], f["grip"]
-    haft = bmesh.new()
-    grip_bm = bmesh.new()
-    edge = bmesh.new()
-    spike = bmesh.new()
-
-    # The stave: tips forward at x ~0.62, flat at the grip, fattest mid-limb.
-    segs = 10
-    pts = []
-    for i in range(segs + 1):
-        t = i / segs
-        x = 0.62 * (2 * t - 1) ** 2
-        r = 0.055 + 0.075 * (1 - abs(2 * t - 1))
-        pts.append((Vector((x, 0, t * length)), r))
-    for (p0, r0), (p1, r1) in zip(pts, pts[1:]):
-        limb(haft, p0, p1, r0, r1, 5)
-
-    # Recurve flicks capping both tips.
-    cone(spike, pts[-1][0], pts[-1][0] + Vector((0.2, 0, 0.14)), 0.055, sides=4)
-    cone(spike, pts[0][0], pts[0][0] + Vector((0.2, 0, -0.14)), 0.055, sides=4)
-
-    # The string, tip to tip.
-    limb(edge, (0.62, 0, 0.03), (0.62, 0, length - 0.03), 0.022, 0.022, 4)
-
-    # A nocked arrow across the grip: shaft to just past the stave, bone head,
-    # two fletching vanes back at the string.
-    arrow_z = grip + 0.25
-    limb(haft, (0.62, 0, arrow_z), (-0.5, 0, arrow_z), 0.032, 0.032, 4)
-    cone(spike, (-0.5, 0, arrow_z), (-0.8, 0, arrow_z), 0.065, sides=4)
-    box(spike, (0.44, 0, arrow_z + 0.06), (0.2, 0.02, 0.1), Matrix.Rotation(math.radians(-18), 4, "Y"))
-    box(spike, (0.44, 0, arrow_z - 0.06), (0.2, 0.02, 0.1), Matrix.Rotation(math.radians(18), 4, "Y"))
-
-    # Gator-hide grip riser at the stave's centre, own object on the hand point.
-    limb(grip_bm, (0, 0, grip - 0.45), (0, 0, grip + 0.45), 0.15, 0.14, 7)
-
-    return [
-        finish("BogwoodBow_Haft", haft),
-        finish("BogwoodBow_Grip", grip_bm),
-        finish("BogwoodBow_Edge", edge),
-        finish("BogwoodBow_Spike", spike),
-    ]
-
-
-# ---------------------------------------------------------------- Gatorjaw Crossbow (swamp ranged, rare)
-# A bogwood stock with a gator-scute prod across the top, drawn string, a
-# loaded bolt, and gator teeth studding the fore-stock. Rare tier: a wisp
-# glow for a sight.
-
-
-def build_gatorjawcrossbow():
-    f = FRAME["GatorjawCrossbow"]
-    length, grip = f["length"], f["grip"]
-    haft = bmesh.new()
-    grip_bm = bmesh.new()
-    pommel = bmesh.new()
-    guard = bmesh.new()
-    head = bmesh.new()
-    edge = bmesh.new()
-    spike = bmesh.new()
-    glow = bmesh.new()
-
-    # Stock: butt at z=0 up to just under the prod.
-    box(haft, (0, 0, 1.2), (0.24, 0.2, 2.4))
-    box(pommel, (0.06, 0, 0.16), (0.34, 0.24, 0.32))
-    limb(grip_bm, (0, 0, grip - 0.4), (0, 0, grip + 0.4), 0.16, 0.15, 7)
-
-    # The prod: two swept gator-scute arms, and the string drawn to the nut.
-    for side in (-1, 1):
-        limb(edge, (0, 0, 2.45), (side * 0.5, 0, 2.42), 0.07, 0.055, 5)
-        limb(edge, (side * 0.5, 0, 2.42), (side * 0.88, 0, 2.28), 0.055, 0.035, 5)
-        limb(edge, (side * 0.88, 0, 2.28), (0, 0, 1.95), 0.02, 0.02, 4)
-
-    # Bog-iron nut/lock where the string catches.
-    box(head, (0, 0, 1.95), (0.14, 0.26, 0.18))
-
-    # The bolt, riding the top of the stock to the frame tip.
-    limb(spike, (0, 0.14, 2.0), (0, 0.14, length - 0.18), 0.035, 0.03, 4)
-    cone(spike, (0, 0.14, length - 0.18), (0, 0.14, length), 0.055, sides=4)
-
-    # Gator teeth studding the fore-stock sides.
-    for side in (-1, 1):
-        for z in (2.12, 2.3):
-            cone(spike, (side * 0.12, 0, z), (side * 0.3, 0, z + 0.08), 0.045, sides=4)
-
-    # Bog-iron trigger work under the grip.
-    box(guard, (-0.17, 0, 0.95), (0.08, 0.12, 0.34))
-    box(guard, (-0.24, 0, 0.82), (0.14, 0.12, 0.06))
-
-    # Wisp-light sight above the lock.
-    ellipsoid(glow, (0, 0.16, 2.55), (0.05, 0.05, 0.05), subdiv=0)
-
-    return [
-        finish("GatorjawCrossbow_Haft", haft),
-        finish("GatorjawCrossbow_Grip", grip_bm),
-        finish("GatorjawCrossbow_Pommel", pommel),
-        finish("GatorjawCrossbow_Guard", guard),
-        finish("GatorjawCrossbow_Head", head),
-        finish("GatorjawCrossbow_Edge", edge),
-        finish("GatorjawCrossbow_Spike", spike),
-        finish("GatorjawCrossbow_Glow", glow),
-    ]
-
-
-# ---------------------------------------------------------------- Mire Flintlock (swamp ranged, epic)
-# A long-barrelled flintlock pistol: curved walnut grip swelling from the
-# butt, brass lock plate with hammer and frizzen, octagonal iron barrel,
-# ramrod underneath. Epic tier: fen-venom etching glows on the stock and up
-# the barrel.
-
-
-def build_mireflintlock():
-    f = FRAME["MireFlintlock"]
-    length, grip = f["length"], f["grip"]
-    haft = bmesh.new()
-    grip_bm = bmesh.new()
-    pommel = bmesh.new()
-    guard = bmesh.new()
-    head = bmesh.new()
-    edge = bmesh.new()
-    spike = bmesh.new()
-    glow = bmesh.new()
-
-    # Curved wooden grip into the body.
-    limb(haft, (0.22, 0, 0.04), (0.06, 0, 0.62), 0.16, 0.13, 6)
-    limb(haft, (0.06, 0, 0.62), (0, 0, 1.0), 0.13, 0.12, 6)
-    box(haft, (0, 0, 1.18), (0.28, 0.22, 0.46))
-    limb(grip_bm, (0, 0, grip - 0.32), (0, 0, grip + 0.32), 0.19, 0.17, 7)
-    ellipsoid(pommel, (0.25, 0, 0.05), (0.13, 0.12, 0.11), subdiv=1)
-
-    # Brass lock plate, hammer and frizzen on the +y face.
-    box(head, (0, 0.14, 1.15), (0.3, 0.06, 0.34))
-    box(head, (-0.08, 0.17, 1.32), (0.08, 0.06, 0.2), Matrix.Rotation(math.radians(25), 4, "Y"))
-    box(head, (0.1, 0.17, 1.3), (0.08, 0.06, 0.14))
-
-    # Octagonal iron barrel to the muzzle, with a band near the end.
-    limb(edge, (0, 0, 1.38), (0, 0, length), 0.11, 0.085, 8)
-    limb(edge, (0, 0, 2.16), (0, 0, 2.24), 0.105, 0.105, 8)
-
-    # Trigger guard (brass) and the wooden ramrod along the barrel.
-    box(guard, (-0.15, 0, 1.0), (0.06, 0.1, 0.3))
-    box(guard, (-0.2, 0, 0.87), (0.12, 0.1, 0.06))
-    limb(spike, (0.14, 0, 1.4), (0.14, 0, 2.1), 0.03, 0.03, 4)
-
-    # Fen-venom etching: strokes on both stock faces, a vein up the barrel.
-    for side in (-1, 1):
-        stroke(glow, (0.02, side * 0.12, 1.08), 0.3, 42)
-        stroke(glow, (0.1, side * 0.12, 0.85), 0.22, -30)
-    box(glow, (0, 0.1, 1.8), (0.02, 0.03, 0.55))
-
-    return [
-        finish("MireFlintlock_Haft", haft),
-        finish("MireFlintlock_Grip", grip_bm),
-        finish("MireFlintlock_Pommel", pommel),
-        finish("MireFlintlock_Guard", guard),
-        finish("MireFlintlock_Head", head),
-        finish("MireFlintlock_Edge", edge),
-        finish("MireFlintlock_Spike", spike),
-        finish("MireFlintlock_Glow", glow),
-    ]
-
-
-# ---------------------------------------------------------------- Cinderlock Carbine (volcano ranged, uncommon)
-# The first full-auto: an ash-scorched wooden stock and handguard around an
-# obsidian receiver, gunmetal barrel, brass canted magazine and trigger
-# guard. Uncommon tier: no glow.
-
-
-def build_cinderlockcarbine():
-    f = FRAME["CinderlockCarbine"]
-    length, grip = f["length"], f["grip"]
-    haft = bmesh.new()
-    grip_bm = bmesh.new()
-    pommel = bmesh.new()
-    guard = bmesh.new()
-    head = bmesh.new()
-    edge = bmesh.new()
-    spike = bmesh.new()
-
-    # Stock: butt block into a tapering wrist, then the wooden handguard
-    # further up the barrel.
-    box(haft, (0.1, 0, 0.18), (0.32, 0.22, 0.36))
-    limb(haft, (0.12, 0, 0.34), (0, 0, 1.3), 0.17, 0.12, 6)
-    box(haft, (0.09, 0, 2.05), (0.13, 0.15, 0.7))
-    box(pommel, (0.13, 0, 0.03), (0.28, 0.22, 0.08))
-    limb(grip_bm, (0, 0, grip - 0.38), (0, 0, grip + 0.38), 0.16, 0.15, 7)
-
-    # Obsidian receiver with a charging handle on the +y face.
-    box(head, (0, 0, 1.5), (0.28, 0.24, 0.44))
-    box(head, (0, 0.16, 1.56), (0.1, 0.1, 0.08))
-
-    # Gunmetal barrel to the muzzle.
-    limb(edge, (0, 0, 1.72), (0, 0, length), 0.1, 0.075, 8)
-
-    # Brass trigger guard and a canted box magazine.
-    box(guard, (-0.16, 0, 1.1), (0.06, 0.1, 0.3))
-    box(guard, (-0.24, 0, 1.42), (0.14, 0.13, 0.38), Matrix.Rotation(math.radians(20), 4, "Y"))
-
-    # Front sight post and muzzle ring.
-    box(spike, (0, 0.1, 3.02), (0.04, 0.08, 0.12))
-    limb(spike, (0, 0, length - 0.1), (0, 0, length), 0.085, 0.09, 8)
-
-    return [
-        finish("CinderlockCarbine_Haft", haft),
-        finish("CinderlockCarbine_Grip", grip_bm),
-        finish("CinderlockCarbine_Pommel", pommel),
-        finish("CinderlockCarbine_Guard", guard),
-        finish("CinderlockCarbine_Head", head),
-        finish("CinderlockCarbine_Edge", edge),
-        finish("CinderlockCarbine_Spike", spike),
-    ]
-
-
-# ---------------------------------------------------------------- Basalt Scattergun (volcano ranged, rare)
-# A break-action double-barrel: obsidian breech, two side-by-side basalt
-# barrels through a wide wooden forend. Rare tier: ember vents glow on the
-# breech and up the seam between the barrels.
-
-
-def build_basaltscattergun():
-    f = FRAME["BasaltScattergun"]
-    length, grip = f["length"], f["grip"]
-    haft = bmesh.new()
-    grip_bm = bmesh.new()
-    pommel = bmesh.new()
-    guard = bmesh.new()
-    head = bmesh.new()
-    edge = bmesh.new()
-    spike = bmesh.new()
-    glow = bmesh.new()
-
-    # Stock into the breech, then the forend wrapping both barrels.
-    box(haft, (0.11, 0, 0.2), (0.34, 0.24, 0.4))
-    limb(haft, (0.12, 0, 0.38), (0, 0, 1.25), 0.19, 0.14, 6)
-    box(haft, (0, 0, 1.8), (0.42, 0.22, 0.5))
-    box(pommel, (0.14, 0, 0.04), (0.3, 0.24, 0.1))
-    limb(grip_bm, (0, 0, grip - 0.38), (0, 0, grip + 0.38), 0.18, 0.16, 7)
-
-    # Obsidian breech block with the top opening lever.
-    box(head, (0, 0, 1.45), (0.4, 0.26, 0.4))
-    box(head, (0, 0.15, 1.45), (0.08, 0.06, 0.26))
-
-    # Twin basalt barrels, muzzle rims, and a barrel band.
-    for side in (-1, 1):
-        limb(edge, (side * 0.11, 0, 1.6), (side * 0.11, 0, length), 0.1, 0.095, 8)
-        limb(spike, (side * 0.11, 0, length - 0.06), (side * 0.11, 0, length), 0.107, 0.107, 8)
-    box(spike, (0, 0, 2.35), (0.46, 0.24, 0.12))
-
-    # Brass trigger guard.
-    box(guard, (-0.18, 0, 1.05), (0.06, 0.1, 0.32))
-
-    # Ember vents: strokes on the breech faces, a line up the barrel seam.
-    for side in (-1, 1):
-        stroke(glow, (0, side * 0.14, 1.5), 0.26, 0)
-    box(glow, (0, 0.08, 2.2), (0.03, 0.03, 0.7))
-
-    return [
-        finish("BasaltScattergun_Haft", haft),
-        finish("BasaltScattergun_Grip", grip_bm),
-        finish("BasaltScattergun_Pommel", pommel),
-        finish("BasaltScattergun_Guard", guard),
-        finish("BasaltScattergun_Head", head),
-        finish("BasaltScattergun_Edge", edge),
-        finish("BasaltScattergun_Spike", spike),
-        finish("BasaltScattergun_Glow", glow),
-    ]
-
-
-# ---------------------------------------------------------------- Vulkan Repeater (volcano ranged, legendary)
-# The capstone gun: a heavy full-auto repeater with an obsidian drum
-# magazine, a vented gunmetal shroud over the barrel, and a muzzle brake.
-# Legendary tier: molten cores glow in both drum faces, magma veins run the
-# shroud, and the muzzle smoulders - the Slagheart Warhammer's role, ranged.
-
-
-def build_vulkanrepeater():
-    f = FRAME["VulkanRepeater"]
-    length, grip = f["length"], f["grip"]
-    haft = bmesh.new()
-    grip_bm = bmesh.new()
-    pommel = bmesh.new()
-    guard = bmesh.new()
-    head = bmesh.new()
-    edge = bmesh.new()
-    spike = bmesh.new()
-    glow = bmesh.new()
-
-    # Vent-metal frame: shoulder stock into the receiver spine.
-    box(haft, (0.1, 0, 0.17), (0.32, 0.24, 0.36))
-    limb(haft, (0.1, 0, 0.32), (0, 0, 1.5), 0.16, 0.12, 6)
-    box(pommel, (0.13, 0, 0.02), (0.3, 0.24, 0.1))
-    limb(grip_bm, (0, 0, grip - 0.4), (0, 0, grip + 0.4), 0.17, 0.16, 7)
-
-    # The obsidian drum magazine, axis across the weapon.
-    limb(head, (0, -0.17, 1.68), (0, 0.17, 1.68), 0.3, 0.3, 10)
-
-    # Vented shroud and the barrel out of it, ending in the brake.
-    limb(edge, (0, 0, 1.85), (0, 0, 2.95), 0.15, 0.13, 8)
-    limb(edge, (0, 0, 2.95), (0, 0, length - 0.15), 0.095, 0.085, 8)
-    box(spike, (0, 0, length - 0.12), (0.26, 0.26, 0.22))
-    limb(spike, (0, 0, length - 0.04), (0, 0, length), 0.09, 0.09, 6)
-    for side in (-1, 1):
-        for z in (2.1, 2.45, 2.8):
-            box(spike, (side * 0.15, 0, z), (0.05, 0.08, 0.16))
-
-    # Obsidian trigger guard and foregrip.
-    box(guard, (-0.16, 0, 1.18), (0.06, 0.1, 0.3))
-    box(guard, (-0.21, 0, 2.35), (0.12, 0.12, 0.32))
-
-    # The incendiary core: drum faces, veins along the shroud, muzzle glow.
-    for side in (-1, 1):
-        ellipsoid(glow, (0, side * 0.19, 1.68), (0.12, 0.025, 0.12), subdiv=1)
-        box(glow, (side * 0.16, 0, 2.45), (0.02, 0.04, 0.7))
-    ellipsoid(glow, (0, 0, length - 0.01), (0.055, 0.055, 0.04), subdiv=0)
-
-    return [
-        finish("VulkanRepeater_Haft", haft),
-        finish("VulkanRepeater_Grip", grip_bm),
-        finish("VulkanRepeater_Pommel", pommel),
-        finish("VulkanRepeater_Guard", guard),
-        finish("VulkanRepeater_Head", head),
-        finish("VulkanRepeater_Edge", edge),
-        finish("VulkanRepeater_Spike", spike),
-        finish("VulkanRepeater_Glow", glow),
-    ]
-
-
 # ---------------------------------------------------------------- S4 families (f4's pass)
 # Twenty-two more weapons across islands 3/5/6 and the Maelstrom. Rather than
 # twenty-two bespoke geometry passes, three parameterised families cover them
@@ -1337,96 +1057,6 @@ def _hafted_family(name, head="axe", double=False, back_pick=False, glow_head=Fa
     ]
 
 
-def _gun_family(
-    name,
-    barrel_r=0.085,
-    stock="full",
-    scope=False,
-    mag="box",
-    drum=False,
-    flare=False,
-    cylinder=False,
-    harpoon=False,
-    heavy=False,
-    glow_core=False,
-):
-    """A firearm on the carbine's layout: stock (or just a pistol grip),
-    receiver, barrel to the muzzle, trigger guard, a magazine (`box`, `drum`,
-    `tube` or None), iron sight. `scope` mounts a tube on top; `flare` opens
-    the muzzle into a blunderbuss bell; `cylinder` swaps the receiver for a
-    revolver's drum; `harpoon` racks a barbed spear over the barrel; `heavy`
-    thickens everything (the hand cannon)."""
-    f = FRAME[name]
-    length, grip = f["length"], f["grip"]
-    haft, grip_bm, pommel_bm, guard_bm, head_bm, edge, spike, glow = (bmesh.new() for _ in range(8))
-
-    k = 1.35 if heavy else 1.0
-    rec_z = grip + 0.55
-    rec_len = 0.44 if length > 2.2 else 0.3
-
-    if stock == "full":
-        box(haft, (0.1, 0, 0.18), (0.32, 0.22, 0.36))
-        limb(haft, (0.12, 0, 0.34), (0, 0, rec_z - 0.1), 0.16, 0.11, 6)
-        box(pommel_bm, (0.13, 0, 0.03), (0.28, 0.22, 0.08))
-    else:  # pistol: the grip IS the stock
-        box(pommel_bm, (0.08, 0, grip - 0.42), (0.2, 0.2, 0.1))
-    limb(grip_bm, (0, 0, max(0.02, grip - 0.38)), (0, 0, grip + 0.38), 0.15 * k, 0.14 * k, 7)
-
-    if cylinder:
-        # The revolver's drum sits where a receiver would, axis along z.
-        limb(head_bm, (0, 0, rec_z - 0.1), (0, 0, rec_z + 0.26), 0.17, 0.17, 8)
-        box(head_bm, (0, 0, rec_z + 0.4), (0.16, 0.16, 0.2))
-    else:
-        box(head_bm, (0, 0, rec_z + rec_len / 2 - 0.1), (0.28 * k, 0.24 * k, rec_len + 0.1))
-        box(head_bm, (0, 0.15 * k, rec_z + 0.08), (0.1, 0.09, 0.08))  # charging handle
-
-    barrel_start = rec_z + (0.5 if cylinder else rec_len)
-    limb(edge, (0, 0, barrel_start), (0, 0, length - (0.28 if flare else 0.0)), barrel_r * k, barrel_r * 0.85 * k, 8)
-    if flare:
-        limb(edge, (0, 0, length - 0.3), (0, 0, length), barrel_r, barrel_r * 2.6, 8)
-    if heavy:
-        limb(spike, (0, 0, barrel_start + 0.05), (0, 0, barrel_start + 0.2), barrel_r * 1.7, barrel_r * 1.7, 8)
-
-    # Trigger guard.
-    box(guard_bm, (-0.16, 0, rec_z - 0.28), (0.06, 0.1, 0.26))
-
-    if mag == "box":
-        box(guard_bm, (-0.24, 0, rec_z + 0.12), (0.14, 0.13, 0.36), Matrix.Rotation(math.radians(18), 4, "Y"))
-    elif mag == "drum" or drum:
-        limb(guard_bm, (-0.2, 0, rec_z + 0.1), (-0.2, 0, rec_z + 0.24), 0.16, 0.16, 8)
-    elif mag == "tube":
-        limb(guard_bm, (0, -0.12, barrel_start + 0.1), (0, -0.12, length - 0.5), 0.05, 0.05, 6)
-
-    if scope:
-        limb(spike, (0, 0.16, rec_z - 0.15), (0, 0.16, rec_z + 0.55), 0.07, 0.07, 8)
-        box(spike, (0, 0.11, rec_z), (0.04, 0.06, 0.06))
-        box(spike, (0, 0.11, rec_z + 0.4), (0.04, 0.06, 0.06))
-    else:
-        box(spike, (0, 0.1 * k, length - 0.14), (0.04, 0.08, 0.1))
-
-    if harpoon:
-        # The spear racked over the barrel, barbed, with the line ring aft.
-        limb(spike, (0, 0.14, rec_z - 0.3), (0, 0.14, length + 0.28), 0.045, 0.045, 6)
-        cone(spike, (0, 0.14, length + 0.28), (0, 0.14, length + 0.55), 0.08, 5)
-        cone(spike, (0, 0.14, length + 0.18), (0, 0.24, length - 0.02), 0.045, 4)
-        limb(spike, (0, 0.14, rec_z - 0.38), (0, 0.14, rec_z - 0.3), 0.09, 0.09, 6)
-
-    if glow_core:
-        box(glow, (0, -0.14 * k, rec_z + rec_len / 2 - 0.1), (0.08, 0.05, rec_len * 0.7))
-        limb(glow, (0, 0, length - 0.06), (0, 0, length + 0.01), barrel_r * 0.6, barrel_r * 0.6, 6)
-
-    return [
-        finish(f"{name}_Haft", haft),
-        finish(f"{name}_Grip", grip_bm),
-        finish(f"{name}_Pommel", pommel_bm),
-        finish(f"{name}_Guard", guard_bm),
-        finish(f"{name}_Head", head_bm),
-        finish(f"{name}_Edge", edge),
-        finish(f"{name}_Spike", spike),
-        finish(f"{name}_Glow", glow),
-    ]
-
-
 # ---- island 2 melee (f4's swamp rows) ----
 
 
@@ -1447,16 +1077,8 @@ def build_icepickhatchet():
     return _hafted_family("IcepickHatchet", head="axe", back_pick=True)
 
 
-def build_frostborerifle():
-    return _gun_family("FrostboreRifle", stock="full", scope=True, mag=None)
-
-
 def build_glaciermaul():
     return _hafted_family("GlacierMaul", head="maul", glow_head=True, collar=True)
-
-
-def build_frostbiterevolver():
-    return _gun_family("FrostbiteRevolver", stock="pistol", cylinder=True, mag=None, glow_core=True)
 
 
 def build_rimefanglance():
@@ -1470,20 +1092,8 @@ def build_trenchspike():
     return _hafted_family("Trenchspike", head="spike")
 
 
-def build_abyssalharpooner():
-    return _gun_family("AbyssalHarpooner", stock="full", mag=None, harpoon=True)
-
-
-def build_riptidesmg():
-    return _gun_family("RiptideSmg", stock="pistol", mag="box")
-
-
 def build_voidglasssaber():
     return _blade_family("VoidglassSaber", curve=0.2, width=0.34, guard="basket", glow_edge=True)
-
-
-def build_gloomcallerdmr():
-    return _gun_family("GloomcallerDmr", stock="full", scope=True, mag="box", glow_core=True)
 
 
 # ---- Wreckwater ----
@@ -1491,14 +1101,6 @@ def build_gloomcallerdmr():
 
 def build_boardingaxe():
     return _hafted_family("BoardingAxe", head="axe", back_pick=True)
-
-
-def build_graveblunderbuss():
-    return _gun_family("GraveBlunderbuss", stock="full", mag=None, flare=True)
-
-
-def build_phantomrepeater():
-    return _gun_family("PhantomRepeater", stock="full", mag="drum", glow_core=True)
 
 
 def build_cutlassofthefleet():
@@ -1517,14 +1119,6 @@ def build_galecleaver():
     return _hafted_family("Galecleaver", head="axe", double=True)
 
 
-def build_cyclonerifle():
-    return _gun_family("CycloneRifle", stock="full", mag="box")
-
-
-def build_thunderheadcannon():
-    return _gun_family("ThunderheadCannon", stock="pistol", mag=None, heavy=True, glow_core=True)
-
-
 def build_stormlance():
     return _hafted_family("Stormlance", head="lance", glow_head=True, collar=True)
 
@@ -1532,6 +1126,889 @@ def build_stormlance():
 def build_krakenfang():
     # The endgame blade: a fang of the Maw itself, curled and barbed.
     return _blade_family("Krakenfang", curve=0.3, width=0.42, guard="disc", glow_edge=True, barbs=4)
+
+
+# ================================================================ RANGED REBUILD
+# The fifteen ranged variants, rebuilt from scratch. Everything from here to
+# the preview - the gun_* helpers and the fifteen builders - is the ranged
+# pass; no melee variant reaches into it.
+#
+# THE GUN FRAME, on top of the pack contract at the top of this file:
+#   +z  THE BORE. The muzzle sits EXACTLY at z = LENGTH and _Muzzle is a ~0.1
+#       stud marker centred on it (the muzzle-flash / projectile origin).
+#   +x  UP. Every melee blade in this pack puts its cutting edge on +x - the
+#       Scaleblade's leaf spans x with its flats on y, the Drowncleaver's
+#       spine is -x and its edge +x, the axe wedge and the glow strips sit on
+#       +x - so +x is the pack's "business" side, and every gun's sights,
+#       scope, top strap, carry handle and rib live there.
+#   -x  DOWN: grip, trigger, trigger guard, magazine, drum, spool - everything
+#       that hangs under a gun.
+#   +-y the flanks: lock plates, charging handles, ejection ports, side rails.
+#
+# Parts, the pack contract plus the four new suffixes:
+#   _Haft  stock / frame / handguard (color)   _Grip  the firing hand (wrap)
+#   _Guard trigger guard, furniture (color)    _Pommel butt plate (color)
+#   _Head  receiver / breech (accent)          _Edge  barrel (accent)
+#   _Spike sight posts, brakes, barbs, bands (accent)
+#   _Mag    the magazine / cylinder / drum / spool / arrow, as ONE separable
+#           piece - the reload animation detaches and moves it, so it is never
+#           fused into the receiver.
+#   _Action the moving part: bolt, slide, hammer, lever, charging handle,
+#           break lever, bowstring, speargun bands - plus the trigger blade.
+#   _Sight  irons or optic.       _Muzzle the bore marker at z = LENGTH.
+#
+# Budget: every gun is well under 900 triangles (main() prints the counts).
+
+GUN_SUFFIXES = ("Haft", "Grip", "Pommel", "Guard", "Head", "Edge", "Spike", "Mag", "Action", "Sight", "Muzzle", "Glow")
+
+
+def gun_bms():
+    """One bmesh per gun part suffix. Unused ones stay empty and finish()
+    returns None for them, so a gun only exports the parts it actually has."""
+    return {suffix: bmesh.new() for suffix in GUN_SUFFIXES}
+
+
+def gun_finish(name, parts):
+    return [finish(f"{name}_{suffix}", bm) for suffix, bm in parts.items()]
+
+
+def gun_muzzle(bm, length, size=0.1):
+    """The mandatory bore marker: a tiny cube centred on the bore at z = LENGTH."""
+    box(bm, (0, 0, length), (size, size, size))
+
+
+def gun_grip(grip_bm, frame_bm, x, z, rake=20.0, r=0.15, half=0.24, drop=0.0, width=0.20):
+    """The firing hand. The wrap is its own object and its CENTRE is exactly
+    (x, 0, z) - the hand point, z = GRIP. `rake` leans the column back (-z) as
+    it drops (-x); `frame_bm` gets the grip column the wrap is wrapped around,
+    running from the receiver's underside down past the wrap by `drop`."""
+    a = math.radians(rake)
+    d = Vector((-math.cos(a), 0, -math.sin(a)))
+    c = Vector((x, 0, z))
+    limb(grip_bm, c - d * half, c + d * half, r, r * 0.94, 7)
+    if frame_bm is not None:
+        top = c - d * (half + 0.14)
+        bot = c + d * (half + drop)
+        box(frame_bm, (top + bot) / 2, (r * 1.45, width, (bot - top).length), Matrix.Rotation(-math.pi / 2 - a, 4, "Y"))
+
+
+def gun_wrist(grip_bm, x, z, rake=12.0, r=0.15, half=0.30):
+    """A rifle/musket wrist grip: the hand runs mostly along the bore instead
+    of hanging under it (bolt guns, lever guns, muskets, break-actions).
+    Centre is again exactly (x, 0, z)."""
+    a = math.radians(rake)
+    d = Vector((math.sin(a), 0, math.cos(a)))
+    c = Vector((x, 0, z))
+    limb(grip_bm, c - d * half, c + d * half, r * 0.94, r, 7)
+
+
+def gun_trigger(guard_bm, action_bm, x, z, drop=0.24, half_z=0.17, width=0.10, blade=True):
+    """A trigger guard bow hanging under the receiver at (x, z), plus the
+    trigger blade inside it (the blade is _Action - it moves)."""
+    box(guard_bm, (x - drop, 0, z), (0.06, width, half_z * 2 + 0.06))
+    box(guard_bm, (x - drop / 2, 0, z + half_z), (drop, width, 0.06))
+    box(guard_bm, (x - drop / 2, 0, z - half_z), (drop, width, 0.06))
+    if blade:
+        box(action_bm, (x - 0.10, 0, z + 0.02), (0.13, 0.05, 0.07), Matrix.Rotation(math.radians(22), 4, "Y"))
+
+
+def gun_mag(bm, x, z, drop=0.62, curve=18.0, width=0.22, thick=0.16, segs=3, floor=True):
+    """A box magazine hanging off the receiver's underside at (x, z): it drops
+    along -x and bows forward (+z) by `curve` degrees, which is what turns a
+    stick mag into an AK/AR banana. Its own object - the reload part."""
+    seg = drop / segs
+    p = Vector((x, 0, z))
+    for i in range(segs):
+        a = math.radians(-90 + curve * (i + 0.5) / segs)
+        d = Vector((math.sin(a), 0, math.cos(a)))
+        c = p + d * (seg / 2)
+        box(bm, c, (thick, width, seg * 1.1), Matrix.Rotation(a, 4, "Y"))
+        p = p + d * seg
+    if floor:
+        a = math.radians(-90 + curve)
+        box(bm, p, (0.05, width * 1.15, thick * 1.5), Matrix.Rotation(a, 4, "Y"))
+
+
+def gun_cylinder(bm, x, z0, z1, ring_r=0.15, lobe_r=0.08, chambers=6, plate_r=0.2):
+    """A real revolver cylinder: `chambers` round bores in a ring about the
+    cylinder axis, so it reads as six chambers head-on and as six flutes from
+    the side, capped by two end plates and a centre pin. One lobe sits at
+    angle 0 = straight up (+x), lined up with the barrel above it."""
+    for i in range(chambers):
+        a = (i / chambers) * TAU
+        cx, cy = x + math.cos(a) * ring_r, math.sin(a) * ring_r
+        limb(bm, (cx, cy, z0), (cx, cy, z1), lobe_r, lobe_r, 6)
+    limb(bm, (x, 0, z0), (x, 0, z0 + 0.05), plate_r, plate_r, 10)
+    limb(bm, (x, 0, z1 - 0.05), (x, 0, z1), plate_r, plate_r, 10)
+    limb(bm, (x, 0, z0 - 0.07), (x, 0, z1 + 0.07), 0.035, 0.035, 5)
+
+
+def gun_band(bm, z, r, thick=0.05, x=0.0, sides=8):
+    """A band / ring / cooling fin around the barrel at z."""
+    limb(bm, (x, 0, z - thick / 2), (x, 0, z + thick / 2), r, r, sides)
+
+
+def gun_post(bm, z, base_x, height, width=0.06, y=0.06):
+    """A sight post standing off the +x (up) side of the barrel at z."""
+    box(bm, (base_x + height / 2, 0, z), (height, y, width))
+
+
+def gun_ring(bm, cx, cz, r, tube_r=0.04, y=0.0, seg=7):
+    """A closed loop lying in the x-z plane - a lever loop, a lanyard ring."""
+    pts = [Vector((cx + math.cos(a) * r, y, cz + math.sin(a) * r)) for a in ((i / seg) * TAU for i in range(seg))]
+    for i in range(seg):
+        limb(bm, pts[i], pts[(i + 1) % seg], tube_r, tube_r, 4)
+
+
+def gun_flintlock(head_bm, action_bm, z, x=0.0, side=1.0, scale=1.0):
+    """A visible flintlock on a flank: the plate, the pan, the cock/hammer
+    swept back off the plate and the frizzen standing over the pan. Plate and
+    pan are _Head, the moving cock and frizzen are _Action."""
+    y = 0.13 * side
+    s = scale
+    box(head_bm, (x + 0.02 * s, y, z), (0.32 * s, 0.06, 0.26 * s))
+    box(head_bm, (x + 0.13 * s, y * 1.25, z + 0.10 * s), (0.09 * s, 0.05, 0.08 * s))  # the pan
+    box(action_bm, (x + 0.14 * s, y * 1.3, z - 0.05 * s), (0.24 * s, 0.06, 0.08 * s), Matrix.Rotation(math.radians(58), 4, "Y"))
+    box(action_bm, (x + 0.23 * s, y * 1.3, z - 0.14 * s), (0.13 * s, 0.07, 0.07 * s))  # the jaws
+    box(action_bm, (x + 0.20 * s, y * 1.3, z + 0.15 * s), (0.16 * s, 0.06, 0.06 * s), Matrix.Rotation(math.radians(-28), 4, "Y"))
+
+
+# ---------------------------------------------------------------- Frostbore Rifle
+# A scoped bolt-action long rifle: tapered barrel, a walnut stock with a raised
+# cheek rise, the bolt handle out the right flank, a tube scope over the
+# receiver on two rings.
+
+
+def build_frostborerifle():
+    name = "FrostboreRifle"
+    length, grip = FRAME[name]["length"], FRAME[name]["grip"]
+    p = gun_bms()
+
+    # Wooden stock: butt, comb, cheek rise (+x), wrist, belly, forend.
+    box(p["Haft"], (-0.30, 0, 0.19), (0.64, 0.26, 0.36))
+    box(p["Haft"], (-0.26, 0, 0.62), (0.50, 0.24, 0.56))
+    box(p["Haft"], (0.03, 0, 0.80), (0.14, 0.19, 0.46))
+    box(p["Haft"], (-0.24, 0, 1.10), (0.40, 0.22, 0.46))
+    box(p["Haft"], (-0.16, 0, 1.62), (0.26, 0.25, 0.80))
+    box(p["Haft"], (-0.19, 0, 2.38), (0.22, 0.21, 0.98))
+    box(p["Pommel"], (-0.30, 0, 0.03), (0.66, 0.26, 0.08))
+    box(p["Haft"], (-0.50, 0, 0.30), (0.18, 0.24, 0.32), Matrix.Rotation(math.radians(-18), 4, "Y"))
+
+    # Receiver and the long tapered barrel.
+    box(p["Head"], (-0.07, 0, 1.62), (0.32, 0.26, 0.80))
+    limb(p["Edge"], (0, 0, 1.94), (0, 0, length), 0.085, 0.052, 8)
+    gun_band(p["Spike"], length - 0.05, 0.064, 0.09)
+
+    # Bolt: the shroud out the back of the receiver, the handle out the flank.
+    limb(p["Action"], (0, 0, 1.14), (0, 0, 1.28), 0.085, 0.085, 7)
+    limb(p["Action"], (0, 0.11, 1.50), (0, 0.30, 1.38), 0.042, 0.042, 5)
+    ellipsoid(p["Action"], (0, 0.33, 1.36), (0.07, 0.07, 0.07), subdiv=0)
+
+    # Scope: eyepiece, tube, objective bell, two rings.
+    limb(p["Sight"], (0.30, 0, 1.20), (0.30, 0, 1.36), 0.10, 0.082, 8)
+    limb(p["Sight"], (0.30, 0, 1.36), (0.30, 0, 2.22), 0.075, 0.075, 8)
+    limb(p["Sight"], (0.30, 0, 2.22), (0.30, 0, 2.42), 0.082, 0.108, 8)
+    for z in (1.45, 2.08):
+        box(p["Sight"], (0.19, 0, z), (0.18, 0.13, 0.09))
+
+    # Floorplate magazine under the receiver, trigger, wrist grip.
+    gun_mag(p["Mag"], -0.29, 1.66, drop=0.24, curve=0, width=0.22, thick=0.17, segs=1)
+    gun_trigger(p["Guard"], p["Action"], -0.28, 1.32)
+    gun_wrist(p["Grip"], -0.22, grip, rake=10, r=0.155, half=0.30)
+    gun_muzzle(p["Muzzle"], length)
+    return gun_finish(name, p)
+
+
+# ---------------------------------------------------------------- Gloomcaller DMR
+# A modern marksman rifle: long heavy barrel out of a slab receiver, a boxy
+# optic on risers, a straight box magazine, a skeletonised stock (two rails
+# with daylight between them) and a pistol grip.
+
+
+def build_gloomcallerdmr():
+    name = "GloomcallerDmr"
+    length, grip = FRAME[name]["length"], FRAME[name]["grip"]
+    p = gun_bms()
+
+    # Skeleton stock: butt block, a comb rail on top, a lower rail, air between.
+    box(p["Haft"], (-0.24, 0, 0.10), (0.56, 0.24, 0.20))
+    box(p["Haft"], (-0.04, 0, 0.76), (0.15, 0.21, 1.34))
+    box(p["Haft"], (-0.27, 0, 0.52), (0.13, 0.19, 0.66), Matrix.Rotation(math.radians(28), 4, "Y"))
+    box(p["Haft"], (-0.22, 0, 1.32), (0.44, 0.22, 0.22))
+    box(p["Pommel"], (-0.22, 0, 0.03), (0.56, 0.25, 0.09))
+
+    # Receiver, free-float handguard, heavy barrel, brake.
+    box(p["Head"], (-0.08, 0, 1.72), (0.34, 0.27, 0.88))
+    box(p["Haft"], (-0.12, 0, 2.50), (0.26, 0.24, 0.72))
+    for s in (-1, 1):
+        for z in (2.28, 2.50, 2.72):
+            box(p["Haft"], (-0.12, s * 0.13, z), (0.16, 0.03, 0.10))
+    limb(p["Edge"], (0, 0, 2.14), (0, 0, length - 0.22), 0.078, 0.062, 8)
+    box(p["Spike"], (0, 0, length - 0.11), (0.20, 0.20, 0.26))
+    limb(p["Spike"], (0, 0, length - 0.06), (0, 0, length), 0.075, 0.075, 8)
+
+    # Boxy optic on two risers, with a lens face.
+    limb(p["Sight"], (0.32, 0, 1.34), (0.32, 0, 1.52), 0.098, 0.070, 8)  # eyepiece
+    limb(p["Sight"], (0.32, 0, 1.52), (0.32, 0, 2.28), 0.066, 0.066, 8)  # the tube
+    limb(p["Sight"], (0.32, 0, 2.28), (0.32, 0, 2.50), 0.072, 0.105, 8)  # objective bell
+    for z in (1.62, 2.18):
+        box(p["Sight"], (0.19, 0, z), (0.16, 0.14, 0.10))
+
+    # Straight box magazine, charging handle on the flank, grip, trigger.
+    gun_mag(p["Mag"], -0.26, 1.60, drop=0.74, curve=4, width=0.22, thick=0.18, segs=2)
+    box(p["Action"], (0.02, 0.17, 2.02), (0.10, 0.11, 0.16))
+    box(p["Action"], (0.04, 0.15, 1.86), (0.06, 0.04, 0.36))
+    gun_grip(p["Grip"], p["Haft"], -0.34, grip, rake=18, r=0.15, drop=0.12)
+    gun_trigger(p["Guard"], p["Action"], -0.28, 1.46)
+
+    # The gloom in the metal: lit strips down both flanks of the receiver.
+    for s in (-1, 1):
+        box(p["Glow"], (-0.02, s * 0.14, 1.72), (0.07, 0.04, 0.62))
+    gun_muzzle(p["Muzzle"], length)
+    return gun_finish(name, p)
+
+
+# ---------------------------------------------------------------- Cyclone Rifle
+# The classic AR silhouette: in-line buffer stock, upper over lower receiver, a
+# carry handle with the rear aperture in it, round handguard, curved 30-round
+# magazine, front sight tower, birdcage flash hider.
+
+
+def build_cyclonerifle():
+    name = "CycloneRifle"
+    length, grip = FRAME[name]["length"], FRAME[name]["grip"]
+    p = gun_bms()
+
+    # In-line stock on its buffer tube.
+    box(p["Haft"], (-0.10, 0, 0.34), (0.36, 0.25, 0.60))
+    limb(p["Haft"], (-0.06, 0, 0.62), (-0.06, 0, 1.32), 0.105, 0.105, 7)
+    box(p["Haft"], (-0.14, 0, 0.90), (0.16, 0.22, 0.30))
+    box(p["Pommel"], (-0.10, 0, 0.05), (0.40, 0.26, 0.10))
+
+    # Upper and lower receiver.
+    box(p["Head"], (-0.02, 0, 1.66), (0.28, 0.26, 0.78))
+    box(p["Head"], (-0.26, 0, 1.62), (0.22, 0.23, 0.58))
+    box(p["Head"], (-0.24, 0, 1.36), (0.26, 0.24, 0.20))
+    box(p["Head"], (0.06, 0.15, 1.72), (0.13, 0.05, 0.24))  # ejection port cover
+
+    # Carry handle: two posts, the bar between them, the rear aperture ring.
+    for z in (1.38, 1.92):
+        box(p["Sight"], (0.20, 0, z), (0.22, 0.10, 0.09))
+    box(p["Sight"], (0.30, 0, 1.65), (0.10, 0.13, 0.66))
+    gun_ring(p["Sight"], 0.30, 1.36, 0.07, 0.028, seg=6)
+
+    # Handguard, barrel, gas block + front sight tower, birdcage.
+    limb(p["Haft"], (0, 0, 2.05), (0, 0, 2.82), 0.155, 0.145, 8)
+    for z in (2.18, 2.38, 2.58, 2.74):
+        gun_band(p["Haft"], z, 0.165, 0.04)
+    limb(p["Edge"], (0, 0, 2.02), (0, 0, length - 0.17), 0.058, 0.05, 8)
+    box(p["Spike"], (0.10, 0, 2.94), (0.24, 0.13, 0.16))
+    gun_post(p["Spike"], 2.94, 0.20, 0.16, width=0.05, y=0.05)
+    limb(p["Spike"], (0, 0, length - 0.19), (0, 0, length), 0.082, 0.075, 6)
+
+    # Curved 30-rounder, charging handle at the back of the upper, grip.
+    gun_mag(p["Mag"], -0.28, 1.56, drop=0.90, curve=16, width=0.22, thick=0.16, segs=3)
+    box(p["Action"], (0.02, 0, 1.28), (0.09, 0.28, 0.09))
+    box(p["Action"], (0.02, 0, 1.36), (0.07, 0.10, 0.10))
+    gun_grip(p["Grip"], p["Haft"], -0.34, grip, rake=22, r=0.15, drop=0.12)
+    gun_trigger(p["Guard"], p["Action"], -0.30, 1.44)
+    gun_muzzle(p["Muzzle"], length)
+    return gun_finish(name, p)
+
+
+# ---------------------------------------------------------------- Cinderlock Carbine
+# AK-flavoured full-auto: thick wooden stock and handguards, the gas tube
+# canted over the barrel with its own top handguard, a slab receiver, a heavily
+# curved magazine, the front sight tower and a slant brake.
+
+
+def build_cinderlockcarbine():
+    name = "CinderlockCarbine"
+    length, grip = FRAME[name]["length"], FRAME[name]["grip"]
+    p = gun_bms()
+
+    # Thick wooden stock, sloping into the receiver.
+    box(p["Haft"], (-0.30, 0, 0.20), (0.60, 0.27, 0.38))
+    box(p["Haft"], (-0.24, 0, 0.60), (0.48, 0.25, 0.50))
+    box(p["Haft"], (-0.20, 0, 0.94), (0.38, 0.23, 0.34))
+    box(p["Pommel"], (-0.30, 0, 0.04), (0.62, 0.27, 0.10))
+
+    # Slab receiver with the dust cover on top and the charging handle out the
+    # right flank - the AK read.
+    box(p["Head"], (-0.10, 0, 1.38), (0.34, 0.27, 0.84))
+    box(p["Action"], (0.09, 0, 1.44), (0.10, 0.25, 0.66))
+    box(p["Action"], (0.06, 0.17, 1.74), (0.10, 0.11, 0.14))
+
+    # Barrel, canted gas tube over it, both wooden handguards.
+    limb(p["Edge"], (0, 0, 1.80), (0, 0, length - 0.14), 0.062, 0.055, 8)
+    limb(p["Edge"], (0.16, 0, 1.86), (0.155, 0, 2.62), 0.052, 0.048, 6)
+    box(p["Haft"], (-0.17, 0, 2.16), (0.22, 0.24, 0.76))
+    box(p["Haft"], (0.19, 0, 2.16), (0.16, 0.20, 0.68))
+    box(p["Head"], (0.10, 0, 2.64), (0.26, 0.16, 0.14))  # gas block
+
+    # Front sight tower and the slant brake.
+    box(p["Spike"], (0.12, 0, 2.96), (0.30, 0.13, 0.16))
+    gun_post(p["Spike"], 2.96, 0.27, 0.16, width=0.05, y=0.05)
+    box(p["Spike"], (0, 0, length - 0.08), (0.17, 0.17, 0.20), Matrix.Rotation(math.radians(14), 4, "Y"))
+    box(p["Sight"], (0.14, 0, 1.86), (0.14, 0.13, 0.07))
+
+    # The banana mag, the grip, the trigger.
+    gun_mag(p["Mag"], -0.28, 1.32, drop=0.76, curve=26, width=0.22, thick=0.17, segs=3)
+    gun_grip(p["Grip"], p["Haft"], -0.32, grip, rake=24, r=0.155, drop=0.12)
+    gun_trigger(p["Guard"], p["Action"], -0.28, 1.20)
+    gun_muzzle(p["Muzzle"], length)
+    return gun_finish(name, p)
+
+
+# ---------------------------------------------------------------- Phantom Repeater
+# A haunted lever gun: octagonal barrel, the tube magazine slung under it, the
+# big loop lever hanging off the receiver, buckhorn irons, and spectral
+# fittings burning cold along the metal.
+
+
+def build_phantomrepeater():
+    name = "PhantomRepeater"
+    length, grip = FRAME[name]["length"], FRAME[name]["grip"]
+    p = gun_bms()
+
+    # Curved wooden stock and the short forend.
+    box(p["Haft"], (-0.28, 0, 0.19), (0.56, 0.26, 0.36))
+    box(p["Haft"], (-0.24, 0, 0.60), (0.48, 0.24, 0.52))
+    box(p["Haft"], (-0.20, 0, 1.02), (0.36, 0.22, 0.40))
+    box(p["Haft"], (-0.15, 0, 2.24), (0.24, 0.23, 0.62))
+    box(p["Pommel"], (-0.28, 0, 0.03), (0.58, 0.26, 0.09))
+    box(p["Pommel"], (-0.52, 0, 0.11), (0.13, 0.24, 0.22))
+    box(p["Pommel"], (-0.04, 0, 0.11), (0.13, 0.24, 0.22))
+
+    # Receiver, then the octagonal barrel (an eight-sided tube, held constant).
+    box(p["Head"], (-0.07, 0, 1.58), (0.32, 0.25, 0.72))
+    limb(p["Edge"], (0, 0, 1.92), (0, 0, length), 0.088, 0.078, 8)
+
+    # Tube magazine under the barrel, with its nose cap.
+    limb(p["Mag"], (-0.155, 0, 1.98), (-0.155, 0, 3.24), 0.055, 0.055, 6)
+    gun_band(p["Mag"], 3.24, 0.068, 0.08, x=-0.155, sides=6)
+
+    # The lever: an arm off the receiver into a big finger loop.
+    box(p["Action"], (-0.24, 0, 1.42), (0.20, 0.09, 0.12), Matrix.Rotation(math.radians(-55), 4, "Y"))
+    gun_ring(p["Action"], -0.38, 1.24, 0.175, 0.042, seg=7)
+
+    # Buckhorn rear, blade front.
+    box(p["Sight"], (0.13, 0, 2.02), (0.12, 0.15, 0.07))
+    gun_post(p["Sight"], 3.26, 0.08, 0.13, width=0.05, y=0.05)
+
+    gun_wrist(p["Grip"], -0.20, grip, rake=10, r=0.155, half=0.28)
+    gun_trigger(p["Guard"], p["Action"], -0.26, 1.28, blade=True)
+
+    # Spectral fittings: bands round the barrel, wisp-runes on the receiver.
+    for z in (2.30, 2.78):
+        gun_band(p["Glow"], z, 0.10, 0.06)
+    for s in (-1, 1):
+        box(p["Glow"], (-0.04, s * 0.13, 1.58), (0.09, 0.04, 0.46))
+    ellipsoid(p["Glow"], (0, 0, length - 0.02), (0.055, 0.055, 0.04), subdiv=0)
+    gun_muzzle(p["Muzzle"], length)
+    return gun_finish(name, p)
+
+
+# ---------------------------------------------------------------- Mire Flintlock
+# A flintlock pistol: the wooden grip curving down and back off the breech to a
+# brass butt cap, a round tapered barrel with a slight muzzle flare, the brass
+# lock plate with its cock and frizzen standing on the flank, and the ramrod
+# under the barrel (the reload part, so it is _Mag).
+
+
+def build_mireflintlock():
+    name = "MireFlintlock"
+    length, grip = FRAME[name]["length"], FRAME[name]["grip"]
+    p = gun_bms()
+
+    # The down-curved grip, thickening into the butt.
+    limb(p["Haft"], (-0.10, 0, 0.62), (-0.36, 0, 0.32), 0.145, 0.135, 7)
+    limb(p["Haft"], (-0.36, 0, 0.32), (-0.60, 0, 0.05), 0.135, 0.165, 7)
+    box(p["Haft"], (-0.05, 0, 0.64), (0.32, 0.22, 0.44))  # the wrist / breech block
+    ellipsoid(p["Pommel"], (-0.63, 0, 0.03), (0.14, 0.13, 0.10), subdiv=0)
+
+    # The hand rides the curve; its centre is the hand point.
+    gun_grip(p["Grip"], None, -0.29, grip, rake=48, r=0.15, half=0.20)
+
+    # Round tapered barrel with the flare at the muzzle.
+    limb(p["Edge"], (0, 0, 0.72), (0, 0, length - 0.10), 0.10, 0.072, 8)
+    limb(p["Edge"], (0, 0, length - 0.10), (0, 0, length), 0.072, 0.098, 8)
+    gun_band(p["Spike"], 0.86, 0.108, 0.06)
+
+    # Lock plate, pan, cock and frizzen on the flank.
+    gun_flintlock(p["Head"], p["Action"], 0.72, x=0.02, side=1.0, scale=1.0)
+
+    # Ramrod under the barrel - what a reload actually moves.
+    limb(p["Mag"], (-0.135, 0, 0.86), (-0.135, 0, 1.70), 0.028, 0.028, 4)
+    box(p["Mag"], (-0.135, 0, 1.72), (0.05, 0.06, 0.06))
+
+    gun_trigger(p["Guard"], p["Action"], -0.20, 0.50, drop=0.18, half_z=0.13)
+    gun_post(p["Sight"], length - 0.16, 0.075, 0.09, width=0.05, y=0.05)
+    box(p["Sight"], (0.14, 0, 0.52), (0.10, 0.11, 0.06))
+
+    # Fen-venom etching on both stock flanks and a vein up the barrel.
+    for s in (-1, 1):
+        stroke(p["Glow"], (-0.10, s * 0.11, 0.62), 0.26, 40)
+    box(p["Glow"], (0.09, 0, 1.24), (0.03, 0.04, 0.60))
+    gun_muzzle(p["Muzzle"], length)
+    return gun_finish(name, p)
+
+
+# ---------------------------------------------------------------- Frostbite Revolver
+# A revolver, and it had better read as one: a real six-chamber cylinder under
+# the top strap (its axis below the bore so the top chamber lines up with the
+# barrel), a fluted barrel on an underlug, the hammer spur standing off the
+# back, and a curved grip.
+
+
+def build_frostbiterevolver():
+    name = "FrostbiteRevolver"
+    length, grip = FRAME[name]["length"], FRAME[name]["grip"]
+    p = gun_bms()
+
+    cyl_x, cyl_z0, cyl_z1 = -0.175, 0.60, 1.06
+
+    # Frame: standing breech, top strap over the cylinder, backstrap into grip.
+    box(p["Haft"], (-0.16, 0, 0.55), (0.44, 0.23, 0.13))
+    box(p["Haft"], (0.15, 0, 0.83), (0.10, 0.22, 0.56))
+    box(p["Haft"], (-0.16, 0, 1.06), (0.44, 0.23, 0.12))
+    limb(p["Haft"], (-0.20, 0, 0.52), (-0.40, 0, 0.24), 0.135, 0.14, 7)
+    limb(p["Haft"], (-0.40, 0, 0.24), (-0.54, 0, 0.04), 0.14, 0.15, 7)
+    box(p["Pommel"], (-0.55, 0, 0.03), (0.16, 0.20, 0.08))
+    gun_grip(p["Grip"], None, -0.33, grip, rake=52, r=0.16, half=0.22)
+
+    # THE CYLINDER - its own object, six chambers, one lined up with the bore.
+    gun_cylinder(p["Mag"], cyl_x, cyl_z0, cyl_z1, ring_r=0.175, lobe_r=0.095, plate_r=0.225)
+
+    # Fluted barrel on its underlug, with the ejector rod.
+    limb(p["Edge"], (0, 0, 1.12), (0, 0, length), 0.082, 0.075, 6)
+    box(p["Edge"], (-0.10, 0, 1.42), (0.13, 0.15, 0.66))
+    box(p["Head"], (0.09, 0, 1.42), (0.07, 0.11, 0.70))  # the sighting rib
+    limb(p["Mag"], (cyl_x, 0, 1.06), (cyl_x, 0, 1.52), 0.035, 0.035, 5)
+
+    # Hammer + spur off the back of the frame, and the trigger.
+    box(p["Action"], (0.12, 0, 0.46), (0.11, 0.10, 0.24), Matrix.Rotation(math.radians(24), 4, "Y"))
+    box(p["Action"], (0.21, 0, 0.35), (0.17, 0.09, 0.07), Matrix.Rotation(math.radians(62), 4, "Y"))
+    gun_trigger(p["Guard"], p["Action"], -0.20, 0.60, drop=0.19, half_z=0.14)
+
+    gun_post(p["Sight"], length - 0.12, 0.10, 0.10, width=0.05, y=0.05)
+    box(p["Sight"], (0.16, 0, 0.60), (0.09, 0.12, 0.06))
+
+    for s in (-1, 1):
+        box(p["Glow"], (0.05, s * 0.12, 1.42), (0.05, 0.03, 0.44))
+    gun_muzzle(p["Muzzle"], length)
+    return gun_finish(name, p)
+
+
+# ---------------------------------------------------------------- Thunderhead Cannon
+# A hand cannon: an oversized bore in a reinforced ring frame, a break-open
+# chamber block (the shell = _Mag), an outsized hammer, a lanyard ring at the
+# butt, and everything half again as thick as it should be.
+
+
+def build_thunderheadcannon():
+    name = "ThunderheadCannon"
+    length, grip = FRAME[name]["length"], FRAME[name]["grip"]
+    p = gun_bms()
+
+    # Heavy breech frame and the grip frame under it.
+    box(p["Haft"], (-0.10, 0, 0.68), (0.52, 0.34, 0.62))
+    limb(p["Haft"], (-0.24, 0, 0.50), (-0.46, 0, 0.20), 0.16, 0.16, 7)
+    limb(p["Haft"], (-0.46, 0, 0.20), (-0.58, 0, 0.05), 0.16, 0.17, 7)
+    box(p["Pommel"], (-0.59, 0, 0.04), (0.18, 0.24, 0.10))
+    gun_grip(p["Grip"], None, -0.34, grip, rake=30, r=0.19, half=0.26)
+
+    # The chamber block: the loaded shell, separable for the break-open reload.
+    limb(p["Mag"], (0, 0, 0.60), (0, 0, 0.98), 0.20, 0.195, 8)
+    gun_band(p["Mag"], 0.58, 0.25, 0.07)
+
+    # Oversized bore: a thick barrel through three reinforcing rings.
+    limb(p["Edge"], (0, 0, 0.96), (0, 0, length - 0.14), 0.185, 0.17, 8)
+    limb(p["Edge"], (0, 0, length - 0.14), (0, 0, length), 0.20, 0.235, 8)
+    for z in (1.24, 1.60, 1.96):
+        gun_band(p["Spike"], z, 0.235, 0.08)
+
+    # Hammer, trigger, lanyard ring, blocky irons.
+    box(p["Action"], (0.16, 0, 0.36), (0.13, 0.13, 0.28), Matrix.Rotation(math.radians(20), 4, "Y"))
+    box(p["Action"], (0.26, 0, 0.24), (0.18, 0.11, 0.08), Matrix.Rotation(math.radians(60), 4, "Y"))
+    gun_trigger(p["Guard"], p["Action"], -0.26, 0.66, drop=0.22, half_z=0.16, width=0.13)
+    gun_ring(p["Spike"], -0.62, 0.12, 0.09, 0.03, seg=6)
+    box(p["Sight"], (0.26, 0, 0.98), (0.12, 0.13, 0.07))
+    gun_post(p["Sight"], length - 0.30, 0.16, 0.12, width=0.06, y=0.07)
+
+    # Storm core in the breech, and the bore lit.
+    for s in (-1, 1):
+        box(p["Glow"], (-0.10, s * 0.18, 0.70), (0.20, 0.04, 0.30))
+    ellipsoid(p["Glow"], (0, 0, length - 0.03), (0.13, 0.13, 0.05), subdiv=0)
+    gun_muzzle(p["Muzzle"], length)
+    return gun_finish(name, p)
+
+
+# ---------------------------------------------------------------- Grave Blunderbuss
+# The bell is the whole point: a full wooden stock, brass bands up a stubby
+# barrel, and then the muzzle opening out into a trumpet three times the
+# barrel's width. Flintlock on the flank, ramrod under (the reload part).
+
+
+def build_graveblunderbuss():
+    name = "GraveBlunderbuss"
+    length, grip = FRAME[name]["length"], FRAME[name]["grip"]
+    p = gun_bms()
+
+    # Full wooden stock: butt, comb, wrist, belly, forend.
+    box(p["Haft"], (-0.32, 0, 0.20), (0.68, 0.29, 0.40))
+    box(p["Haft"], (-0.26, 0, 0.62), (0.52, 0.26, 0.52))
+    box(p["Haft"], (-0.22, 0, 1.02), (0.40, 0.23, 0.42))
+    box(p["Haft"], (-0.13, 0, 1.36), (0.30, 0.27, 0.52))
+    box(p["Haft"], (-0.16, 0, 1.96), (0.26, 0.25, 0.80))
+    box(p["Pommel"], (-0.32, 0, 0.03), (0.70, 0.29, 0.09))
+
+    box(p["Head"], (-0.02, 0, 1.32), (0.28, 0.27, 0.46))  # the breech
+
+    # Barrel, then the bell.
+    limb(p["Edge"], (0, 0, 1.44), (0, 0, 2.28), 0.118, 0.105, 8)
+    limb(p["Edge"], (0, 0, 2.28), (0, 0, length), 0.105, 0.34, 10)
+    gun_band(p["Spike"], length - 0.03, 0.365, 0.07, sides=10)
+    for z in (1.58, 1.92, 2.22):
+        gun_band(p["Spike"], z, 0.135, 0.06)
+
+    # Flintlock on the flank, ramrod under the barrel.
+    gun_flintlock(p["Head"], p["Action"], 1.30, x=0.02, side=1.0, scale=1.05)
+    limb(p["Mag"], (-0.17, 0, 1.56), (-0.17, 0, 2.42), 0.03, 0.03, 4)
+    box(p["Mag"], (-0.17, 0, 2.45), (0.05, 0.07, 0.07))
+
+    gun_trigger(p["Guard"], p["Action"], -0.24, 1.12)
+    gun_wrist(p["Grip"], -0.20, grip, rake=12, r=0.16, half=0.28)
+    gun_post(p["Sight"], 1.56, 0.12, 0.09, width=0.05, y=0.05)
+    gun_muzzle(p["Muzzle"], length)
+    return gun_finish(name, p)
+
+
+# ---------------------------------------------------------------- Basalt Scattergun
+# A sawn-off double: two barrels side by side with a rib between them, a cut
+# stock and a stubby forend, the break-open top lever and twin triggers. The
+# barrel group is _Mag - break it open and it swings away as one piece.
+
+
+def build_basaltscattergun():
+    name = "BasaltScattergun"
+    length, grip = FRAME[name]["length"], FRAME[name]["grip"]
+    p = gun_bms()
+
+    # Cut stock.
+    box(p["Haft"], (-0.30, 0, 0.17), (0.58, 0.27, 0.34))
+    box(p["Haft"], (-0.25, 0, 0.50), (0.46, 0.25, 0.38))
+    box(p["Haft"], (-0.21, 0, 0.80), (0.36, 0.23, 0.34))
+    box(p["Pommel"], (-0.30, 0, 0.03), (0.60, 0.27, 0.09))
+
+    # Receiver / standing breech, and the hinge pin the barrels break on.
+    box(p["Head"], (-0.06, 0, 1.08), (0.38, 0.30, 0.46))
+    limb(p["Head"], (-0.13, -0.19, 1.30), (-0.13, 0.19, 1.30), 0.05, 0.05, 6)
+
+    # THE BARREL GROUP (_Mag): two bores side by side, the rib, the lump.
+    for s in (-1, 1):
+        limb(p["Mag"], (0, s * 0.13, 1.14), (0, s * 0.155, length), 0.115, 0.11, 8)
+        limb(p["Mag"], (0, s * 0.155, length - 0.07), (0, s * 0.155, length), 0.135, 0.135, 8)
+    box(p["Mag"], (0.155, 0, 1.90), (0.07, 0.14, 1.46))  # top rib, PROUD of both bores
+    box(p["Mag"], (-0.145, 0, 1.86), (0.06, 0.13, 1.36))  # under-rib
+    box(p["Mag"], (0, 0, length - 0.03), (0.24, 0.40, 0.06))  # the twin muzzle face
+    box(p["Mag"], (-0.09, 0, 1.36), (0.12, 0.30, 0.30))  # the lump
+    for z in (1.72, 2.24):
+        box(p["Mag"], (0, 0, z), (0.22, 0.36, 0.07))
+
+    # Stubby forend under the barrels.
+    box(p["Haft"], (-0.17, 0, 1.60), (0.19, 0.37, 0.44))
+
+    # Break lever on top, twin triggers, guard.
+    box(p["Action"], (0.16, 0, 1.02), (0.10, 0.07, 0.26))
+    box(p["Guard"], (-0.30, 0, 0.98), (0.06, 0.11, 0.44))
+    box(p["Guard"], (-0.16, 0, 1.20), (0.24, 0.11, 0.06))
+    box(p["Guard"], (-0.16, 0, 0.76), (0.24, 0.11, 0.06))
+    for s in (-1, 1):
+        box(p["Action"], (-0.19, s * 0.045, 0.98 + s * 0.09), (0.13, 0.04, 0.07), Matrix.Rotation(math.radians(22), 4, "Y"))
+
+    gun_wrist(p["Grip"], -0.20, grip, rake=12, r=0.16, half=0.26)
+    box(p["Sight"], (0.13, 0, 2.46), (0.08, 0.07, 0.07))
+    for s in (-1, 1):
+        stroke(p["Glow"], (-0.02, s * 0.16, 1.10), 0.26, 0)
+    gun_muzzle(p["Muzzle"], length)
+    return gun_finish(name, p)
+
+
+# ---------------------------------------------------------------- Bogwood Bow
+# A braced recurve seen along the arrow: the limbs span ACROSS the bore (+-x),
+# curving back toward the archer and flicking forward again at the tips; the
+# string runs tip to tip; the riser is a block across the middle with the hide
+# grip wrapped round it; the nocked arrow lies on the rest at x = 0 and its
+# head is the muzzle.
+
+
+def build_bogwoodbow():
+    name = "BogwoodBow"
+    length, grip = FRAME[name]["length"], FRAME[name]["grip"]
+    p = gun_bms()
+
+    riser_z = grip
+    tip_x, tip_z = 1.20, 0.12
+    flick = Vector((0.11, 0, 0.20))
+
+    # The riser: a block spanning x, thin along the bore, with the arrow shelf.
+    box(p["Haft"], (-0.05, 0, riser_z), (0.62, 0.17, 0.26))
+    box(p["Haft"], (-0.02, 0, riser_z + 0.16), (0.30, 0.15, 0.10))
+
+    # Both limbs: from the riser out to the tips, bending back toward the archer.
+    tips = []
+    for s in (-1, 1):
+        pts = []
+        for i in range(5):
+            t = i / 4
+            x = s * (0.28 + (tip_x - 0.28) * t)
+            z = riser_z - (riser_z - tip_z) * (t ** 1.7)
+            r = 0.085 - 0.042 * t
+            pts.append((Vector((x, 0, z)), r))
+        for (a, ra), (b, rb) in zip(pts, pts[1:]):
+            limb(p["Haft"], a, b, ra, rb, 5)
+        end = pts[-1][0]
+        flick_end = end + Vector((s * flick.x, 0, flick.z))
+        cone(p["Spike"], end, flick_end, 0.042, 4)
+        tips.append(flick_end)
+
+    # The string, tip to tip, with the serving at the nocking point.
+    limb(p["Action"], tips[0], tips[1], 0.021, 0.021, 4)
+    box(p["Action"], (0, 0, tips[0].z), (0.05, 0.05, 0.13))
+
+    # The nocked arrow: shaft, bone head at z = LENGTH, fletching at the nock.
+    nock_z = tips[0].z - 0.05
+    limb(p["Mag"], (0, 0, nock_z), (0, 0, length - 0.20), 0.03, 0.028, 4)
+    cone(p["Mag"], (0, 0, length - 0.20), (0, 0, length), 0.062, 4)
+    for s in (-1, 1):
+        box(p["Mag"], (s * 0.055, 0, nock_z + 0.20), (0.11, 0.02, 0.20), Matrix.Rotation(math.radians(-s * 14), 4, "Y"))
+    box(p["Mag"], (0, 0.055, nock_z + 0.20), (0.02, 0.11, 0.20))
+
+    # Hide grip wrapped round the riser; its centre IS the hand point.
+    a = Vector((-0.02, 0, riser_z))
+    b = Vector((-0.34, 0, riser_z))
+    limb(p["Grip"], a, b, 0.135, 0.125, 7)
+
+    # Arrow rest nub and a bone sight pin off the riser's up side.
+    box(p["Sight"], (-0.02, 0.09, riser_z + 0.20), (0.07, 0.09, 0.05))
+    gun_post(p["Sight"], riser_z + 0.14, 0.26, 0.12, width=0.05, y=0.05)
+    gun_muzzle(p["Muzzle"], length)
+    return gun_finish(name, p)
+
+
+# ---------------------------------------------------------------- Gatorjaw Crossbow
+# A rifle stock with a bolt channel down its top rail, the scute-plated lath
+# spanning +-y near the muzzle, the string drawn back into the claw, gator
+# teeth studding the fore-stock and a wisp for a sight.
+
+
+def build_gatorjawcrossbow():
+    name = "GatorjawCrossbow"
+    length, grip = FRAME[name]["length"], FRAME[name]["grip"]
+    p = gun_bms()
+
+    # Stock: butt, comb, the long body out to the nose.
+    box(p["Haft"], (-0.28, 0, 0.18), (0.52, 0.24, 0.36))
+    box(p["Haft"], (-0.22, 0, 0.56), (0.42, 0.22, 0.44))
+    box(p["Haft"], (-0.12, 0, 1.62), (0.30, 0.24, 1.72))
+    box(p["Haft"], (-0.10, 0, 2.60), (0.24, 0.22, 0.30))
+    box(p["Pommel"], (-0.28, 0, 0.03), (0.54, 0.24, 0.09))
+
+    # The bolt channel: two rail walls on top, the bolt riding between them.
+    for s in (-1, 1):
+        box(p["Haft"], (0.06, s * 0.10, 2.02), (0.14, 0.05, 1.44))
+
+    # The lath: scute arms spanning +-y just behind the nose, swept forward.
+    for s in (-1, 1):
+        limb(p["Edge"], (0, 0, 2.44), (0, s * 0.62, 2.33), 0.085, 0.070, 5)
+        limb(p["Edge"], (0, s * 0.62, 2.33), (0, s * 1.20, 2.09), 0.070, 0.038, 5)
+        for yy in (0.30, 0.62, 0.92):
+            box(p["Spike"], (0.02, s * yy, 2.44 - yy * 0.30), (0.11, 0.16, 0.11))
+
+    # The string drawn back into the nut, and the claw that holds it.
+    for s in (-1, 1):
+        limb(p["Action"], (0, s * 1.20, 2.09), (0, s * 0.03, 1.56), 0.022, 0.022, 4)
+    box(p["Action"], (0.04, 0, 1.52), (0.16, 0.22, 0.16))
+    box(p["Head"], (-0.18, 0, 1.44), (0.22, 0.22, 0.30))  # the bog-iron lock
+
+    # The loaded bolt: rides the channel, head exactly at z = LENGTH.
+    limb(p["Mag"], (0, 0, 1.58), (0, 0, length - 0.16), 0.032, 0.028, 4)
+    cone(p["Mag"], (0, 0, length - 0.16), (0, 0, length), 0.055, 4)
+    for s in (-1, 1):
+        box(p["Mag"], (0.02 + s * 0.045, 0, 1.72), (0.09, 0.02, 0.16))
+
+    # Gator teeth studding the fore-stock flanks.
+    for s in (-1, 1):
+        for z in (1.90, 2.14):
+            cone(p["Spike"], (-0.06, s * 0.11, z), (-0.10, s * 0.30, z + 0.06), 0.045, 4)
+
+    gun_trigger(p["Guard"], p["Action"], -0.26, 0.94)
+    gun_wrist(p["Grip"], -0.20, grip, rake=12, r=0.155, half=0.26)
+    box(p["Sight"], (0.16, 0, 1.72), (0.12, 0.12, 0.07))
+    gun_post(p["Sight"], 2.58, 0.14, 0.11, width=0.05, y=0.05)
+    gun_ring(p["Spike"], -0.40, 2.62, 0.18, 0.045, seg=6)  # the foot stirrup
+    ellipsoid(p["Glow"], (0.24, 0, 1.72), (0.05, 0.05, 0.05), subdiv=0)
+    gun_muzzle(p["Muzzle"], length)
+    return gun_finish(name, p)
+
+
+# ---------------------------------------------------------------- Abyssal Harpooner
+# A speargun: a long open rail (two side walls with daylight and cross-braces
+# between them) with the barbed harpoon seated in its channel, the line spool
+# slung underneath, twin bands running from the muzzle yoke back to the spear's
+# tail, and a pistol grip aft.
+
+
+def build_abyssalharpooner():
+    name = "AbyssalHarpooner"
+    length, grip = FRAME[name]["length"], FRAME[name]["grip"]
+    p = gun_bms()
+
+    # The open rail: two walls, braced, with daylight down the middle.
+    for s in (-1, 1):
+        box(p["Haft"], (-0.14, s * 0.11, 1.72), (0.22, 0.05, 2.66))
+    for z in (0.90, 1.55, 2.20, 2.85):
+        box(p["Haft"], (-0.16, 0, z), (0.09, 0.27, 0.10))
+
+    # Receiver aft and the butt.
+    box(p["Head"], (-0.13, 0, 0.62), (0.34, 0.27, 0.62))
+    box(p["Haft"], (-0.18, 0, 0.20), (0.26, 0.24, 0.42))
+    box(p["Pommel"], (-0.18, 0, 0.04), (0.32, 0.25, 0.10))
+
+    # The harpoon seated in the channel, barbs swept back under the head.
+    limb(p["Spike"], (0, 0, 0.52), (0, 0, length - 0.20), 0.045, 0.04, 6)
+    cone(p["Spike"], (0, 0, length - 0.26), (0, 0, length), 0.105, 4)
+    for s in (-1, 1):
+        cone(p["Spike"], (s * 0.03, 0, length - 0.16), (s * 0.24, 0, length - 0.48), 0.05, 4)
+    gun_band(p["Spike"], 0.60, 0.085, 0.09, sides=6)  # the spear's tail collar
+
+    # Muzzle yoke: two arms out in y for the bands.
+    for s in (-1, 1):
+        limb(p["Head"], (0, 0, length - 0.16), (0, s * 0.24, length - 0.20), 0.05, 0.045, 5)
+        limb(p["Action"], (0, s * 0.24, length - 0.20), (0, s * 0.07, 0.72), 0.036, 0.036, 5)
+
+    # The line spool under the rail: a drum on a y axis, flanged both sides.
+    limb(p["Mag"], (-0.34, -0.13, 1.62), (-0.34, 0.13, 1.62), 0.19, 0.19, 9)
+    for s in (-1, 1):
+        limb(p["Mag"], (-0.34, s * 0.13, 1.62), (-0.34, s * 0.17, 1.62), 0.23, 0.23, 9)
+    box(p["Mag"], (-0.20, 0, 1.62), (0.14, 0.09, 0.09))
+
+    gun_grip(p["Grip"], p["Haft"], -0.32, grip, rake=20, r=0.155, drop=0.12)
+    gun_trigger(p["Guard"], p["Action"], -0.28, 1.02)
+    box(p["Sight"], (0.14, 0, 1.02), (0.12, 0.13, 0.07))
+    gun_post(p["Sight"], 2.62, 0.10, 0.12, width=0.05, y=0.05)
+    gun_muzzle(p["Muzzle"], length)
+    return gun_finish(name, p)
+
+
+# ---------------------------------------------------------------- Riptide SMG
+# The acid test. Compact and boxy: a slab receiver barely longer than a
+# forearm, a stubby barrel with a big hooded front sight, a LONG stick
+# magazine dropping out of the magwell forward of the trigger, the side
+# charging handle in its slot, and a wire folding stock stubbed off the back.
+
+
+def build_riptidesmg():
+    name = "RiptideSmg"
+    length, grip = FRAME[name]["length"], FRAME[name]["grip"]
+    p = gun_bms()
+
+    # The boxy receiver, with a rib along the top.
+    box(p["Head"], (-0.07, 0, 0.92), (0.34, 0.27, 0.94))
+    box(p["Head"], (0.13, 0, 0.94), (0.08, 0.17, 0.82))
+    box(p["Head"], (0.05, 0.16, 1.06), (0.12, 0.05, 0.26))  # ejection port
+
+    # Stubby barrel out of a short vented jacket.
+    limb(p["Edge"], (0, 0, 1.34), (0, 0, length), 0.05, 0.045, 8)
+    limb(p["Edge"], (0, 0, 1.34), (0, 0, 1.62), 0.092, 0.088, 8)
+    for z in (1.40, 1.50, 1.58):
+        gun_band(p["Spike"], z, 0.10, 0.035)
+
+    # Big hooded front sight, rear aperture.
+    gun_post(p["Sight"], 1.76, 0.06, 0.20, width=0.06, y=0.06)
+    for s in (-1, 1):
+        box(p["Sight"], (0.16, s * 0.085, 1.76), (0.22, 0.035, 0.06))
+    box(p["Sight"], (0.20, 0, 1.76), (0.05, 0.19, 0.05))
+    box(p["Sight"], (0.17, 0, 0.52), (0.14, 0.15, 0.06))
+
+    # The magwell and the LONG stick magazine - the read that sells it.
+    box(p["Guard"], (-0.30, 0, 1.00), (0.20, 0.27, 0.34))
+    gun_mag(p["Mag"], -0.38, 1.00, drop=0.86, curve=6, width=0.23, thick=0.175, segs=3)
+
+    # Side charging handle riding its slot.
+    box(p["Action"], (0.02, 0.17, 1.24), (0.10, 0.11, 0.13))
+    box(p["Action"], (0.05, 0.15, 1.10), (0.06, 0.04, 0.42))
+
+    # Wire folding stock: two rails back to a butt bar.
+    for s in (-1, 1):
+        limb(p["Haft"], (-0.10, s * 0.14, 0.46), (-0.17, s * 0.14, 0.08), 0.034, 0.034, 4)
+    box(p["Haft"], (-0.17, 0, 0.06), (0.10, 0.34, 0.08))
+    box(p["Pommel"], (-0.17, 0, 0.06), (0.12, 0.14, 0.09))
+
+    gun_grip(p["Grip"], p["Haft"], -0.32, grip, rake=14, r=0.155, drop=0.14)
+    gun_trigger(p["Guard"], p["Action"], -0.28, 0.78)
+    gun_muzzle(p["Muzzle"], length)
+    return gun_finish(name, p)
+
+
+# ---------------------------------------------------------------- Vulkan Repeater
+# The LMG: a heavy finned barrel, a carry handle arching over the receiver, the
+# drum magazine slung underneath, folded bipod legs along the barrel, and a
+# molten core burning through the vents.
+
+
+def build_vulkanrepeater():
+    name = "VulkanRepeater"
+    length, grip = FRAME[name]["length"], FRAME[name]["grip"]
+    p = gun_bms()
+
+    # Shoulder stock.
+    box(p["Haft"], (-0.28, 0, 0.21), (0.56, 0.27, 0.42))
+    box(p["Haft"], (-0.22, 0, 0.64), (0.44, 0.25, 0.48))
+    box(p["Haft"], (-0.18, 0, 1.00), (0.36, 0.23, 0.36))
+    box(p["Pommel"], (-0.28, 0, 0.04), (0.58, 0.27, 0.10))
+
+    # Heavy receiver.
+    box(p["Head"], (-0.07, 0, 1.56), (0.38, 0.31, 0.92))
+    box(p["Action"], (0.04, 0.20, 1.76), (0.11, 0.12, 0.17))
+    box(p["Action"], (0.06, 0.17, 1.58), (0.07, 0.05, 0.44))
+
+    # Finned barrel and the brake.
+    limb(p["Edge"], (0, 0, 2.02), (0, 0, length - 0.20), 0.10, 0.085, 8)
+    for i in range(6):
+        gun_band(p["Spike"], 2.18 + i * 0.17, 0.16, 0.05)
+    box(p["Spike"], (0, 0, length - 0.11), (0.26, 0.26, 0.24))
+    limb(p["Spike"], (0, 0, length - 0.06), (0, 0, length), 0.105, 0.105, 8)
+
+    # Carry handle over the receiver, plus the leaf sight behind it.
+    for z in (1.26, 1.86):
+        box(p["Sight"], (0.24, 0, z), (0.32, 0.10, 0.09))
+    box(p["Sight"], (0.38, 0, 1.56), (0.09, 0.13, 0.70))
+    box(p["Sight"], (0.22, 0, 2.06), (0.16, 0.13, 0.07))
+    gun_post(p["Sight"], 3.10, 0.14, 0.14, width=0.05, y=0.05)
+
+    # The drum, slung under the receiver on its feed tower.
+    limb(p["Mag"], (-0.48, -0.17, 1.50), (-0.48, 0.17, 1.50), 0.33, 0.33, 10)
+    for s in (-1, 1):
+        limb(p["Mag"], (-0.48, s * 0.17, 1.50), (-0.48, s * 0.20, 1.50), 0.27, 0.27, 10)
+    box(p["Mag"], (-0.24, 0, 1.54), (0.28, 0.22, 0.26))
+
+    # Folded bipod stubs along the barrel.
+    for s in (-1, 1):
+        limb(p["Spike"], (-0.14, s * 0.10, 2.56), (-0.28, s * 0.15, 3.14), 0.045, 0.035, 4)
+    box(p["Head"], (-0.14, 0, 2.50), (0.14, 0.22, 0.14))
+
+    gun_grip(p["Grip"], p["Haft"], -0.34, grip, rake=20, r=0.17, drop=0.12)
+    gun_trigger(p["Guard"], p["Action"], -0.30, 1.22, width=0.12)
+
+    # The molten core: vents down both flanks, veins along the barrel.
+    for s in (-1, 1):
+        box(p["Glow"], (-0.06, s * 0.16, 1.56), (0.16, 0.04, 0.56))
+        box(p["Glow"], (s * 0.15, 0, 2.60), (0.03, 0.05, 0.80))
+    ellipsoid(p["Glow"], (0, 0, length - 0.02), (0.07, 0.07, 0.05), subdiv=0)
+    gun_muzzle(p["Muzzle"], length)
+    return gun_finish(name, p)
 
 
 # ---------------------------------------------------------------- preview
@@ -1651,16 +2128,25 @@ def main():
         export_texcoords=False,
     )
 
+    def variant_tris(objs):
+        # glTF triangulates on export, so an n-gon costs n - 2 triangles.
+        return sum(len(poly.vertices) - 2 for o in objs if o for poly in o.data.polygons)
+
     total = sum(len(o.data.polygons) for objs in groups for o in objs if o)
+    named = ((next((o for o in objs if o), None), objs) for objs in groups)
+    by_variant = {first.name.split("_")[0]: variant_tris(objs) for first, objs in named if first}
     print(f"[weapon_gen] exported {out_path}")
     for name in FRAME:
-        print(f"[weapon_gen]   {name}: length {FRAME[name]['length']}, grip {FRAME[name]['grip']} (Weapons.luau must match)")
-    print(f"[weapon_gen] weapons: {', '.join(FRAME)}; polys: {total}")
+        tris = by_variant.get(name, 0)
+        print(f"[weapon_gen]   {name}: length {FRAME[name]['length']}, grip {FRAME[name]['grip']}, tris {tris} (Weapons.luau must match)")
+    print(f"[weapon_gen] weapons: {', '.join(FRAME)}; polys: {total}; tris: {sum(by_variant.values())}")
 
     if want_preview:
         import os
 
-        render_preview(groups, os.path.abspath("assets/weapon_preview.png"))
+        # Beside the .glb that was asked for, so a scratch build previews to
+        # scratch instead of stamping on the committed assets/weapon_preview.png.
+        render_preview(groups, os.path.splitext(os.path.abspath(out_path))[0] + "_preview.png")
 
 
 main()
