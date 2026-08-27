@@ -1190,6 +1190,117 @@ def build_lava(ground):
     return object_from_bmesh("Volcano_Lava", bm, ["M_Lava"])
 
 
+# ---------------------------------------------------------------- volcano dead trees (restart step 3)
+#
+# 2026-08-27, user: "add dead trees randomly across the base of the island.
+# they should be huge dead trees with branches branching out largely." One
+# `Volcano_DeadTrees` object (M_Charred - the old build's burnt-black), ~40
+# giants scattered over the ash apron: kinked two-segment trunks 38-85 studs
+# tall with root flares, throwing 4-6 LONG primary limbs wide of the trunk
+# (50-80 deg off vertical - the "branching out largely") and gnarled
+# secondaries off those. Raycast-seated; keeps clear of the lava rivers
+# (angular corridors around each LAVA_FLOWS bearing), the recorded ponds/
+# deltas, and the 270-deg spawn corridor. Collidable - trunks are real
+# obstacles - so the import wants PreciseConvexDecomposition (a box hull
+# over a spread crown would be an invisible wall).
+
+
+def _volcano_clear_of_rivers(x, y, margin):
+    """True when (x, y) sits at least `margin` studs LATERALLY off every lava
+    river's centreline (approximated as the radial ray at its bearing - the
+    authored wander is under 0.075 rad, folded into the margin)."""
+    r = math.hypot(x, y)
+    if r < 1.0:
+        return True
+    theta = math.atan2(y, x)
+    for bearing, _hw, _depth, ws in LAVA_FLOWS:
+        da = abs(((theta - math.radians(bearing) + math.pi) % math.tau) - math.pi)
+        if r * da < margin + 30.0 * ws:  # river half-width at the apron, scaled
+            return False
+    return True
+
+
+def _dead_tree(bm, x, y, base_z, h, salt):
+    """One huge charred snag: a kinked two-segment trunk with root flares,
+    wide-flung primary limbs and gnarled secondaries. All add_cone segments;
+    children seat on their parent's axis via cone_axis."""
+    rng = random.Random(salt)
+    trunk_r = max(1.7, h * 0.042)
+
+    # Root flares: short fat cones leaning outward from the base.
+    for _ in range(3):
+        a = rng.uniform(0, math.tau)
+        add_cone(
+            bm, (x + math.cos(a) * trunk_r * 0.9, y + math.sin(a) * trunk_r * 0.9, base_z - 0.6),
+            trunk_r * 0.55, 0.25, rng.uniform(3.5, 6.0), sides=5,
+            tilt=(math.sin(a) * 0.9, -math.cos(a) * 0.9), yaw=0.0,
+        )
+
+    # The trunk: two segments with a kink between them.
+    t1 = (rng.uniform(-0.09, 0.09), rng.uniform(-0.09, 0.09))
+    h1 = h * rng.uniform(0.5, 0.6)
+    add_cone(bm, (x, y, base_z), trunk_r, trunk_r * 0.55, h1, sides=6, tilt=t1, yaw=0.0)
+    axis1 = cone_axis(t1, 0.0)
+    kink = Vector((x, y, base_z)) + axis1 * h1
+    t2 = (t1[0] + rng.uniform(-0.16, 0.16), t1[1] + rng.uniform(-0.16, 0.16))
+    h2 = h - h1
+    add_cone(bm, tuple(kink), trunk_r * 0.55, 0.4, h2, sides=5, tilt=t2, yaw=0.0)
+    axis2 = cone_axis(t2, 0.0)
+
+    # Primary limbs: long, flung WIDE (50-80 deg off vertical), spiralling
+    # around the trunk, seated along both trunk segments.
+    limbs = rng.randint(4, 6)
+    yaw0 = rng.uniform(0, math.tau)
+    for k in range(limbs):
+        f = rng.uniform(0.45, 0.95)
+        up = f * h
+        seat = (Vector((x, y, base_z)) + axis1 * up) if up < h1 else (kink + axis2 * (up - h1))
+        yaw = yaw0 + k * (math.tau / limbs) + rng.uniform(-0.4, 0.4)
+        spread = math.radians(rng.uniform(50.0, 80.0))
+        tilt = (math.sin(yaw) * spread, -math.cos(yaw) * spread)
+        length = h * rng.uniform(0.32, 0.55) * (1.15 - 0.35 * f)  # lower limbs reach furthest
+        limb_r = trunk_r * rng.uniform(0.32, 0.45)
+        add_cone(bm, tuple(seat), limb_r, 0.22, length, sides=5, tilt=tilt, yaw=0.0)
+        # One or two gnarled secondaries per limb.
+        laxis = cone_axis(tilt, 0.0)
+        for _ in range(rng.randint(1, 2)):
+            g = rng.uniform(0.45, 0.8)
+            child = seat + laxis * (length * g)
+            ct = (tilt[0] + rng.uniform(-0.5, 0.5), tilt[1] + rng.uniform(-0.5, 0.5))
+            add_cone(bm, tuple(child), limb_r * 0.5, 0.14, length * rng.uniform(0.35, 0.55), sides=4, tilt=ct, yaw=0.0)
+
+
+def build_volcano_trees(ground):
+    bm = bmesh.new()
+    placed = []
+    made, attempts = 0, 0
+    while made < 40 and attempts < 2400:
+        attempts += 1
+        theta = random.uniform(0, math.tau)
+        u = random.uniform(0.73, 0.97)
+        # The spawn/dock corridor on 270 stays clear (the walk off the beach).
+        if abs(((theta - math.radians(270) + math.pi) % math.tau) - math.pi) < math.radians(9):
+            continue
+        r = ring_radius(u, theta)
+        x, y = math.cos(theta) * r, math.sin(theta) * r
+        if not _volcano_clear_of_rivers(x, y, 14.0):
+            continue
+        if not _clear_of_ponds(x, y, 6.0):
+            continue
+        if any((x - px) ** 2 + (y - py) ** 2 < 24.0**2 for px, py in placed):
+            continue
+        base = _drop_to_ground(ground, x, y)
+        if base is None or base < 0.5:
+            continue
+        # Mostly huge, a few true giants towering over the apron.
+        h = random.uniform(38.0, 62.0) if random.random() < 0.75 else random.uniform(62.0, 85.0)
+        _dead_tree(bm, x, y, base - 0.8, h, salt=attempts * 3.7 + made)
+        placed.append((x, y))
+        made += 1
+    print(f"[island_gen] HANDOFF volcano trees: {made} dead giants on the apron (heights 38-85)")
+    return object_from_bmesh("Volcano_DeadTrees", bm, ["M_Charred"])
+
+
 # ---------------------------------------------------------------- island builds
 
 
@@ -1217,11 +1328,13 @@ def build_volcano():
 
     STEP 1 - the shape (iterated to the ~895-stud shattered spire on review);
     STEP 2 - the lava (build_lava: crater lake, six notch-fed rivers running
-    rim to sea, apron pools + molten deltas). Still NO props, NO dock, NO
-    foam - each returns with its own reviewed step."""
+    rim to sea, apron pools + molten deltas); STEP 3 - the dead giants
+    (build_volcano_trees). Still NO rocks/scatter, NO dock, NO foam - each
+    returns with its own reviewed step."""
     base = build_island_base("Volcano_Base", ["M_VolRock", "M_VolAsh", "M_VolWet"])
     ground = _ground_bvh(base)
     lava = build_lava(ground)  # step 2: clears + repopulates LAVA_PONDS itself
+    trees = build_volcano_trees(ground)  # step 3: after lava - reads LAVA_PONDS to keep clear
     shore = ring_radius(1.0, math.radians(270))
     peak = max(h for _, h in PROFILE)
     print(
@@ -1229,7 +1342,7 @@ def build_volcano():
         f"spawn suggestion X=0 Z={shore - 30:.0f} ground Y~{height_at(0, -(shore - 30)):.1f}; "
         "no dock/props yet - Pyrelisk's arena keys off the OLD dock, re-key when the dock step lands"
     )
-    return [base, lava]
+    return [base, lava, trees]
 
 
 # ---------------------------------------------------------------- revamp islands (2026-08-25)
@@ -1649,33 +1762,30 @@ def _tilt_toward(direction):
 
 
 def build_swamp_trees():
-    """The fen's trees, rebuilt to the user's reference images (which
-    REPLACED the mangrove stilt-root pass - 'exactly like the reference...
-    no exposed roots'): smooth CURVED tan trunks that rise straight out of
-    the ground and taper hard, in two kinds -
-      - WILLOWS (~60%): the crown throws 3-5 arching branches that curve
-        out and DOWN, each hung with long flat leaf blades and a few thin
-        dark strands - the weeping silhouette of the reference
-      - SNAGS (~40%): taller, barer, more crooked - a kinked dead spar
-        with a few short crooked branches and nothing on them
-    Two objects: Swamp_Trees (M_TrunkWood - collidable, Precise import
-    note) and Swamp_TreeLeaves (M_WillowLeaf - blades + strands,
-    NON-COLLIDE: you walk through hanging foliage)."""
+    """The fen's trees - a dense DEAD forest for now (user: 'way way way
+    more trees... a ton of them. none of them should have leaves at this
+    point'): ~110 bare trees packed through the marsh, all the reference's
+    smooth curved tan trunks, in two silhouettes -
+      - ARCHERS (~half): the crown throws 3-5 branches that arc out and
+        DOWN (the weeping skeleton, awaiting its leaves in a later step)
+      - SNAGS: taller, barer, more crooked, a few short crooked branches
+    Foliage is deliberately ABSENT; when the leaf step comes it hangs
+    blades off these same branch arcs (Swamp_TreeLeaves keeps its
+    WorldService entries for that return). One object, trimmed to 5-sided
+    trunks / 3-sided branches so ~110 trees stay inside the importer's
+    per-mesh triangle budget. Trunks are collidable (Precise import note);
+    mere + spawn keep-clears hold."""
     trunk_bm = bmesh.new()
-    leaf_bm = bmesh.new()
     rng = random.Random(4517)
     mx, my, mr = SWAMP_MERE
     sx, sy = SWAMP_SPAWN
     placed = []
 
     def dir_of(az, elev):
-        """Unit vector at azimuth az, elevation elev above horizontal."""
         c = math.cos(elev)
         return Vector((math.cos(az) * c, math.sin(az) * c, math.sin(elev)))
 
     def curved_run(bm, base, direction_list, radii, seg_lengths, sides):
-        """A chain of cone segments, each rotated to its own direction -
-        the curved trunks and arching branches. Returns every joint."""
         pos = Vector(base)
         joints = [Vector(pos)]
         for i, direction in enumerate(direction_list):
@@ -1684,76 +1794,51 @@ def build_swamp_trees():
             joints.append(Vector(pos))
         return joints
 
-    def leaf_blade(at, drop, width):
-        """One long flat blade hanging under `at` - the reference's big
-        drooping leaves."""
-        add_box(leaf_bm, (at.x, at.y, at.z - drop * 0.5), (0.14, width, drop), yaw=rng.uniform(0, math.tau))
-
-    def strand(at, length):
-        add_cone(leaf_bm, (at.x, at.y, at.z - length), 0.055, 0.03, length, sides=3)
-
-    trees, willows, snags, attempts = 0, 0, 0, 0
-    while trees < 32 and attempts < 2000:
+    trees, archers, snags, attempts = 0, 0, 0, 0
+    while trees < 110 and attempts < 9000:
         attempts += 1
         theta = rng.uniform(0, math.tau)
-        u = rng.uniform(0.08, SWAMP_RIM_U - 0.02)
+        u = rng.uniform(0.06, SWAMP_RIM_U - 0.01)
         r_world = ring_radius(u, theta)
         x, y = math.cos(theta) * r_world, math.sin(theta) * r_world
         g = _swamp_height(x, y)
-        if not (SWAMP_BED_Z - 1.2 <= g <= SWAMP_WATER_Z + 1.2):
+        if not (SWAMP_BED_Z - 1.2 <= g <= SWAMP_WATER_Z + 1.5):
             continue
-        if math.hypot(x - mx, y - my) < mr + 9 or math.hypot(x - sx, y - sy) < 26:
+        if math.hypot(x - mx, y - my) < mr + 9 or math.hypot(x - sx, y - sy) < 24:
             continue
-        if any(math.hypot(x - px, y - py) < 13 for px, py in placed):
+        if any(math.hypot(x - px, y - py) < 7.5 for px, py in placed):
             continue
         placed.append((x, y))
         trees += 1
-        willow = rng.random() < 0.6
+        archer = rng.random() < 0.5
 
-        # The trunk: 3 segments bending progressively toward one side (an
-        # S gets a small counter-kink), rising straight out of the ground.
         bend_az = rng.uniform(0, math.tau)
-        if willow:
-            willows += 1
-            total_h = rng.uniform(14.0, 20.0)
-            r0 = rng.uniform(1.1, 1.7)
+        if archer:
+            archers += 1
+            total_h = rng.uniform(13.0, 20.0)
+            r0 = rng.uniform(1.0, 1.7)
             leans = [rng.uniform(0.04, 0.10), rng.uniform(0.16, 0.30), rng.uniform(0.34, 0.52)]
         else:
             snags += 1
-            total_h = rng.uniform(20.0, 30.0)
-            r0 = rng.uniform(0.9, 1.5)
+            total_h = rng.uniform(18.0, 30.0)
+            r0 = rng.uniform(0.8, 1.5)
             leans = [rng.uniform(0.02, 0.10), rng.uniform(0.12, 0.30) * rng.choice((1, -1)), rng.uniform(0.25, 0.5)]
         directions = [dir_of(bend_az, math.pi * 0.5 - abs(l)) for l in leans]
         radii = [r0, r0 * 0.66, r0 * 0.4, r0 * 0.16]
         seg = total_h / 3
-        joints = curved_run(trunk_bm, (x, y, g - 0.4), directions, radii, [seg, seg, seg], 6)
+        joints = curved_run(trunk_bm, (x, y, g - 0.4), directions, radii, [seg, seg, seg], 5)
         crown = joints[-1]
 
-        if willow:
-            # Arching branches off the crown, curving out then down, hung
-            # with blades and strands.
-            for _b in range(rng.randint(4, 6)):
+        if archer:
+            for _b in range(rng.randint(3, 5)):
                 baz = rng.uniform(0, math.tau)
-                blen = rng.uniform(4.5, 7.5)
-                b_dirs = [dir_of(baz, rng.uniform(0.5, 0.75)), dir_of(baz, rng.uniform(-0.5, -0.2))]
-                b_radii = [r0 * 0.28, r0 * 0.16, 0.06]
-                b_joints = curved_run(
-                    trunk_bm, tuple(crown - Vector((0, 0, seg * 0.15))), b_dirs, b_radii, [blen * 0.5, blen * 0.5], 4
+                blen = rng.uniform(4.0, 7.0)
+                b_dirs = [dir_of(baz, rng.uniform(0.5, 0.75)), dir_of(baz, rng.uniform(-0.55, -0.25))]
+                b_radii = [r0 * 0.26, r0 * 0.14, 0.05]
+                curved_run(
+                    trunk_bm, tuple(crown - Vector((0, 0, seg * 0.15))), b_dirs, b_radii, [blen * 0.5, blen * 0.5], 3
                 )
-                # Blades hang from the branch's elbow and tip - biggest at
-                # the tip, the reference's teardrop curtain.
-                elbow, tip = b_joints[1], b_joints[2]
-                leaf_blade(tip, rng.uniform(5.0, 7.0), rng.uniform(1.5, 2.1))
-                leaf_blade(tip + dir_of(baz, 0) * 0.9, rng.uniform(3.5, 5.5), rng.uniform(1.1, 1.6))
-                leaf_blade(tip - dir_of(baz + 1.4, 0) * 0.8, rng.uniform(4.0, 6.0), rng.uniform(1.2, 1.8))
-                leaf_blade(elbow, rng.uniform(3.0, 4.5), rng.uniform(1.0, 1.5))
-                leaf_blade(elbow + dir_of(baz - 1.2, 0) * 0.7, rng.uniform(2.5, 4.0), rng.uniform(0.9, 1.3))
-                if rng.random() < 0.7:
-                    strand(tip + dir_of(baz, 0) * rng.uniform(0.3, 1.2), rng.uniform(4.0, 8.0))
-                if rng.random() < 0.4:
-                    strand(elbow, rng.uniform(3.0, 6.0))
         else:
-            # A snag's few crooked bare branches, some upturned.
             for _b in range(rng.randint(2, 4)):
                 baz = rng.uniform(0, math.tau)
                 t = rng.uniform(0.55, 0.95)
@@ -1761,18 +1846,15 @@ def build_swamp_trees():
                 add_cone(
                     trunk_bm,
                     tuple(at),
-                    r0 * 0.22,
+                    r0 * 0.2,
                     0.05,
                     rng.uniform(2.5, 5.5),
-                    sides=4,
+                    sides=3,
                     tilt=_tilt_toward(dir_of(baz, rng.uniform(-0.15, 0.6))),
                 )
 
-    print(f"[island_gen] swamp trees: {trees} ({willows} willows, {snags} snags), reference-style, no exposed roots")
-    return [
-        object_from_bmesh("Swamp_Trees", trunk_bm, ["M_TrunkWood"]),
-        object_from_bmesh("Swamp_TreeLeaves", leaf_bm, ["M_WillowLeaf"]),
-    ]
+    print(f"[island_gen] swamp trees: {trees} bare trees ({archers} archers, {snags} snags) - the dead forest, no leaves yet")
+    return [object_from_bmesh("Swamp_Trees", trunk_bm, ["M_TrunkWood"])]
 
 
 def build_swamp():
@@ -5160,6 +5242,7 @@ ISLANDS = {
                 "M_VolAsh": (0.310, 0.278, 0.278),
                 "M_VolWet": (0.200, 0.188, 0.212),
                 "M_Lava": (1.000, 0.420, 0.059),  # molten orange (Neon in-game)
+                "M_Charred": (0.102, 0.086, 0.078),  # burnt-black dead giants
             },
         },
         "build": build_volcano,
