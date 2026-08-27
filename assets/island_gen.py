@@ -1115,6 +1115,8 @@ def _lava_river(bm, ground, bearing_deg, half_width_deg, width_scale):
 
     rows = []
     pool_at = None
+    prev_raw = None
+    raws = [0.0] * LAVA_COLUMNS
     for i in range(steps + 1):
         t = i / steps
         theta = theta0 + wander * math.sin(phase + t * 6.2)
@@ -1131,7 +1133,19 @@ def _lava_river(bm, ground, bearing_deg, half_width_deg, width_scale):
         for j in range(LAVA_COLUMNS):
             frac = -1.0 + 2.0 * j / (LAVA_COLUMNS - 1)
             ex, ey = cx + px * w * frac, cy + py * w * frac
-            row.append(Vector((ex, ey, _lava_surface(ground, ex, ey) + LAVA_LIFT)))
+            raw = _lava_surface(ground, ex, ey)
+            # SLOPE-SCALED lift (the 'still blending into the rock' fix): a
+            # vertical offset of L on a wall of slope theta is only L*cos
+            # (theta) of true clearance - ~a quarter of L on these cliffs -
+            # so the grid's interpolation error still crossed the rock. Scale
+            # the vertical lift by the local drop per row so the TRUE
+            # clearance stays ~LAVA_LIFT everywhere: tight on the flat apron
+            # (resting on it), tall on the plunging walls (where the offset
+            # reads as thickness, never as floating).
+            drop = abs(raw - prev_raw[j]) if prev_raw is not None else 0.0
+            row.append(Vector((ex, ey, raw + LAVA_LIFT + min(10.0, 0.5 * drop))))
+            raws[j] = raw
+        prev_raw, raws = raws, [0.0] * LAVA_COLUMNS
         rows.append(row)
 
         # Where the river first crosses the mid-apron, remember the spot for
@@ -1139,7 +1153,7 @@ def _lava_river(bm, ground, bearing_deg, half_width_deg, width_scale):
         if pool_at is None and u_at(cx, cy) >= 0.80:
             pool_at = (cx, cy, _lava_surface(ground, cx, cy))
 
-    _lava_sheet(bm, rows, 4.0)
+    _lava_sheet(bm, rows, 7.0)
     end = rows[-1][LAVA_COLUMNS // 2]
     return (end.x, end.y), pool_at
 
