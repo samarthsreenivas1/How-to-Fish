@@ -26,6 +26,11 @@
 #               axes. This is the magazine / arrow / shell the hand handles.
 #       action  the gun's Weapon_Action part, same local semantics - the bolt
 #               throw, the charging handle, the revolver cylinder swing/spin.
+#     mag and action are DISPLACEMENTS FROM THE GUN, not replacements for
+#     riding it: the engine composes (whatever the arm is doing) with the
+#     track, so an all-identity mag track leaves the magazine bolted in the
+#     well through recoil, swings and the `weapon` track. Author only the
+#     part's own travel here; never re-key the gun's motion into it.
 #       hand    the LEFT block hand + forearm (built parked off-screen), same
 #               local-about-home semantics. Author it to MEET the mag: rise to
 #               the gun, travel WITH the mag while it is out (same velocities,
@@ -37,8 +42,12 @@
 #   - DURATION is the authored length; playback time-scales it to the row's
 #     reloadTime, so author at a natural tempo and let scaling fit the row.
 #     Keep key SPACING proportional - a beat that reads at 1.0x reads at 0.8x.
-#   - The hand starts PARKED (the engine holds it off-screen between reloads);
+#   - The hand starts PARKED (the engine holds it off-screen the WHOLE time,
+#     reload included - the track is added to the park, not swapped for it);
 #     key it up into frame early and back down by the end.
+#   - No track may start away from identity. Every track is identity between
+#     clips, so a non-identity first key teleports its part on frame one -
+#     that is what put the bow's arrow off-frame the instant a nock began.
 #
 # Colours and shapes here are preview-only stand-ins; the game animates the
 # real WeaponPack parts.
@@ -148,15 +157,19 @@ CLIPS = {
                 (1.80, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),
             ],
             "action": [  # the cylinder
+                # Six chambers, six 60-deg indexes: the feed roll closes a
+                # WHOLE turn by the time the crane swings shut, so the shut
+                # position is identity and nothing turns after the lock. See
+                # the same note on ThunderheadCannon.action.
                 (0.00, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),
                 (0.14, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),
                 (0.24, (0.0, 42.0, 0.0), (-0.16, 0.00, -0.04)),  # swings out of the frame-left
-                (0.42, (0.0, 46.0, -30.0), (-0.18, 0.00, -0.05)),  # tips with the eject
-                (0.60, (0.0, 44.0, -120.0), (-0.17, 0.00, -0.04)),  # slow roll while feeding...
-                (1.30, (0.0, 44.0, -420.0), (-0.17, 0.00, -0.04)),  # ...round after round
-                (1.50, (0.0, 40.0, -540.0), (-0.15, 0.00, -0.03)),
-                (1.60, (0.0, 0.0, -540.0), (0.00, 0.00, 0.00)),  # snapped shut
-                (1.80, (0.0, 0.0, -720.0), (0.00, 0.00, 0.00)),  # settles on a full turn
+                (0.42, (0.0, 46.0, 0.0), (-0.18, 0.00, -0.05)),  # tips with the eject
+                (0.60, (0.0, 44.0, -60.0), (-0.17, 0.00, -0.04)),  # slow roll while feeding...
+                (1.30, (0.0, 44.0, -300.0), (-0.17, 0.00, -0.04)),  # ...round after round
+                (1.50, (0.0, 40.0, -360.0), (-0.15, 0.00, -0.03)),  # the sixth closes the turn
+                (1.60, (0.0, 0.0, -360.0), (0.00, 0.00, 0.00)),  # snapped shut - already home
+                (1.80, (0.0, 0.0, -360.0), (0.00, 0.00, 0.00)),  # dead still to the last frame
             ],
             "hand": [
                 (0.00, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),
@@ -180,23 +193,30 @@ CLIPS = {
         "TRACKS": {
             "weapon": [
                 (0.00, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),
-                (0.16, (-4.0, 6.0, -8.0), (0.05, -0.04, -0.05)),  # bow tips to meet the arrow
-                (0.30, (2.0, -2.0, 3.0), (-0.02, 0.03, 0.02)),  # settle-draw tension
+                (0.20, (-4.0, 6.0, -8.0), (0.05, -0.04, -0.05)),  # bow tips to meet the arrow
+                (0.32, (2.0, -2.0, 3.0), (-0.02, 0.03, 0.02)),  # settle-draw tension
                 (0.42, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),
             ],
             "mag": [  # the arrow
-                (0.00, (0.0, 0.0, 0.0), (0.30, 0.10, -2.40)),  # already off-frame low (just loosed)
-                (0.14, (-24.0, 0.0, 10.0), (0.22, 0.16, -1.10)),  # swept up from the quiver line
-                (0.26, (-6.0, 0.0, 2.0), (0.04, 0.04, -0.14)),  # laid to the string
-                (0.31, (0.0, 0.0, 0.0), (0.00, -0.05, 0.00)),  # nocked - pulled a hair back
-                (0.36, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),
+                # It has to LEAVE before a fresh one comes up: the clip starts
+                # with the arrow still on the string (the engine holds every
+                # track at identity between clips, so starting this one
+                # off-frame popped the arrow out of the bow on frame one).
+                (0.00, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # still nocked, as the shot leaves
+                (0.05, (0.0, 0.0, 0.0), (0.06, 1.90, -0.10)),  # streaks away down the shaft line
+                (0.11, (-24.0, 0.0, 10.0), (0.28, 0.24, -2.10)),  # the next one, down at the quiver
+                (0.20, (-24.0, 0.0, 10.0), (0.22, 0.16, -1.10)),  # swept up from the quiver line
+                (0.28, (-6.0, 0.0, 2.0), (0.04, 0.04, -0.14)),  # laid to the string
+                (0.33, (0.0, 0.0, 0.0), (0.00, -0.05, 0.00)),  # nocked - pulled a hair back
+                (0.38, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),
                 (0.42, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),
             ],
             "hand": [
                 (0.00, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),
-                (0.14, (-24.0, 0.0, 10.0), (0.24, 0.14, -1.06)),  # carries the arrow up
-                (0.26, (-6.0, 0.0, 2.0), (0.06, 0.02, -0.10)),
-                (0.31, (0.0, 0.0, 0.0), (0.02, -0.07, 0.04)),  # pinches it to the string
+                (0.11, (-24.0, 0.0, 10.0), (0.30, 0.22, -2.06)),  # dives to the quiver
+                (0.20, (-24.0, 0.0, 10.0), (0.24, 0.14, -1.06)),  # carries the arrow up
+                (0.28, (-6.0, 0.0, 2.0), (0.06, 0.02, -0.10)),
+                (0.33, (0.0, 0.0, 0.0), (0.02, -0.07, 0.04)),  # pinches it to the string
                 (0.42, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),
             ],
         },
@@ -284,16 +304,20 @@ CLIPS = {
                 (0.12, (0.0, 0.0, 0.0), (-0.02, 0.02, 0.04)),  # grabs the stick
                 (0.22, (12.0, 0.0, 0.0), (0.00, 0.07, -0.46)),  # mirrors the mag from here...
                 (0.36, (26.0, 0.0, 0.0), (0.08, 0.20, -2.66)),
-                (0.55, (-40.0, 0.0, 30.0), (0.16, 0.32, -1.46)),
-                (0.75, (-40.0, 0.0, 210.0), (0.18, 0.34, -1.41)),  # ...through the flip
-                (0.95, (-24.0, 0.0, 360.0), (0.12, 0.32, -1.56)),
-                (1.15, (-14.0, 0.0, 360.0), (0.02, 0.10, -0.34)),
-                (1.28, (-8.0, 0.0, 360.0), (-0.01, 0.05, -0.08)),
-                (1.36, (0.0, 0.0, 360.0), (-0.02, 0.02, 0.11)),  # the rock-in shove
-                (1.50, (0.0, -24.0, 360.0), (0.30, -0.18, 0.34)),  # over the top to the handle
-                (1.58, (0.0, -24.0, 360.0), (0.30, -0.60, 0.34)),  # slaps it back
-                (1.66, (0.0, -10.0, 360.0), (0.26, -0.10, 0.30)),  # lets go
-                (1.90, (0.0, 0.0, 360.0), (0.00, 0.00, 0.00)),
+                # The MAG makes the turn, not the arm: the hand keeps the
+                # matched translation but only rocks (a wrist, not a
+                # windmill), opening through the flip and closing on the
+                # stick again once it comes round.
+                (0.55, (-40.0, 0.0, 30.0), (0.16, 0.32, -1.46)),  # tilted with it as it comes up
+                (0.75, (-30.0, 0.0, 10.0), (0.18, 0.34, -1.41)),  # opens - the mag spins in the fingers
+                (0.95, (-24.0, 0.0, -20.0), (0.12, 0.32, -1.56)),  # closes again, right way round
+                (1.15, (-14.0, 0.0, 0.0), (0.02, 0.10, -0.34)),
+                (1.28, (-8.0, 0.0, 0.0), (-0.01, 0.05, -0.08)),
+                (1.36, (0.0, 0.0, 0.0), (-0.02, 0.02, 0.11)),  # the rock-in shove
+                (1.50, (0.0, -24.0, 0.0), (0.30, -0.18, 0.34)),  # over the top to the handle
+                (1.58, (0.0, -24.0, 0.0), (0.30, -0.60, 0.34)),  # slaps it back
+                (1.66, (0.0, -10.0, 0.0), (0.26, -0.10, 0.30)),  # lets go
+                (1.90, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),
             ],
             "action": [
                 (0.00, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),
@@ -550,25 +574,31 @@ CLIPS = {
                 (2.40, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),
             ],
             "action": [  # the five-chamber cylinder
+                # The five clicks are 72 deg each and nothing else touches the
+                # cylinder's own axis, so the fifth one lands it on a WHOLE
+                # turn: the shut position IS identity and the lock is the last
+                # motion in the track. (Indexing by anything else forces a
+                # spin AFTER the lock to reach identity by the final key - a
+                # locked cylinder visibly whirring on inside the closed frame.)
                 (0.00, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),
                 (0.16, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),
                 (0.28, (0.0, 58.0, 0.0), (-0.34, 0.00, -0.08)),  # swings way out, frame-left
-                (0.42, (0.0, 62.0, -16.0), (-0.38, 0.00, -0.10)),  # tips with the dump
-                (0.58, (0.0, 60.0, -24.0), (-0.36, 0.00, -0.09)),  # settles, chamber one up
-                (0.82, (0.0, 60.0, -24.0), (-0.36, 0.00, -0.09)),  # still while a shell goes in
-                (0.88, (0.0, 60.0, -96.0), (-0.36, 0.00, -0.09)),  # CLICK 1 - a fifth of a turn
-                (1.08, (0.0, 60.0, -96.0), (-0.36, 0.00, -0.09)),
-                (1.14, (0.0, 60.0, -168.0), (-0.36, 0.00, -0.09)),  # CLICK 2
-                (1.34, (0.0, 60.0, -168.0), (-0.36, 0.00, -0.09)),
-                (1.40, (0.0, 60.0, -240.0), (-0.36, 0.00, -0.09)),  # CLICK 3
-                (1.60, (0.0, 60.0, -240.0), (-0.36, 0.00, -0.09)),
-                (1.66, (0.0, 60.0, -312.0), (-0.36, 0.00, -0.09)),  # CLICK 4
-                (1.86, (0.0, 60.0, -312.0), (-0.36, 0.00, -0.09)),
-                (1.92, (0.0, 60.0, -384.0), (-0.36, 0.00, -0.09)),  # CLICK 5 - full and back to top
-                (2.06, (0.0, 26.0, -408.0), (-0.16, 0.00, -0.04)),  # swinging shut
-                (2.16, (0.0, -4.0, -424.0), (0.01, 0.00, 0.00)),  # slams past the frame
-                (2.24, (0.0, 0.0, -432.0), (0.00, 0.00, 0.00)),
-                (2.40, (0.0, 0.0, -720.0), (0.00, 0.00, 0.00)),  # coasts to rest on a whole turn
+                (0.42, (0.0, 62.0, 0.0), (-0.38, 0.00, -0.10)),  # tips with the dump
+                (0.58, (0.0, 60.0, 0.0), (-0.36, 0.00, -0.09)),  # settles, chamber one up
+                (0.82, (0.0, 60.0, 0.0), (-0.36, 0.00, -0.09)),  # still while a shell goes in
+                (0.88, (0.0, 60.0, -72.0), (-0.36, 0.00, -0.09)),  # CLICK 1 - a fifth of a turn
+                (1.08, (0.0, 60.0, -72.0), (-0.36, 0.00, -0.09)),
+                (1.14, (0.0, 60.0, -144.0), (-0.36, 0.00, -0.09)),  # CLICK 2
+                (1.34, (0.0, 60.0, -144.0), (-0.36, 0.00, -0.09)),
+                (1.40, (0.0, 60.0, -216.0), (-0.36, 0.00, -0.09)),  # CLICK 3
+                (1.60, (0.0, 60.0, -216.0), (-0.36, 0.00, -0.09)),
+                (1.66, (0.0, 60.0, -288.0), (-0.36, 0.00, -0.09)),  # CLICK 4
+                (1.86, (0.0, 60.0, -288.0), (-0.36, 0.00, -0.09)),
+                (1.92, (0.0, 60.0, -360.0), (-0.36, 0.00, -0.09)),  # CLICK 5 - the turn closes
+                (2.06, (0.0, 26.0, -360.0), (-0.16, 0.00, -0.04)),  # swinging shut
+                (2.16, (0.0, -4.0, -360.0), (0.01, 0.00, 0.00)),  # slams past the frame
+                (2.24, (0.0, 0.0, -360.0), (0.00, 0.00, 0.00)),  # LOCKED - and already home
+                (2.40, (0.0, 0.0, -360.0), (0.00, 0.00, 0.00)),  # dead still to the last frame
             ],
             "mag": [  # one shell, five times, on the beat
                 (0.00, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),
@@ -756,8 +786,10 @@ CLIPS = {
                 (0.12, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),
                 (0.20, (0.0, 0.0, -46.0), (0.00, 0.02, 0.04)),  # frizzen flicked open, pan bare
                 (0.44, (0.0, 0.0, -46.0), (0.00, 0.02, 0.04)),  # open while the powder goes in
-                (0.52, (0.0, 0.0, -8.0), (0.00, 0.00, 0.01)),  # snapped shut over the charge
-                (1.36, (0.0, 0.0, -8.0), (0.00, 0.00, 0.01)),
+                # Shut means SHUT: a frizzen left ajar spills the priming, and
+                # the gun then goes muzzle-up for the ball with the pan open.
+                (0.52, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # snapped shut over the charge
+                (1.36, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # sealed through the whole ram
                 (1.44, (0.0, 0.0, -36.0), (0.00, -0.03, 0.03)),  # cock thumbed back
                 (1.50, (0.0, 0.0, 5.0), (0.00, 0.01, -0.01)),  # the little priming SNAP
                 (1.53, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),
@@ -812,19 +844,23 @@ CLIPS = {
                 (1.10, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),
             ],
             "mag": [  # the bolt
-                (0.00, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),
-                (0.10, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),
-                (0.20, (18.0, 0.0, 0.0), (-0.20, 0.04, -1.90)),  # taken down toward the quiver
-                (0.28, (24.0, 0.0, 0.0), (-0.34, 0.02, -2.40)),  # plucked out
-                (0.40, (-26.0, 0.0, 0.0), (-0.10, 0.16, 1.00)),  # swung up clear ABOVE the rail
-                (0.50, (-6.0, 0.0, 0.0), (0.00, 0.10, 0.34)),  # LAID down into the channel from above
-                (0.58, (0.0, 0.0, 0.0), (0.00, 0.06, 0.00)),  # slid back against the string
-                (0.66, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),
+                # Same rule as the bow: the SEATED bolt has to leave down the
+                # rail before a fresh one is fetched. Starting this track at
+                # the quiver ran the spent bolt backwards out of the channel -
+                # the gun un-firing on every shot.
+                (0.00, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # still in the channel, as the shot leaves
+                (0.05, (0.0, 0.0, 0.0), (0.04, 2.00, -0.06)),  # streaks away down the rail line
+                (0.14, (18.0, 0.0, 0.0), (-0.22, 0.20, -2.10)),  # the next one, down in the quiver
+                (0.24, (24.0, 0.0, 0.0), (-0.34, 0.02, -2.40)),  # plucked out
+                (0.38, (-26.0, 0.0, 0.0), (-0.10, 0.16, 1.00)),  # swung up clear ABOVE the rail
+                (0.48, (-6.0, 0.0, 0.0), (0.00, 0.10, 0.34)),  # LAID down into the channel from above
+                (0.56, (0.0, 0.0, 0.0), (0.00, 0.06, 0.00)),  # slid back against the string
+                (0.64, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),
                 (1.10, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),
             ],
             "action": [  # string slider
                 (0.00, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),
-                (0.62, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),
+                (0.60, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),
                 (0.74, (0.0, 0.0, 0.0), (0.00, -0.26, 0.00)),  # hauled back with the hand
                 (0.84, (0.0, 0.0, 0.0), (0.00, -0.34, 0.00)),  # over the nut
                 (0.90, (0.0, 0.0, 0.0), (0.00, -0.30, 0.00)),  # eases forward onto the sear - LOCKED
@@ -832,13 +868,13 @@ CLIPS = {
             ],
             "hand": [
                 (0.00, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),
-                (0.10, (0.0, 0.0, 0.0), (-0.04, 0.04, 0.08)),  # rises into frame
-                (0.20, (18.0, 0.0, 0.0), (-0.18, 0.06, -1.86)),  # mirrors the bolt down...
-                (0.28, (24.0, 0.0, 0.0), (-0.32, 0.04, -2.36)),
-                (0.40, (-26.0, 0.0, 0.0), (-0.08, 0.18, 1.04)),  # ...and back up clear ABOVE the rail
-                (0.50, (-6.0, 0.0, 0.0), (0.02, 0.12, 0.38)),
-                (0.58, (0.0, 0.0, 0.0), (0.02, 0.08, 0.04)),  # presses it back to the string
-                (0.66, (0.0, 0.0, 0.0), (0.00, 0.06, 0.10)),  # hooks fingers over the string
+                (0.06, (0.0, 0.0, 0.0), (-0.04, 0.04, 0.08)),  # rises into frame as the bolt clears
+                (0.14, (18.0, 0.0, 0.0), (-0.20, 0.22, -2.06)),  # dives to the quiver...
+                (0.24, (24.0, 0.0, 0.0), (-0.32, 0.04, -2.36)),  # ...and plucks a fresh one
+                (0.38, (-26.0, 0.0, 0.0), (-0.08, 0.18, 1.04)),  # mirrors it back up clear ABOVE the rail
+                (0.48, (-6.0, 0.0, 0.0), (0.02, 0.12, 0.38)),
+                (0.56, (0.0, 0.0, 0.0), (0.02, 0.08, 0.04)),  # presses it back to the string
+                (0.64, (0.0, 0.0, 0.0), (0.00, 0.06, 0.10)),  # hooks fingers over the string
                 (0.74, (0.0, 0.0, 0.0), (0.00, -0.22, 0.14)),  # hauls back with the slider
                 (0.84, (0.0, 0.0, 0.0), (0.00, -0.32, 0.16)),  # to the nut
                 (0.92, (0.0, 0.0, 0.0), (0.00, -0.24, 0.20)),  # releases once it holds

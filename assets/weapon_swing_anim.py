@@ -6,13 +6,14 @@
 #   blender --background --python-exit-code 1 --python assets/weapon_swing_anim.py -- src/Shared/Data/WeaponSwingAnim.luau
 #
 # What it produces:
-#   - src/Shared/Data/WeaponSwingAnim.luau   one clip per entry in CLIPS
-#                                            ("chop" for the club, "slash" for
-#                                            the blade), sampled per frame
+#   - src/Shared/Data/WeaponSwingAnim.luau   one clip per entry in CLIPS - as
+#                                            of the 2026-08-27 revamp that is
+#                                            one BESPOKE clip per melee weapon
+#                                            row, sampled per frame
 #   - assets/weapon_swing.blend              a preview of the LAST clip in
-#                                            CLIPS (the chop): a stand-in
-#                                            weapon + block arm at the in-game
-#                                            pose, camera at the player's eye.
+#                                            CLIPS: a stand-in weapon + block
+#                                            arm at the in-game pose, camera
+#                                            at the player's eye.
 #                                            Open, numpad 0, Space.
 #
 # Authoring contract (WeaponViewmodelController relies on these):
@@ -48,120 +49,427 @@ FPS = 30
 #              centre of the screen, negative out to the right.
 #   location - studs, Blender axes (x right, y forward, z up).
 CLIPS = {
-    # The blade: a quick cut from the right across the centre of the screen.
-    "slash": {
+    # ---------------------------------------------------------------- 2026-08-27
+    # THE MELEE REVAMP. The previous pass shipped eight shared "family" classes
+    # and the user's verdict was that every weapon read the same - "one
+    # dimensional". So: one BESPOKE clip per melee row, and the family the row
+    # belongs to decides the AXIS the swing lives on, not the whole animation.
+    #
+    #   daggers / short blades  ->  HORIZONTAL, left to right, plus a backhand
+    #   swords / sabers /
+    #     cutlasses / machetes  ->  VERTICAL, up to down
+    #   spears / lances /
+    #     harpoons / spikes     ->  FORWARD, a driven thrust
+    #   axes / hammers /
+    #     mauls / clubs         ->  heavy OVERHEAD, up to down, with weight
+    #   gauntlets               ->  straight punches
+    #
+    # On top of the axis every clip carries the weapon's own character (the
+    # machete saws, the boarding axe hooks, the lance sets its shoulder, the
+    # trenchspike's barbs shudder on the pull-out), and every clip is built in
+    # four phases with DELIBERATELY uneven timing - anticipation (slow),
+    # contact (a snap, 1-2 frames), follow-through (an overshoot past contact),
+    # settle (an eased drift home, usually cut short by the next swing). A
+    # constant-speed arc is the bug being fixed here; there are none below.
+    #
+    # Reading the channels (see the KEYS comment above):
+    #   X  pitch about the camera's right axis. POSITIVE lifts the weapon back
+    #      over the shoulder; NEGATIVE drives it down and forward. This is the
+    #      vertical channel - the chops and cuts live here.
+    #   Y  roll about the camera's forward axis. POSITIVE tips an upright
+    #      weapon toward screen RIGHT. Mostly used to turn the edge into the
+    #      cut and to sell wrist work.
+    #   Z  yaw about the camera's up axis. POSITIVE carries the weapon LEFT,
+    #      across the body toward and past screen centre; NEGATIVE takes it out
+    #      to the right. This is the horizontal channel - the slashes live here.
+    #
+    # Durations are authored real (playback is NOT rescaled) at about 1.6x the
+    # row's cooldown, so a full-rate attacker's next swing interrupts during
+    # the settle - after the swing has fully read - and never during the cut.
+    # DURATION * COMBO_WINDOW (0.45, WeaponViewmodelController) is under every
+    # row's cooldown, so no input is ever swallowed.
+
+    # ================================================================ DAGGERS
+    # Horizontal, left to right. Wind up ACROSS the body to the left (Z+), whip
+    # right through the centre (Z-), and let the recovery be the return
+    # backhand rather than a dead drift home.
+
+    # Scaleblade (cd 0.20) - the fastest thing in the game. All wrist, no
+    # shoulder: a flick across the body and a snap back. Two cuts on screen in
+    # a third of a second.
+    "scale_flick": {
         "HIT_TIME": 0.10,
         "KEYS": [
-            (0.00, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
-            (0.05, (12.0, 0.0, -18.0), (0.12, -0.10, 0.06)),  # wind: tip out to the right, pulled back
-            (0.10, (-24.0, 0.0, 36.0), (-0.30, 0.32, -0.10)),  # cut: through the centre, forward (HIT_TIME)
-            (0.15, (-30.0, 0.0, 44.0), (-0.36, 0.26, -0.16)),  # follow-through
-            (0.24, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
+            (0.000, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
+            (0.050, (-32.0, -20.0, 46.0), (-0.22, -0.14, 0.02)),  # cocked across the body, blade levelled
+            (0.100, (-52.0, 18.0, -40.0), (0.34, 0.34, -0.06)),  # SNAP left-to-right through the centre (HIT_TIME)
+            (0.140, (-56.0, 26.0, -56.0), (0.44, 0.24, -0.10)),  # carried off the right edge
+            (0.210, (-30.0, -10.0, 26.0), (-0.14, 0.16, 0.06)),  # the return backhand cuts back
+            (0.270, (-8.0, 0.0, 6.0), (-0.02, 0.04, 0.02)),  # settling
+            (0.3333, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
         ],
     },
-    # The club: raise it back over the shoulder, then chop down and forward.
-    "chop": {
-        "HIT_TIME": 0.18,
+
+    # Krakenfang (cd 0.42) - a curved fang, so it does not cut, it BITES and
+    # tears: horizontal bite, a hook where it catches, then wrenched back out
+    # with a shudder. The endgame blade; the recovery is the show.
+    "kraken_rip": {
+        "HIT_TIME": 0.20,
         "KEYS": [
-            (0.00, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
-            (0.08, (30.0, 0.0, -10.0), (0.06, -0.16, 0.16)),  # wind-up: back and lifted
-            (0.18, (-54.0, 0.0, 18.0), (-0.10, 0.36, -0.22)),  # impact: chopped down toward the centre (HIT_TIME)
-            (0.26, (-60.0, 0.0, 20.0), (-0.10, 0.30, -0.32)),  # follow-through overshoot
-            (0.45, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
+            (0.000, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
+            (0.060, (-7.0, -15.0, 26.0), (-0.14, -0.09, 0.07)),  # the coil starts SLOW - half wound
+            (0.133, (-16.0, -34.0, 58.0), (-0.32, -0.20, 0.16)),  # fully coiled across the body, fang raised
+            (0.200, (-54.0, 32.0, -42.0), (0.36, 0.52, -0.12)),  # BITE left-to-right, driven in (HIT_TIME)
+            (0.267, (-38.0, 42.0, -54.0), (0.46, 0.10, -0.02)),  # the fang catches - dragged back, still right
+            (0.333, (6.0, 12.0, -22.0), (0.16, -0.24, 0.16)),  # torn out and up
+            (0.450, (-6.0, -6.0, 8.0), (-0.06, 0.06, -0.04)),  # counter-shudder the other way
+            (0.540, (-2.0, -2.0, 3.0), (-0.02, 0.02, -0.01)),  # settling
+            (0.6333, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
         ],
     },
 
-    # ---- The six revamp swing classes (2026-08-27, one per melee family; the
-    # ---- cove's chop/slash above stay frozen per the user). Durations sit
-    # ---- just inside each family's row cooldowns so a full-rate attacker
-    # ---- sees complete swings, not perpetual interrupt blends.
+    # ================================================================ BLADES
+    # Vertical, up to down. Raise the blade back over the shoulder (X+), fall
+    # through the centre of the screen (X far -), overshoot, recover.
 
-    # Fast diagonal wrist-chop - the machete / hatchet / reaver family
-    # (cooldowns 0.22-0.27): a flick up and out, a snapping bite down across
-    # the centre, a short follow. All wrist, no shoulder.
-    "hack": {
-        "HIT_TIME": 0.09,
+    # Drowncleaver (cd 0.22) - a broad cursed cleaver swung fast. Short raise,
+    # brutal drop, almost no ceremony: the speed is the character.
+    "drown_cleave": {
+        "HIT_TIME": 0.12,
         "KEYS": [
-            (0.00, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
-            (0.045, (18.0, -6.0, -14.0), (0.10, -0.08, 0.10)),  # flick: tip up and out right
-            (0.09, (-34.0, 4.0, 26.0), (-0.22, 0.30, -0.14)),  # bite: snapped down through the centre (HIT_TIME)
-            (0.13, (-38.0, 6.0, 30.0), (-0.24, 0.24, -0.18)),  # short follow
-            (0.22, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
+            (0.000, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
+            (0.060, (44.0, -14.0, -12.0), (0.10, -0.18, 0.34)),  # snatched up over the shoulder
+            (0.120, (-78.0, 10.0, 26.0), (-0.18, 0.42, -0.34)),  # DOWN through the centre (HIT_TIME)
+            (0.160, (-88.0, 14.0, 32.0), (-0.22, 0.32, -0.44)),  # overshoot low
+            (0.250, (-22.0, 4.0, 8.0), (-0.06, 0.10, -0.12)),  # hauled most of the way back fast
+            (0.3667, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
         ],
     },
 
-    # A piercing drive - the lance / piercer / spike family (0.40-0.45): coil
-    # back with the tip raised off-line, LUNGE level at the screen centre,
-    # pin the extension for a beat, yank back out. Translation-forward is the
-    # story; the rotations just level the point.
-    "thrust": {
+    # Heartrender (cd 0.28) - it drinks what it kills, so the cut does not
+    # bounce off: it PRESSES deeper after contact and is dragged back out.
+    "heartcut": {
         "HIT_TIME": 0.14,
         "KEYS": [
-            (0.00, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
-            (0.07, (26.0, 0.0, -8.0), (0.10, -0.34, 0.06)),  # coil: drawn back, tip raised
-            (0.14, (-8.0, 0.0, 14.0), (-0.16, 0.85, -0.10)),  # lunge: driven level at the centre (HIT_TIME)
-            (0.20, (-6.0, 0.0, 12.0), (-0.14, 0.70, -0.10)),  # pinned a beat at extension
-            (0.28, (10.0, 0.0, -2.0), (0.02, -0.10, 0.04)),  # yanked back out
-            (0.40, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
+            (0.000, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
+            (0.070, (50.0, -18.0, -14.0), (0.12, -0.20, 0.38)),  # raised high, blade rolled back
+            (0.140, (-80.0, 12.0, 24.0), (-0.16, 0.46, -0.36)),  # the cut lands (HIT_TIME)
+            (0.190, (-92.0, 16.0, 30.0), (-0.20, 0.54, -0.48)),  # PRESSED deeper, forward and low
+            (0.250, (-84.0, 22.0, 34.0), (-0.26, 0.16, -0.42)),  # dragged back out of the wound
+            (0.330, (-26.0, 8.0, 12.0), (-0.08, 0.02, -0.14)),  # lifted
+            (0.4333, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
         ],
     },
 
-    # The two-beat overhead crash - the Glacier Maul (0.7): a slow hoist high
-    # over the shoulder, a hang at the apex so the weight reads, then the
-    # crash past horizontal and a buried beat before the slow recover.
-    "smash": {
-        "HIT_TIME": 0.30,
+    # Rustfang Machete (cd 0.24) - the ragged rust-eaten edge does not cut
+    # clean, it SAWS: after the chop lands the blade judders back and then
+    # forward before tearing free. Two alternating strokes on consecutive
+    # frames, because the ENTIRE motif - raise, chop, saw, tear free - has to
+    # finish inside the 0.24 cooldown (torn free at 0.233) so a spam-clicking
+    # player sees the character every swing and only ever interrupts the
+    # settle. A third stroke would not fit without pushing the tear past 0.24.
+    "rust_saw": {
+        "HIT_TIME": 0.133,
         "KEYS": [
-            (0.00, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
-            (0.12, (44.0, 0.0, -12.0), (0.10, -0.20, 0.30)),  # hoist
-            (0.22, (58.0, 0.0, -16.0), (0.12, -0.26, 0.42)),  # apex hang - the tell
-            (0.30, (-70.0, 0.0, 22.0), (-0.14, 0.44, -0.34)),  # CRASH (HIT_TIME)
-            (0.40, (-74.0, 0.0, 24.0), (-0.14, 0.36, -0.44)),  # buried beat
-            (0.65, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
+            (0.000, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
+            (0.067, (42.0, -16.0, -14.0), (0.12, -0.16, 0.32)),  # raised (frame 2)
+            (0.133, (-74.0, 12.0, 22.0), (-0.14, 0.44, -0.32)),  # chopped down through the centre (HIT_TIME, frame 4)
+            (0.167, (-64.0, 20.0, 30.0), (-0.22, 0.20, -0.28)),  # saw 1 - dragged back (frame 5)
+            (0.200, (-82.0, 6.0, 18.0), (-0.06, 0.46, -0.40)),  # saw 2 - shoved forward (frame 6)
+            (0.233, (-30.0, 4.0, 10.0), (-0.06, 0.06, -0.12)),  # torn free (frame 7) - the whole motif inside the 0.24 cooldown
+            (0.300, (-10.0, 1.0, 3.0), (-0.02, 0.02, -0.04)),  # settling (the only interruptible tail)
+            (0.400, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
         ],
     },
 
-    # The wide flat cleave - axe / galecleaver / krakenfang (0.42-0.5): cocked
-    # far out to the right, swept LEVEL through the centre and carried past
-    # off the left edge. Horizontal where the chop is vertical.
-    "sweep": {
+    # Voidglass Saber (cd 0.45) - trench glass, black past black. The blade
+    # HANGS at the apex a beat longer than it should (it is heavier than
+    # light), then falls rolling flat-to-edge, and drifts home slowly.
+    "void_cut": {
+        "HIT_TIME": 0.15,
+        "KEYS": [
+            (0.000, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
+            (0.070, (40.0, -34.0, -20.0), (0.16, -0.14, 0.32)),  # rising, blade rolled flat
+            (0.120, (52.0, -40.0, -22.0), (0.18, -0.20, 0.46)),  # the apex float - the glass hangs
+            (0.150, (-78.0, 26.0, 26.0), (-0.18, 0.46, -0.34)),  # rolls edge-down and FALLS (HIT_TIME)
+            (0.200, (-90.0, 34.0, 40.0), (-0.34, 0.34, -0.46)),  # follow through low and left
+            (0.290, (-30.0, 10.0, 14.0), (-0.10, 0.06, -0.14)),  # lifted, rolling upright
+            (0.430, (-6.0, 2.0, 3.0), (-0.02, 0.01, -0.03)),  # a slow drift home
+            (0.6333, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
+        ],
+    },
+
+    # Cutlass of the Fleet (cd 0.42) - every officer at once, so it shows off:
+    # the WIND-UP is a full wrist flourish, the point looping over the top,
+    # before the blade arrives high and cuts straight down. Recovers by
+    # snapping out to the right, flat, the way a drill does.
+    "fleet_flourish": {
+        "HIT_TIME": 0.17,
+        "KEYS": [
+            (0.000, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
+            (0.050, (-26.0, 30.0, -22.0), (0.14, 0.06, -0.14)),  # the point drops right, the wrist starts the loop
+            (0.100, (34.0, 54.0, -6.0), (0.06, 0.06, 0.28)),  # the loop carries over the top
+            (0.135, (54.0, -16.0, -14.0), (0.12, -0.22, 0.44)),  # arrives cocked high, wrist unwound
+            (0.170, (-80.0, 12.0, 24.0), (-0.16, 0.48, -0.36)),  # straight DOWN through the centre (HIT_TIME)
+            (0.220, (-92.0, 18.0, 30.0), (-0.20, 0.36, -0.48)),  # follow through
+            (0.300, (-24.0, -28.0, -18.0), (0.20, 0.08, -0.06)),  # snapped out right, flat - the officer's recover
+            (0.430, (-6.0, -8.0, -5.0), (0.06, 0.02, -0.01)),  # settling
+            (0.6333, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
+        ],
+    },
+
+    # Admiral's Saber (cd 0.42) - Wrack's own, and it fences. A small salute
+    # (the point dips and rolls) before the blade goes up, one clean vertical
+    # cut, and a crisp return to guard with a tiny bounce.
+    "admiral_cut": {
         "HIT_TIME": 0.16,
         "KEYS": [
-            (0.00, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
-            (0.08, (10.0, -8.0, -30.0), (0.16, -0.14, 0.08)),  # cocked out right
-            (0.16, (-16.0, 6.0, 40.0), (-0.26, 0.38, -0.10)),  # flat sweep through the centre (HIT_TIME)
-            (0.23, (-20.0, 10.0, 56.0), (-0.40, 0.26, -0.14)),  # carried past, off the left edge
-            (0.42, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
+            (0.000, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
+            (0.060, (-18.0, 22.0, 10.0), (0.02, 0.08, -0.10)),  # the salute - point dips and rolls
+            (0.110, (48.0, -24.0, -16.0), (0.14, -0.16, 0.40)),  # up into the cut, edge turned down
+            (0.160, (-84.0, 14.0, 22.0), (-0.14, 0.48, -0.38)),  # the cut, dead vertical (HIT_TIME)
+            (0.210, (-92.0, 20.0, 26.0), (-0.16, 0.38, -0.48)),  # follow through
+            (0.290, (-14.0, -12.0, 6.0), (0.04, 0.06, 0.06)),  # snapped back to guard
+            (0.400, (8.0, -4.0, -4.0), (0.02, -0.04, 0.06)),  # the guard's small bounce
+            (0.600, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
         ],
     },
 
-    # The fencer's pair - the sabers (0.42-0.45): a rising back-cut up through
-    # the centre with the blade rolled, then the wrist rolls OVER and the real
-    # diagonal cut comes down. Two cuts on screen, one hit on the second -
-    # the Y (roll) channel is what makes it read as swordsmanship.
-    "flourish": {
-        "HIT_TIME": 0.14,
+    # Galecleaver (cd 0.45) - a broad blade with the wind behind it. Vertical
+    # cleave, but the gale CARRIES the follow-through: instead of stopping low
+    # the blade is dragged on around to the left and swept back up that side.
+    "gale_cleave": {
+        "HIT_TIME": 0.18,
         "KEYS": [
-            (0.00, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
-            (0.05, (-6.0, -12.0, -22.0), (0.12, -0.06, -0.06)),  # dropped low right
-            (0.10, (22.0, -26.0, 18.0), (-0.06, 0.22, 0.16)),  # rising back-cut, blade rolled
-            (0.14, (-30.0, 24.0, 38.0), (-0.26, 0.34, -0.12)),  # wrist rolls over: the down-cut (HIT_TIME)
-            (0.19, (-34.0, 28.0, 44.0), (-0.30, 0.26, -0.16)),  # follow
-            (0.40, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
+            (0.000, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
+            (0.080, (46.0, -20.0, -34.0), (0.26, -0.20, 0.36)),  # wound back and out right
+            (0.130, (54.0, -24.0, -30.0), (0.24, -0.26, 0.46)),  # the hang while the wind gathers
+            (0.180, (-76.0, 16.0, 20.0), (-0.14, 0.50, -0.34)),  # CLEAVES down through the centre (HIT_TIME)
+            (0.240, (-84.0, 30.0, 54.0), (-0.46, 0.30, -0.44)),  # the gale carries it around to the low left
+            (0.310, (-34.0, 20.0, 44.0), (-0.40, 0.06, -0.10)),  # swept up the left side
+            (0.430, (-8.0, 6.0, 16.0), (-0.14, 0.02, 0.02)),  # crossing back
+            (0.6667, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
         ],
     },
 
-    # The gauntlet piston - Magma Gauntlets (0.22): a punch, not a swing.
-    # Translation-dominant: a short cock back, a straight drive at the centre,
-    # a fast retract. Rotation stays near zero so the fist tracks the eyeline.
-    "pummel": {
-        "HIT_TIME": 0.08,
+    # Fenreaver (cd 0.27) - a root-bark GLAIVE, and a glaive reaps. The odd one
+    # in the blade family: it starts LOW and out right, scythes up and across
+    # through the centre, and finishes over the left shoulder. Rising diagonal,
+    # not a chop - the polearm's own shape.
+    "root_reap": {
+        "HIT_TIME": 0.15,
         "KEYS": [
-            (0.00, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
-            (0.04, (8.0, 0.0, -4.0), (0.06, -0.26, 0.02)),  # cocked
-            (0.08, (-6.0, 0.0, 6.0), (-0.06, 0.72, -0.06)),  # piston out (HIT_TIME)
-            (0.12, (-4.0, 0.0, 4.0), (-0.04, 0.50, -0.04)),  # retract begins
-            (0.20, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
+            (0.000, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
+            (0.060, (-34.0, 26.0, -34.0), (0.24, 0.06, -0.20)),  # dropped low and out right, butt raised
+            (0.150, (-52.0, -22.0, 44.0), (-0.36, 0.44, -0.02)),  # REAPS up and across the centre (HIT_TIME)
+            (0.200, (20.0, -34.0, 56.0), (-0.44, 0.36, 0.26)),  # carried up over the left shoulder
+            (0.290, (6.0, -8.0, 20.0), (-0.14, 0.02, 0.12)),  # brought back down across
+            (0.360, (-2.0, -2.0, 6.0), (-0.04, 0.01, 0.03)),  # settling
+            (0.4333, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
+        ],
+    },
+
+    # ================================================================ THRUSTS
+    # Forward. Translation is the story: coil BACK (-y), drive a long way
+    # forward (+y), and drag back out. Rotation only levels the point.
+
+    # Obsidian Piercer (cd 0.40) - glass on a haft. It drives in and then
+    # TWISTS at full extension (that is how obsidian punches through) before a
+    # fast clean withdraw.
+    "glass_pierce": {
+        "HIT_TIME": 0.18,
+        "KEYS": [
+            (0.000, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
+            (0.080, (30.0, -14.0, -20.0), (0.16, -0.40, 0.10)),  # coiled back, point raised off-line
+            (0.180, (-14.0, 6.0, 18.0), (-0.20, 1.00, -0.12)),  # DRIVE - point level at the centre (HIT_TIME)
+            (0.230, (-12.0, -30.0, 20.0), (-0.22, 1.06, -0.10)),  # the twist at full extension
+            (0.300, (-4.0, -10.0, 12.0), (-0.12, 0.62, -0.06)),  # withdraw begins
+            (0.390, (14.0, 4.0, -6.0), (0.06, -0.14, 0.06)),  # pulled clear past the guard
+            (0.490, (4.0, 1.0, -2.0), (0.02, -0.04, 0.02)),  # settling
+            (0.600, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
+        ],
+    },
+
+    # Rimefang Lance (cd 0.42) - the couched lance. The signature is the SET: a
+    # dead beat where the haft locks into the shoulder and nothing moves at
+    # all, then the longest drive in the game.
+    "rime_lance": {
+        "HIT_TIME": 0.22,
+        "KEYS": [
+            (0.000, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
+            (0.070, (34.0, -8.0, -14.0), (0.14, -0.34, 0.18)),  # couched: point up, haft drawn to the shoulder
+            (0.140, (32.0, -8.0, -12.0), (0.15, -0.42, 0.16)),  # the SET - the shoulder locks, a held beat
+            (0.220, (-12.0, 4.0, 16.0), (-0.18, 1.14, -0.14)),  # the DRIVE, level and long (HIT_TIME)
+            (0.280, (-10.0, -8.0, 15.0), (-0.17, 1.08, -0.12)),  # pinned at extension, a shiver
+            (0.370, (10.0, 6.0, 4.0), (-0.02, 0.34, 0.02)),  # dragged back out
+            (0.470, (16.0, 2.0, -6.0), (0.08, -0.16, 0.10)),  # recovered high
+            (0.560, (5.0, 0.0, -2.0), (0.02, -0.05, 0.03)),  # settling
+            (0.6333, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
+        ],
+    },
+
+    # Trenchspike (cd 0.42) - "It has no tricks. It doesn't need one." Barely
+    # any wind-up, a savage straight stab buried to the hand, and then the
+    # barbed chitin SHUDDERS three times on the pull-out before tearing free.
+    "trench_stab": {
+        "HIT_TIME": 0.16,
+        "KEYS": [
+            (0.000, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
+            (0.060, (22.0, 0.0, -10.0), (0.10, -0.30, 0.06)),  # the least coil that reads
+            (0.160, (-10.0, 0.0, 16.0), (-0.18, 1.10, -0.10)),  # STAB (HIT_TIME)
+            (0.220, (-12.0, 4.0, 18.0), (-0.20, 1.16, -0.12)),  # buried to the hand
+            (0.270, (-6.0, -14.0, 14.0), (-0.14, 0.94, -0.06)),  # shudder 1 - the barbs catch
+            (0.310, (-14.0, 12.0, 18.0), (-0.20, 1.04, -0.12)),  # shudder 2 - shoved back in
+            (0.350, (-8.0, -8.0, 15.0), (-0.16, 0.86, -0.08)),  # shudder 3, smaller
+            (0.430, (14.0, 2.0, 2.0), (-0.02, 0.06, 0.08)),  # torn free
+            (0.520, (4.0, 0.0, 0.0), (0.00, -0.04, 0.02)),  # settling
+            (0.600, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
+        ],
+    },
+
+    # Stormlance (cd 0.45) - a live current down the haft, so the coil
+    # CRACKLES: the wind-up jitters on the roll channel at frame rate before
+    # the drive, and the discharge kicks the lance back out of the wound.
+    "storm_lance": {
+        "HIT_TIME": 0.20,
+        "KEYS": [
+            (0.000, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
+            (0.060, (28.0, -10.0, -12.0), (0.12, -0.32, 0.14)),  # coiled, the charge building
+            (0.110, (34.0, 8.0, -16.0), (0.16, -0.40, 0.18)),  # crackle - the haft kicks one way
+            (0.150, (30.0, -12.0, -12.0), (0.12, -0.44, 0.14)),  # crackle - and back the other
+            (0.200, (-12.0, 2.0, 16.0), (-0.18, 1.08, -0.12)),  # the DRIVE (HIT_TIME)
+            (0.250, (-14.0, 10.0, 18.0), (-0.20, 1.14, -0.14)),  # the discharge, held in the wound
+            (0.310, (6.0, -12.0, 8.0), (-0.06, 0.30, 0.04)),  # the arc kicks the lance back out
+            (0.400, (20.0, 6.0, -6.0), (0.08, -0.18, 0.12)),  # recovered high, still buzzing
+            (0.480, (8.0, -4.0, -3.0), (0.03, -0.08, 0.05)),  # the buzz decaying
+            (0.580, (2.0, 1.0, -1.0), (0.01, -0.02, 0.01)),  # settling
+            (0.6667, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
+        ],
+    },
+
+    # ================================================================ HEAVIES
+    # Overhead, up to down, with weight: a SLOW hoist, a hang at the apex so
+    # the mass reads, a fall two to three times faster than the lift, a buried
+    # beat where everything stops, and a long dragging recovery.
+
+    # Driftwood Club (cd 0.45) - the first weapon anyone builds. Honest and
+    # dumb: hoist, hang, club it down, heave it back up.
+    "cudgel_bash": {
+        "HIT_TIME": 0.20,
+        "KEYS": [
+            (0.000, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
+            (0.090, (48.0, -10.0, -18.0), (0.14, -0.22, 0.36)),  # hoisted back over the shoulder
+            (0.150, (58.0, -12.0, -20.0), (0.16, -0.12, 0.46)),  # the apex - the wood settles back
+            (0.200, (-80.0, 8.0, 18.0), (-0.12, 0.48, -0.38)),  # clubbed down and forward (HIT_TIME)
+            (0.260, (-92.0, 10.0, 22.0), (-0.14, 0.38, -0.52)),  # buried low
+            (0.360, (-34.0, 4.0, 10.0), (-0.06, 0.10, -0.22)),  # heaved back up
+            (0.480, (-10.0, 1.0, 3.0), (-0.02, 0.03, -0.06)),  # settling
+            (0.600, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
+        ],
+    },
+
+    # Shellcrusher (cd 0.55) - a slab of barnacle chitin, and it is genuinely
+    # too heavy. The lift STAGGERS partway up (the weight nearly wins) before
+    # it is hauled to the apex, and the impact BOUNCES off the ground.
+    "shell_crush": {
+        "HIT_TIME": 0.30,
+        "KEYS": [
+            (0.000, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
+            (0.080, (32.0, -8.0, -12.0), (0.12, -0.16, 0.26)),  # the first heave
+            (0.140, (28.0, -10.0, -14.0), (0.14, -0.10, 0.22)),  # the stagger - the weight nearly wins
+            (0.200, (58.0, -12.0, -20.0), (0.18, -0.14, 0.52)),  # hauled to the apex anyway
+            (0.250, (-22.0, 0.0, 2.0), (0.00, 0.26, 0.02)),  # MID-FALL - the head crossing the screen, a real transit sample
+            (0.300, (-84.0, 8.0, 16.0), (-0.12, 0.52, -0.44)),  # CRASH, on the frame-9 boundary (HIT_TIME)
+            (0.360, (-96.0, 10.0, 20.0), (-0.14, 0.42, -0.58)),  # the chitin bites in
+            (0.430, (-86.0, 8.0, 18.0), (-0.12, 0.36, -0.48)),  # a dead bounce off the ground
+            (0.540, (-40.0, 4.0, 10.0), (-0.06, 0.14, -0.26)),  # dragged back up
+            (0.660, (-12.0, 1.0, 3.0), (-0.02, 0.04, -0.07)),  # settling
+            (0.800, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
+        ],
+    },
+
+    # Icepick Hatchet (cd 0.22) - half tool, half temper, and it likes a
+    # rhythm. The only light weapon in this family: a wrist-flick lift, a
+    # picking drop, and a REBOUND where the pick kicks back out ready for the
+    # next beat.
+    "ice_hew": {
+        "HIT_TIME": 0.12,
+        "KEYS": [
+            (0.000, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
+            (0.055, (38.0, -12.0, -12.0), (0.10, -0.12, 0.26)),  # flicked up - wrist only
+            (0.120, (-70.0, 10.0, 20.0), (-0.14, 0.40, -0.28)),  # picked down through the centre (HIT_TIME)
+            (0.155, (-80.0, 12.0, 24.0), (-0.16, 0.32, -0.36)),  # short follow
+            (0.210, (-30.0, 4.0, 10.0), (-0.06, 0.08, -0.10)),  # the rebound - it kicks back out
+            (0.280, (-6.0, 0.0, 2.0), (-0.01, 0.02, -0.02)),  # settling on the beat
+            (0.3667, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
+        ],
+    },
+
+    # Boarding Axe (cd 0.50) - the fleet's pattern, made for clearing a deck.
+    # The bearded head HOOKS: after the chop bites, the axe is hauled straight
+    # back toward the player (the hook) and then wrenched free sideways.
+    "deck_hook": {
+        "HIT_TIME": 0.24,
+        "KEYS": [
+            (0.000, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
+            (0.100, (48.0, -18.0, -22.0), (0.20, -0.22, 0.40)),  # cocked high and back, haft across
+            (0.170, (58.0, -20.0, -24.0), (0.22, -0.14, 0.52)),  # the apex
+            (0.240, (-82.0, 12.0, 20.0), (-0.14, 0.50, -0.40)),  # chopped down through the centre (HIT_TIME)
+            (0.300, (-94.0, 14.0, 24.0), (-0.16, 0.42, -0.54)),  # the beard bites in
+            (0.380, (-88.0, 26.0, 34.0), (-0.30, 0.02, -0.50)),  # the HOOK - hauled straight back, still low
+            (0.470, (-44.0, -14.0, -20.0), (0.24, 0.06, -0.24)),  # wrenched free out to the right
+            (0.590, (-12.0, -4.0, -6.0), (0.07, 0.03, -0.06)),  # settling
+            (0.7333, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
+        ],
+    },
+
+    # Glacier Maul (cd 0.70) - the heaviest thing in the game and the clip
+    # says so: nearly a third of a second just lifting it, a long apex hang,
+    # a fall in 50ms, a buried beat where the whole screen stops, and then the
+    # head DRAGS along the ground before it can be hauled up.
+    "maul_crash": {
+        "HIT_TIME": 0.4333,
+        "KEYS": [
+            (0.000, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
+            (0.120, (38.0, -8.0, -10.0), (0.12, -0.18, 0.30)),  # the hoist begins - shoulders under it
+            (0.220, (62.0, -12.0, -16.0), (0.18, -0.14, 0.56)),  # up past vertical
+            (0.300, (66.0, -14.0, -18.0), (0.20, -0.16, 0.64)),  # the apex hang, frame 9 - the tell
+            # The fall is keyed on EVERY frame from the apex to contact. A
+            # 158-degree drop left to two keys collapses into one 157 deg/frame
+            # step and the maul teleports; keying frames 10-12 makes the
+            # sampler show the head actually crossing the screen, and lets the
+            # per-step speed be shaped by hand into an acceleration
+            # (26/40/47/48 deg per frame) instead of a single pop.
+            (0.3333, (40.0, -10.0, -13.0), (0.15, -0.04, 0.45)),  # frame 10 - it tips over the top
+            (0.3667, (0.0, -5.0, -5.0), (0.08, 0.14, 0.17)),  # frame 11 - past horizontal, gathering
+            (0.4000, (-46.0, 1.0, 4.0), (0.03, 0.35, -0.15)),  # frame 12 - the fall at speed, still accelerating
+            (0.4333, (-92.0, 8.0, 14.0), (-0.10, 0.56, -0.48)),  # CRASH through the centre, frame 13 (HIT_TIME)
+            (0.500, (-104.0, 10.0, 18.0), (-0.12, 0.46, -0.66)),  # buried - everything stops
+            (0.600, (-100.0, 14.0, 26.0), (-0.22, 0.16, -0.64)),  # the head DRAGS back along the ground
+            (0.7333, (-48.0, 8.0, 14.0), (-0.10, 0.06, -0.34)),  # hauled up off the ground
+            (0.8667, (-14.0, 2.0, 4.0), (-0.03, 0.03, -0.10)),  # settling
+            (1.0000, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
+        ],
+    },
+
+    # ================================================================ FISTS
+    # Straight punches: rotation near zero so the fist tracks the eyeline, all
+    # the read in the translation.
+
+    # Magma Gauntlets (cd 0.22) - cock to the cheek, piston straight out,
+    # knuckles turn over on impact, and the retract carries a MICRO-JAB - the
+    # flurry twitch that says the heat is still building.
+    "magma_piston": {
+        "HIT_TIME": 0.09,
+        "KEYS": [
+            (0.000, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
+            (0.045, (14.0, 0.0, -8.0), (0.10, -0.34, 0.06)),  # cocked back to the cheek
+            (0.090, (-8.0, 0.0, 10.0), (-0.10, 0.96, -0.08)),  # PUNCH - straight out at the centre (HIT_TIME)
+            (0.130, (-6.0, -16.0, 8.0), (-0.08, 0.86, -0.06)),  # knuckles turn over on impact
+            (0.180, (6.0, 4.0, -2.0), (0.02, 0.16, 0.02)),  # retract
+            (0.240, (-4.0, -4.0, 4.0), (-0.04, 0.34, -0.02)),  # the micro-jab - the flurry twitch
+            (0.290, (2.0, 0.0, 0.0), (0.00, 0.06, 0.01)),  # settling
+            (0.3333, (0.0, 0.0, 0.0), (0.00, 0.00, 0.00)),  # idle
         ],
     },
 }

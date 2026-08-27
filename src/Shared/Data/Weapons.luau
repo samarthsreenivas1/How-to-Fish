@@ -173,7 +173,7 @@ Weapons.items.driftwood_club = {
 		length = 3.4,
 		grip = 0.7,
 		color = Color3.fromRGB(150, 112, 72),
-		accent = Color3.fromRGB(118, 86, 54),
+		accent = Color3.fromRGB(124, 106, 92), -- the salvaged anchor fluke is rust-grey iron, not wood (2026-08-27 remodel)
 		wrap = Color3.fromRGB(86, 140, 84),
 	},
 	recipe = {
@@ -235,7 +235,7 @@ Weapons.items.shellcrusher = {
 		length = 3.6,
 		grip = 0.8,
 		color = Color3.fromRGB(140, 107, 68), -- driftwood haft
-		accent = Color3.fromRGB(125, 150, 150), -- barnacle chitin head + claws
+		accent = Color3.fromRGB(198, 178, 150), -- the head is a whole whelk shell now - warm, not cold chitin (2026-08-27 remodel)
 		wrap = Color3.fromRGB(74, 86, 78), -- bound grip
 	},
 	recipe = {
@@ -735,6 +735,8 @@ Weapons.items.icepick_hatchet = {
 		color = Color3.fromRGB(120, 134, 150),
 		accent = Color3.fromRGB(210, 228, 240),
 		wrap = Color3.fromRGB(90, 104, 120),
+		glow = Color3.fromRGB(140, 220, 255), -- rime seam in the icicle's core (2026-08-27 remodel)
+		neon = { "Weapon_Glow" },
 	},
 	recipe = {
 		requiresLevel = 15,
@@ -934,6 +936,8 @@ Weapons.items.trenchspike = {
 		color = Color3.fromRGB(70, 78, 92),
 		accent = Color3.fromRGB(130, 124, 142),
 		wrap = Color3.fromRGB(48, 54, 66),
+		glow = Color3.fromRGB(92, 255, 210), -- the angler lure dangling past the point (2026-08-27 remodel)
+		neon = { "Weapon_Glow" },
 	},
 	recipe = {
 		requiresLevel = 29,
@@ -1119,6 +1123,8 @@ Weapons.items.boarding_axe = {
 		color = Color3.fromRGB(110, 96, 76),
 		accent = Color3.fromRGB(160, 168, 176),
 		wrap = Color3.fromRGB(76, 66, 54),
+		glow = Color3.fromRGB(160, 255, 210), -- ghost-fleet light in the snapped anchor arm's break (2026-08-27 remodel)
+		neon = { "Weapon_Glow" },
 	},
 	recipe = {
 		requiresLevel = 36,
@@ -1226,7 +1232,7 @@ Weapons.items.cutlass_of_the_fleet = {
 		length = 3.6,
 		grip = 0.65,
 		color = Color3.fromRGB(120, 134, 124),
-		accent = Color3.fromRGB(200, 214, 206),
+		accent = Color3.fromRGB(214, 186, 132), -- the doubloon welded through the forte reads tarnished gold (2026-08-27 remodel)
 		wrap = Color3.fromRGB(84, 94, 88),
 		glow = Color3.fromRGB(160, 255, 210),
 		neon = { "Weapon_Glow" },
@@ -1304,6 +1310,8 @@ Weapons.items.galecleaver = {
 		color = Color3.fromRGB(110, 124, 140),
 		accent = Color3.fromRGB(200, 214, 228),
 		wrap = Color3.fromRGB(76, 86, 100),
+		glow = Color3.fromRGB(184, 235, 255), -- air tearing through the three spine ports (2026-08-27 remodel)
+		neon = { "Weapon_Glow" },
 	},
 	recipe = {
 		requiresLevel = 43,

@@ -88,7 +88,10 @@ end
 -- plus the Generic fallback. Track semantics: `weapon` moves the whole rig
 -- about the elbow (the swing contract); `mag` / `action` move that part
 -- LOCAL about its own home (rotation spins it in place, translation is
--- camera axes); `hand` moves the parked LEFT arm the same way. Playback is
+-- camera axes) ON TOP of whatever the arm is doing - a track is a
+-- displacement from the gun, never a replacement for riding it, and
+-- onRenderStep composes the two; `hand` moves the parked LEFT arm the same
+-- way, from its park rather than instead of it. Playback is
 -- time-scaled so the clip fills the row's server reloadTime exactly - the
 -- visual always fits the window CombatService enforces, never extends it.
 
@@ -203,6 +206,13 @@ local function clearRig()
 	muzzlePart = nil
 	swing = nil
 	recoil = 0
+	-- Reload state dies with the rig too (adversarial review, 2026-08-27):
+	-- buildRig re-seeds these, but its failed-build early return does NOT -
+	-- without this a swap to a broken weapon mid-reload kept animating the
+	-- old gun's reload against the new weapon's parts.
+	reload = nil
+	magHome, actionHome, leftHome = nil, nil, nil
+	hasLeftArm = false
 end
 
 -- ---------------------------------------------------------------- build
@@ -265,9 +275,11 @@ local function buildRig(character: Model, weaponData)
 			Viewmodel.stripPart(part)
 			local offset = gripCamera * gripLocal:ToObjectSpace(part.CFrame)
 			-- Mag and action live in their own rig groups so the reload
-			-- clips can pull the magazine out of the gun and cycle the bolt;
-			-- idle (identity extras) they sit exactly where GROUP would put
-			-- them.
+			-- clips can pull the magazine out of the gun and cycle the bolt.
+			-- onRenderStep hands those groups the arm's transform too, so with
+			-- no clip keying them they move exactly as if they were in GROUP -
+			-- a track is only ever a displacement ON TOP of the gun, never a
+			-- part detached from it.
 			local group = GROUP
 			if part.Name == "Weapon_Mag" then
 				group = MAG_GROUP
@@ -414,7 +426,9 @@ function WeaponViewmodelController.reloadAnim(variant: string?, seconds: number)
 		return
 	end
 	local clip = (variant and RELOAD_CLIPS[variant]) or RELOAD_CLIPS.Generic
-	if not clip then
+	-- A zero-duration clip would make `scale` infinite (adversarial review,
+	-- 2026-08-27) - skip the choreography rather than divide by it.
+	if not clip or clip.duration <= 0 then
 		return
 	end
 	reload = {
@@ -475,10 +489,12 @@ local function localAbout(home: Vector3, sample: CFrame): CFrame
 	return CFrame.new(sample.Position) * CFrame.new(home) * rotation * CFrame.new(-home)
 end
 
--- The reload's per-frame contribution: extras for the mag / action / hand
--- groups plus the whole-weapon track (composed about the elbow like a
--- swing). Retires itself when the scaled clip runs out.
-local function reloadOffsets(now: number, extras: { [string]: CFrame }): CFrame
+-- The reload's per-frame contribution. Fills `locals` with each keyed group's
+-- OWN displacement about its home - purely local, in the gun's own frame,
+-- with the arm transform deliberately left out: the caller composes it on
+-- (see onRenderStep). Returns the whole-weapon track, already composed about
+-- the elbow like a swing. Retires itself when the scaled clip runs out.
+local function reloadOffsets(now: number, locals: { [string]: CFrame }): CFrame
 	if not reload then
 		return CFrame.identity
 	end
@@ -490,13 +506,13 @@ local function reloadOffsets(now: number, extras: { [string]: CFrame }): CFrame
 	local tracks = reload.clip.tracks
 	local fps = GunReloadAnim.FPS
 	if tracks.mag and magHome then
-		extras[MAG_GROUP] = localAbout(magHome, Viewmodel.sampleClip(tracks.mag, fps, t))
+		locals[MAG_GROUP] = localAbout(magHome, Viewmodel.sampleClip(tracks.mag, fps, t))
 	end
 	if tracks.action and actionHome then
-		extras[ACTION_GROUP] = localAbout(actionHome, Viewmodel.sampleClip(tracks.action, fps, t))
+		locals[ACTION_GROUP] = localAbout(actionHome, Viewmodel.sampleClip(tracks.action, fps, t))
 	end
 	if tracks.hand and leftHome then
-		extras[LEFT_GROUP] = localAbout(leftHome, Viewmodel.sampleClip(tracks.hand, fps, t))
+		locals[LEFT_GROUP] = localAbout(leftHome, Viewmodel.sampleClip(tracks.hand, fps, t))
 	end
 	if tracks.weapon then
 		local raw = Viewmodel.sampleClip(tracks.weapon, fps, t)
@@ -520,22 +536,59 @@ local function onRenderStep(dt: number)
 	end
 	rig:setVisible(true)
 
-	-- The recoil spring decays every frame; swings, recoil and the reload's
-	-- weapon track all compose about the same elbow pivot. The parked left
-	-- arm idles off-screen unless a reload track raises it.
+	-- One clock reading for the whole frame, so the swing and the reload can't
+	-- be sampled a hair apart.
+	local now = os.clock()
 	recoil *= math.exp(-RECOIL_DECAY * dt)
-	local extras: { [string]: CFrame } = {}
+
+	-- The reload's own per-part displacements, empty when nothing is playing.
+	local locals: { [string]: CFrame } = {}
+	local reloadWeapon = reloadOffsets(now, locals)
+
+	-- Everything the right arm carries moves under ONE transform: the swing
+	-- clip, the recoil spring and the reload's `weapon` track, all composed
+	-- about the same elbow pivot.
+	local armExtra = swingOffset(now) * recoilOffset() * reloadWeapon
+
+	-- The mag and the action have their own rig groups so a reload can pull
+	-- them off the gun - but they are still PARTS OF THE GUN, so they take
+	-- the arm transform FIRST and their own local displacement on top of it
+	-- (identity local when no clip is keying them). Without this composition
+	-- they only ever got their build offset: the magazine and the bolt hung
+	-- frozen in mid-air through every shot, every swing and the reload's own
+	-- whole-weapon track, which is what read as the gun coming apart.
+	local extras: { [string]: CFrame } = { [GROUP] = armExtra }
+	local magLocal = locals[MAG_GROUP]
+	extras[MAG_GROUP] = if magLocal then armExtra * magLocal else armExtra
+	local actionLocal = locals[ACTION_GROUP]
+	extras[ACTION_GROUP] = if actionLocal then armExtra * actionLocal else armExtra
+
+	-- The left arm is not bolted to the gun, but it rides the same transform
+	-- so it stays with the gun it is working on. It sits PARKED off the
+	-- bottom of the screen at all times and the clip's `hand` track lifts it
+	-- from there - the clips are authored against the park, so the park stays
+	-- applied for the whole reload. (Replacing it with the track, as this did
+	-- before, teleported the hand into frame on the reload's first frame.)
 	if hasLeftArm then
-		extras[LEFT_GROUP] = LEFT_HAND_PARK
+		local handLocal = locals[LEFT_GROUP]
+		extras[LEFT_GROUP] = if handLocal then armExtra * LEFT_HAND_PARK * handLocal else armExtra * LEFT_HAND_PARK
 	end
-	local reloadWeapon = reloadOffsets(os.clock(), extras)
-	extras[GROUP] = swingOffset(os.clock()) * recoilOffset() * reloadWeapon
+
 	rig:pin(pin, extras)
 
-	-- swingOffset has already retired a finished clip, so this also switches
-	-- the trail off on time.
+	-- The ribbon burns only through the cut itself - wind-up through
+	-- follow-through - not the settle: the new clips carry long deliberate
+	-- tails (the maul drags the ground for a quarter second after impact)
+	-- and a trail streaking through a settle reads as a cut that isn't
+	-- there. TRAIL_LIFETIME past HIT_TIME covers the follow-through.
 	if trail then
-		trail.Enabled = swing ~= nil
+		local active = false
+		if swing then
+			local data = WeaponSwingAnim.CLIPS[swing.name]
+			local hit = data and data.HIT_TIME
+			active = hit == nil or (now - swing.startedAt) < hit + TRAIL_LIFETIME
+		end
+		trail.Enabled = active
 	end
 end
 
