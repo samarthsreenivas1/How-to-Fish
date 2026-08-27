@@ -1781,7 +1781,7 @@ def _interior_spot(ground, u_lo, u_hi, pad=3.0, tries=40):
 
 
 def build_swamp():
-    base = build_island_base("Swamp_Base", ["M_SwampBase", "M_SwampBase2", "M_SwampBase3"])
+    base = build_island_base("Swamp_Base", ["M_Peat", "M_Mud", "M_WetMud"])
     a = math.radians(270)  # the +Z quadrant the dock will eventually face
     shore = ring_radius(1.0, a)
     print(f"[island_gen] HANDOFF swamp: shore at +Z (Roblox rel) Z={shore:.0f}; spawn suggestion X=0 Z={shore - 30:.0f} ground Y~{height_at(0, -(shore - 30)):.1f}")
@@ -5242,12 +5242,14 @@ ISLANDS = {
             "RIM_FLAT": None,
             "PEAK_JAG": 0.0,
             "PEAK_TERMS": [],
-            # STEP 1 is deliberately GREY - the user reviews the raw shape
-            # first; materials and colour come back in a later step.
+            # STEP 2 (user): color returns. The proven fen palette from the
+            # pre-restart island - dark waterlogged moss-peat interior, a mud
+            # "beach" band outside GRASS_U, wet mud at the waterline. Keep
+            # WorldService.MESH_COLOR's Swamp_Base entries in step with these.
             "COLORS": {
-                "M_SwampBase": (0.55, 0.55, 0.55),
-                "M_SwampBase2": (0.50, 0.50, 0.50),
-                "M_SwampBase3": (0.45, 0.45, 0.45),
+                "M_Peat": (0.243, 0.322, 0.204),
+                "M_Mud": (0.396, 0.333, 0.235),
+                "M_WetMud": (0.290, 0.247, 0.184),
             },
         },
         "build": build_swamp,
