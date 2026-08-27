@@ -6166,6 +6166,14 @@ def build_pack(out_path):
         total += tris
         names = ", ".join(o.name for o in objects)
         print(f"[island_gen]   {model:<10} ({island_id}): {len(objects)} objects, {tris} tris  -> [{names}]")
+        # WorldService aligns the imported bbox bottom on Islands.luau
+        # `meshBottom` (default: the -9 skirt). Any island whose lowest vertex
+        # is NOT -9 must carry this number in its entry, or the bbox pin hoists
+        # the whole island by the overshoot and everything waterline-referenced
+        # floats (2026-08-27). Re-key after every regen.
+        low = min(min(v.co.z for v in o.data.vertices) for o in objects if o.data.vertices)
+        keyed = "" if abs(low - SKIRT_BOTTOM) < 0.01 else "  <-- set Islands.luau meshBottom to this"
+        print(f"[island_gen]   HANDOFF {island_id}: mesh bottom z {low:.2f}{keyed}")
         for o in objects:
             xs = [v.co.x for v in o.data.vertices]
             ys = [v.co.y for v in o.data.vertices]

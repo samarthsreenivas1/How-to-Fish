@@ -35,6 +35,15 @@ Islands.order = { "tropical", "swamp", "ice", "volcano", "gloom", "wreck" }
 --                   y = 0 by its skirt, so worldPosition.Y is ignored. The
 --                   starter sits at the origin so every coordinate already in
 --                   World.luau still holds.
+--   meshBottom    - authored z of the island model's LOWEST vertex, needed
+--                   only when that lowest point is not the standard -9 skirt
+--                   (geometry authored below it: seabed dunes, sunken keels, a
+--                   trench). WorldService aligns the imported bbox bottom on
+--                   this so the authored waterline lands on the ocean instead
+--                   of the whole island riding high by the overshoot (the
+--                   2026-08-27 "floating ships and litter" bug). Re-key from
+--                   the pack build's HANDOFF mesh-bottom lines after any
+--                   island mesh regen.
 --   radius        - nominal shoreline radius (the generator's ISLAND_RADIUS);
 --                   used to space islands and to size the ocean around them.
 --   spawn         - world position a teleport drops the player on. Only X/Z
@@ -188,6 +197,7 @@ Islands.items = {
 		blurb = "A towering volcano - fish its shore, brave the lava ponds.",
 		model = "Volcano",
 		worldPosition = Vector3.new(9000, 0, 0),
+		meshBottom = -9.74, -- flank rocks dip past the -9 skirt (pack 384c971)
 		radius = 640, -- capped so the base mesh imports (Roblox's 2048-stud limit)
 		spawn = Vector3.new(9000, 12, 505), -- X/Z: on the ash apron right in front of the dock (dock starts at r~527 on +Z); Y is the probe's reference + fallback only
 		unlockLevel = 22,
@@ -235,6 +245,7 @@ Islands.items = {
 		blurb = "Where the light gives up. Bring your own, and keep it lit.",
 		model = "Gloomtrench",
 		worldPosition = Vector3.new(12000, 0, 0),
+		meshBottom = -16.53, -- the trench floor is authored well below the -9 skirt (pack 384c971)
 		radius = 200,
 		spawn = Vector3.new(12000, 4, 154), -- X/Z: shore before the dock (planks run Z=172..216); Y is the probe's fallback
 		unlockLevel = 29,
@@ -275,6 +286,10 @@ Islands.items = {
 		blurb = "A graveyard of ghost ships that never finished sinking.",
 		model = "Wreckwater",
 		worldPosition = Vector3.new(15000, 0, 0),
+		-- Seabed dunes bottom the mesh at -18.25 (sunken keels -16.2); without
+		-- this the bbox pin hoisted the island 9.3 studs and the whole ghost
+		-- fleet hung above the water (user, 2026-08-27). Pack 384c971.
+		meshBottom = -18.25,
 		radius = 210,
 		spawn = Vector3.new(15000, 4, 167), -- X/Z: shore before the dock (planks run Z=185..231); Y is the probe's fallback
 		unlockLevel = 36,
