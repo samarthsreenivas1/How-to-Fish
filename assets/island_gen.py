@@ -1350,38 +1350,72 @@ def _volcano_rock(bm, x, y, surface, size, salt, embed):
         )
 
 
+def _volcano_outcrop(bm, x, y, surface, size, salt):
+    """A bedrock LEDGE breaking out of the steep wall - not a loose boulder
+    (user: mid-cliff boulders 'don't actually make sense'; a perched ball
+    would simply fall). Deep-buried, elongated ALONG the slope contour
+    (yawed tangentially), low-profile, protruding maybe a third of its mass
+    - reads as the mountain's own bone showing through."""
+    rng = random.Random(salt)
+    tangent = math.atan2(y, x) + math.pi / 2  # along the contour, not down it
+    for k in range(rng.randint(1, 2)):
+        s = size * (1.0 if k == 0 else rng.uniform(0.4, 0.6))
+        off = 0.0 if k == 0 else rng.uniform(-size * 0.7, size * 0.7)
+        add_blob(
+            bm, (x + math.cos(tangent) * off, y + math.sin(tangent) * off, surface + s * rng.uniform(0.05, 0.2)),
+            (s * rng.uniform(1.4, 2.1), s * rng.uniform(0.6, 0.9), s * rng.uniform(0.45, 0.7)),
+            rng.uniform(0.3, 0.5), salt * 3.7 + k * 5.1,
+            yaw=tangent + rng.uniform(-0.25, 0.25), subdiv=2 if s >= 12.0 else 1,
+        )
+
+
 def build_volcano_rocks(ground):
     bm = bmesh.new()
     placed = []
 
-    def scatter(count, u_lo, u_hi, size_lo, size_hi, giant_chance, giant_hi, embed, river_margin, spacing, salt0):
+    def spot(u_lo, u_hi, river_margin, salt_unused=None):
+        theta = random.uniform(0, math.tau)
+        if abs(((theta - math.radians(270) + math.pi) % math.tau) - math.pi) < math.radians(9):
+            return None
+        u = random.uniform(u_lo, u_hi)
+        r = ring_radius(u, theta)
+        x, y = math.cos(theta) * r, math.sin(theta) * r
+        if not _volcano_clear_of_rivers(x, y, river_margin):
+            return None
+        if not _clear_of_ponds(x, y, 5.0):
+            return None
+        return x, y
+
+    def scatter(builder, count, u_lo, u_hi, size_lo, size_hi, giant_chance, giant_hi, river_margin, spacing, salt0, **kw):
         made, attempts = 0, 0
         while made < count and attempts < count * 60:
             attempts += 1
-            theta = random.uniform(0, math.tau)
-            if abs(((theta - math.radians(270) + math.pi) % math.tau) - math.pi) < math.radians(9):
+            hit = spot(u_lo, u_hi, river_margin)
+            if hit is None:
                 continue
-            u = random.uniform(u_lo, u_hi)
-            r = ring_radius(u, theta)
-            x, y = math.cos(theta) * r, math.sin(theta) * r
-            if not _volcano_clear_of_rivers(x, y, river_margin):
-                continue
-            if not _clear_of_ponds(x, y, 5.0):
-                continue
+            x, y = hit
             size = random.uniform(size_lo, size_hi) if random.random() > giant_chance else random.uniform(size_hi, giant_hi)
             if any((x - px) ** 2 + (y - py) ** 2 < (spacing + size) ** 2 for px, py, _ps in placed):
                 continue
             surface = _drop_to_ground(ground, x, y)
             if surface is None or surface < 0.3:
                 continue
-            _volcano_rock(bm, x, y, surface, size, salt=salt0 + attempts * 3.1, embed=embed)
+            builder(bm, x, y, surface, size, salt=salt0 + attempts * 3.1, **kw)
             placed.append((x, y, size))
             made += 1
         return made
 
-    apron = scatter(58, 0.72, 0.985, 5.0, 14.0, 0.18, 26.0, 0.35, 10.0, 4.0, salt0=610.0)
-    flank = scatter(38, 0.20, 0.68, 12.0, 20.0, 0.25, 30.0, 0.55, 16.0, 6.0, salt0=980.0)
-    print(f"[island_gen] HANDOFF volcano rocks: {apron} apron boulders + {flank} flank masses (5-30 studs)")
+    # Loose rock lives where loose rock CAN live: scattered over the flat
+    # apron, and piled thick as a TALUS band where the cone's cliffs meet it
+    # (rockfall collects at the foot of a face). The steep wall itself gets
+    # only embedded bedrock ledges - nothing perched.
+    apron = scatter(_volcano_rock, 52, 0.76, 0.985, 5.0, 14.0, 0.18, 26.0, 10.0, 4.0, salt0=610.0, embed=0.35)
+    talus = scatter(_volcano_rock, 44, 0.64, 0.75, 8.0, 18.0, 0.22, 28.0, 10.0, 1.5, salt0=980.0, embed=0.5)
+    ledges = scatter(_volcano_outcrop, 20, 0.24, 0.58, 12.0, 22.0, 0.2, 30.0, 16.0, 10.0, salt0=1450.0)
+    print(
+        f"[island_gen] HANDOFF volcano rocks: {apron} apron boulders + {talus} talus at the cliff foot "
+        f"+ {ledges} embedded flank ledges (no perched mid-cliff boulders)"
+    )
     return object_from_bmesh("Volcano_Rocks", bm, ["M_Obsidian"])
 
 
@@ -1862,8 +1896,8 @@ def build_swamp_trees():
     Swamp_TreeLeaves/2 canopy) because crowns+canopies breach a single
     mesh's triangle budget. Trunks stay collidable (Precise import note);
     canopies are NON-COLLIDE; mere + spawn keep-clears hold."""
-    bms = [bmesh.new(), bmesh.new()]
-    leaf_bms = [bmesh.new(), bmesh.new()]
+    bms = [bmesh.new(), bmesh.new(), bmesh.new()]
+    leaf_bms = [bmesh.new(), bmesh.new(), bmesh.new()]
     rng = random.Random(4517)
     mx, my, mr = SWAMP_MERE
     sx, sy = SWAMP_SPAWN
@@ -1895,7 +1929,7 @@ def build_swamp_trees():
             limb(bm, tip, child, length * rng.uniform(0.6, 0.78), r_top, depth - 1, tips)
 
     trees, attempts = 0, 0
-    while trees < 110 and attempts < 9000:
+    while trees < 155 and attempts < 14000:
         attempts += 1
         theta = rng.uniform(0, math.tau)
         u = rng.uniform(0.06, SWAMP_RIM_U - 0.01)
@@ -1906,10 +1940,10 @@ def build_swamp_trees():
             continue
         if math.hypot(x - mx, y - my) < mr + 9 or math.hypot(x - sx, y - sy) < 24:
             continue
-        if any(math.hypot(x - px, y - py) < 7.5 for px, py in placed):
+        if any(math.hypot(x - px, y - py) < 6.5 for px, py in placed):
             continue
         placed.append((x, y))
-        bm = bms[trees % 2]
+        bm = bms[trees % 3]
         trees += 1
 
         # The solid base: the curved 3-segment trunk, as before but with a
@@ -1941,40 +1975,45 @@ def build_swamp_trees():
         # The canopy: one fat lumpy mass over the crown's heart, plus a
         # puff at every third limb tip, all overlapping into one bush.
         if tips:
-            leaf_bm = leaf_bms[(trees - 1) % 2]
+            leaf_bm = leaf_bms[(trees - 1) % 3]
             centroid = Vector((0, 0, 0))
             for t_ in tips:
                 centroid += t_
             centroid /= len(tips)
             spread = max((max(abs(t_.x - centroid.x), abs(t_.y - centroid.y)) for t_ in tips), default=5.0)
-            big = max(5.5, min(8.5, spread * 1.15))
+            # HORIZONTAL pads (user): wide in XY, squashed in Z, sized to
+            # overlap the neighbours ~6.5-8 studs away - the canopies knit
+            # into one continuous forest roof.
+            big = max(7.0, min(11.0, spread * 1.35))
             add_blob(
                 leaf_bm,
-                (centroid.x, centroid.y, centroid.z + 0.8),
-                (big, big * rng.uniform(0.85, 1.0), big * 0.62),
+                (centroid.x, centroid.y, centroid.z + 0.6),
+                (big, big * rng.uniform(0.85, 1.0), big * 0.4),
                 0.2,
                 salt=trees * 2.9,
                 yaw=rng.uniform(0, math.tau),
             )
             for k, t_ in enumerate(tips):
-                if k % 3 != 0:
+                if k % 2 != 0:
                     continue
-                s = rng.uniform(3.6, 5.0)
+                s = rng.uniform(4.5, 6.5)
                 add_blob(
                     leaf_bm,
-                    (t_.x, t_.y, t_.z + 0.5),
-                    (s, s * rng.uniform(0.8, 1.0), s * 0.66),
+                    (t_.x, t_.y, t_.z + 0.4),
+                    (s, s * rng.uniform(0.8, 1.0), s * 0.42),
                     0.22,
                     salt=trees * 7.1 + k,
                     yaw=rng.uniform(0, math.tau),
                 )
 
-    print(f"[island_gen] swamp trees: {trees} trees, forked crowns + thick canopies, 2x2 objects")
+    print(f"[island_gen] swamp trees: {trees} trees, horizontal knitted canopy roof, 3x2 objects")
     return [
         object_from_bmesh("Swamp_Trees", bms[0], ["M_TrunkWood"]),
         object_from_bmesh("Swamp_Trees2", bms[1], ["M_TrunkWood"]),
+        object_from_bmesh("Swamp_Trees3", bms[2], ["M_TrunkWood"]),
         object_from_bmesh("Swamp_TreeLeaves", leaf_bms[0], ["M_WillowLeaf"]),
         object_from_bmesh("Swamp_TreeLeaves2", leaf_bms[1], ["M_WillowLeaf"]),
+        object_from_bmesh("Swamp_TreeLeaves3", leaf_bms[2], ["M_WillowLeaf"]),
     ]
 
 
