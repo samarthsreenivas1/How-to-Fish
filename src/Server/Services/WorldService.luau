@@ -383,6 +383,7 @@ local MESH_COLOR = {
 	Volcano_Base3 = Color3.fromRGB(51, 48, 54), -- M_VolWet
 	Volcano_Lava = Color3.fromRGB(255, 107, 15), -- M_Lava (glows; see MESH_MATERIAL)
 	Volcano_DeadTrees = Color3.fromRGB(26, 22, 20), -- M_Charred (step 3: the dead giants)
+	Volcano_Rocks = Color3.fromRGB(23, 23, 31), -- M_Obsidian (step 4: apron boulders + flank masses)
 
 	-- Blackmire Fen - RESTARTED FROM SCRATCH (2026-08-27, user; see
 	-- island_gen.py's swamp section). Step 2 brought the fen palette back

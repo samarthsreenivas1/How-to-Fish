@@ -369,11 +369,13 @@ def object_from_bmesh(name, bm, material_names):
     return obj
 
 
-def add_blob(bm, center, scale, roughness, salt, yaw=0.0):
+def add_blob(bm, center, scale, roughness, salt, yaw=0.0, subdiv=1):
     """One angular boulder: a low icosphere with noise pushed along the
-    normals, then squashed/rotated into place. Appended into `bm`."""
+    normals, then squashed/rotated into place. Appended into `bm`. `subdiv`
+    defaults to the classic low-poly 1; a big hero rock passes 2 so the
+    noise has enough vertices to break the icosphere silhouette."""
     temp = bmesh.new()
-    bmesh.ops.create_icosphere(temp, subdivisions=1, radius=1.0)
+    bmesh.ops.create_icosphere(temp, subdivisions=subdiv, radius=1.0)
 
     for v in temp.verts:
         bump = noise.noise(v.co * 1.9 + Vector((salt, salt * 0.7, salt * 1.3)))
@@ -1301,6 +1303,88 @@ def build_volcano_trees(ground):
     return object_from_bmesh("Volcano_DeadTrees", bm, ["M_Charred"])
 
 
+# ---------------------------------------------------------------- volcano rocks (restart step 4)
+#
+# 2026-08-27, user: "add large rocks along the volcano and the base as well...
+# varying in size but large and randomly placed... the look of them shouldn't
+# all be the exact same." One `Volcano_Rocks` object (M_Obsidian), two
+# populations:
+#   - APRON boulders (u 0.72-0.985): walked among, 5-26 studs
+#   - FLANK boulders (u 0.20-0.68): MASSIVE 12-30-stud masses jammed into the
+#     steep cone, half-buried, reading as broken rock faces from the beach
+# Every rock is INDIVIDUALLY generated: a cluster of 1-3 noise-displaced
+# blobs (independent squash/roughness/yaw/salt per blob), and ~1 in 7 gets a
+# tilted shard-fang jutting out of the mass - so silhouettes run from round
+# scree domes through angular slab piles to fanged crags, no two alike.
+# All raycast-seated; keeps clear of the lava rivers/ponds and the 270-deg
+# spawn corridor. Collidable and walked among (the old build's ruling) -
+# covered by the checklist's PreciseConvexDecomposition-on-solid-props rule.
+
+
+def _volcano_rock(bm, x, y, surface, size, salt, embed):
+    """One unique rock: 1-3 overlapping angular blobs + an occasional shard.
+    `embed` is the fraction of the (first, biggest) blob sunk into the
+    ground - flank masses bury deeper than apron boulders."""
+    rng = random.Random(salt)
+    blobs = rng.randint(2, 4)  # composed masses, never a lone ball
+    for k in range(blobs):
+        s = size * (1.0 if k == 0 else rng.uniform(0.35, 0.65))
+        dx, dy = (0.0, 0.0) if k == 0 else (rng.uniform(-size * 0.6, size * 0.6), rng.uniform(-size * 0.6, size * 0.6))
+        # Wilder squash (down to 0.45 in z: slabs and shelves, not spheres).
+        squash = (rng.uniform(0.65, 1.35), rng.uniform(0.65, 1.35), rng.uniform(0.45, 1.05))
+        zc = surface + s * squash[2] * (1.0 - embed if k == 0 else rng.uniform(0.2, 0.55))
+        add_blob(
+            bm, (x + dx, y + dy, zc),
+            (s * squash[0], s * squash[1], s * squash[2]),
+            # Heavy displacement - at low roughness a big rock reads as a
+            # bare icosphere (preview review); big hero blobs also get an
+            # extra subdivision so the noise has vertices to bite into.
+            rng.uniform(0.3, 0.52), salt * 2.9 + k * 7.3, yaw=rng.uniform(0, math.tau),
+            subdiv=2 if s >= 12.0 else 1,
+        )
+    if rng.random() < 0.14:  # the occasional fang jutting from the mass
+        add_cone(
+            bm, (x + rng.uniform(-size * 0.4, size * 0.4), y + rng.uniform(-size * 0.4, size * 0.4), surface - 1.0),
+            size * rng.uniform(0.28, 0.42), 0.3, size * rng.uniform(1.3, 2.2), sides=5,
+            tilt=(rng.uniform(-0.35, 0.35), rng.uniform(-0.35, 0.35)), yaw=rng.uniform(0, math.tau),
+        )
+
+
+def build_volcano_rocks(ground):
+    bm = bmesh.new()
+    placed = []
+
+    def scatter(count, u_lo, u_hi, size_lo, size_hi, giant_chance, giant_hi, embed, river_margin, spacing, salt0):
+        made, attempts = 0, 0
+        while made < count and attempts < count * 60:
+            attempts += 1
+            theta = random.uniform(0, math.tau)
+            if abs(((theta - math.radians(270) + math.pi) % math.tau) - math.pi) < math.radians(9):
+                continue
+            u = random.uniform(u_lo, u_hi)
+            r = ring_radius(u, theta)
+            x, y = math.cos(theta) * r, math.sin(theta) * r
+            if not _volcano_clear_of_rivers(x, y, river_margin):
+                continue
+            if not _clear_of_ponds(x, y, 5.0):
+                continue
+            size = random.uniform(size_lo, size_hi) if random.random() > giant_chance else random.uniform(size_hi, giant_hi)
+            if any((x - px) ** 2 + (y - py) ** 2 < (spacing + size) ** 2 for px, py, _ps in placed):
+                continue
+            surface = _drop_to_ground(ground, x, y)
+            if surface is None or surface < 0.3:
+                continue
+            _volcano_rock(bm, x, y, surface, size, salt=salt0 + attempts * 3.1, embed=embed)
+            placed.append((x, y, size))
+            made += 1
+        return made
+
+    apron = scatter(58, 0.72, 0.985, 5.0, 14.0, 0.18, 26.0, 0.35, 10.0, 4.0, salt0=610.0)
+    flank = scatter(38, 0.20, 0.68, 12.0, 20.0, 0.25, 30.0, 0.55, 16.0, 6.0, salt0=980.0)
+    print(f"[island_gen] HANDOFF volcano rocks: {apron} apron boulders + {flank} flank masses (5-30 studs)")
+    return object_from_bmesh("Volcano_Rocks", bm, ["M_Obsidian"])
+
+
 # ---------------------------------------------------------------- island builds
 
 
@@ -1329,12 +1413,14 @@ def build_volcano():
     STEP 1 - the shape (iterated to the ~895-stud shattered spire on review);
     STEP 2 - the lava (build_lava: crater lake, six notch-fed rivers running
     rim to sea, apron pools + molten deltas); STEP 3 - the dead giants
-    (build_volcano_trees). Still NO rocks/scatter, NO dock, NO foam - each
-    returns with its own reviewed step."""
+    (build_volcano_trees); STEP 4 - the rocks (build_volcano_rocks: apron
+    boulders + massive flank masses). Still NO dock, NO foam - each returns
+    with its own reviewed step."""
     base = build_island_base("Volcano_Base", ["M_VolRock", "M_VolAsh", "M_VolWet"])
     ground = _ground_bvh(base)
     lava = build_lava(ground)  # step 2: clears + repopulates LAVA_PONDS itself
     trees = build_volcano_trees(ground)  # step 3: after lava - reads LAVA_PONDS to keep clear
+    rocks = build_volcano_rocks(ground)  # step 4: same keep-clears
     shore = ring_radius(1.0, math.radians(270))
     peak = max(h for _, h in PROFILE)
     print(
@@ -5237,6 +5323,7 @@ ISLANDS = {
                 "M_VolWet": (0.200, 0.188, 0.212),
                 "M_Lava": (1.000, 0.420, 0.059),  # molten orange (Neon in-game)
                 "M_Charred": (0.102, 0.086, 0.078),  # burnt-black dead giants
+                "M_Obsidian": (0.090, 0.090, 0.122),  # the rock masses
             },
         },
         "build": build_volcano,
