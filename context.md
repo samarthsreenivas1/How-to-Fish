@@ -105,7 +105,7 @@ between sessions.
 | **UI overhaul** (2026-08-23) | built, **unreviewed** | one kit (`Client/UI/Kit`, `Describe`, `ItemDetail`, new `Theme`); every menu + HUD rebuilt on it; no icons uploaded yet — tiles show monograms until rows get `icon` ids |
 | Persistence | **built 2026-08-25**, unreviewed | `DataService` (first in ORDER): UpdateAsync session locking, 60s autosave, BindToClose; slices from Progression/Inventory/Material/Bait services + `Cleared_*`/`Heart_*` attributes |
 | **Drivable boat + tier ladder** (revamp S3, 2026-08-25) | built, **unreviewed** | `Boats.luau` 6 tiers, `BoatModel` (procedural + BoatPack mesh path, TrophyShelf mounts), `BoatService`/`BoatController` (R to summon, driver-owned physics, seaworthiness DoT), Boat tab in `C` menu, `mayEnter` travel gates + containment sweep — see "The boat" |
-| **Ambient spawner + raids + island events** (revamp S3, 2026-08-25) | built, **unreviewed** | `SpawnerService`/`RaidService`/`RaidHudController`/`EruptionService` + `Hazards` extraction + `noLinger`; rosters on the tropical/swamp/volcano Islands entries — see "Spawner, raids, island events" |
+| **Ambient spawner + raids + island events** (revamp S3, 2026-08-25) | built, **unreviewed** | `SpawnerService`/`RaidService`/`RaidHudController` + `Hazards` extraction (EruptionService shipped here too but was REMOVED 2026-08-27 with the volcano restart, user order) + `noLinger`; rosters on the tropical/swamp/volcano Islands entries — see "Spawner, raids, island events" |
 | **Ranged engine + flyers + Blackmire Fen** (revamp S2, 2026-08-25) | built, **unreviewed / imports pending** | server-authoritative hitscan (`ShotAim`, `RequestShoot`/`ShotFired`, token bucket + mags/reloads), `ranged` Weapon block, `RangedController`/`RangedFxController`, `flyer`+`skythief` archetypes, swamp kit + Old Gnashroot; the final 6-island `Islands.order` |
 | **Islands 3/5/6 + volcano final re-gate** (revamp S4, 2026-08-26) | built, **unreviewed / imports pending** | Frostmaw Reach (`ice`), Gloomtrench (`gloom`), Wreckwater (`wreck`): full 5/5/3/4 kits, 38 creatures + Rimefang/Noctyss/Admiral Wrack, ambient+raid rosters; volcano re-gated L22-28 rewards ×6, Pyrelisk 40k/gate 28 — see "The S4 islands" |
 | **The Maelstrom + the Kraken** (revamp S4, 2026-08-26) | built, **unreviewed** | procedural site (no mesh), `Maelstrom_Water` roster, six-hearts+final-boat gates, Kraken 130k with tentacle ring/exposure windows/`rangedOnly` head, finale banner — see "The finale" |
@@ -431,7 +431,7 @@ make sure users can't leave the rim and the lava itself."
   `GLOBAL_CAP` (40). **`setBias(islandId, archetype, mult)` /
   `clearBias(islandId)`** is the event hook — WeatherService's blizzard
   biases ice flyers ×3 through it. `groundPointNear` / `playersOn` are
-  shared helpers (RaidService and EruptionService use them).
+  shared helpers (RaidService uses them).
 - **`RaidService`** — per-island `idle → announced → wave k of N →
   cleared|failed` off `Islands.items[id].raid` (interval/announce/waves/
   timeLimit/reward/bountyMult; defaults in `Tuning.Raid`). Raid mobs spawn
@@ -450,7 +450,9 @@ make sure users can't leave the rim and the lava itself."
 - **`Hazards.luau`** (Server/Modules) — `fireEvent` +
   `damagePlayersInRadius` extracted from CreatureService (which now
   delegates); raids and events hurt players by exactly the creature rule.
-- **`EruptionService`** — the volcano's bomb windows: every 5–8 min with
+- **`EruptionService` — REMOVED 2026-08-27** (user order, volcano restart;
+  the service file, ORDER entry and comments are gone — don't reintroduce
+  unprompted. Historical: the volcano's bomb windows: every 5–8 min with
   someone on the apron, 24s of lava bombs (one per 1.7s near a random
   player, ring 5–26 so a direct hit can't be pre-placed), each fully
   telegraphed — `telegraph` ring + `spit` glob falling from the summit on
@@ -889,8 +891,7 @@ playbook applied to Ashfall Caldera — reviewed from PNG previews
   in World.FISHABLE_NAMES/WATERS_BY_PART + NON_COLLIDE for its return —
   the `waters = "volcano"` roster and Phoenix chase are dormant meanwhile.
   LavaController scans by name and finds nothing (absence-safe by design);
-  EruptionService still runs (its bombs are Hazards events, no lava parts
-  needed). Pyrelisk's arena keys off the DELETED dock — left as an interim
+  EruptionService was later REMOVED outright (step 6, user order). Pyrelisk's arena keys off the DELETED dock — left as an interim
   open-water arena with a re-key note (the Gnashroot precedent).
 - **Pack regenerated in the same commit** (the a6 rule: whoever lands an
   island change regens the pack after checking peers' uncommitted hunks).
@@ -949,8 +950,23 @@ playbook applied to Ashfall Caldera — reviewed from PNG previews
   splice-stage your own hunks, commit, then build the pack from a `git
   worktree` of that commit into the main checkout** — never from a
   working tree carrying another lane's uncommitted hunks.
-- **Next steps (each its own prompt, wait for the ask)**: the dock
-  (+ Pyrelisk re-key), foam, eruption tie-in. Don't build ahead.
+- **Step 5 — THE DOCK (same day)**: the tropical jetty VERBATIM (shared
+  build_dock, home's dimensions and warm wood) on the lava-free 270° lane:
+  planks rel Z=527..592, deck 2.4, ~37 studs over open sea, spawn in
+  front. Pyrelisk's arena re-keyed to 40 studs past the dock end (rel
+  Z=632) — fought from the planks like Brinejaw.
+- **Step 6 — FOAM + the two removals (same day)**: the standard surf line
+  (`Volcano_Foam`) + dock-post collars. **EruptionService DELETED and
+  lava deals NO contact damage — both user orders, both binding** (notes
+  live on the WorldEvent remote and the volcano's Islands raid block).
+  a6's follow-on catch: `build_foam` collars whatever DOCK_POST_POSITIONS
+  holds, and a dock-less island inherits the previous island's posts in a
+  pack build — the configure() carry-over family; swamp now clears it.
+- **THE VOLCANO REBUILD'S GEOMETRY IS COMPLETE** (2026-08-27): spire,
+  lava, dead giants, rocks/talus, dock, foam. In-Studio tuning round
+  expected after the user's pack import. NOTE: several of this lane's
+  hunks rode into adjacent swamp-lane commits (shared git index between
+  concurrent sessions — 9a59de9/5a68a88; flagged in commit messages).
 
 ### The boss redesign: unique movesets, gimmicks, models (2026-08-27, unreviewed)
 
@@ -2540,7 +2556,6 @@ src/
       SpawnerService.luau   (S3) ambient island hostiles off Islands ambient blocks; setBias/clearBias event hook; groundPointNear/playersOn helpers
       RaidService.luau      (S3) wave raids off Islands raid blocks; noLinger mobs, participants payout, RaidState broadcast
       WeatherService.luau   (S3/S4) timed weather windows (ice blizzard) on WorldEvent + spawner flyer bias
-      EruptionService.luau  (S3) volcano lava-bomb windows: telegraph/spit/explode vocabulary + Hazards damage
     Modules/
       Hazards.luau          (S3) fireEvent + damagePlayersInRadius, the one AoE rule (CreatureService delegates)
   Client/
