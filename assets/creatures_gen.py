@@ -793,31 +793,229 @@ def zombie_base(hunch=0.22, gauntness=1.0):
     return body, fins, eyes, marks, head_c, lean
 
 
+# ---------------------------------------------------------------- Starter Cove drowned: local kit
+# The two Cove drowned (Deckhand, Angler) are built on their OWN anatomy rather
+# than zombie_base: they need an asymmetric stride, a flared coat and welded
+# gear that the shared blocky base cannot express. Everything private to them is
+# prefixed _cove_ so the shared helpers stay frozen.
+
+
+def _cove_blade(bm, pts, half_w, half_t, taper=0.35):
+    """A flat steel blade through a polyline - broad in the swing plane, thin
+    across it, drawn to a point at the last node. Cutlass blades, gaff spurs
+    and hook barbs: anything that must read as edged metal in silhouette."""
+    pts = [Vector(p) for p in pts]
+    n = len(pts) - 1
+    rings = []
+    for i, p in enumerate(pts):
+        d = (pts[min(i + 1, n)] - pts[max(i - 1, 0)]).normalized()
+        if i == n:
+            rings.append(bm.verts.new(p))
+            continue
+        up = Vector((0, 0, 1)) if abs(d.z) < 0.9 else Vector((1, 0, 0))
+        thick = d.cross(up).normalized()  # across the blade (thin)
+        wide = thick.cross(d).normalized()  # in the swing plane (broad)
+        w = half_w * (1.0 - taper * (i / max(n, 1)))
+        rings.append([bm.verts.new(p + wide * (w * sw) + thick * (half_t * st)) for sw, st in ((1, -1), (1, 1), (-1, 1), (-1, -1))])
+    connect_rings(bm, rings)
+
+
+def _cove_kelp(bm, start, drops, drift=(0.07, 0.0, -0.42), r=0.06):
+    """A trailing kelp/weed strand: segments that lengthen and thin as they
+    hang. Returns the tip so a float or a second strand can hang off it."""
+    p = Vector(start)
+    for i in range(drops):
+        nxt = p + Vector(drift) * (1.0 + 0.15 * i)
+        limb(bm, p, nxt, r * (1 - 0.2 * i), r * (1 - 0.2 * (i + 1)), 4)
+        p = nxt
+    return p
+
+
+def _cove_barnacles(bm, center, normal, count=4, r=0.11, spread=0.22):
+    """A crusted barnacle cluster: little truncated cones growing along
+    `normal` off a patch of shoulder, skull or plank."""
+    c, n = Vector(center), Vector(normal).normalized()
+    up = Vector((0, 0, 1)) if abs(n.z) < 0.9 else Vector((1, 0, 0))
+    u = n.cross(up).normalized()
+    v = n.cross(u).normalized()
+    for i in range(count):
+        a = (i / count) * TAU + 0.4
+        rr = r * (0.6 + 0.4 * ((i * 5) % 3) / 2.0)
+        base = c + (u * math.cos(a) + v * math.sin(a)) * spread * (0.45 + 0.55 * (i % 2))
+        limb(bm, base, base + n * rr * 1.5, rr, rr * 0.5, 5)
+
+
+def _cove_net(bm, corners, rows=2, cols=3, r=0.035, sag=0.3, bow=0.0, segs=4):
+    """A draped fishing net patch over four corners (c0-c1 the top edge,
+    c3-c2 the bottom): strands both ways, sagging under their own weight
+    (`sag`) and bellying out over whatever they are lying on (`bow`, along
+    +X). Without the bow a flat patch of straight strands reads as scaffold,
+    not as net - it has to bulge to look like cloth."""
+    c0, c1, c2, c3 = (Vector(c) for c in corners)
+
+    def at(u, v):
+        p = c0.lerp(c1, u).lerp(c3.lerp(c2, u), v)
+        belly = math.sin(math.pi * u) * math.sin(math.pi * v)
+        return p + Vector((bow * belly, 0, -sag * math.sin(math.pi * u) * v))
+
+    for j in range(rows + 1):
+        v = j / rows
+        for i in range(segs):
+            limb(bm, at(i / segs, v), at((i + 1) / segs, v), r, r, 3)
+    for i in range(cols + 1):
+        u = i / cols
+        for j in range(rows):
+            limb(bm, at(u, j / rows), at(u, (j + 1) / rows), r, r, 3)
+    return at
+
+
+def _cove_jhook(bm, base, forward, size=0.16, r=0.035):
+    """A small stitched-in J hook: a straight shank that curls back on itself
+    to a barbed point. `forward` is the way the shank hangs."""
+    b, f = Vector(base), Vector(forward).normalized()
+    up = Vector((0, 0, 1)) if abs(f.z) < 0.9 else Vector((1, 0, 0))
+    side = f.cross(up).normalized()
+    curl = side.cross(f).normalized()
+    a = b + f * size * 2.2
+    limb(bm, b, a, r, r * 0.85, 4)
+    c = a + f * size * 0.7 + curl * size * 0.9
+    d = a + curl * size * 1.7 - f * size * 0.3
+    limb(bm, a, c, r * 0.85, r * 0.7, 4)
+    _cove_blade(bm, [c, d], r * 1.6, r * 0.5, taper=0.0)
+
+
 # ---------------------------------------------------------------- drowned deckhand
-# A hunched, tattered sailor: ragged shirt, draped seaweed, one shoulder gone.
+# A waterlogged deckhand lost mid-watch: hunched into an asymmetric stride, one
+# arm thrown forward (+X), a rusted cutlass swept back in the trailing hand, a
+# torn knee-length watch-coat and a fishing net dragged across one shoulder,
+# floats still knotted into it. One leg walked its boot off long ago.
+# Layers: _Body flesh + bone + barnacles; _Fins coat, boot, net, cutlass;
+# _Marks kept minimal (he is a Common) - kelp and a faint barnacle glow line.
 
 
 def build_deckhand():
-    body, fins, eyes, marks, head_c, lean = zombie_base(hunch=0.26, gauntness=1.05)
+    body = bmesh.new()  # flesh + bone
+    fins = bmesh.new()  # coat, boot, net, cutlass
+    eyes = bmesh.new()
+    marks = bmesh.new()  # kelp + a thin barnacle glow line
 
-    # Torn shirt collar + a ragged vest hem (clothes).
-    box(fins, (0.28, 0, 2.9), (0.5, 0.9, 0.22), lean)
-    box(fins, (0.05, 0, 1.55), (1.0, 1.05, 0.3), lean)  # ragged hem
+    lean = Matrix.Rotation(-0.30, 4, "Y")  # hunched harder than the old base
 
-    # Seaweed strands draped off a shoulder and the arm (marks).
-    for start, drops in (
-        (Vector((0.2, 0.55, 2.85)), 3),
-        (Vector((0.95, -0.45, 2.1)), 2),
-    ):
-        p = start
-        for _ in range(drops):
-            nxt = p + Vector((0.05, 0.0, -0.45))
-            limb(marks, p, nxt, 0.06, 0.05, 4)
-            p = nxt
+    # --- Stride: the +Y leg planted forward in a boot, the -Y leg trailing and
+    # picked clean to the bone below a torn trouser.
+    limb(fins, (0.10, 0.34, 1.52), (0.34, 0.36, 0.80), 0.23, 0.19, 6)
+    limb(fins, (0.34, 0.36, 0.80), (0.46, 0.36, 0.26), 0.19, 0.15, 6)
+    box(fins, (0.34, 0.36, 0.32), (0.32, 0.48, 0.30))  # boot cuff
+    box(fins, (0.56, 0.36, 0.11), (0.66, 0.42, 0.24))  # sea boot
+    limb(fins, (-0.06, -0.34, 1.52), (-0.30, -0.34, 0.94), 0.22, 0.16, 6)
+    ellipsoid(body, (-0.30, -0.34, 0.94), (0.13, 0.12, 0.13), 1)  # bare knee
+    limb(body, (-0.30, -0.34, 0.92), (-0.52, -0.33, 0.14), 0.10, 0.075, 5)  # tibia
+    limb(body, (-0.26, -0.28, 0.90), (-0.44, -0.26, 0.16), 0.065, 0.05, 4)  # fibula
+    for sy in (-0.13, 0.0, 0.13):
+        limb(body, (-0.50, -0.33 + sy * 0.5, 0.10), (-0.28, -0.33 + sy, 0.05), 0.055, 0.035, 4)  # splayed bones of the foot
 
-    # A barnacle cluster on the back/shoulder (marks).
-    for off in ((0.0, 0.3, 3.0), (-0.1, 0.15, 2.85), (0.05, 0.42, 2.78)):
-        ellipsoid(marks, Vector((-0.15, off[1], off[2])), (0.1, 0.1, 0.1), 1)
+    # --- Torso: lean and gaunt, ribs showing where the shirt has rotted open.
+    box(body, (0.14, 0, 2.14), (0.70, 0.76, 1.24), lean)
+    box(body, (0.26, 0, 2.72), (0.52, 0.66, 0.40), lean)  # collar bones
+    for z in (2.52, 2.34):
+        box(body, (0.30, 0, z), (0.42, 0.72, 0.07), lean)  # exposed rib bands
+
+    # --- Watch-coat: a fitted upper and a knee-length skirt, hem torn to tabs.
+    # Cut narrow: next to the angler's bell of oilskin he must read as a rake.
+    box(fins, (0.18, 0, 2.42), (0.76, 0.82, 0.96), lean)
+    revolve(fins, [(-0.50, 0.60), (0.10, 0.50), (0.62, 0.44)], sides=8, axis="z", center=(0.06, 0, 1.62), squash=0.92)
+    for k in range(5):
+        a = (k / 5) * TAU + 0.3
+        p = Vector((0.06 + math.cos(a) * 0.52, math.sin(a) * 0.56, 1.14))
+        cone(fins, p, p + Vector((0.04, 0, -0.36 - 0.12 * (k % 2))), 0.14, 3)  # torn hem tabs
+    box(fins, (0.30, 0, 2.86), (0.44, 0.88, 0.24), lean)  # popped collar
+    for sy in (-1, 1):
+        plate(fins, [(0.18, 2.96), (0.46, 2.86), (0.40, 2.30), (0.16, 2.42)], 0.08, "xz", (0, sy * 0.34, 0))  # lapels
+
+    # --- Arms: the +Y arm thrown forward and clawing, the -Y arm swung back
+    # with the cutlass.
+    limb(body, (0.20, 0.54, 2.66), (0.86, 0.60, 2.40), 0.18, 0.15, 6)
+    limb(body, (0.86, 0.60, 2.40), (1.52, 0.50, 2.22), 0.15, 0.11, 6)
+    limb(fins, (0.16, 0.56, 2.70), (0.92, 0.60, 2.40), 0.27, 0.19, 6)  # sleeve
+    ellipsoid(body, (1.58, 0.49, 2.19), (0.17, 0.15, 0.16), 1)
+    for k in (-1, 0, 1):
+        limb(body, (1.66, 0.49 + k * 0.09, 2.20), (2.00, 0.49 + k * 0.16, 2.30 - abs(k) * 0.12), 0.055, 0.03, 4)
+    limb(body, (0.12, -0.56, 2.64), (0.36, -0.76, 2.02), 0.18, 0.15, 6)
+    limb(body, (0.36, -0.76, 2.02), (0.14, -0.92, 1.48), 0.15, 0.115, 6)
+    limb(fins, (0.08, -0.58, 2.68), (0.40, -0.78, 2.06), 0.27, 0.20, 6)  # sleeve
+    grip = Vector((0.12, -0.96, 1.38))
+    ellipsoid(body, grip, (0.16, 0.14, 0.16), 1)
+
+    # --- The rusted cutlass, swung back and OUT of the trailing fist: away from
+    # the body on -Y as well as up, so the blade silhouettes clear of the coat
+    # from every angle instead of hiding behind his back.
+    hd = Vector((-0.52, -0.42, 0.74)).normalized()
+    pommel = grip - hd * 0.30
+    guard = grip + hd * 0.28
+    limb(fins, pommel, guard, 0.065, 0.065, 5)
+    ellipsoid(fins, pommel, (0.10, 0.10, 0.10), 1)
+    cross = Vector((0.86, -0.2, 0.5)).normalized()  # roughly across the blade
+    limb(fins, guard - cross * 0.34, guard + cross * 0.34, 0.06, 0.06, 4)  # crossguard
+    for s in (-1, 1):  # quillon tips, so the guard survives at gameplay distance
+        ellipsoid(fins, guard + cross * (0.34 * s), (0.09, 0.09, 0.09), 1)
+    knuck = guard + cross * 0.24 - hd * 0.30
+    limb(fins, guard + cross * 0.24, knuck, 0.05, 0.045, 4)  # knuckle bow
+    limb(fins, knuck, pommel + cross * 0.06, 0.045, 0.04, 4)
+    _cove_blade(
+        fins,
+        [
+            guard + hd * 0.06,
+            guard + hd * 0.90 + Vector((0.04, 0, 0)),
+            guard + hd * 1.65 + Vector((-0.14, 0.04, 0.02)),
+            guard + hd * 2.15 + Vector((-0.40, 0.10, -0.06)),
+        ],
+        0.17,
+        0.04,
+    )
+
+    # --- Head: sunken skull carried well out over the leading foot - the neck
+    # cranes further than the hunch alone would take it, which is what sells
+    # the shamble in silhouette.
+    neck = Vector((0.30, 0, 2.82))
+    head_c = Vector((0.66, 0, 3.18))
+    limb(body, neck, head_c, 0.17, 0.22, 6)
+    ellipsoid(body, head_c, (0.40, 0.38, 0.42), 1)
+    box(body, (0.90, 0, 3.08), (0.26, 0.46, 0.30))  # jutting jaw
+    box(body, (0.82, 0, 3.36), (0.30, 0.54, 0.13))  # brow ridge
+
+    # --- The net: dragged over the +Y shoulder and across the chest to the
+    # -Y hip, floats still knotted along its hanging edge.
+    # Strands are deliberately fat for their scale - a scale-accurate mesh
+    # vanishes at gameplay distance and the net has to read as netting.
+    # It lies ON him - a narrow sash bellying over the chest, not a panel
+    # stretched in front of it.
+    at = _cove_net(fins, [(0.46, 0.62, 3.00), (0.30, 0.78, 2.88), (0.24, -0.62, 1.74), (0.42, -0.72, 1.86)], rows=1, cols=5, r=0.05, sag=0.06, bow=0.22)
+    for k in range(3):
+        ellipsoid(fins, at(0.35 + k * 0.22, 1.0) + Vector((0.10, -0.06, -0.10)), (0.14, 0.14, 0.14), 1)  # cork floats
+    # The rest of the hank hangs free off the shoulder, down his back and
+    # outboard, swinging with the shamble.
+    at2 = _cove_net(fins, [(0.16, 0.72, 3.02), (-0.34, 0.64, 2.90), (-0.48, 0.96, 1.62), (-0.02, 1.04, 1.74)], rows=2, cols=3, r=0.042, sag=0.42, bow=0.14)
+    for k in range(4):
+        ellipsoid(fins, at2(k / 3.0, 1.0) + Vector((0, 0.04, -0.13 - 0.08 * (k % 2))), (0.12, 0.12, 0.12), 1)
+
+    # --- Barnacles: a crust on the free shoulder and up the side of the skull.
+    _cove_barnacles(body, (0.06, 0.60, 2.92), (0.15, 0.75, 0.65), count=4, r=0.11, spread=0.20)
+    _cove_barnacles(body, (0.56, -0.32, 3.36), (0.1, -0.55, 0.85), count=3, r=0.085, spread=0.16)
+
+    # --- Dead-light eyes, deep under the brow.
+    for sy in (-1, 1):
+        ellipsoid(eyes, head_c + Vector((0.30, sy * 0.17, 0.02)), (0.08, 0.08, 0.10), 1)
+
+    # --- _Marks (seaweed green, kept minimal): kelp trailing off the shoulder,
+    # the net's low corner and the reaching wrist, plus a faint glow line
+    # picking out the barnacle crust.
+    _cove_kelp(marks, (0.02, 0.66, 2.86), 3)
+    _cove_kelp(marks, (-0.28, -0.58, 1.24), 2, drift=(-0.05, -0.04, -0.4), r=0.055)
+    _cove_kelp(marks, (1.30, 0.56, 2.28), 2, drift=(0.02, 0.05, -0.38), r=0.05)
+    for k in range(4):
+        ellipsoid(marks, (0.02 + k * 0.03, 0.68 + 0.02 * k, 3.02 - k * 0.14), (0.045, 0.045, 0.045), 0)
+    for k in range(2):
+        ellipsoid(marks, (0.54, -0.42 - k * 0.03, 3.42 - k * 0.16), (0.04, 0.04, 0.04), 0)
 
     return [
         finish("Deckhand_Body", body, MATS["Deckhand_Body"]),
@@ -828,41 +1026,140 @@ def build_deckhand():
 
 
 # ---------------------------------------------------------------- drowned angler
-# The zombie fisherman crossed with an anglerfish: a heavy oilskin coat and
-# sou'wester, a gaff hook in one hand, and - the signature - a bioluminescent
-# lure dangling on a stalk in front of its face.
+# The Epic zombie fisherman: broad-brimmed sou'wester, a long rotted oilskin
+# flaring to the boots, a gaff hook planted in one fist - and, fused to his
+# spine, a bent rod of vertebrae arcing up and forward over the hat to dangle a
+# lantern-lure in front of his own face. A creel rides the hip; the coat is
+# stitched through with the hooks he never got out of it.
+# Layers: _Body flesh, bone and the rod-spine; _Fins oilskin, hat, gaff, creel,
+# stitched hooks; _Marks the lantern bulb and its hooked snell lines (his
+# markColor is the bioluminescent teal the client can Neon).
 
 
 def build_angler():
-    body, fins, eyes, marks, head_c, lean = zombie_base(hunch=0.2, gauntness=0.92)
+    body = bmesh.new()
+    fins = bmesh.new()
+    eyes = bmesh.new()
+    marks = bmesh.new()
 
-    # Long oilskin coat over the torso and down past the knees (clothes).
-    box(fins, (0.16, 0, 2.05), (1.05, 1.15, 1.7), lean)
-    box(fins, (0.05, 0, 1.15), (1.0, 1.1, 0.9))  # coat skirt
-    # Big collar.
-    box(fins, (0.3, 0, 2.95), (0.5, 1.05, 0.28), lean)
+    lean = Matrix.Rotation(-0.16, 4, "Y")  # looming rather than lunging
 
-    # Sou'wester hat: a wide back brim + a crown, over the head.
-    box(fins, (0.35, 0, 3.72), (0.85, 1.0, 0.14))
-    box(fins, (0.45, 0, 3.6), (0.6, 0.72, 0.3))
-    box(fins, (0.05, 0, 3.66), (0.35, 0.9, 0.24))  # long neck flap at the back
+    # --- Legs: heavy waders, planted wide and square.
+    for sy in (-1, 1):
+        limb(fins, (0.0, sy * 0.40, 1.70), (0.06, sy * 0.44, 0.92), 0.27, 0.24, 6)
+        limb(fins, (0.06, sy * 0.44, 0.92), (0.12, sy * 0.46, 0.24), 0.24, 0.21, 6)
+        box(fins, (0.26, sy * 0.46, 0.12), (0.74, 0.50, 0.26))  # wader boots
 
-    # The lure: a stalk arcing forward off the hat with a glowing bulb (marks).
-    stalk_base = Vector((0.55, 0, 3.85))
-    stalk_mid = Vector((1.2, 0, 3.95))
-    stalk_end = Vector((1.55, 0, 3.5))
-    limb(marks, stalk_base, stalk_mid, 0.05, 0.04, 4)
-    limb(marks, stalk_mid, stalk_end, 0.04, 0.03, 4)
-    ellipsoid(marks, stalk_end + Vector((0.06, 0, -0.12)), (0.16, 0.16, 0.16), 2)
+    # --- Torso: broad, water-swollen.
+    box(body, (0.10, 0, 2.35), (0.88, 0.98, 1.40), lean)
+    box(body, (0.20, 0, 3.02), (0.62, 0.82, 0.40), lean)  # chest / collar
 
-    # A gaff hook in the right hand (reaching hand is at ~(1.35, +/-0.45, 1.75)).
-    hand = Vector((1.35, -0.5, 1.75))
-    pole_top = hand + Vector((0.15, 0, 1.5))
-    pole_bot = hand + Vector((-0.1, 0, -1.0))
-    limb(fins, pole_bot, pole_top, 0.07, 0.06, 5)
-    # the hook: a short curve at the top (marks, so it stands out)
-    limb(marks, pole_top, pole_top + Vector((0.28, 0, -0.08)), 0.05, 0.04, 4)
-    limb(marks, pole_top + Vector((0.28, 0, -0.08)), pole_top + Vector((0.28, 0, -0.4)), 0.04, 0.04, 4)
+    # --- Oilskin: a flared skirt to below the knee plus a shoulder yoke, so he
+    # reads as a wide dark bell with a small head on top.
+    revolve(fins, [(-1.02, 1.10), (-0.30, 0.88), (0.40, 0.70), (0.96, 0.66)], sides=10, axis="z", center=(0.05, 0, 2.12), squash=0.9)
+    revolve(fins, [(-0.32, 0.92), (0.10, 0.80), (0.34, 0.62)], sides=10, axis="z", center=(0.08, 0, 2.92), squash=0.92)  # shoulder yoke
+    for k in range(6):
+        a = (k / 6) * TAU + 0.25
+        p = Vector((0.05 + math.cos(a) * 0.92, math.sin(a) * 0.98, 1.12))
+        cone(fins, p, p + Vector((0.05, 0, -0.36 - 0.12 * (k % 2))), 0.19, 3)  # rotted hem
+    box(fins, (0.42, 0, 3.16), (0.36, 0.86, 0.36), lean)  # storm collar
+    # The oilskin hangs open down the front: two heavy lapels and a cinched
+    # belt, so the coat is not one unbroken slab in silhouette.
+    for sy in (-1, 1):
+        plate(fins, [(0.58, 3.22), (0.86, 3.06), (0.74, 2.30), (0.46, 2.46)], 0.10, "xz", (0, sy * 0.30, 0))
+    revolve(fins, [(-0.08, 0.86), (0.08, 0.86)], sides=10, axis="z", center=(0.06, 0, 2.06), squash=0.9)  # belt
+    box(fins, (0.78, 0, 2.06), (0.22, 0.30, 0.24))  # buckle
+
+    # --- Arms: the +Y arm hanging open-handed, the -Y fist clamped on the gaff.
+    limb(body, (0.16, 0.62, 3.00), (0.62, 0.78, 2.36), 0.21, 0.17, 6)
+    limb(body, (0.62, 0.78, 2.36), (0.92, 0.74, 1.72), 0.17, 0.13, 6)
+    limb(fins, (0.12, 0.64, 3.04), (0.68, 0.79, 2.34), 0.32, 0.23, 6)  # oilskin sleeve
+    ellipsoid(body, (0.96, 0.73, 1.64), (0.19, 0.17, 0.18), 1)
+    for k in (-1, 0, 1):
+        limb(body, (1.02, 0.73 + k * 0.10, 1.58), (1.24, 0.73 + k * 0.16, 1.30), 0.055, 0.035, 4)
+    limb(body, (0.16, -0.62, 3.00), (0.72, -0.80, 2.40), 0.21, 0.17, 6)
+    limb(body, (0.72, -0.80, 2.40), (1.10, -0.78, 1.96), 0.17, 0.13, 6)
+    limb(fins, (0.12, -0.64, 3.04), (0.78, -0.81, 2.38), 0.32, 0.23, 6)
+    fist = Vector((1.16, -0.78, 1.92))
+    ellipsoid(body, fist, (0.19, 0.17, 0.18), 1)
+
+    # --- The gaff: a long shaft planted forward through the fist, bound at the
+    # grip, with a broad curved steel hook at the head.
+    top = Vector((0.86, -0.70, 4.10))
+    butt = Vector((1.58, -0.86, 0.06))
+    limb(fins, butt, top, 0.075, 0.065, 5)
+    for z in (1.70, 2.16):  # grip bindings
+        t = (z - butt.z) / (top.z - butt.z)
+        ellipsoid(fins, butt.lerp(top, t), (0.11, 0.11, 0.07), 1)
+    _cove_blade(
+        fins,
+        [
+            top + Vector((-0.04, 0, -0.20)),
+            top + Vector((0.34, 0, 0.16)),
+            top + Vector((0.84, 0, 0.16)),
+            top + Vector((1.04, 0, -0.26)),
+            top + Vector((0.78, 0, -0.62)),
+        ],
+        0.15,
+        0.045,
+        taper=0.55,
+    )
+
+    # --- Head: a small sunken skull swallowed by the hat.
+    head_c = Vector((0.50, 0, 3.56))
+    limb(body, (0.24, 0, 3.16), head_c, 0.19, 0.24, 6)
+    ellipsoid(body, head_c, (0.40, 0.38, 0.42), 1)
+    box(body, (0.74, 0, 3.46), (0.28, 0.44, 0.32))  # slack jaw
+    for sy in (-1, 1):
+        ellipsoid(eyes, head_c + Vector((0.30, sy * 0.17, 0.04)), (0.085, 0.085, 0.10), 1)
+
+    # --- Sou'wester: a broad brim that dips fore and aft, and a domed crown.
+    revolve(fins, [(-0.07, 1.02), (0.07, 0.94)], sides=10, axis="z", center=(0.44, 0, 3.86), squash=1.05)
+    plate(fins, [(1.36, 3.86), (0.60, 3.96), (-0.28, 3.92), (-0.62, 3.60), (-0.30, 3.70), (0.60, 3.74)], 0.70, "xz")  # dipped front peak + long neck flap
+    revolve(fins, [(0.0, 0.60), (0.24, 0.56), (0.44, 0.36)], sides=8, axis="z", center=(0.46, 0, 3.88), squash=1.0)
+
+    # --- The rod-spine: vertebrae fused up the back and bent forward over the
+    # hat, ending past his own face. Body layer - it is part of him.
+    # Heavy at the root and whippy at the tip, and carried well past the brim so
+    # the bulb hangs in clear air in FRONT of his face, not against the hat.
+    arc = [
+        Vector((-0.52, 0, 1.80)),
+        Vector((-0.62, 0, 2.56)),
+        Vector((-0.50, 0, 3.34)),
+        Vector((-0.04, 0, 4.10)),
+        Vector((0.74, 0, 4.62)),
+        Vector((1.60, 0, 4.70)),
+        Vector((2.30, 0, 4.46)),
+    ]
+    chain(body, arc, [0.19, 0.165, 0.14, 0.115, 0.095, 0.075, 0.05], 5)
+    for k, p in enumerate(arc[:5]):
+        cone(body, p, p + Vector((-0.26 + 0.07 * k, 0, 0.12)), 0.11, 4)  # vertebral spurs
+
+    # --- The lantern-lure: bulb on a snell off the rod tip, swinging in front
+    # of the hat, with a couple of hooked snells trailing off it.
+    tip = arc[-1]
+    bulb = tip + Vector((0.04, 0, -0.72))
+    limb(marks, tip, bulb + Vector((0, 0, 0.20)), 0.035, 0.03, 4)
+    ellipsoid(marks, bulb, (0.30, 0.28, 0.32), 2)
+    ellipsoid(marks, bulb + Vector((0, 0, 0.24)), (0.12, 0.12, 0.09), 1)  # collar of the bulb
+    for sy in (-1, 1):
+        a = bulb + Vector((0.02, sy * 0.12, -0.26))
+        b = a + Vector((-0.12, sy * 0.20, -0.74))
+        limb(marks, a, b, 0.03, 0.026, 4)
+        _cove_jhook(marks, b, (-0.1, sy * 0.2, -1.0), size=0.13, r=0.032)
+
+    # --- Creel basket on the +Y hip, on a strap across the chest.
+    # Bellied like a woven basket rather than stacked like planks: one rib at
+    # the waist is enough to say "wicker" at this poly count.
+    creel = Vector((-0.16, 1.00, 1.90))
+    revolve(fins, [(-0.30, 0.26), (-0.10, 0.38), (0.14, 0.40), (0.30, 0.34)], sides=8, axis="z", center=creel, squash=0.78)
+    revolve(fins, [(-0.03, 0.43), (0.03, 0.43)], sides=8, axis="z", center=creel, squash=0.78)  # weave rib
+    revolve(fins, [(0.30, 0.36), (0.38, 0.30)], sides=8, axis="z", center=creel, squash=0.78)  # domed lid
+    limb(fins, (0.10, -0.62, 3.04), creel + Vector((0.0, -0.16, 0.30)), 0.07, 0.06, 4)  # shoulder strap
+
+    # --- Hooks he never got out of the oilskin.
+    for x, y, z, f in ((0.72, 0.42, 2.60, (0.4, 0.2, -1.0)), (0.66, -0.30, 2.20, (0.5, -0.1, -1.0)), (0.30, 0.78, 2.86, (0.2, 0.5, -1.0)), (0.44, -0.66, 2.70, (0.3, -0.4, -1.0))):
+        _cove_jhook(fins, (x, y, z), f, size=0.13, r=0.03)
 
     return [
         finish("Angler_Body", body, MATS["Angler_Body"]),
@@ -1739,10 +2036,47 @@ def build_shardback():
 
 
 # ---------------------------------------------------------------- Cinder Djinn
-# A wraith with no legs: a column of smoke narrowing to nothing at the floor, a
-# torso, long reaching arms and an ember core. It sheds burning smoke as it
-# walks, so the body itself is built coming apart into the air. UPRIGHT (row
-# stance), ~3.6 tall.
+# A smoke-bodied fire spirit. NO LEGS: the torso pours down into a spinning
+# CINDER VORTEX that pinches to a point just off the floor, so it reads as
+# floating even in a still pose. Horned ash crown over a sunken face, and an
+# EMBER-CHAIN FLAIL swung forward from the raised right arm - the chain links
+# and the spiked head are _Marks so a client can make the whole weapon Neon and
+# the flail becomes the thing you track in a fight. UPRIGHT (row stance), ~3.7
+# tall, same reach as before.
+
+
+def _cd_vortex(bm, rings, sides=7, twist=0.55, squash=0.85):
+    """The smoke column: stacked rings, each rotated a little further than the
+    one below, so the funnel visibly TWISTS instead of reading as a plain cone.
+    `rings` are (z, radius, centre_x) bottom-up; radius 0 makes a point."""
+    built = []
+    for i, (z, r, cx) in enumerate(rings):
+        if r < 1e-4:
+            built.append(bm.verts.new(Vector((cx, 0.0, z))))
+            continue
+        ph = i * twist
+        built.append(
+            [
+                bm.verts.new(Vector((cx + math.cos(a) * r, math.sin(a) * r * squash, z)))
+                for a in ((k / sides) * TAU + ph for k in range(sides))
+            ]
+        )
+    connect_rings(bm, built)
+
+
+def _cd_chain_links(bm, p0, p1, count, link=(0.17, 0.13, 0.05), sag=0.2):
+    """A run of chain: flat links alternating 90 degrees along the span, with a
+    droop in the middle. Alternating the roll is what makes a row of little
+    boxes read as CHAIN at this poly count."""
+    p0, p1 = Vector(p0), Vector(p1)
+    d = p1 - p0
+    yaw = math.atan2(d.y, d.x)
+    pitch = -math.atan2(d.z, math.hypot(d.x, d.y))
+    for i in range(count):
+        t = (i + 0.5) / count
+        p = p0.lerp(p1, t) - Vector((0.0, 0.0, sag * 4.0 * t * (1.0 - t)))
+        rot = Matrix.Rotation(yaw, 4, "Z") @ Matrix.Rotation(pitch, 4, "Y") @ Matrix.Rotation((i % 2) * math.pi / 2, 4, "X")
+        box(bm, p, link, rot)
 
 
 def build_cinder_djinn():
@@ -1751,47 +2085,91 @@ def build_cinder_djinn():
     eyes = bmesh.new()
     marks = bmesh.new()
 
-    # The column: a tapering funnel, pointed at the bottom.
-    revolve(
+    # THE VORTEX: no legs. A twisting funnel of smoke, pointed just off the
+    # floor and swelling twice on the way up, so the lower silhouette is a
+    # spiral rather than a skirt. Bulges alternate to sell the rotation.
+    _cd_vortex(
         body,
-        [(0.0, 0.02), (0.35, 0.34), (0.8, 0.55), (1.3, 0.62), (1.85, 0.52), (2.3, 0.66), (2.75, 0.58)],
-        sides=9,
-        axis="z",
-        squash=0.82,
+        [
+            (0.03, 0.0, 0.34),
+            (0.32, 0.27, 0.24),
+            (0.66, 0.48, 0.14),
+            (1.0, 0.31, 0.07),
+            (1.34, 0.54, 0.02),
+            (1.66, 0.38, 0.0),
+            (1.98, 0.58, 0.0),
+        ],
     )
-    box(body, (0.05, 0, 2.92), (0.8, 1.15, 0.34), Matrix.Rotation(-0.18, 4, "Y"))
-    head_c = Vector((0.22, 0, 3.28))
-    ellipsoid(body, head_c, (0.36, 0.34, 0.38), 1)
 
-    # Arms reaching forward, thinning into smoke at the hands.
-    for sy in (-1, 1):
-        limb(body, Vector((0.1, sy * 0.5, 2.88)), Vector((0.62, sy * 0.56, 2.42)), 0.17, 0.13, 5)
-        limb(body, Vector((0.62, sy * 0.56, 2.42)), Vector((1.12, sy * 0.48, 2.1)), 0.13, 0.07, 5)
+    # Torso: a narrow wedge of denser smoke rising out of the funnel, with a
+    # yoke of shoulders far wider than the waist (a tapered-down silhouette).
+    box(body, (0.04, 0, 2.4), (0.62, 1.0, 0.95), Matrix.Rotation(-0.12, 4, "Y"))
+    box(body, (0.0, 0, 2.9), (0.55, 1.5, 0.34), Matrix.Rotation(-0.08, 4, "Y"))
 
-    # The core burning in its chest, cinders rising off it, and split seams.
-    ellipsoid(marks, (0.16, 0, 2.5), (0.28, 0.24, 0.3), 2)
-    for i in range(9):
-        a = (i / 9) * TAU
-        p = Vector((math.cos(a) * 0.42 + 0.05, math.sin(a) * 0.38, 1.6 + (i % 4) * 0.42))
-        ellipsoid(marks, p, (0.09, 0.09, 0.09), 1)
+    head_c = Vector((0.24, 0, 3.2))
+    ellipsoid(body, head_c, (0.34, 0.32, 0.36), 0)
+    box(body, (0.46, 0, 3.06), (0.34, 0.4, 0.2), Matrix.Rotation(0.14, 4, "Y"))
+    # Smoke torn off the back of the column.
+    for sy, z in ((1, 2.66), (-1, 2.2), (1, 1.5)):
+        cone(body, (-0.28, sy * 0.28, z), (-0.86, sy * 0.5, z + 0.34), 0.16, 4)
+
+    # ASH CROWN: two heavy horns sweeping back over the crown, plus a ring of
+    # short spikes - the head silhouette is the crown, not the skull.
     for sy in (-1, 1):
         chain(
-            marks,
-            [Vector((0.28, sy * 0.2, 1.05)), Vector((0.3, sy * 0.3, 1.7)), Vector((0.24, sy * 0.24, 2.28))],
-            [0.05, 0.07, 0.06],
+            fins,
+            [Vector((0.14, sy * 0.26, 3.34)), Vector((-0.14, sy * 0.44, 3.7)), Vector((-0.48, sy * 0.34, 3.62))],
+            [0.13, 0.09, 0.03],
             4,
         )
+    for i in range(5):
+        a = -0.7 + (i / 4) * 1.4
+        base = head_c + Vector((math.cos(a) * 0.24, math.sin(a) * 0.26, 0.24))
+        cone(fins, base, base + Vector((math.cos(a) * 0.12, math.sin(a) * 0.13, 0.32)), 0.08, 4)
 
-    # Torn streamers curling off the shoulders and column.
-    for start, sy in ((Vector((-0.3, 0.45, 2.75)), 1), (Vector((-0.32, -0.4, 2.6)), -1), (Vector((-0.35, 0.1, 1.9)), 1)):
-        p = start
-        for step in range(3):
-            nxt = p + Vector((-0.3, sy * 0.16, 0.22 - step * 0.12))
-            limb(fins, p, nxt, 0.1 - step * 0.02, 0.08 - step * 0.02, 4)
-            p = nxt
+    # ARMS (gear layer): the RIGHT arm cocked high and back with the flail, the
+    # LEFT reaching low and forward with splayed cinder fingers. The asymmetry
+    # is the pose - a mid-swing read from any angle.
+    r_hand = Vector((1.02, -0.72, 2.98))
+    limb(fins, Vector((0.04, -0.62, 2.84)), Vector((0.54, -0.88, 3.14)), 0.17, 0.14, 5)
+    limb(fins, Vector((0.54, -0.88, 3.14)), r_hand, 0.14, 0.11, 5)
+    box(fins, r_hand, (0.28, 0.26, 0.24))
+
+    l_hand = Vector((1.16, 0.62, 2.04))
+    limb(fins, Vector((0.04, 0.62, 2.78)), Vector((0.62, 0.74, 2.36)), 0.17, 0.13, 5)
+    limb(fins, Vector((0.62, 0.74, 2.36)), l_hand, 0.13, 0.1, 5)
+    box(fins, l_hand, (0.24, 0.24, 0.22))
+    for k in range(3):
+        cone(fins, l_hand, l_hand + Vector((0.34, (k - 1) * 0.14, -0.1 - abs(k - 1) * 0.06)), 0.05, 3)
+
+    # Ash mantle: plates hanging off both shoulders, breaking the smoke line.
+    for sy in (-1, 1):
+        plate(fins, [(-0.22, 2.98), (0.32, 2.9), (0.22, 2.42), (-0.34, 2.6)], 0.14, plane="xz", offset=(0, sy * 0.66, 0))
+
+    # THE EMBER-CHAIN FLAIL (glow layer): a run of links off the raised fist,
+    # falling forward into a spiked head out at +X where it reads from the
+    # front. The whole weapon is _Marks so it can be lit as one object.
+    # Head kept in to x~2.1: any further forward and the flail alone would add
+    # a stud and a half to the model's bounding box (and so to its target box).
+    flail = Vector((1.6, -0.5, 2.18))
+    _cd_chain_links(marks, r_hand + Vector((0.14, 0.02, -0.06)), flail, 6)
+    ellipsoid(marks, flail, (0.25, 0.25, 0.25), 0)
+    for i in range(6):
+        a = (i / 6) * TAU
+        d = Vector((math.cos(a) * 0.5, math.sin(a) * 0.34, math.sin(a * 2) * 0.42))
+        cone(marks, flail + d * 0.4, flail + d, 0.09, 4)
+
+    # The core burning behind the ribs, cinders shedding upward off the column,
+    # and two seams splitting the vortex.
+    ellipsoid(marks, (0.4, 0, 2.44), (0.22, 0.2, 0.24), 0)
+    for i in range(5):
+        a = (i / 5) * TAU
+        ellipsoid(marks, (math.cos(a) * 0.44 + 0.04, math.sin(a) * 0.4, 1.35 + (i % 3) * 0.5), (0.09, 0.09, 0.09), 0)
+    for sy in (-1, 1):
+        chain(marks, [Vector((0.3, sy * 0.2, 0.75)), Vector((0.28, sy * 0.32, 1.5)), Vector((0.22, sy * 0.22, 2.1))], [0.04, 0.07, 0.05], 4)
 
     for sy in (-1, 1):
-        ellipsoid(eyes, head_c + Vector((0.28, sy * 0.16, 0.04)), (0.1, 0.1, 0.11), 1)
+        ellipsoid(eyes, head_c + Vector((0.26, sy * 0.15, 0.04)), (0.1, 0.1, 0.11), 0)
 
     return [
         finish("CinderDjinn_Body", body, MATS["CinderDjinn_Body"]),
@@ -1870,10 +2248,34 @@ def build_lodestone_eel():
 
 
 # ---------------------------------------------------------------- Slagheart Golem
-# A heavy humanoid of cooled slag with a molten heart caged in its chest. THE
-# CORE IS THE MECHANIC: it is armoured until you crack the plating, so the
-# chest plates (fins) are a cage with a deliberate gap and the core (marks)
-# sits in that gap where a client can light it. UPRIGHT, ~4.2 tall.
+# A FURNACE KNIGHT: a hulk in asymmetric armour of cooled slag, head sunk down
+# between the shoulders, stance wide, one arm ending in an oversized obsidian
+# HAMMER-FIST thrown forward. The mass is the point - it must read as roughly
+# twice a zombie, so the shoulders are wider than the stance and the left
+# pauldron is a slab in its own right while the right shoulder is stripped
+# almost bare. THE CORE IS STILL THE MECHANIC: molten seams (marks) run every
+# armour crack and open into a chest FURNACE GRATE framed by the plating, so a
+# client lighting _Marks lights the cracks, the grate and the knuckles at once.
+# UPRIGHT, ~3.7 tall (pauldron tip), same footprint band as before.
+
+
+def _sg_slab(bm, pts, thick, y, tilt=0.0):
+    """One jagged armour plate standing in the body's side plane. Plates are
+    authored as outlines rather than boxes so the edges can be uneven - a box
+    silhouette reads as 'crate', an uneven outline reads as broken slag."""
+    plate(bm, pts, thick, plane="xz", offset=(0, y, tilt))
+
+
+def _sg_seam(bm, p0, p1, w=0.09):
+    """A molten crack: a thin bar laid along a gap between plates. Kept as a
+    box (not a tube) so it reads as a SPLIT in the armour, not a wire."""
+    p0, p1 = Vector(p0), Vector(p1)
+    d = p1 - p0
+    length = d.length
+    if length < 1e-5:
+        return
+    rot = Matrix.Rotation(math.atan2(d.y, d.x), 4, "Z") @ Matrix.Rotation(-math.atan2(d.z, math.hypot(d.x, d.y)), 4, "Y")
+    box(bm, p0.lerp(p1, 0.5), (length, w, w), rot)
 
 
 def build_slag_golem():
@@ -1882,45 +2284,89 @@ def build_slag_golem():
     eyes = bmesh.new()
     marks = bmesh.new()
 
-    # Legs: short and thick, feet at z=0.
+    # Legs: a WIDE braced stance, thigh -> shin -> slab foot. Splayed feet and
+    # a low pelvis are most of the "heavy" read at this distance.
     for sy in (-1, 1):
-        box(body, (0.0, sy * 0.42, 0.5), (0.62, 0.6, 1.0))
-        box(body, (0.08, sy * 0.42, 0.12), (0.82, 0.68, 0.26))
+        box(body, (-0.02, sy * 0.56, 1.02), (0.7, 0.7, 0.86), Matrix.Rotation(sy * 0.09, 4, "X"))
+        box(body, (0.06, sy * 0.6, 0.42), (0.62, 0.62, 0.62))
+        box(body, (0.18, sy * 0.6, 0.12), (0.96, 0.8, 0.24))
 
-    lean = Matrix.Rotation(-0.1, 4, "Y")
-    box(body, (0.05, 0, 1.85), (1.05, 1.35, 1.5), lean)
-    box(body, (0.0, 0, 2.72), (1.15, 1.85, 0.55), lean)
+    lean = Matrix.Rotation(-0.08, 4, "Y")
+    box(body, (0.0, 0, 1.6), (0.92, 1.5, 0.52))
+    box(body, (0.03, 0, 2.32), (1.0, 1.6, 1.1), lean)
+    # The yoke: shoulders wider than the feet, which is what makes it a hulk.
+    box(body, (-0.06, 0, 2.94), (1.02, 2.15, 0.56), lean)
 
-    # Long heavy arms, knuckles near the knees.
+    # HEAD SUNK BETWEEN THE SHOULDERS: small, set forward and low so the yoke
+    # and the pauldron both rise past it. No neck.
+    head_c = Vector((0.34, 0, 3.06))
+    box(body, head_c, (0.56, 0.62, 0.56))
+    box(body, head_c + Vector((0.24, 0, -0.16)), (0.3, 0.5, 0.26), Matrix.Rotation(0.2, 4, "Y"))
+
+    # ARMS. RIGHT (-y) is the hammer arm, thrust forward and down; LEFT (+y) is
+    # shorter, cocked back under the big pauldron.
+    wrist = Vector((0.78, -0.94, 1.66))
+    limb(body, Vector((0.0, -0.96, 2.84)), Vector((0.5, -1.06, 2.16)), 0.34, 0.3, 6)
+    limb(body, Vector((0.5, -1.06, 2.16)), wrist, 0.3, 0.28, 6)
+    limb(body, Vector((0.0, 0.96, 2.8)), Vector((0.34, 1.14, 1.98)), 0.32, 0.27, 6)
+    limb(body, Vector((0.34, 1.14, 1.98)), Vector((0.52, 1.04, 1.22)), 0.27, 0.24, 6)
+    box(body, (0.56, 1.02, 1.02), (0.58, 0.54, 0.48))
+
+    # THE HAMMER-FIST (gear layer): a block of obsidian bigger than the golem's
+    # own head, out at +X where it reads head-on, with a spiked striking face
+    # and a wedge collar where the arm disappears into it. This is the
+    # signature - everything else is sized so this still looks oversized.
+    # Held close: the hammer is oversized by BULK, not by reach, so the model's
+    # bounding box (and its target box) stays near the old one.
+    ham = Vector((1.32, -0.86, 1.32))
+    box(fins, ham, (1.0, 0.96, 1.08), Matrix.Rotation(0.12, 4, "Y"))
+    limb(fins, wrist, ham - Vector((0.36, 0, 0)), 0.34, 0.42, 6)
+    for sz in (-1, 1):
+        _sg_slab(fins, [(0.88, 1.32 + sz * 0.5), (1.82, 1.26 + sz * 0.62), (1.9, 1.32 + sz * 0.3), (0.9, 1.32 + sz * 0.26)], 0.9, -0.86)
+    for i in range(3):
+        base = ham + Vector((0.48, (i - 1) * 0.3, (i % 2) * 0.28 - 0.14))
+        cone(fins, base, base + Vector((0.3, (i - 1) * 0.1, 0.0)), 0.14, 4)
+
+    # ASYMMETRIC ARMOUR. LEFT shoulder: three layered slag slabs stacking up
+    # past the head into a ridge of spikes. RIGHT shoulder: one stripped plate,
+    # so the two halves never mirror.
+    _sg_slab(fins, [(-0.62, 2.62), (0.42, 2.76), (0.6, 3.34), (-0.12, 3.62), (-0.74, 3.28)], 0.52, 1.06)
+    _sg_slab(fins, [(-0.5, 2.36), (0.4, 2.44), (0.5, 2.92), (-0.56, 2.86)], 0.4, 1.3)
+    _sg_slab(fins, [(-0.34, 2.02), (0.34, 2.06), (0.36, 2.46), (-0.44, 2.44)], 0.32, 1.42)
+    for i in range(3):
+        base = Vector((-0.32 + i * 0.3, 1.08 - i * 0.04, 3.22 + (i % 2) * 0.1))
+        cone(fins, base, base + Vector((-0.12, 0.16, 0.34)), 0.11, 4)
+    _sg_slab(fins, [(-0.5, 2.66), (0.34, 2.72), (0.42, 3.16), (-0.56, 3.02)], 0.44, -1.02)
+
+    # Chest: a FRAME of four plates around a rectangular opening. The opening
+    # is the furnace mouth - the grate bars that fill it are _Marks.
+    _sg_slab(fins, [(0.42, 1.86), (0.66, 1.8), (0.68, 2.9), (0.44, 2.94)], 0.24, 0.66)
+    _sg_slab(fins, [(0.42, 1.86), (0.66, 1.8), (0.68, 2.9), (0.44, 2.94)], 0.24, -0.66)
+    _sg_slab(fins, [(0.4, 2.78), (0.7, 2.72), (0.72, 3.02), (0.42, 3.06)], 1.44, 0.0)
+    _sg_slab(fins, [(0.42, 1.66), (0.72, 1.6), (0.7, 1.92), (0.4, 1.96)], 1.44, 0.0)
+    # Back and hip plating: layered slabs so the profile is stepped, not flat.
     for sy in (-1, 1):
-        shoulder = Vector((0.05, sy * 0.85, 2.6))
-        elbow = Vector((0.3, sy * 1.0, 1.75))
-        fist = Vector((0.5, sy * 0.95, 1.0))
-        limb(body, shoulder, elbow, 0.3, 0.26, 6)
-        limb(body, elbow, fist, 0.26, 0.22, 6)
-        box(body, fist + Vector((0.06, 0, -0.16)), (0.5, 0.46, 0.44))
+        box(fins, (-0.52, sy * 0.42, 2.32), (0.3, 0.72, 1.24))
+        _sg_slab(fins, [(-0.4, 1.32), (0.44, 1.4), (0.5, 1.86), (-0.5, 1.78)], 0.4, sy * 0.72)
 
-    head_c = Vector((0.16, 0, 3.2))
-    box(body, head_c, (0.6, 0.66, 0.62))
-
-    # THE CORE, and the seams feeding it.
-    core = Vector((0.55, 0, 2.05))
-    ellipsoid(marks, core, (0.3, 0.34, 0.38), 2)
+    # MOLTEN SEAMS: the furnace grate, then a crack down every plate gap and
+    # across the hammer knuckles. Deliberate placement - each seam sits in a
+    # gap the plating actually leaves.
+    for i in range(4):
+        # Bars stop short of 2.72: that is where the top frame plate starts.
+        _sg_seam(marks, (0.54, -0.44, 2.04 + i * 0.2), (0.54, 0.44, 2.04 + i * 0.2), 0.12)
+    ellipsoid(marks, (0.34, 0, 2.42), (0.2, 0.4, 0.44), 0)
     for sy in (-1, 1):
-        chain(marks, [core + Vector((0.02, sy * 0.3, 0.35)), Vector((0.3, sy * 0.6, 2.6)), Vector((0.1, sy * 0.75, 2.95))], [0.08, 0.07, 0.05], 4)
-        chain(marks, [core + Vector((0.0, sy * 0.28, -0.35)), Vector((0.28, sy * 0.5, 1.35)), Vector((0.12, sy * 0.4, 0.9))], [0.08, 0.06, 0.05], 4)
-
-    # THE CRUST: slag slabs caging the chest, leaving the core showing through
-    # the gap between them. Breaking these is the fight.
-    for sy in (-1, 1):
-        plate(fins, [(0.3, 1.45), (0.78, 1.6), (0.82, 2.5), (0.34, 2.62)], 0.16, plane="xz", offset=(0, sy * 0.62, 0))
-        box(fins, (-0.05, sy * 0.95, 2.85), (0.9, 0.5, 0.4), Matrix.Rotation(sy * 0.12, 4, "X"))
-        box(fins, (-0.45, sy * 0.4, 2.0), (0.3, 0.7, 1.2))
-    plate(fins, [(0.34, 2.5), (0.84, 2.42), (0.86, 2.72), (0.36, 2.8)], 0.16, plane="xz")
-    plate(fins, [(0.36, 1.36), (0.84, 1.28), (0.82, 1.6), (0.34, 1.66)], 0.16, plane="xz")
+        _sg_seam(marks, (0.3, sy * 0.86, 2.72), (-0.3, sy * 1.0, 2.96))
+        _sg_seam(marks, (0.44, sy * 0.66, 1.74), (-0.3, sy * 0.74, 1.66))
+        _sg_seam(marks, (0.2, sy * 0.58, 1.36), (0.14, sy * 0.6, 0.7))
+        _sg_seam(marks, (0.3, sy * 0.62, 0.26), (-0.2, sy * 0.6, 0.3), 0.07)
+    _sg_seam(marks, (0.1, -1.0, 2.5), (0.6, -0.98, 1.9))
+    for i in range(3):
+        _sg_seam(marks, (1.76, -1.2, 1.14 + i * 0.3), (1.76, -0.5, 1.14 + i * 0.3), 0.1)
 
     for sy in (-1, 1):
-        ellipsoid(eyes, head_c + Vector((0.3, sy * 0.18, 0.06)), (0.1, 0.1, 0.11), 1)
+        ellipsoid(eyes, head_c + Vector((0.26, sy * 0.17, 0.06)), (0.1, 0.1, 0.11), 0)
 
     return [
         finish("SlagGolem_Body", body, MATS["SlagGolem_Body"]),
@@ -2577,6 +3023,49 @@ def build_noctyss():
     ]
 
 
+# ---------------------------------------------------------------- ghost-fleet helpers (local)
+# Curved tubes for the wreck crew's ironwork: hook throats, saber knuckle
+# bows, a wheel rim, bare ribs. The shared primitives are frozen, and both of
+# these are only a `chain`/`limb` swept along fixed arithmetic - no entropy.
+
+
+def _wk_arc(bm, center, radius, a0, a1, steps, r0, r1, plane="xz", sides=4):
+    """A tube swept along an arc of `radius` about `center`, in `plane`
+    ("xz" / "xy" / "yz"), from angle a0 to a1, tapering r0 -> r1. a1 - a0 of
+    TAU closes the loop (the last segment lands back on the first point)."""
+    pts, rads = [], []
+    for i in range(steps + 1):
+        u = i / steps
+        a = a0 + (a1 - a0) * u
+        c, s = math.cos(a) * radius, math.sin(a) * radius
+        if plane == "xz":
+            pts.append((center[0] + c, center[1], center[2] + s))
+        elif plane == "xy":
+            pts.append((center[0] + c, center[1] + s, center[2]))
+        else:  # "yz"
+            pts.append((center[0], center[1] + c, center[2] + s))
+        rads.append(r0 + (r1 - r0) * u)
+    chain(bm, pts, rads, sides)
+
+
+def _wk_barnacle(bm, base, out, r=0.14):
+    """One squat barnacle: a stubby cone growing along `out` from `base`."""
+    b = Vector(base)
+    limb(bm, b, b + Vector(out), r, r * 0.45, 5)
+
+
+def _wk_sheet(bm, points, thickness=0.1, along=(0, 0, 1)):
+    """`plate` for an outline that is NOT axis-aligned: a thin polygon through
+    arbitrary 3D `points`, extruded along `along`. Canvas that rakes back AND
+    droops needs this - an "xy" plate can only ever lie flat."""
+    off = Vector(along).normalized() * (thickness / 2)
+    front = [bm.verts.new(Vector(p) - off) for p in points]
+    back = [bm.verts.new(Vector(p) + off) for p in points]
+    bridge(bm, front, back)
+    bm.faces.new(list(reversed(front)))
+    bm.faces.new(back)
+
+
 # ---------------------------------------------------------------- Admiral Wrack, the Fleet-Eater (island 6 boss)
 # A drowned admiral fused into his flagship's bow: a hull-wedge base with a
 # prow, a great-coated torso rising through the deck, bicorne hat, cutlass
@@ -2598,6 +3087,20 @@ def build_admiralwrack():
     # Plank seams (fins - the spectral parts pick out the wreck's bones).
     for i in range(3):
         box(fins, (0.4 - i * 0.2, 0, 1.0 + i * 0.75), (7.6 - i * 0.6, 4.7, 0.12))
+    # Raked hull strakes down each flank and a cutwater along the stem: the
+    # half-of-him-is-a-bow read wants planking that follows the sheer, not
+    # just the flat bands.
+    for s in (-1, 1):
+        for i in range(3):
+            box(
+                fins,
+                (0.9 - i * 0.35, s * 2.24, 1.25 + i * 0.62),
+                (6.6 - i * 0.5, 0.16, 0.2),
+                Matrix.Rotation(math.radians(7 - i * 2), 4, "Y"),
+            )
+    box(body, (5.05, 0, 2.1), (2.6, 0.42, 1.0), Matrix.Rotation(math.radians(-38), 4, "Y"))
+    # The bowsprit, spearing out over the prow with a pair of ghost stays.
+    limb(body, (4.6, 0, 3.15), (6.95, 0, 4.35), 0.2, 0.11, 5)
 
     # The torso: greatcoat, shoulders, skull, bicorne.
     box(body, (-0.4, 0, 4.9), (2.6, 3.2, 2.8), Matrix.Rotation(math.radians(-6), 4, "Y"))
@@ -2617,10 +3120,16 @@ def build_admiralwrack():
         ellipsoid(eyes, (0.32, s * 0.3, 7.1), (0.14, 0.18, 0.2), 1)
     box(fins, (0.25, 0, 6.6), (0.5, 0.7, 0.14))
 
-    # Cutlass arm (starboard): shoulder -> hand, then the blade.
+    # Saber arm (starboard): shoulder -> fist, then an officer's curved blade
+    # raised over the prow - grip, knuckle-bow basket, pommel, and a bit that
+    # sweeps up and forward the way a saber's does.
     chain(body, [(-0.4, 1.9, 5.6), (0.8, 2.7, 5.1), (1.8, 2.5, 5.5)], [0.5, 0.38, 0.3], 5)
-    plate(fins, [(1.9, 5.3), (4.7, 6.1), (5.0, 5.7), (2.1, 4.7)], 0.16, "xz", offset=(0, 2.5, 0))
-    box(fins, (1.85, 2.5, 5.3), (0.3, 0.5, 0.5))
+    box(fins, (1.85, 2.5, 5.3), (0.3, 0.5, 0.5))  # the fist's grip
+    limb(fins, (1.62, 2.5, 5.12), (2.08, 2.5, 5.62), 0.11, 0.1, 5)
+    box(fins, (1.56, 2.5, 5.04), (0.28, 0.34, 0.24))  # pommel
+    _wk_arc(fins, (1.95, 2.5, 5.4), 0.46, -1.35, 1.5, 3, 0.09, 0.07, "xz", 4)  # knuckle bow
+    plate(fins, [(1.95, 5.55), (3.3, 6.4), (4.55, 8.15), (4.42, 8.28), (2.95, 6.8), (1.85, 5.95)],
+          0.16, "xz", offset=(0, 2.5, 0))
     # Anchor arm (port): hand low, chain links down to the anchor.
     chain(body, [(-0.4, -1.9, 5.6), (0.5, -2.8, 4.5), (1.0, -2.6, 3.7)], [0.5, 0.38, 0.3], 5)
     link = Vector((1.1, -2.6, 3.4))
@@ -2633,6 +3142,23 @@ def build_admiralwrack():
     for s in (-1, 1):
         chain(fins, [(link.x, link.y + s * 0.1, link.z - 1.0), (link.x + 0.5, link.y + s * 0.55, link.z - 0.6)], [0.12, 0.03], 4)
 
+    # The shattered ship's wheel, fused around that same forearm: a broken
+    # rim (a whole quadrant gone), a hub, and spokes - two snapped off short,
+    # the rest still carrying their handles past the rim.
+    wheel_c = (1.05, -2.35, 4.2)
+    _wk_arc(fins, wheel_c, 0.95, 0.62, TAU - 0.72, 8, 0.13, 0.13, "yz", 4)
+    limb(fins, (0.82, wheel_c[1], wheel_c[2]), (1.28, wheel_c[1], wheel_c[2]), 0.24, 0.24, 6)
+    for k, reach in ((1, 1.24), (2, 1.26), (3, 0.55), (4, 1.22), (5, 0.5)):
+        a = (k / 6) * TAU + 0.3
+        limb(
+            fins,
+            (wheel_c[0], wheel_c[1] + math.cos(a) * 0.2, wheel_c[2] + math.sin(a) * 0.2),
+            (wheel_c[0], wheel_c[1] + math.cos(a) * reach, wheel_c[2] + math.sin(a) * reach),
+            0.11,
+            0.08,
+            4,
+        )
+
     # The mast behind him, a yard and a ragged spectral sail.
     limb(body, (-2.8, 0, 3.2), (-2.8, 0, 8.6), 0.26, 0.18, 6)
     limb(body, (-2.8, -2.1, 7.4), (-2.8, 2.1, 7.4), 0.14, 0.14, 5)
@@ -2640,10 +3166,22 @@ def build_admiralwrack():
     for k in range(4):
         y = -1.5 + k * 1.0
         box(fins, (-2.8, y, 4.6), (0.12, 0.5, 1.1), Matrix.Rotation(math.radians(10 - k * 6), 4, "X"))
+    # A tattered admiral's pennant streaming aft off the masthead.
+    plate(
+        fins,
+        [(-2.72, 0.15), (-3.72, 0.55), (-3.52, -0.05), (-3.78, -0.62), (-2.72, -0.3)],
+        0.08,
+        "xy",
+        offset=(0, 0, 8.25),
+    )
 
     # Marks: the ghost-fire - a chest wound, a prow lantern on a hook, glow
-    # lines along the hull seam, rigging threads to the masthead.
+    # lines along the hull seam, the cutwater, rigging threads to the masthead
+    # and the stays running down off the bowsprit.
     ellipsoid(marks, (0.75, 0.4, 5.2), (0.4, 0.5, 0.6), 1)
+    for s in (-1, 1):
+        chain(marks, [(6.85, 0, 4.3), (5.4, s * 1.6, 2.5)], [0.05, 0.04], 4)
+    box(marks, (5.15, 0, 1.95), (2.5, 0.16, 0.1), Matrix.Rotation(math.radians(-38), 4, "Y"))
     chain(fins, [(6.4, 0, 3.5), (6.9, 0, 3.1)], [0.06, 0.04], 4)
     ellipsoid(marks, (6.95, 0, 2.8), (0.28, 0.28, 0.34), 1)
     box(marks, (0.5, 0, 2.55), (8.2, 0.1, 0.1))
@@ -2908,9 +3446,10 @@ def build_hailfinskua():
     ]
 
 
-# ---- Rigging Wraith (wreck): drowned sailcloth given a shape - a hooded
-# shroud, two ragged canvas wings, rope-end talons, ghost-fire eyes.
-# Upright-stance hoverer.
+# ---- Rigging Wraith (wreck): a torn sail that never came down - a triangular
+# sailcloth streaming behind a hooded scrap of a body, rope lines wrapping and
+# tethering it, and block-and-tackle hooks swinging where its hands should be.
+# _Body is the canvas, _Fins the cordage and ironwork. Upright-stance hoverer.
 def build_riggingwraith():
     body = bmesh.new()
     fins = bmesh.new()
@@ -2918,22 +3457,77 @@ def build_riggingwraith():
     marks = bmesh.new()
 
     # The shroud: a draped cone rising to a hood peak, hem torn into points.
-    revolve(body, [(0.0, 1.05), (0.9, 0.92), (1.8, 0.55), (2.5, 0.18)], sides=8, axis="z", center=(0, 0, 0.9))
-    cone(body, (0, 0, 3.35), (0.15, 0, 3.85), 0.2, 5)
-    for k in range(7):
-        a = (k / 7) * TAU
-        bx, by = math.cos(a) * 0.95, math.sin(a) * 0.95
-        cone(fins, (bx, by, 1.0), (bx * 1.15, by * 1.15, 0.35), 0.16, 4)
-    # Ragged canvas wings.
+    revolve(body, [(0.0, 0.86), (0.9, 0.78), (1.8, 0.5), (2.5, 0.18)], sides=7, axis="z", center=(0, 0, 0.9))
+    cone(body, (0, 0, 3.35), (0.15, 0, 3.9), 0.2, 5)
+    for k in range(5):
+        a = (k / 5) * TAU
+        bx, by = math.cos(a) * 0.8, math.sin(a) * 0.8
+        cone(body, (bx, by, 1.0), (bx * 1.2, by * 1.2, 0.3), 0.16, 4)
+    # The sail itself: two great sheets of torn canvas rigged off the hood,
+    # raked back and DROOPING outboard (a flat wing reads as a kite - a sail
+    # has to fall away at the leech), plus a streamer trailing aft.
     for s in (-1, 1):
-        plate(fins, [(0.2, s * 0.7), (-0.5, s * 2.3), (-1.8, s * 2.7), (-1.2, s * 1.6), (-1.6, s * 1.0), (-0.6, s * 0.7)], 0.1, "xy", offset=(0, 0, 2.6))
-    # Rope-end talons swinging under the hem.
+        _wk_sheet(
+            body,
+            [
+                (0.3, s * 0.34, 3.3),
+                (-0.1, s * 1.25, 2.95),
+                (-0.35, s * 1.5, 2.3),
+                (-0.5, s * 2.1, 2.45),
+                (-1.35, s * 2.62, 1.7),
+                (-0.95, s * 1.8, 1.85),
+                (-1.8, s * 1.5, 1.1),
+                (-1.05, s * 1.05, 1.5),
+                (-1.6, s * 0.62, 0.75),
+                (-0.45, s * 0.46, 1.9),
+            ],
+            0.1,
+            (0.35, 0, 1.0),
+        )
+        # Reef lines laced across the canvas - the last thing that ever
+        # reads as "sail" rather than "wing".
+        for f, g in ((0.3, 0.72), (0.55, 0.5)):
+            limb(
+                fins,
+                (0.3 - f * 1.5, s * (0.34 + f * 2.0), 3.3 - f * 1.3),
+                (0.3 - f * 1.5 - 0.5, s * (0.34 + f * 2.0) * g, 3.3 - f * 1.3 - 0.5),
+                0.035,
+                0.03,
+                3,
+            )
+    plate(body, [(-0.35, 3.4), (-1.75, 3.05), (-1.45, 2.35), (-2.0, 1.9), (-1.2, 1.65), (-0.45, 1.2)], 0.1, "xz")
+
+    # The rigging it is still tangled in: stays running from the hood peak out
+    # to each sail tip and back down to the hem, and rope wound round it.
     for s in (-1, 1):
-        chain(fins, [(0.5, s * 0.4, 0.8), (0.8, s * 0.55, 0.2), (1.1, s * 0.5, -0.1)], [0.08, 0.06, 0.03], 4)
-        cone(fins, (1.1, s * 0.5, -0.1), (1.35, s * 0.45, -0.25), 0.06, 4)
+        # Sagging, not taut: a straight peak-to-tip line reads as a kite spar.
+        chain(
+            fins,
+            [(0.08, 0, 3.85), (-0.45, s * 1.15, 2.5), (-1.12, s * 2.15, 1.72)],
+            [0.045, 0.04, 0.035],
+            3,
+        )
+        chain(
+            fins,
+            [(-1.12, s * 2.15, 1.68), (-0.85, s * 1.4, 1.0), (-0.2, s * 0.72, 1.05)],
+            [0.04, 0.035, 0.035],
+            3,
+        )
+    for z, r in ((1.05, 0.78), (2.05, 0.5)):
+        _wk_arc(fins, (0, 0, z), r, 0.0, TAU, 6, 0.05, 0.05, "xy", 3)
+
+    # Block-and-tackle where the hands should be: a pulley block hung on its
+    # fall, a sheave pinned through it, and a great curved hook below.
+    for s in (-1, 1):
+        limb(fins, (0.15, s * 0.62, 2.45), (0.6, s * 0.92, 1.2), 0.05, 0.05, 3)  # the fall
+        box(fins, (0.6, s * 0.92, 1.0), (0.34, 0.24, 0.44))  # the block
+        limb(fins, (0.6, s * 1.06, 1.0), (0.6, s * 0.78, 1.0), 0.14, 0.14, 7)  # the sheave
+        limb(fins, (0.6, s * 0.92, 0.78), (0.64, s * 0.92, 0.56), 0.05, 0.05, 4)  # the becket
+        _wk_arc(fins, (0.66, s * 0.92, 0.44), 0.26, 2.2, -1.2, 4, 0.08, 0.035, "yz", 4)
+
     # Ghost-fire eyes in the hood's shadow, and glowing seams down the shroud.
     for s in (-1, 1):
-        ellipsoid(eyes, (0.62, s * 0.28, 2.75), (0.14, 0.12, 0.17), 0)
+        ellipsoid(eyes, (0.6, s * 0.26, 2.75), (0.14, 0.12, 0.17), 0)
     for a in (0.7, 2.6, 4.5):
         bx, by = math.cos(a), math.sin(a)
         chain(marks, [(bx * 0.85, by * 0.85, 1.2), (bx * 0.6, by * 0.6, 2.2), (bx * 0.3, by * 0.3, 3.1)], [0.05, 0.04, 0.03], 4)
@@ -3111,35 +3705,122 @@ def build_iceveinpike():
     ]
 
 
-# ---- Frozen Mariner (shambler): a sailor the pack ice kept - the zombie
-# frame under a crust of ice, icicles hanging off the reaching arms.
+# ---- Frozen Mariner (shambler): the whaler the pack ice kept - locked
+# mid-stride, frost-bearded, still hefting a frozen harpoon with its rime-
+# rope trailing off it, a sheet of ice cascading off the port shoulder.
 # UPRIGHT (stance).
+
+# The harpoon axis is wanted by the hands, the rope, the head and the barbs,
+# so it is named once. Butt low and aft on the starboard side, point high and
+# forward across the body: a diagonal that reads from the front AND in profile
+# (straight out along +X it would foreshorten to a dot).
+_HARPOON_BUTT = Vector((-0.85, 0.55, 1.35))
+_HARPOON_TIP = Vector((2.00, -0.95, 4.15))
+
+
+def _harpoon_at(t):
+    return _HARPOON_BUTT + (_HARPOON_TIP - _HARPOON_BUTT) * t
+
+
+def _rime_rope(bm, pts, r=0.055):
+    """A sagging line with a frozen bead at every knot, so it reads as rope
+    rather than as wire."""
+    chain(bm, pts, [r] * len(pts), 4)
+    for p in pts[1:-1]:
+        ellipsoid(bm, p, (r * 2.1, r * 2.1, r * 1.7), 0)
+
+
 def build_frozenmariner():
     body = bmesh.new()
     fins = bmesh.new()
     eyes = bmesh.new()
     marks = bmesh.new()
 
-    # Legs, torso, head - the deckhand's shamble, stiffer.
+    lean = Matrix.Rotation(math.radians(14), 4, "Y")  # pitched over the lead foot
+
+    # LOCKED MID-STRIDE: lead leg forward and bent, trail leg driving back.
+    # Feet at z=0. The gap between them is the whole pose in silhouette.
+    chain(body, [(0.05, 0.44, 1.75), (0.56, 0.48, 1.05), (0.78, 0.48, 0.28)], [0.29, 0.24, 0.19], 5)
+    box(body, (0.90, 0.48, 0.13), (0.66, 0.46, 0.26))
+    chain(body, [(-0.05, -0.44, 1.75), (-0.48, -0.48, 1.08), (-0.80, -0.46, 0.30)], [0.29, 0.24, 0.19], 5)
+    box(body, (-0.86, -0.46, 0.13), (0.66, 0.46, 0.26))
+
+    # Torso under a heavy whaler's coat.
+    box(body, (0.10, 0, 2.55), (0.85, 1.28, 1.75), lean)
+    box(fins, (0.06, 0, 2.35), (1.00, 1.44, 1.30), lean)  # coat
+    box(fins, (-0.02, 0, 1.60), (0.90, 1.34, 0.52), lean)  # coat skirt
+    box(fins, (0.22, 0, 3.28), (0.60, 1.32, 0.32), lean)  # storm collar
+
+    # Head craned into the wind, jaw jutting.
+    head_c = Vector((0.52, 0, 3.85))
+    limb(body, (0.28, 0, 3.32), head_c, 0.20, 0.26, 6)
+    ellipsoid(body, head_c, (0.40, 0.38, 0.42), 1)
+    box(body, (0.78, 0, 3.72), (0.26, 0.46, 0.30))
+    # THE FROST BEARD: icicles grown off that jaw.
+    for by, bl in ((-0.28, 0.40), (-0.14, 0.60), (0.0, 0.72), (0.14, 0.58), (0.28, 0.38)):
+        cone(fins, (0.74, by, 3.58), (0.80, by, 3.58 - bl), 0.085, 4)
+
+    # Both fists on the harpoon: rear hand low by the hip, front hand high
+    # and across - the heft.
+    hand_lo, hand_hi = _harpoon_at(0.42), _harpoon_at(0.64)
+    chain(body, [(0.18, 0.66, 3.22), (0.46, 0.60, 2.78), hand_lo], [0.22, 0.19, 0.15], 5)
+    chain(body, [(0.18, -0.66, 3.22), (0.58, -0.88, 3.02), hand_hi], [0.22, 0.19, 0.15], 5)
+    for h in (hand_lo, hand_hi):
+        ellipsoid(body, h, (0.17, 0.17, 0.17), 1)
+
+    # THE HARPOON (gear -> fins): shaft, butt knob, leaf head, two barbs
+    # swept back in the shaft's vertical plane so they stay in silhouette.
+    d = (_HARPOON_TIP - _HARPOON_BUTT).normalized()
+    side = d.cross(Vector((0, 0, 1))).normalized()
+    up = side.cross(d).normalized()
+    limb(fins, _HARPOON_BUTT, _HARPOON_TIP, 0.085, 0.065, 5)
+    ellipsoid(fins, _HARPOON_BUTT, (0.14, 0.14, 0.14), 1)
+    head_base = _HARPOON_TIP - d * 0.72
+    cone(fins, head_base, _HARPOON_TIP + d * 0.22, 0.19, 5)
     for s in (-1, 1):
-        box(body, (0, s * 0.4, 0.8), (0.55, 0.5, 1.6))
-    box(body, (0, 0, 2.5), (0.9, 1.5, 1.9), Matrix.Rotation(math.radians(6), 4, "Y"))
-    box(body, (0.15, 0.1, 3.85), (0.75, 0.75, 0.8))
-    # Arms: both reaching, frozen mid-grasp.
-    chain(body, [(0.2, 0.8, 3.2), (0.9, 1.0, 2.9), (1.6, 0.9, 3.1)], [0.24, 0.2, 0.16], 5)
-    chain(body, [(0.2, -0.8, 3.2), (1.0, -0.9, 2.7), (1.7, -0.8, 2.9)], [0.24, 0.2, 0.16], 5)
-    # The ice crust: slabs on the shoulders, head and back.
-    box(fins, (-0.1, 0.55, 3.5), (0.7, 0.7, 0.5), Matrix.Rotation(math.radians(15), 4, "X"))
-    box(fins, (0.1, -0.1, 4.3), (0.6, 0.6, 0.35), Matrix.Rotation(math.radians(-10), 4, "Y"))
-    box(fins, (-0.5, 0, 2.6), (0.4, 1.3, 1.2), Matrix.Rotation(math.radians(12), 4, "Y"))
-    # Icicles under both arms and the chin.
-    for px, py, pz in ((0.9, 1.0, 2.7), (1.5, 0.9, 2.9), (1.0, -0.9, 2.5), (1.6, -0.8, 2.7), (0.4, 0.1, 3.4)):
-        cone(fins, (px, py, pz), (px, py, pz - 0.55), 0.08, 4)
-    # The glaze: glowing frost lines across the torso, and the stare.
-    chain(marks, [(0.5, 0.6, 2.9), (0.55, 0.0, 2.4), (0.5, -0.6, 2.8)], [0.05, 0.06, 0.05], 4)
-    chain(marks, [(0.4, 0.4, 1.9), (0.45, -0.3, 1.6)], [0.05, 0.04], 4)
+        cone(fins, head_base, head_base - d * 0.26 + up * (s * 0.46), 0.075, 4)
+    # Ice grown along the shaft where it has sat frozen to his hands.
+    for t in (0.30, 0.52, 0.74):
+        p = _harpoon_at(t)
+        ellipsoid(fins, p, (0.15, 0.13, 0.14), 0)
+
+    # The rime-rope: lashed at the head end, sagging back around the hip.
+    _rime_rope(
+        fins,
+        [
+            _harpoon_at(0.80),
+            (1.20, -1.05, 2.90),
+            (0.70, -1.15, 2.20),
+            (0.05, -1.00, 1.85),
+            (-0.55, -0.72, 2.05),
+            (-0.78, -0.34, 2.42),
+        ],
+    )
+
+    # SHEET ICE CASCADING OFF THE PORT SHOULDER: three slabs stepping out and
+    # down, icicles hanging off each lip. This is the asymmetry that makes him
+    # readable from any angle.
+    for cx, cy, cz, sx, sy, sz, ang in (
+        (-0.05, 0.80, 3.30, 1.12, 0.92, 0.20, -14),
+        (-0.18, 1.14, 2.66, 0.94, 0.74, 0.18, -26),
+        (-0.32, 1.34, 2.02, 0.68, 0.58, 0.16, -38),
+    ):
+        box(fins, (cx, cy, cz), (sx, sy, sz), Matrix.Rotation(math.radians(ang), 4, "X"))
+        for k in range(3):
+            ix = cx - 0.26 + k * 0.26
+            iz = cz - sz * 0.6 - 0.1
+            cone(fins, (ix, cy + sy * 0.40, iz), (ix, cy + sy * 0.40, iz - 0.34 - 0.16 * k), 0.07, 4)
+    # A crust cap on the other shoulder and a slab down the back.
+    box(fins, (-0.16, -0.62, 3.34), (0.62, 0.62, 0.28), Matrix.Rotation(math.radians(18), 4, "X"))
+    box(fins, (-0.52, 0, 2.60), (0.36, 1.20, 1.05), lean)
+
+    # The glaze: cold light in the cracks, a rime collar behind the harpoon
+    # head, and the stare.
+    chain(marks, [(0.62, 0.55, 3.00), (0.68, 0.0, 2.52), (0.60, -0.55, 2.88)], [0.05, 0.06, 0.05], 4)
+    chain(marks, [(0.55, 0.30, 2.05), (0.62, -0.15, 1.70)], [0.05, 0.04], 4)
+    ellipsoid(marks, _HARPOON_TIP - d * 0.92, (0.13, 0.13, 0.13), 0)
     for s in (-1, 1):
-        ellipsoid(eyes, (0.55, 0.1 + s * 0.22, 3.95), (0.09, 0.09, 0.11), 0)
+        ellipsoid(eyes, (0.84, s * 0.17, 3.92), (0.09, 0.09, 0.11), 0)
 
     return [
         finish("FrozenMariner_Body", body, MATS["FrozenMariner_Body"]),
@@ -3187,38 +3868,89 @@ def build_aurorajelly():
     ]
 
 
-# ---- Blizzard Wraith (gascloud): a snow-squall with intent - spiralling
-# drift arms around a hooded core. UPRIGHT (stance).
+# ---- Blizzard Wraith (gascloud): a gaunt storm-shade. It has NO LEGS - the
+# body shreds into blown snow below the ribs and streams away downwind - a
+# cowl ringed with icicles, and a jagged ice shard-blade in its fist.
+# UPRIGHT (stance).
+
+
 def build_blizzardwraith():
     body = bmesh.new()
     fins = bmesh.new()
     eyes = bmesh.new()
     marks = bmesh.new()
 
-    # The spiral: three snow-streams winding up around the core.
-    for k in range(3):
-        a0 = (k / 3) * TAU
-        pts = []
-        for j in range(5):
-            t = j / 4
-            a = a0 + t * 3.6
-            r = 1.15 - 0.55 * t
-            pts.append((math.cos(a) * r, math.sin(a) * r, 0.3 + t * 2.9))
-        chain(body, pts, [0.3, 0.26, 0.2, 0.14, 0.06], 5)
-    # The hooded core.
-    ellipsoid(body, (0, 0, 2.9), (0.6, 0.55, 0.75), 1)
-    cone(body, (0, 0, 3.5), (0.15, 0, 4.15), 0.3, 5)
-    # Drift-arms flung out.
+    # Gaunt shoulder yoke and a starved ribcage - the only part of it that
+    # holds a shape. Wide shoulders under a small cowl: that contrast is what
+    # stops it reading as a bullet.
+    box(body, (0.05, 0, 3.10), (0.58, 1.62, 0.38))
     for s in (-1, 1):
-        chain(fins, [(0.3, s * 0.5, 2.7), (0.9, s * 1.1, 2.5), (1.5, s * 1.5, 2.8)], [0.16, 0.11, 0.04], 4)
-    # Loose snow chunks orbiting the skirt.
-    for k in range(5):
-        a = (k / 5) * TAU + 0.3
-        ellipsoid(fins, (math.cos(a) * 1.35, math.sin(a) * 1.35, 0.55 + 0.2 * math.sin(a * 3)), (0.16, 0.14, 0.13), 0)
-    # The heart of the squall, and the stare.
-    ellipsoid(marks, (0.2, 0, 2.85), (0.28, 0.24, 0.3), 1)
+        cone(fins, (0.10, s * 0.72, 3.24), (0.42, s * 1.02, 3.72), 0.13, 4)  # clavicle spikes
+    revolve(body, [(-1.05, 0.30), (-0.30, 0.54), (0.30, 0.50), (0.62, 0.34)], sides=7, axis="z", center=(0.05, 0, 2.86), squash=0.85)
+
+    # BELOW THE RIBS IT IS NOT A BODY: seven tatters of the wraith torn off
+    # downwind (-X), fanning out and thinning to nothing before they reach
+    # the ground. No legs, no feet - that absence is the silhouette.
+    for k in range(7):
+        a = (k / 7) * TAU
+        sway = math.sin(a * 2.0)
+        bx, by = math.cos(a) * 0.30, math.sin(a) * 0.34
+        chain(
+            body,
+            [
+                (0.05 + bx, by, 1.95),
+                (-0.25 + bx * 1.4, by * 1.7 + 0.10 * sway, 1.42),
+                (-0.70 + bx * 1.2, by * 2.1 + 0.24 * sway, 0.92),
+                (-1.12 + bx * 0.8, by * 2.4 + 0.34 * sway, 0.52),
+                (-1.45 + bx * 0.4, by * 2.6 + 0.40 * sway, 0.16),
+            ],
+            [0.22, 0.17, 0.12, 0.07, 0.02],
+            4,
+        )
+    # Snow torn loose and left hanging in the trail.
+    for px, py, pz, r in (
+        (-0.55, 0.60, 1.28, 0.20),
+        (-1.00, -0.72, 0.82, 0.17),
+        (-1.42, 0.48, 0.42, 0.14),
+        (-0.80, 0.10, 0.34, 0.12),
+        (-1.58, -0.32, 0.66, 0.11),
+    ):
+        ellipsoid(fins, (px, py, pz), (r, r * 0.85, r * 0.8), 0)
+
+    # The head, and the cowl over it: a cone-shell open at the front with a
+    # ring of icicles hung off its rim.
+    ellipsoid(body, (0.26, 0, 3.66), (0.34, 0.32, 0.38), 1)
+    revolve(fins, [(-0.50, 0.56), (0.0, 0.52), (0.34, 0.34), (0.56, 0.0)], sides=7, axis="z", center=(-0.06, 0, 3.68), squash=1.0)
+    for k in range(9):
+        a = (k / 9) * TAU
+        ix, iy = -0.06 + math.cos(a) * 0.54, math.sin(a) * 0.52
+        ln = 0.36 + 0.36 * max(0.0, math.cos(a))
+        cone(fins, (ix, iy, 3.19), (ix + 0.06, iy, 3.19 - ln), 0.065, 4)
+
+    # Blade arm thrust forward; the off arm flung back and already coming
+    # apart into drift.
+    chain(body, [(0.10, -0.58, 3.08), (0.70, -0.80, 2.86), (1.26, -0.62, 3.10)], [0.17, 0.13, 0.10], 5)
+    ellipsoid(body, (1.28, -0.62, 3.12), (0.15, 0.14, 0.15), 1)
+    chain(body, [(0.10, 0.60, 3.08), (-0.42, 0.94, 2.82), (-1.05, 1.12, 2.42)], [0.17, 0.12, 0.03], 5)
+
+    # THE SHARD-BLADE (gear -> fins): a grip, a long fractured shard and a
+    # second prong splitting off it.
+    limb(fins, (1.14, -0.62, 2.84), (1.44, -0.62, 3.26), 0.09, 0.09, 5)
+    # Built SOLID on four sides rather than as a flat plate: a plate would
+    # vanish edge-on, and head-on is exactly how the player meets it.
+    chain(
+        fins,
+        [(1.22, -0.62, 2.92), (1.55, -0.60, 3.30), (1.78, -0.64, 3.52), (2.10, -0.60, 3.90), (2.44, -0.62, 4.26)],
+        [0.20, 0.28, 0.17, 0.20, 0.015],
+        4,
+    )
+    chain(fins, [(1.70, -0.62, 3.44), (1.98, -0.72, 3.50), (2.26, -0.78, 3.54)], [0.12, 0.08, 0.015], 4)  # spur
+    chain(fins, [(1.18, -0.62, 2.86), (1.02, -0.60, 2.48), (0.88, -0.62, 2.12)], [0.14, 0.09, 0.015], 4)  # broken guard
+    # Cold light in the blade's fracture, the heart of the squall, the stare.
+    chain(marks, [(1.32, -0.62, 3.10), (1.74, -0.62, 3.62), (2.40, -0.62, 4.24)], [0.05, 0.06, 0.02], 4)
+    ellipsoid(marks, (0.26, 0, 2.96), (0.24, 0.20, 0.26), 1)
     for s in (-1, 1):
-        ellipsoid(eyes, (0.5, s * 0.2, 3.05), (0.1, 0.09, 0.12), 0)
+        ellipsoid(eyes, (0.48, s * 0.17, 3.74), (0.10, 0.09, 0.12), 0)
 
     return [
         finish("BlizzardWraith_Body", body, MATS["BlizzardWraith_Body"]),
@@ -3557,8 +4289,9 @@ def build_cannonballcrab():
     ]
 
 
-# ---- Drowned Boatswain (shambler): the deckhand's superior - rope coils
-# across the chest, a boarding hook for an arm, a belt lantern still lit.
+# ---- Drowned Boatswain (shambler): the barnacled bosun - a rotted
+# knee-length greatcoat, a rope coil slung bandolier-style, a boarding axe
+# swung two-handed, and a crab living in his opened ribcage.
 # UPRIGHT (stance).
 def build_drownedboatswain():
     body = bmesh.new()
@@ -3568,21 +4301,79 @@ def build_drownedboatswain():
 
     for s in (-1, 1):
         box(body, (0, s * 0.4, 0.8), (0.55, 0.5, 1.6))
-    box(body, (0, 0, 2.5), (0.95, 1.55, 1.9), Matrix.Rotation(math.radians(-5), 4, "Y"))
+    box(body, (0, 0, 2.5), (0.9, 1.45, 1.9), Matrix.Rotation(math.radians(-5), 4, "Y"))
     box(body, (0.1, -0.05, 3.85), (0.75, 0.75, 0.8))
-    # The rope: coils slung shoulder to hip.
+    box(body, (0.42, -0.05, 3.62), (0.3, 0.55, 0.34))  # jutting jaw
+
+    # The greatcoat: a knee-length skirt flaring off the belt, its hem torn
+    # into panels, plus a heavy standing collar and two lapels.
+    revolve(fins, [(0.0, 0.7), (-0.5, 0.8), (-1.05, 0.86)], sides=6, axis="z", center=(0.02, 0, 1.85))
+    for k in range(4):
+        a = (k / 4) * TAU + 0.3
+        bx, by = math.cos(a) * 0.84, math.sin(a) * 0.84
+        cone(fins, (0.02 + bx, by, 0.84), (0.02 + bx * 1.06, by * 1.06, 0.28), 0.22, 4)
+    box(fins, (0.02, 0, 3.36), (0.8, 1.6, 0.3))  # collar
+    for s in (-1, 1):
+        box(fins, (0.46, s * 0.56, 2.72), (0.3, 0.44, 1.45), Matrix.Rotation(math.radians(s * 10), 4, "X"))
+
+    # The rope: a coil slung shoulder to hip, with the tail of it hanging
+    # looped off the belt.
     for i in range(3):
-        t = i * 0.28
-        limb(fins, (0.5, 0.65 - t, 3.1 - t * 1.6), (0.42, -0.75 + t * 0.3, 1.9 + t * 0.4), 0.09, 0.09, 5)
-    # Left arm reaching; right arm IS the boarding hook.
-    chain(body, [(0.2, 0.85, 3.2), (0.9, 1.05, 2.8), (1.6, 0.95, 3.0)], [0.24, 0.2, 0.16], 5)
-    chain(body, [(0.2, -0.85, 3.2), (0.8, -1.0, 2.6)], [0.24, 0.2], 5)
-    limb(fins, (0.8, -1.0, 2.6), (1.5, -1.0, 2.75), 0.12, 0.09, 5)
-    chain(fins, [(1.5, -1.0, 2.75), (1.85, -1.0, 3.05), (1.7, -1.0, 3.35)], [0.09, 0.07, 0.03], 4)
-    # The belt lantern, and the drowned glow.
-    limb(fins, (0.45, 0.45, 1.55), (0.45, 0.45, 1.35), 0.05, 0.05, 4)
-    ellipsoid(marks, (0.45, 0.45, 1.15), (0.16, 0.16, 0.2), 1)
-    chain(marks, [(0.5, 0.4, 2.9), (0.52, -0.2, 2.5), (0.48, 0.1, 2.0)], [0.04, 0.05, 0.04], 4)
+        t = i * 0.2
+        limb(fins, (0.5 - t * 0.05, 0.72 - t, 3.24 - t * 0.5), (0.46, -0.6 - t * 0.1, 2.05 - t * 0.4), 0.085, 0.085, 4)
+    _wk_arc(fins, (0.42, -0.78, 1.92), 0.26, 0.0, TAU, 4, 0.07, 0.07, "xz", 3)
+
+    # The ribcage, laid open where the coat is torn away on the starboard
+    # side: three bare ribs standing proud of the chest.
+    for k in range(3):
+        _wk_arc(body, (0.0, 0.06, 2.42 + k * 0.36), 0.72, -0.2, 1.5, 2, 0.06, 0.045, "xy", 3)
+    # And the crab that has moved into the cavity: shell, claws and legs
+    # poking out between the ribs. In _Marks so it lights with the drowned
+    # glow - the tell that something is still ALIVE inside him.
+    crab = Vector((0.62, 0.52, 2.86))
+    box(marks, crab, (0.4, 0.44, 0.24))
+    for s in (-1, 1):
+        limb(marks, crab + Vector((0.15, s * 0.2, 0.02)), crab + Vector((0.4, s * 0.36, 0.07)), 0.055, 0.035, 3)
+        cone(marks, crab + Vector((0.4, s * 0.36, 0.07)), crab + Vector((0.62, s * 0.44, 0.14)), 0.09, 4)
+        limb(marks, crab + Vector((-0.06, s * 0.2, 0.0)), crab + Vector((-0.15, s * 0.44, -0.18)), 0.045, 0.022, 3)
+
+    # The boarding axe, caught mid-swing: hauled up and over his off shoulder
+    # on a long haft, both fists on it, a broad bit and a back-spike.
+    haft_a = Vector((0.55, 0.8, 1.75))
+    haft_b = Vector((1.32, -1.32, 3.95))
+    limb(fins, haft_a, haft_b, 0.11, 0.1, 5)
+    head_p = haft_a + (haft_b - haft_a) * 0.9
+    box(fins, head_p, (0.24, 0.36, 0.3))  # the eye the haft passes through
+    plate(
+        fins,
+        [(0.92, 3.28), (2.05, 3.24), (2.32, 3.88), (2.05, 4.24), (0.98, 4.02)],
+        0.14,
+        "xz",
+        offset=(0, head_p.y, 0),
+    )
+    cone(fins, (1.06, head_p.y, 3.78), (0.5, head_p.y, 4.02), 0.11, 4)  # back-spike
+    for sh, elb, grip in (
+        ((0.15, 0.78, 3.15), (0.75, 0.98, 2.45), 0.14),
+        ((0.15, -0.78, 3.15), (0.9, -1.05, 3.05), 0.52),
+    ):
+        hand = haft_a + (haft_b - haft_a) * grip
+        limb(body, sh, elb, 0.23, 0.18, 5)
+        limb(body, elb, hand, 0.18, 0.14, 5)
+        box(body, hand, (0.26, 0.26, 0.26))
+
+    # Barnacles crusting the shoulders and the coat.
+    for base, out in (
+        ((0.06, 0.66, 3.28), (0.05, 0.18, 0.11)),
+        ((-0.3, -0.5, 2.62), (-0.2, -0.16, 0.05)),
+        ((-0.5, 0.32, 1.5), (-0.24, 0.11, -0.05)),
+        ((0.3, -0.72, 1.25), (0.15, -0.22, -0.08)),
+    ):
+        _wk_barnacle(fins, base, out)
+
+    # The belt lantern still lit, and the drowned glow bleeding through him.
+    limb(fins, (0.34, -0.92, 1.6), (0.36, -0.98, 1.4), 0.05, 0.05, 4)
+    ellipsoid(marks, (0.36, -0.98, 1.2), (0.17, 0.17, 0.21), 0)
+    chain(marks, [(0.52, 0.2, 3.24), (0.54, 0.34, 2.74)], [0.04, 0.04], 4)
     for s in (-1, 1):
         ellipsoid(eyes, (0.5, -0.05 + s * 0.22, 3.95), (0.09, 0.09, 0.11), 0)
 
@@ -3680,22 +4471,48 @@ def build_cursedchest():
     ]
 
 
-# ---- Plunder Sprite (thief): a darting sea-imp hugging a doubloon bigger
-# than its head. Flat, front +X (the coin leads).
+# ---- Plunder Sprite (thief): a sea-imp mid-dart, hauling a stolen goblet
+# bigger than its head with a dagger shoved through its belt. It reads
+# humanoid enough to deserve a face, so it got one - but it still SWIMS, so
+# the pose stays prone. Flat, front +X (the loot leads).
 def build_plundersprite():
     body = bmesh.new()
     fins = bmesh.new()
     eyes = bmesh.new()
     marks = bmesh.new()
 
-    ellipsoid(body, (0, 0, 0.62), (0.72, 0.42, 0.38), 1)
-    ellipsoid(body, (0.6, 0, 0.78), (0.32, 0.28, 0.28), 1)
+    # A hunched little body, shoulders up around a big-jawed head.
+    ellipsoid(body, (-0.05, 0, 0.6), (0.7, 0.42, 0.38), 1)
+    box(body, (-0.42, 0, 0.8), (0.55, 0.4, 0.18), Matrix.Rotation(math.radians(16), 4, "Y"))
+    ellipsoid(body, (0.58, 0, 0.72), (0.34, 0.3, 0.28), 1)
+    box(body, (0.84, 0, 0.6), (0.34, 0.3, 0.2))  # jutting grin
+    box(body, (0.72, 0, 0.88), (0.24, 0.42, 0.12))  # heavy brow
     for s in (-1, 1):
-        cone(body, (0.5, s * 0.18, 1.0), (0.62, s * 0.28, 1.25), 0.07, 4)  # horns
-    # THE DOUBLOON, clutched in both arms.
-    limb(marks, (1.15, 0, 0.6), (1.27, 0, 0.6), 0.5, 0.5, 9)
+        cone(body, (0.5, s * 0.2, 0.94), (0.64, s * 0.32, 1.16), 0.07, 4)  # horns
+        cone(body, (0.45, s * 0.26, 0.74), (-0.2, s * 0.62, 0.86), 0.1, 4)  # long swept ears
+
+    # THE HAUL: a goblet twice the size of its head, hugged in both arms.
+    # Held UPRIGHT: a cup pointed down the swim axis is just a disc, but a
+    # bowl-stem-foot standing on end reads as loot from any angle.
+    revolve(
+        marks,
+        [(0.0, 0.16), (0.14, 0.26), (0.34, 0.42), (0.52, 0.48)],
+        sides=8,
+        axis="z",
+        center=(1.06, 0, 0.5),
+        open_end=True,
+    )
+    limb(marks, (1.06, 0, 0.5), (1.06, 0, 0.32), 0.08, 0.09, 5)  # stem
+    limb(marks, (1.06, 0, 0.3), (1.06, 0, 0.24), 0.28, 0.28, 8)  # foot
     for s in (-1, 1):
-        chain(body, [(0.35, s * 0.35, 0.65), (0.85, s * 0.3, 0.5), (1.1, s * 0.12, 0.62)], [0.09, 0.07, 0.05], 4)
+        chain(body, [(0.3, s * 0.36, 0.6), (0.78, s * 0.46, 0.46), (1.02, s * 0.26, 0.42)], [0.1, 0.08, 0.06], 4)
+
+    # A dagger shoved through its belt, hilt forward, and a swag pouch.
+    box(fins, (-0.05, 0, 0.54), (0.66, 0.52, 0.13))
+    plate(fins, [(-0.32, 0.32), (-1.0, 0.2), (-1.12, 0.28), (-0.36, 0.48)], 0.06, "xz", offset=(0, -0.44, 0))
+    box(fins, (-0.26, -0.44, 0.42), (0.09, 0.3, 0.1))  # crossguard
+    ellipsoid(fins, (-0.32, 0.5, 0.46), (0.2, 0.16, 0.16), 0)  # the pouch
+
     # Legs trailing into a swimmer's kick, and little wing-frills.
     for s in (-1, 1):
         chain(body, [(-0.5, s * 0.2, 0.55), (-1.05, s * 0.3, 0.72), (-1.5, s * 0.25, 0.5)], [0.08, 0.06, 0.02], 4)
@@ -3704,7 +4521,7 @@ def build_plundersprite():
     for px, py in ((-1.3, 0.35), (-1.8, -0.2)):
         limb(marks, (px, py, 0.3), (px, py, 0.36), 0.16, 0.16, 7)
     for s in (-1, 1):
-        ellipsoid(eyes, (0.78, s * 0.14, 0.88), (0.09, 0.08, 0.1), 1)
+        ellipsoid(eyes, (0.76, s * 0.16, 0.8), (0.09, 0.08, 0.1), 0)
 
     return [
         finish("PlunderSprite_Body", body, MATS["PlunderSprite_Body"]),
@@ -3747,8 +4564,11 @@ def build_ghostfirejelly():
     ]
 
 
-# ---- Wailing Gunner (spitter): a gunner's ghost fused to his carronade -
-# the gun IS the body, the spectre rises from the breech mid-scream.
+# ---- Wailing Gunner (spitter): a gunner's ghost FUSED to his swivel gun -
+# the arms are the mount, thickening out of the shoulders and becoming the
+# blunderbuss's breech and flared bell. He has no legs; he trails away.
+# _Fins is the spectre (the pale flesh), _Body the ironwork - the row's
+# color / finColor are set that way round.
 # UPRIGHT (stance), front +X (the muzzle).
 def build_wailinggunner():
     body = bmesh.new()
@@ -3756,25 +4576,63 @@ def build_wailinggunner():
     eyes = bmesh.new()
     marks = bmesh.new()
 
-    # The carronade on its carriage, muzzle tilted up-forward.
-    box(body, (0, 0, 0.5), (1.9, 1.5, 0.9))
+    # No legs: below the belt he thins into a ragged spectral taper with
+    # streamers of shroud trailing off it.
+    revolve(
+        fins,
+        [(0.0, 0.8), (-0.55, 0.68), (-1.15, 0.44), (-1.8, 0.18), (-2.2, 0.0)],
+        sides=7,
+        axis="z",
+        center=(-0.12, 0, 2.3),
+    )
+    for k in range(4):
+        a = (k / 4) * TAU + 0.5
+        bx, by = math.cos(a) * 0.44, math.sin(a) * 0.44
+        cone(fins, (-0.12 + bx, by, 1.2), (-0.12 + bx * 1.6, by * 1.6, 0.08), 0.17, 4)
+    # Torso, and a head thrown back mid-scream with the jaw hanging open.
+    box(fins, (0.0, 0, 3.0), (0.9, 1.5, 1.5), Matrix.Rotation(math.radians(8), 4, "Y"))
+    ellipsoid(fins, (-0.18, 0, 3.86), (0.44, 0.42, 0.46), 1)
+    box(fins, (0.16, 0, 3.6), (0.36, 0.6, 0.4), Matrix.Rotation(math.radians(-16), 4, "Y"))
+
+    # The arms do not HOLD the gun - they become it: they leave the shoulders
+    # as flesh and swell forward into the breech, thickening the whole way.
+    # The gun is trained off the bow, not straight down it: canted to port so
+    # the barrel and its bell read as a BLUNDERBUSS in silhouette instead of
+    # vanishing into a foreshortened disc.
+    breech = Vector((0.85, 0.18, 3.05))
+    mid = Vector((1.62, -0.52, 3.02))
+    bell = Vector((2.02, -0.88, 3.0))
+    flare = Vector((2.42, -1.24, 2.98))
     for s in (-1, 1):
-        limb(body, (0.6, s * 0.75, 0.35), (0.6, s * 0.55, 0.35), 0.3, 0.3, 7)  # wheels
-        limb(body, (-0.6, s * 0.75, 0.35), (-0.6, s * 0.55, 0.35), 0.3, 0.3, 7)
-    barrel_rot = Matrix.Rotation(math.radians(-24), 4, "Y")
-    box(body, (0.7, 0, 1.55), (2.4, 0.75, 0.75), barrel_rot)
-    limb(body, (1.55, 0, 1.95), (1.9, 0, 2.1), 0.42, 0.44, 8)  # the flared muzzle
-    ellipsoid(marks, (1.85, 0, 2.06), (0.3, 0.3, 0.3), 1)  # the glow in the bore
-    # The spectre: torso boiling up out of the breech, arms spread, head
-    # thrown back mid-wail.
-    revolve(fins, [(0.0, 0.55), (0.9, 0.62), (1.8, 0.45), (2.4, 0.3)], sides=7, axis="z", center=(-0.7, 0, 1.2), squash=0.9, open_end=True)
-    ellipsoid(fins, (-0.55, 0, 3.9), (0.42, 0.4, 0.5), 1)
+        limb(fins, (0.06, s * 0.72, 3.36), (0.5, s * 0.62, 3.2), 0.22, 0.26, 5)
+        limb(fins, (0.5, s * 0.62, 3.2), (breech.x - 0.1, 0.18 + s * 0.18, breech.z), 0.26, 0.3, 5)
+    box(body, breech, (0.8, 0.62, 0.62), Matrix.Rotation(math.radians(-42), 4, "Z"))
+    limb(body, breech, mid, 0.26, 0.2, 7)
+    limb(body, mid, bell, 0.2, 0.26, 8)  # the reinforce at the bell's throat
+    limb(body, bell, flare, 0.24, 0.56, 8)  # the flared bell itself
+    limb(body, flare, flare + Vector((0.06, -0.05, 0)), 0.6, 0.58, 8)  # the muzzle lip
+    # Swivel yoke and lock: the ironwork the arms have grown around.
+    yoke = Vector((1.45, -0.4, 3.02))
     for s in (-1, 1):
-        chain(fins, [(-0.65, s * 0.5, 3.3), (-0.4, s * 1.1, 3.6), (0.0, s * 1.4, 3.4)], [0.18, 0.13, 0.05], 4)
-    # The wail: an open glowing mouth, and the burning stare.
-    ellipsoid(marks, (-0.2, 0, 3.8), (0.16, 0.14, 0.22), 1)
+        limb(body, yoke + Vector((0, 0, -0.05)), yoke + Vector((-0.16 * s, -0.2 * s, 0.5)), 0.07, 0.07, 4)
+    limb(body, yoke + Vector((0.16, 0.2, 0.45)), yoke + Vector((-0.16, -0.2, 0.45)), 0.05, 0.05, 4)
+    box(body, (1.06, 0.1, 3.28), (0.5, 0.14, 0.3), Matrix.Rotation(math.radians(-42), 4, "Z"))  # lock plate
+    _wk_arc(body, (0.92, 0.14, 2.78), 0.28, -2.5, -0.6, 3, 0.05, 0.05, "xz", 4)  # trigger guard
+    # A powder horn slung on the hip, on a strap across the chest.
+    chain(body, [(-0.5, -0.78, 2.2), (-0.15, -0.92, 1.9), (0.28, -0.84, 1.84)], [0.2, 0.13, 0.06], 5)
+    limb(body, (0.02, 0.62, 3.36), (-0.32, -0.82, 2.24), 0.05, 0.05, 4)
+
+    # Marks: the muzzle flash sitting in the bell, and the SCREAM - a ribbon
+    # of sound widening as it streams back off his open mouth.
+    cone(marks, flare + Vector((0.04, -0.04, 0)), flare + Vector((0.42, -0.38, 0.06)), 0.5, 7)
+    ellipsoid(marks, (0.32, 0.02, 3.5), (0.15, 0.18, 0.22), 0)  # the open mouth
+    p = Vector((0.26, 0.04, 3.58))
+    for k in range(3):
+        nxt = p + Vector((-0.42, 0.24, 0.14))
+        limb(marks, p, nxt, 0.1 + k * 0.06, 0.16 + k * 0.06, 4)
+        p = nxt
     for s in (-1, 1):
-        ellipsoid(eyes, (-0.25, s * 0.18, 4.1), (0.09, 0.08, 0.1), 0)
+        ellipsoid(eyes, (0.14, s * 0.19, 3.98), (0.09, 0.08, 0.11), 0)
 
     return [
         finish("WailingGunner_Body", body, MATS["WailingGunner_Body"]),
@@ -3982,36 +4840,117 @@ def build_fenserpent():
     ]
 
 
-# ---- Peat Revenant (shambler): the bog's dead, walking - a hulk of peat
-# and root, branches for fingers, wisp-light burning in it. UPRIGHT.
+# ---- Peat Revenant (shambler): a BOG MUMMY stitched together with roots. The
+# torso is built as two side slabs and a spine slab with nothing between them,
+# so the chest is a TORN-OPEN CAVITY with the wisp burning inside it (marks) -
+# the hole is real geometry, not a decal. Root bands wrap every limb, strands
+# drip off the arms, and it drags a snapped-off ROOT-CLUB edged with a scythe
+# row of gator teeth. UPRIGHT, ~4.4 tall as before.
+def _pr_band(bm, p0, p1, t, r, w=0.16, sides=5):
+    """A root wrapping cinched round a limb: a short fat collar at parameter
+    `t` along the segment. At this poly count a raised collar reads as binding
+    where a painted stripe would read as nothing."""
+    p0, p1 = Vector(p0), Vector(p1)
+    d = (p1 - p0).normalized()
+    c = p0.lerp(p1, t)
+    limb(bm, c - d * w * 0.5, c + d * w * 0.5, r, r, sides)
+
+
+def _pr_strands(bm, anchor, count, drop, spread=0.22, r=0.06):
+    """Torn root strands dripping off a limb: thin tapered cones hanging down,
+    fanned along +/-Y. The ragged fringe is what separates this silhouette
+    from a plain zombie arm."""
+    anchor = Vector(anchor)
+    for k in range(count):
+        off = Vector(((k % 2) * 0.12 - 0.06, (k - (count - 1) * 0.5) * spread, 0.0))
+        cone(bm, anchor + off, anchor + off + Vector((0.08, 0.04, -drop * (0.6 + 0.4 * ((k + 1) % 3)))), r, 3)
+
+
 def build_peatrevenant():
     body = bmesh.new()
     fins = bmesh.new()
     eyes = bmesh.new()
     marks = bmesh.new()
 
-    # Hulking peat mass: legs, a slumped torso, a half-sunk head.
+    # Legs: root-bound columns, knees splayed, slab feet sunk in the peat.
     for s in (-1, 1):
-        box(body, (0, s * 0.45, 0.85), (0.7, 0.6, 1.7), Matrix.Rotation(math.radians(s * 4), 4, "X"))
-    box(body, (0, 0, 2.6), (1.2, 1.8, 2.0), Matrix.Rotation(math.radians(-8), 4, "Y"))
-    ellipsoid(body, (0.25, 0.1, 3.9), (0.55, 0.5, 0.5), 1)
-    # Root-branch arms, twig fingers.
-    chain(body, [(0.2, 0.95, 3.3), (0.9, 1.3, 2.6), (1.5, 1.2, 2.2)], [0.3, 0.22, 0.14], 5)
-    chain(body, [(0.2, -0.95, 3.3), (1.0, -1.2, 2.8), (1.7, -1.1, 3.0)], [0.3, 0.22, 0.14], 5)
-    for s, hand in ((1, (1.5, 1.2, 2.2)), (-1, (1.7, -1.1, 3.0))):
-        hx, hy, hz = hand
-        for k in range(3):
-            cone(fins, (hx, hy, hz), (hx + 0.45, hy + (k - 1) * 0.2, hz + 0.15 * (k - 1)), 0.05, 4)
-    # Branches jutting from the shoulders and back.
-    chain(fins, [(-0.4, 0.5, 3.6), (-0.7, 0.8, 4.4), (-0.5, 0.7, 5.0)], [0.12, 0.08, 0.03], 4)
-    chain(fins, [(-0.5, -0.4, 3.4), (-0.9, -0.8, 4.0)], [0.1, 0.04], 4)
-    # Dripping peat clumps at the hem.
-    for a in (0.5, 2.0, 3.8, 5.2):
-        ellipsoid(fins, (math.cos(a) * 0.7, math.sin(a) * 0.8, 0.45), (0.22, 0.2, 0.3), 0)
-    # The wisp light: burning in the chest cavity and both eye pits.
-    ellipsoid(marks, (0.62, 0.1, 2.9), (0.28, 0.35, 0.45), 1)
+        hip, knee, ankle = (0.0, s * 0.48, 1.8), (0.14, s * 0.56, 1.0), (0.04, s * 0.52, 0.24)
+        limb(body, hip, knee, 0.34, 0.27, 5)
+        limb(body, knee, ankle, 0.27, 0.22, 5)
+        box(body, (0.18, s * 0.52, 0.11), (0.72, 0.56, 0.22))
+        _pr_band(body, hip, knee, 0.55, 0.34)
+
+    # TORSO WITH A TORN CAVITY: two rib slabs and a spine slab, and the gap
+    # between them left EMPTY from the belly to the collar. That hole is the
+    # whole silhouette idea - front-on you see straight through it to the wisp.
     for s in (-1, 1):
-        ellipsoid(eyes, (0.72, 0.1 + s * 0.2, 4.0), (0.1, 0.09, 0.12), 0)
+        box(body, (0.06, s * 0.6, 2.66), (0.95, 0.52, 1.72), Matrix.Rotation(math.radians(-8), 4, "Y"))
+    box(body, (-0.44, 0, 2.72), (0.5, 1.5, 1.9), Matrix.Rotation(math.radians(-8), 4, "Y"))
+    box(body, (0.12, 0, 1.94), (1.0, 1.35, 0.58))
+    box(body, (-0.06, 0, 3.5), (0.82, 1.6, 0.48), Matrix.Rotation(math.radians(-10), 4, "Y"))
+
+    # Head half-sunk into the shoulders, long jaw hanging open.
+    head_c = Vector((0.3, 0.06, 3.94))
+    ellipsoid(body, head_c, (0.5, 0.46, 0.5), 0)
+    box(body, (0.6, 0.06, 3.74), (0.42, 0.42, 0.22), Matrix.Rotation(0.24, 4, "Y"))
+
+    # ARMS: the right (-y) hauls the club up and forward, the left (+y) hangs
+    # long past the knee. Both wrapped in root bands.
+    r_hand = Vector((1.34, -0.86, 2.66))
+    for pts, hand in (
+        ([(0.1, -0.92, 3.3), (0.78, -1.06, 2.94), r_hand], r_hand),
+        ([(0.1, 0.92, 3.3), (0.86, 1.2, 2.5), (1.12, 1.1, 1.72)], Vector((1.12, 1.1, 1.72))),
+    ):
+        a, b, c = (Vector(p) for p in pts)
+        limb(body, a, b, 0.3, 0.24, 5)
+        limb(body, b, c, 0.24, 0.17, 5)
+        _pr_band(body, a, b, 0.5, 0.3)
+        _pr_band(body, b, c, 0.55, 0.24)
+        box(body, hand + Vector((0.06, 0, -0.04)), (0.32, 0.3, 0.28))
+
+    # Twig fingers on the free hand, strands dripping off both forearms.
+    l_hand = Vector((1.12, 1.1, 1.72))
+    for k in range(3):
+        cone(fins, l_hand, l_hand + Vector((0.24, (k - 1) * 0.16, -0.42 - abs(k - 1) * 0.1)), 0.05, 3)
+    _pr_strands(fins, (0.92, 1.16, 2.32), 4, 0.7)
+    _pr_strands(fins, (0.82, -1.02, 2.84), 4, 0.62)
+    _pr_strands(fins, (-0.1, 0, 1.72), 3, 0.55, spread=0.5, r=0.09)
+
+    # Root ribs framing the cavity mouth, and branches out of the back.
+    for s in (-1, 1):
+        for i in range(2):
+            _pr_band(fins, (0.5, s * 0.34, 2.2 + i * 0.62), (0.5, s * 0.62, 2.3 + i * 0.62), 0.5, 0.12, 0.5, 4)
+    chain(fins, [(-0.42, 0.5, 3.6), (-0.74, 0.82, 4.3), (-0.54, 0.7, 4.76)], [0.12, 0.08, 0.03], 4)
+    chain(fins, [(-0.5, -0.42, 3.4), (-0.92, -0.8, 4.02)], [0.1, 0.04], 4)
+
+    # THE ROOT-CLUB: a snapped slab of root held forward and up, its outer edge
+    # armed with a scythe row of gator teeth. The teeth stand proud of the
+    # outline so the weapon reads as a saw, not a stick, in monochrome.
+    limb(fins, r_hand, (1.6, -0.78, 2.82), 0.16, 0.19, 5)
+    plate(
+        fins,
+        [(1.5, 2.6), (1.94, 2.6), (2.46, 3.24), (2.56, 3.8), (2.2, 3.76), (1.72, 3.02)],
+        0.34,
+        plane="xz",
+        offset=(0, -0.74, 0),
+    )
+    ellipsoid(fins, (2.5, -0.74, 3.84), (0.2, 0.18, 0.18), 0)
+    for i in range(6):
+        t = i / 5.0
+        base = Vector((1.9 + t * 0.62, -0.74, 2.58 + t * 1.18))
+        cone(fins, base, base + Vector((0.28 - t * 0.08, 0.0, -0.2 + t * 0.28)), 0.09, 3)
+
+    # WISP-LIGHT: the flame standing in the open chest, tongues licking up out
+    # of the cavity, and motes drifting off it.
+    ellipsoid(marks, (0.06, 0.0, 2.7), (0.26, 0.34, 0.52), 0)
+    for k in range(3):
+        base = Vector((0.06, (k - 1) * 0.3, 3.1))
+        cone(marks, base, base + Vector((0.1, (k - 1) * 0.12, 0.5 + (k % 2) * 0.24)), 0.13, 4)
+    for k in range(3):
+        ellipsoid(marks, (0.3 + (k % 2) * 0.2, (k - 1) * 0.34, 3.7 + k * 0.28), (0.08, 0.08, 0.08), 0)
+
+    for s in (-1, 1):
+        ellipsoid(eyes, head_c + Vector((0.36, s * 0.2, 0.06)), (0.1, 0.09, 0.12), 0)
 
     return [
         finish("PeatRevenant_Body", body, MATS["PeatRevenant_Body"]),
@@ -4124,6 +5063,20 @@ def build_cycloneray():
     ]
 
 
+_WHIRL_PROFILE = [(-2.2, 0.05), (-1.3, 0.45), (-0.3, 0.8), (0.7, 1.05), (1.3, 1.1)]
+
+
+def _whirl_radius(x):
+    """The shell's radius at `x`, so its spiral ridge can ride ON the shell
+    rather than disappearing inside it."""
+    if x <= _WHIRL_PROFILE[0][0]:
+        return _WHIRL_PROFILE[0][1]
+    for (x0, r0), (x1, r1) in zip(_WHIRL_PROFILE, _WHIRL_PROFILE[1:]):
+        if x <= x1:
+            return r0 + (r1 - r0) * (x - x0) / (x1 - x0)
+    return _WHIRL_PROFILE[-1][1]
+
+
 # ---- Whirlpool Horror (burrower): a spiral-shelled thing that IS its own
 # whirlpool - a ridged cone lying mouth-forward, tentacle fringe reaching
 # out of the throat. Flat, front +X.
@@ -4134,16 +5087,22 @@ def build_whirlpoolhorror():
     marks = bmesh.new()
 
     # The shell: a ridged cone, tip aft, mouth flaring forward.
-    revolve(body, [(-2.2, 0.05), (-1.3, 0.45), (-0.3, 0.8), (0.7, 1.05), (1.3, 1.1)], sides=9, axis="x", center=(0, 0, 1.1), squash=0.95, open_end=True)
-    # Spiral ridge riding the shell.
+    revolve(body, _WHIRL_PROFILE, sides=9, axis="x", center=(0, 0, 1.1), squash=0.95, open_end=True)
+    # Spiral ridge riding ON the shell - the old one was cut to a straight
+    # taper and spent its middle third buried inside the body, invisible.
     ridge = []
-    for k in range(10):
-        t = k / 9
-        a = t * TAU * 1.6
-        x = -2.0 + t * 3.2
-        r = 0.15 + t * 0.95
-        ridge.append((x, math.cos(a) * r, 1.1 + math.sin(a) * r * 0.9))
-    chain(fins, ridge, [0.09] * len(ridge), 4)
+    for k in range(14):
+        t = k / 13
+        a = t * TAU * 1.7
+        x = -2.05 + t * 3.3
+        r = _whirl_radius(x) + 0.06
+        ridge.append((x, math.cos(a) * r, 1.1 + math.sin(a) * r * 0.95))
+    chain(fins, ridge, [0.11] * len(ridge), 4)
+    # Hooked teeth ringing the maw: the thing you see as it swallows you.
+    for k in range(9):
+        a = (k / 9) * TAU + 0.2
+        by, bz = math.cos(a) * 1.06, math.sin(a) * 1.06 * 0.95
+        cone(fins, (1.28, by, 1.1 + bz), (1.78, by * 0.70, 1.1 + bz * 0.70), 0.10, 4)
     # The tentacle fringe reaching out of the mouth.
     for k in range(6):
         a = (k / 6) * TAU + 0.3
@@ -4162,29 +5121,110 @@ def build_whirlpoolhorror():
     ]
 
 
-# ---- Tempest Revenant (shambler): a drowned sailor the storm took back -
-# the zombie frame wrapped in stormcloud, lightning crawling it. UPRIGHT.
+# ---- Tempest Revenant (shambler): the drowned sailor the storm took back -
+# lightning-scarred, wrapped in torn sailcloth, HAULING a barnacled anchor on
+# a chain. He leans into the drag and the anchor lies low and aft: the whole
+# read is that diagonal. UPRIGHT (stance).
+
+
+def _dragged_anchor(fins, crown, ring_end):
+    """A ship's anchor lying where it was dragged to: shank, stock, two
+    flukes with spade palms, and a shackle ring at the top. `crown` is the
+    bottom of the shank, `ring_end` the top."""
+    crown, ring_end = Vector(crown), Vector(ring_end)
+    axis = (ring_end - crown).normalized()
+    limb(fins, crown, ring_end, 0.19, 0.12, 5)
+    # Stock: the crossbar just under the ring.
+    stock = crown + (ring_end - crown) * 0.84
+    limb(fins, stock + Vector((0, -0.80, 0.07)), stock + Vector((0, 0.80, -0.07)), 0.08, 0.08, 5)
+    # Shackle ring at the head, drawn as a hexagon of links.
+    centre = ring_end + axis * 0.28
+    ring_pts = [centre + Vector((math.cos(a) * 0.22, 0, math.sin(a) * 0.22)) for a in (i / 6 * TAU for i in range(6))]
+    chain(fins, ring_pts + [ring_pts[0]], [0.055] * 7, 4)
+    # Flukes sweeping up off the crown, each ending in a spade palm.
+    for s in (-1, 1):
+        tip = crown + Vector((0.34, s * 1.06, 1.00))
+        chain(fins, [crown, crown + Vector((0.22, s * 0.60, 0.42)), tip], [0.15, 0.11, 0.08], 5)
+        plate(
+            fins,
+            [(tip.x - 0.26, tip.z - 0.52), (tip.x + 0.38, tip.z + 0.20), (tip.x - 0.28, tip.z + 0.26)],
+            0.28,  # chunky: a thin palm disappears edge-on, and head-on is how the player meets him
+            "xz",
+            offset=(0, tip.y, 0),
+        )
+    # Barnacles crusting the shank (fins, not marks - marks glow on this one).
+    for t, sy, sz in ((0.22, 0.16, 0.14), (0.38, -0.15, 0.16), (0.55, 0.14, -0.15), (0.70, -0.13, 0.13)):
+        p = crown + (ring_end - crown) * t
+        ellipsoid(fins, p + Vector((0.02, sy, sz)), (0.11, 0.11, 0.10), 0)
+
+
 def build_tempestrevenant():
     body = bmesh.new()
     fins = bmesh.new()
     eyes = bmesh.new()
     marks = bmesh.new()
 
+    lean = Matrix.Rotation(math.radians(17), 4, "Y")  # leaning into the haul
+
+    # Braced legs: lead leg planted forward, trail leg driving back against
+    # the weight.
+    chain(body, [(0.05, 0.42, 1.75), (0.60, 0.46, 1.04), (0.86, 0.46, 0.28)], [0.29, 0.24, 0.19], 5)
+    box(body, (0.98, 0.46, 0.13), (0.66, 0.46, 0.26))
+    chain(body, [(-0.05, -0.42, 1.75), (-0.52, -0.46, 1.06), (-0.90, -0.44, 0.30)], [0.29, 0.24, 0.19], 5)
+    box(body, (-0.96, -0.44, 0.13), (0.66, 0.46, 0.26))
+
+    box(body, (0.12, 0, 2.55), (0.86, 1.16, 1.80), lean)
+    head_c = Vector((0.55, 0, 3.85))
+    limb(body, (0.30, 0, 3.30), head_c, 0.20, 0.26, 6)
+    ellipsoid(body, head_c, (0.40, 0.38, 0.42), 1)
+    box(body, (0.80, 0, 3.72), (0.26, 0.46, 0.30))
+
+    # Free arm reaching forward; hauling arm dragged back and down, the chain
+    # running off its fist.
+    chain(body, [(0.22, 0.68, 3.22), (0.86, 0.78, 2.86), (1.48, 0.62, 2.62)], [0.23, 0.19, 0.15], 5)
+    ellipsoid(body, (1.50, 0.62, 2.60), (0.19, 0.17, 0.19), 1)
+    haul = Vector((-0.50, -0.78, 2.28))
+    chain(body, [(0.20, -0.68, 3.22), (-0.22, -0.82, 2.74), haul], [0.23, 0.19, 0.15], 5)
+    ellipsoid(body, haul, (0.18, 0.17, 0.18), 1)
+
+    # TORN SAILCLOTH: a shroud hanging off each shoulder with a ragged hem,
+    # and a strip of it streaming off his back.
+    # A long shroud down his port side, a shorter torn one to starboard, and
+    # a strip of sail streaming off his back. All hems cut ragged.
+    plate(
+        fins,
+        [(-0.58, 3.34), (0.48, 3.26), (0.42, 2.20), (0.26, 2.50), (0.06, 1.70), (-0.16, 2.14), (-0.38, 1.50), (-0.60, 2.10)],
+        0.14,
+        "xz",
+        offset=(0, 0.80, 0),
+    )
+    plate(
+        fins,
+        [(-0.54, 3.30), (0.44, 3.22), (0.36, 2.46), (0.18, 2.70), (-0.02, 2.10), (-0.24, 2.56), (-0.52, 2.30)],
+        0.13,
+        "xz",
+        offset=(0, -0.78, 0),
+    )
+    plate(fins, [(-0.44, 3.18), (-1.42, 2.94), (-1.10, 2.44), (-1.72, 2.16), (-1.06, 1.86), (-0.38, 2.22)], 0.12, "xz", offset=(0, 0.12, 0))
+    box(fins, (0.08, 0, 2.34), (0.88, 1.24, 1.05), lean)  # the wrap round his chest
+
+    # THE ANCHOR, low and out to starboard so the drag stays in silhouette
+    # from the front too, with the chain sagging up to his fist.
+    # Tipped up on its flukes as it drags: shank near-upright, stock crossing
+    # near the top - the shape everyone knows.
+    _dragged_anchor(fins, (-2.18, -1.10, 0.22), (-1.72, -1.00, 1.72))
+    link_pts = [haul, (-0.94, -0.88, 2.02), (-1.38, -0.96, 1.94), (-1.66, -1.02, 1.96)]
+    chain(fins, link_pts, [0.06, 0.06, 0.06, 0.06], 4)
+    for p in link_pts[1:-1]:
+        ellipsoid(fins, p, (0.11, 0.11, 0.09), 0)
+
+    # Lightning scars: the strike that took him, forking down the chest and
+    # out along the hauling arm.
+    chain(marks, [(0.66, 0.10, 3.34), (0.72, -0.22, 2.86), (0.66, 0.14, 2.44), (0.70, -0.16, 1.98)], [0.05, 0.06, 0.06, 0.04], 4)
+    chain(marks, [(0.68, -0.22, 2.86), (0.58, -0.62, 2.62), (0.50, -0.86, 2.34)], [0.05, 0.05, 0.03], 4)
+    chain(marks, [(0.66, 0.14, 2.44), (0.52, 0.58, 2.24), (0.44, 0.80, 1.92)], [0.05, 0.05, 0.03], 4)
     for s in (-1, 1):
-        box(body, (0, s * 0.4, 0.8), (0.55, 0.5, 1.6))
-    box(body, (0, 0, 2.5), (0.95, 1.5, 1.9), Matrix.Rotation(math.radians(4), 4, "Y"))
-    box(body, (0.12, 0.05, 3.85), (0.75, 0.75, 0.8))
-    chain(body, [(0.2, 0.8, 3.2), (0.95, 1.0, 2.85), (1.65, 0.9, 3.05)], [0.24, 0.2, 0.16], 5)
-    chain(body, [(0.2, -0.8, 3.2), (0.9, -0.95, 2.65)], [0.24, 0.2], 5)
-    # The stormcloud: ragged tufts wreathing the shoulders and hips.
-    for px, py, pz, r in ((-0.3, 0.7, 3.4, 0.4), (-0.4, -0.6, 3.3, 0.36), (-0.2, 0.0, 1.7, 0.45), (0.3, 0.85, 1.6, 0.3)):
-        ellipsoid(fins, (px, py, pz), (r, r * 0.9, r * 0.7), 0)
-    # Lightning: jagged strokes across the torso and down one leg.
-    for cx, cz, ln, ang in ((0.5, 2.9, 0.5, 55), (0.52, 2.3, 0.4, -35), (0.3, 1.2, 0.45, 70)):
-        box(marks, (cx, 0.2, cz), (0.05, 0.05, ln), Matrix.Rotation(math.radians(ang), 4, "Y"))
-    chain(marks, [(0.4, -0.5, 2.7), (0.5, -0.7, 2.2), (0.42, -0.55, 1.8)], [0.04, 0.05, 0.03], 4)
-    for s in (-1, 1):
-        ellipsoid(eyes, (0.52, 0.05 + s * 0.22, 3.95), (0.09, 0.09, 0.11), 0)
+        ellipsoid(eyes, (0.86, s * 0.17, 3.92), (0.09, 0.09, 0.11), 0)
 
     return [
         finish("TempestRevenant_Body", body, MATS["TempestRevenant_Body"]),
@@ -4226,38 +5266,103 @@ def build_thunderlancemarlin():
     ]
 
 
-# ---- Stormcaller Djinn (gascloud): a storm given opinions - a swirl of
-# cloud rising into a crowned torso, arms conducting the weather. UPRIGHT.
+# ---- Stormcaller Djinn (gascloud): a storm that has taken a grudge. NO
+# MUNDANE ANATOMY BELOW THE RIBS - the torso is cloud-wrack that narrows into
+# a churning funnel where legs should be - and it brandishes a forked
+# lightning-rod two-handed, with the storm lit in its chest. UPRIGHT (stance).
+
+# The rod's axis: butt low on the port side, fork high to starboard, so the
+# brandish crosses the body and reads from the front as well as in profile.
+_ROD_BUTT = Vector((-0.85, 0.85, 2.95))
+_ROD_TIP = Vector((2.05, -0.45, 4.70))
+
+
+def _rod_at(t):
+    return _ROD_BUTT + (_ROD_TIP - _ROD_BUTT) * t
+
+
 def build_stormcallerdjinn():
     body = bmesh.new()
     fins = bmesh.new()
     eyes = bmesh.new()
     marks = bmesh.new()
 
-    # The swirl base rising into a torso.
-    for k in range(3):
-        a0 = (k / 3) * TAU
+    # The funnel: it stands on a spun point of cloud, not on legs.
+    revolve(body, [(-0.05, 0.08), (0.60, 0.42), (1.35, 0.58), (2.10, 0.50)], sides=9, axis="z", center=(0, 0, 0.15), squash=1.0, open_end=True)
+    # Wrack winding up around the funnel, and torn cloud orbiting the churn.
+    for k in range(4):
+        a0 = (k / 4) * TAU
         pts = []
-        for j in range(4):
-            t = j / 3
-            a = a0 + t * 2.8
-            r = 1.0 - 0.5 * t
-            pts.append((math.cos(a) * r, math.sin(a) * r, 0.25 + t * 1.6))
-        chain(body, pts, [0.32, 0.26, 0.2, 0.12], 5)
-    revolve(body, [(0.0, 0.75), (0.9, 0.85), (1.9, 0.6), (2.5, 0.4)], sides=8, axis="z", center=(0, 0, 1.7), squash=0.9, open_end=True)
-    ellipsoid(body, (0.1, 0, 4.6), (0.5, 0.45, 0.55), 1)
-    # Conducting arms flung wide.
+        for j in range(5):
+            t = j / 4
+            a = a0 + t * 3.4
+            r = 0.88 - 0.34 * t
+            pts.append((math.cos(a) * r, math.sin(a) * r, 0.30 + t * 1.85))
+        chain(body, pts, [0.24, 0.20, 0.16, 0.12, 0.07], 5)
+    for k in range(5):
+        a = (k / 5) * TAU + 0.4
+        rr = 1.02 - 0.10 * (k % 3)
+        ellipsoid(body, (math.cos(a) * rr, math.sin(a) * rr, 0.70 + 0.42 * (k % 3)), (0.30, 0.26, 0.20), 0)
+    # Cloud-wrack torso: a pinched waist opening into thunderhead shoulders -
+    # top-heavy, so it looms.
+    revolve(body, [(0.0, 0.48), (0.70, 0.95), (1.45, 1.22), (2.05, 0.72)], sides=9, axis="z", center=(0, 0, 2.20), squash=1.10, open_end=True)
+    # Rib-banks: bands of cloud curving round the chest, not stacked planks.
+    for cz, w, bulge in ((3.94, 0.86, 1.08), (3.48, 0.98, 1.20), (3.02, 0.78, 1.00)):
+        chain(
+            fins,
+            [(0.30, -w, cz - 0.12), (bulge, -w * 0.45, cz), (bulge + 0.06, 0, cz + 0.04), (bulge, w * 0.45, cz), (0.30, w, cz - 0.12)],
+            [0.07, 0.14, 0.16, 0.14, 0.07],
+            5,
+        )
+    # Thunderhead tufts riding the shoulders.
     for s in (-1, 1):
-        chain(body, [(0.1, s * 0.8, 3.8), (0.5, s * 1.5, 4.1), (0.9, s * 2.0, 4.5)], [0.24, 0.17, 0.08], 5)
-    # The crown: cloud horns; and thunderhead tufts at the shoulders.
+        ellipsoid(fins, (-0.18, s * 1.02, 4.10), (0.50, 0.44, 0.38), 0)
+
+    # The head, and a crown of cloud horns swept back off it.
+    ellipsoid(body, (0.15, 0, 4.85), (0.45, 0.42, 0.50), 1)
+    limb(body, (0.05, 0, 4.20), (0.15, 0, 4.70), 0.26, 0.30, 6)
     for s in (-1, 1):
-        cone(fins, (0.0, s * 0.3, 5.05), (-0.15, s * 0.55, 5.5), 0.14, 4)
-        ellipsoid(fins, (-0.2, s * 0.9, 4.0), (0.45, 0.4, 0.35), 0)
-    # Lightning: a bolt held crackling between the hands, veins up the swirl.
-    chain(marks, [(0.9, 2.0, 4.5), (1.1, 0.7, 4.9), (1.05, -0.6, 4.7), (0.9, -2.0, 4.5)], [0.05, 0.07, 0.07, 0.05], 4)
-    chain(marks, [(0.6, 0.4, 1.0), (0.75, 0.1, 2.2), (0.6, -0.3, 3.2)], [0.05, 0.06, 0.04], 4)
+        cone(fins, (0.02, s * 0.24, 5.10), (-0.32, s * 0.46, 5.62), 0.13, 4)
+        cone(fins, (0.06, s * 0.44, 5.00), (-0.20, s * 0.80, 5.38), 0.10, 4)
+
+    # BOTH HANDS ON THE ROD: lower fist by the ribs, upper fist raised and
+    # across - the brandish.
+    hand_lo, hand_hi = _rod_at(0.40), _rod_at(0.66)
+    chain(body, [(0.08, 0.92, 4.00), (0.34, 0.86, 3.76), hand_lo], [0.24, 0.19, 0.14], 5)
+    chain(body, [(0.08, -0.92, 4.00), (0.74, -0.86, 4.34), hand_hi], [0.24, 0.19, 0.14], 5)
+    for h in (hand_lo, hand_hi):
+        ellipsoid(body, h, (0.17, 0.17, 0.17), 1)
+
+    # THE LIGHTNING-ROD (shaft -> fins, live tips -> marks): a haft that ends
+    # in a three-pronged fork with an arc jumping between the outer prongs.
+    d = (_ROD_TIP - _ROD_BUTT).normalized()
+    side = d.cross(Vector((0, 0, 1))).normalized()
+    up = side.cross(d).normalized()
+    limb(fins, _ROD_BUTT, _ROD_TIP, 0.095, 0.075, 5)
+    ellipsoid(fins, _ROD_BUTT, (0.15, 0.15, 0.15), 1)
+    for t in (0.30, 0.55):
+        p = _rod_at(t)
+        ellipsoid(fins, p, (0.13, 0.12, 0.13), 0)
+    prongs = [
+        _ROD_TIP + d * 0.55 + up * 0.45,
+        _ROD_TIP + d * 0.78 + up * 0.02,
+        _ROD_TIP + d * 0.55 - up * 0.45,
+    ]
+    for p in prongs:
+        limb(fins, _ROD_TIP, p - (p - _ROD_TIP).normalized() * 0.24, 0.07, 0.05, 4)
+        cone(marks, p - (p - _ROD_TIP).normalized() * 0.26, p, 0.07, 4)
+    # The arc jumping the fork.
+    chain(marks, [prongs[0], prongs[1] + up * 0.16 + side * 0.10, prongs[2]], [0.04, 0.05, 0.04], 4)
+
+    # THE STORM IN ITS CHEST: a lit core standing proud of the wrack, with
+    # cracks of light running out of it and down into the funnel.
+    core = Vector((1.24, 0, 3.70))  # proud of the rib bands, not behind one
+    ellipsoid(marks, core, (0.32, 0.30, 0.34), 1)
+    for dy, dz in ((0.52, 0.42), (-0.52, 0.40), (0.30, -0.62), (-0.28, -0.64)):
+        chain(marks, [core, core + Vector((-0.14, dy, dz)), core + Vector((-0.34, dy * 1.7, dz * 1.9))], [0.06, 0.05, 0.02], 4)
+    chain(marks, [(0.70, 0.30, 2.90), (0.80, -0.10, 2.10), (0.62, 0.24, 1.20)], [0.05, 0.06, 0.03], 4)
     for s in (-1, 1):
-        ellipsoid(eyes, (0.52, s * 0.2, 4.7), (0.1, 0.09, 0.12), 0)
+        ellipsoid(eyes, (0.50, s * 0.20, 4.90), (0.11, 0.10, 0.13), 0)
 
     return [
         finish("StormcallerDjinn_Body", body, MATS["StormcallerDjinn_Body"]),
