@@ -5215,17 +5215,18 @@ ISLANDS = {
             # A gentle dome: ~7 studs at the heart easing to the standard
             # shallow shoreline, then the shared underwater skirt.
             "PROFILE": [
-                # Raised from the first 7-stud draft (user, step-1 review:
-                # "add some height"): a real ~22-stud rise at the heart that
-                # reads from the sea, rolling down through a mid shoulder to
-                # the same shallow shoreline so the tide still works.
-                (0.00, 22.0),
-                (0.20, 20.6),
-                (0.38, 17.2),
-                (0.55, 12.6),
-                (0.70, 7.8),
-                (0.82, 4.0),
-                (0.92, 1.6),
+                # FLAT by design (user, step-2 review: "remove the height...
+                # it should be flat so itll be easy to add the marsh") - the
+                # tall dome experiment is reverted. Barely any rise, like the
+                # pre-restart fen: a level ~4.6-stud interior the marsh step
+                # can flood with standing water, easing to the same shallow
+                # shoreline so the tide reads.
+                (0.00, 4.8),
+                (0.30, 4.7),
+                (0.55, 4.6),
+                (0.72, 4.2),
+                (0.84, 3.0),
+                (0.93, 1.4),
                 (1.00, 0.6),
                 (1.09, -1.8),
                 (1.28, SKIRT_BOTTOM),
