@@ -1838,14 +1838,165 @@ def build_swamp_smalls():
             yaw=rng.uniform(0, math.tau),
         )
 
+    # ---- the storytelling details (user: "smaller details like small logs
+    # laying horizontally... dont place too many but add some cool stuff").
+    # Sparse, hand-countable set pieces, all on land or the wet margins:
+    #   - FALLEN LOGS lying flat, a few with the very STUMP they snapped
+    #     off standing beside them, branch stubs in the air
+    #   - lone jagged-topped stumps
+    #   - two BROKEN trees: a tall stump with its upper trunk leaning from
+    #     the break down to the ground
+    #   - mushroom clusters riding logs, stumps and banks (the colour pop)
+    detail_spots = []  # (x, y, kind) - printed as HANDOFF so previews can find them
+
+    def ground_spot(tries=60):
+        for _ in range(tries):
+            theta = rng.uniform(0, math.tau)
+            u = rng.uniform(0.10, SWAMP_RIM_U + 0.03)
+            r_world = ring_radius(u, theta)
+            x, y = math.cos(theta) * r_world, math.sin(theta) * r_world
+            g = _swamp_height(x, y)
+            if SWAMP_WATER_Z + 0.15 <= g <= SWAMP_WATER_Z + 2.2 and clear(x, y, 5):
+                return x, y, g
+        return None
+
+    shroom_bm = bmesh.new()
+    shroom_anchors = []
+
+    def mushrooms(x, y, z, n):
+        for _ in range(n):
+            a = rng.uniform(0, math.tau)
+            d = rng.uniform(0.2, 1.4)
+            mx_, my_ = x + math.cos(a) * d, y + math.sin(a) * d
+            stem_h = rng.uniform(0.35, 0.7)
+            add_cone(shroom_bm, (mx_, my_, z), 0.12, 0.09, stem_h, sides=4)
+            add_cone(shroom_bm, (mx_, my_, z + stem_h), rng.uniform(0.35, 0.6), 0.06, rng.uniform(0.28, 0.45), sides=5)
+
+    def fallen_log(x, y, g, yaw, length, r0, stubs=True):
+        pitch = rng.uniform(1.46, 1.6)  # ~horizontal
+        tilt = (math.cos(yaw) * pitch, math.sin(yaw) * pitch)
+        add_cone(log_bm, (x, y, g + r0 * 0.55), r0, r0 * 0.7, length, sides=5, tilt=tilt)
+        axis = cone_axis(tilt, 0.0)
+        if stubs:
+            for _s in range(rng.randint(1, 3)):
+                t = rng.uniform(0.2, 0.85)
+                sx_, sy_, sz_ = x + axis.x * length * t, y + axis.y * length * t, g + r0 * 0.55 + axis.z * length * t
+                sa = rng.uniform(0, math.tau)
+                add_cone(
+                    log_bm,
+                    (sx_, sy_, sz_),
+                    r0 * 0.3,
+                    0.05,
+                    rng.uniform(0.8, 2.0),
+                    sides=3,
+                    tilt=(math.cos(sa) * rng.uniform(0.0, 0.6), math.sin(sa) * rng.uniform(0.0, 0.6)),
+                )
+        return axis
+
+    def stump(x, y, g, r0, h):
+        add_cone(log_bm, (x, y, g - 0.2), r0, r0 * 0.85, h + 0.2, sides=6)
+        for _k in range(rng.randint(2, 4)):  # the jagged broken rim
+            a = rng.uniform(0, math.tau)
+            add_cone(
+                log_bm,
+                (x + math.cos(a) * r0 * 0.55, y + math.sin(a) * r0 * 0.55, g + h - 0.1),
+                r0 * 0.22,
+                0.03,
+                rng.uniform(0.4, 1.0),
+                sides=3,
+                tilt=(math.cos(a) * 0.15, math.sin(a) * 0.15),
+            )
+
+    # Stump + its own fallen trunk beside it: "this tree came down".
+    pairs = 0
+    while pairs < 3:
+        spot = ground_spot()
+        if not spot:
+            break
+        pairs += 1
+        x, y, g = spot
+        yaw = rng.uniform(0, math.tau)
+        r0 = rng.uniform(0.7, 0.95)
+        stump(x, y, g, r0 * 1.15, rng.uniform(1.2, 2.0))
+        lx, ly = x + math.cos(yaw) * (r0 + 1.6), y + math.sin(yaw) * (r0 + 1.6)
+        fallen_log(lx, ly, _swamp_height(lx, ly), yaw, rng.uniform(8.0, 12.0), r0)
+        if rng.random() < 0.8:
+            shroom_anchors.append((x, y, g + rng.uniform(1.2, 1.9)))
+        detail_spots.append((x, y, "stump+log"))
+
+    # Lone fallen logs.
+    lone_logs = 0
+    while lone_logs < 6:
+        spot = ground_spot()
+        if not spot:
+            break
+        lone_logs += 1
+        x, y, g = spot
+        fallen_log(x, y, g, rng.uniform(0, math.tau), rng.uniform(6.0, 10.0), rng.uniform(0.55, 0.8))
+        if rng.random() < 0.5:
+            shroom_anchors.append((x, y, g + 0.9))
+        detail_spots.append((x, y, "log"))
+
+    # Lone stumps.
+    for _ in range(4):
+        spot = ground_spot()
+        if not spot:
+            break
+        x, y, g = spot
+        stump(x, y, g, rng.uniform(0.8, 1.2), rng.uniform(1.0, 2.2))
+        detail_spots.append((x, y, "stump"))
+
+    # Two BROKEN trees: tall shattered stump + the upper trunk leaning from
+    # the break down to the ground.
+    broken = 0
+    while broken < 2:
+        spot = ground_spot()
+        if not spot:
+            break
+        broken += 1
+        x, y, g = spot
+        bh = rng.uniform(3.5, 5.5)
+        r0 = rng.uniform(0.8, 1.1)
+        stump(x, y, g, r0, bh)
+        yaw = rng.uniform(0, math.tau)
+        lean = Vector((math.cos(yaw) * 0.92, math.sin(yaw) * 0.92, -0.4)).normalized()
+        add_cone(
+            log_bm,
+            (x + math.cos(yaw) * r0 * 0.4, y + math.sin(yaw) * r0 * 0.4, g + bh - 0.4),
+            r0 * 0.8,
+            r0 * 0.3,
+            rng.uniform(9.0, 13.0),
+            sides=5,
+            tilt=_tilt_toward(lean),
+        )
+        detail_spots.append((x, y, "broken"))
+
+    # Mushroom clusters: on the logs/stumps recorded above plus a few bank
+    # spots of their own.
+    for ax_, ay_, az_ in shroom_anchors:
+        mushrooms(ax_, ay_, az_, rng.randint(2, 4))
+    shroom_clusters = 0
+    while shroom_clusters < 6:
+        spot = ground_spot()
+        if not spot:
+            break
+        shroom_clusters += 1
+        x, y, g = spot
+        mushrooms(x, y, g, rng.randint(3, 6))
+        detail_spots.append((x, y, "mushrooms"))
+
+    for dx_, dy_, kind in detail_spots:
+        print(f"[island_gen] HANDOFF swamp detail: {kind} at rel X={dx_:.0f} Z={-dy_:.0f}")
+
     print(
-        f"[island_gen] swamp smalls: {pads} lily pads ({blooms} blooms) in {rafts} rafts, {logs} logs, {knees} knees, {stones} stones"
+        f"[island_gen] swamp smalls: {pads} pads ({blooms} blooms), {logs} shallow logs, {knees} knees, {stones} stones, {pairs} stump+log pairs, {lone_logs} fallen logs, {broken} broken trees, {shroom_clusters}+{len(shroom_anchors)} mushroom clusters"
     )
     return [
         object_from_bmesh("Swamp_Lilies", lily_bm, ["M_Lily"]),
         object_from_bmesh("Swamp_LilyBlooms", bloom_bm, ["M_LilyBloom"]),
         object_from_bmesh("Swamp_Logs", log_bm, ["M_RootWood"]),
         object_from_bmesh("Swamp_Stones", stone_bm, ["M_BogStone"]),
+        object_from_bmesh("Swamp_Mushrooms", shroom_bm, ["M_Mushroom"]),
     ]
 
 
@@ -5466,6 +5617,7 @@ ISLANDS = {
                 "M_LilyBloom": (0.88, 0.62, 0.75),  # the occasional pale-pink flower
                 "M_RootWood": (0.259, 0.208, 0.157),  # sunken logs + cypress knees
                 "M_BogStone": (0.353, 0.365, 0.333),  # mossy bog stones
+                "M_Mushroom": (0.78, 0.46, 0.28),  # toadstool clusters (colour pop)
                 "M_TrunkWood": (0.55, 0.42, 0.30),  # smooth tan trunks (the reference look)
                 "M_WillowLeaf": (0.20, 0.26, 0.17),  # drooping blades + hanging strands
             },

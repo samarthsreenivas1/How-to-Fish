@@ -333,6 +333,7 @@ local NON_COLLIDE = {
 	"Swamp_LilyBlooms",
 	"Swamp_Logs",
 	"Swamp_Stones",
+	"Swamp_Mushrooms",
 	"Swamp_TreeLeaves",
 	"Swamp_TreeLeaves2",
 	"Swamp_TreeLeaves3",
@@ -423,6 +424,7 @@ local MESH_COLOR = {
 	Swamp_LilyBlooms = Color3.fromRGB(224, 158, 191), -- the occasional pale-pink flower
 	Swamp_Logs = Color3.fromRGB(66, 53, 40), -- half-sunken logs + cypress knees
 	Swamp_Stones = Color3.fromRGB(90, 93, 85), -- mossy bog stones
+	Swamp_Mushrooms = Color3.fromRGB(199, 117, 71), -- toadstool clusters on logs and banks
 	-- The fen's trees, reference-style (user images): smooth tan curved
 	-- trunks - willows w/ drooping blades, bare crooked snags. Trunks are
 	-- deliberately NOT in NON_COLLIDE (a trunk is a real obstacle); the
