@@ -69,6 +69,26 @@ Ocean.TIDE = {
 	-- needs the same mesh regeneration noted above.
 }
 
+-- ---------------------------------------------------------------- interior waters
+
+-- Island pools that wear the SAME dress as the sea (user, 2026-08-27: every
+-- island's water must be visibly THE water - colour, texture, animation,
+-- "literally copy and paste the water from the original one"). These arrive
+-- as flat matte slabs baked into their island meshes; WorldService restyles
+-- each to the ocean's colour/material and lays the same caustics layers on
+-- its top face, and OceanController scrolls those layers and rides the part
+-- on the same tide as the sea. Deliberately NOT here:
+--   Volcano_Lava     - it's lava; LavaController's molten crust owns it.
+--   Maelstrom_Water  - the whirlpool spins with its own tinted caustics
+--                      (MaelstromVfxController owns its CFrame - a second
+--                      animator would fight it).
+Ocean.INTERIOR_WATER_NAMES = {
+	Swamp_Water = true,
+	Frostmaw_IceHoles = true,
+	Gloomtrench_DarkWater = true,
+	Wreckwater_Bay = true,
+}
+
 -- Texture layers on the water. One on purpose: two layers sliding against
 -- each other read as "too many overlapping animations" (user, 2026-08-22).
 -- The tile's lines are white; `color` tints them down to a pale blue so they

@@ -54,6 +54,13 @@ local oceanRest: CFrame? = nil
 -- { part, rest = CFrame }
 local bands = {}
 
+-- Interior island waters (Ocean.INTERIOR_WATER_NAMES - the fen pools, ice
+-- holes, gloom lake, wreck bay): each is dressed by the server exactly like
+-- the sea, and here it MOVES exactly like the sea too - its caustics layers
+-- join `layers` for the drift, and the part itself rides the same tide.
+-- { part, rest = CFrame }
+local waters = {}
+
 local elapsed = 0
 
 -- ---------------------------------------------------------------- tide
@@ -76,10 +83,47 @@ local function trackFoam(part: BasePart)
 	table.insert(bands, { part = part, rest = part.CFrame })
 end
 
-local function scanFoam(world: Instance)
+-- Adopt one interior water part: remember its resting pose for the tide and
+-- pick up its caustics layers for the drift. The server creates the layers
+-- with the part, so they normally replicate together; the deferred rescan
+-- catches a Texture that arrives a beat later.
+local function trackWater(part: BasePart)
+	for _, entry in waters do
+		if entry.part == part then
+			return
+		end
+	end
+	table.insert(waters, { part = part, rest = part.CFrame })
+
+	local function adoptLayers()
+		for _, config in Ocean.LAYERS do
+			local texture = part:FindFirstChild(config.name)
+			if texture and texture:IsA("Texture") then
+				local known = false
+				for _, layer in layers do
+					if layer.texture == texture then
+						known = true
+						break
+					end
+				end
+				if not known then
+					table.insert(layers, { texture = texture, config = config })
+				end
+			end
+		end
+	end
+	adoptLayers()
+	task.delay(3, adoptLayers)
+end
+
+local function scanWorld(world: Instance)
 	for _, descendant in world:GetDescendants() do
-		if descendant:IsA("BasePart") and string.find(descendant.Name, FOAM_MATCH, 1, true) then
-			trackFoam(descendant)
+		if descendant:IsA("BasePart") then
+			if string.find(descendant.Name, FOAM_MATCH, 1, true) then
+				trackFoam(descendant)
+			elseif Ocean.INTERIOR_WATER_NAMES[descendant.Name] then
+				trackWater(descendant)
+			end
 		end
 	end
 end
@@ -128,6 +172,15 @@ local function step(dt: number)
 			entry.part.CFrame = entry.rest + Vector3.new(0, lift, 0)
 		end
 	end
+
+	-- The interior waters breathe with the same swell. Visual-only, exactly
+	-- like the sea plane: gameplay keeps using the surface Y the server
+	-- probed, and the lift is too small to disagree visibly.
+	for _, entry in waters do
+		if entry.part.Parent then
+			entry.part.CFrame = entry.rest + Vector3.new(0, lift, 0)
+		end
+	end
 end
 
 -- ---------------------------------------------------------------- lifecycle
@@ -155,9 +208,10 @@ function OceanController.init()
 		end
 	end
 
-	-- The island (and so the foam rim) may still be replicating, so take what
-	-- is there now and pick up the rest as it arrives.
-	scanFoam(world)
+	-- The islands (and so the foam rims and interior waters) may still be
+	-- replicating, so take what is there now and pick up the rest as it
+	-- arrives.
+	scanWorld(world)
 
 	-- If the rim never turns up, the water still moves but the shoreline
 	-- lines sit still - which looks like a bug and is easy to misread as the
@@ -178,12 +232,21 @@ function OceanController.init()
 	end)
 
 	world.DescendantAdded:Connect(function(descendant)
-		if descendant:IsA("BasePart") and string.find(descendant.Name, FOAM_MATCH, 1, true) then
+		if not descendant:IsA("BasePart") then
+			return
+		end
+		local isFoam = string.find(descendant.Name, FOAM_MATCH, 1, true) ~= nil
+		local isWater = Ocean.INTERIOR_WATER_NAMES[descendant.Name] == true
+		if isFoam or isWater then
 			-- Defer a frame: a part's Size/CFrame can still be settling on the
 			-- frame it appears, and those are captured as its resting pose.
 			task.defer(function()
 				if descendant.Parent then
-					trackFoam(descendant)
+					if isFoam then
+						trackFoam(descendant)
+					else
+						trackWater(descendant)
+					end
 				end
 			end)
 		end

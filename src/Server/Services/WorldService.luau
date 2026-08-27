@@ -224,6 +224,14 @@ end
 -- y = 0, and the underwater skirt bottoms out at exactly SKIRT_BOTTOM. That
 -- bottom is what we align on, so the imported model can sit anywhere in the
 -- file and still land with its waterline matching the ocean.
+--
+-- Islands whose round-2 meshes carry geometry BELOW the skirt (Wreckwater's
+-- seabed dunes and sunken keels, Gloomtrench's trench base) declare their true
+-- authored bottom as `meshBottom` in Islands.luau; aligning on that instead
+-- keeps the authored waterline on the ocean. Without it the bbox-bottom pin
+-- hoisted the whole island by the overshoot - Wreckwater rode 9.3 studs high
+-- and every hulk and piece of flotsam hung in the air (user, 2026-08-27:
+-- "floating ships and litter").
 
 local SKIRT_BOTTOM = -9
 
@@ -442,6 +450,24 @@ local MESH_MATERIAL = {
 local function applyMeshColors(island: Model)
 	for _, descendant in island:GetDescendants() do
 		if descendant:IsA("MeshPart") then
+			-- Interior island waters wear the ocean's exact dress (user,
+			-- 2026-08-27): same colour, material, reflectance and caustics
+			-- layers as the sea plane, so a fen pool or an ice hole reads as
+			-- WATER, not a painted slab. Takes precedence over the island
+			-- palette; OceanController scrolls the layers and tides the part.
+			if Ocean.INTERIOR_WATER_NAMES[descendant.Name] then
+				descendant.Color = Ocean.COLOR
+				descendant.Material = Enum.Material.SmoothPlastic
+				descendant.Reflectance = Ocean.REFLECTANCE
+				local appearance = descendant:FindFirstChildWhichIsA("SurfaceAppearance")
+				if appearance then
+					appearance:Destroy()
+				end
+				if not descendant:FindFirstChild(Ocean.LAYERS[1].name) then
+					addWaterLayers(descendant)
+				end
+				continue
+			end
 			local color = MESH_COLOR[descendant.Name]
 			if color then
 				descendant.Color = color
@@ -606,7 +632,10 @@ local function placeIsland(parent: Instance, id: string, entry): boolean
 	local anchor = if base and base:IsA("BasePart") then base.Position else boxCFrame.Position
 
 	local pos = entry.worldPosition
-	local targetCenterY = SKIRT_BOTTOM + boxSize.Y / 2
+	-- Align the model's bbox bottom to its authored minimum (meshBottom, from
+	-- the pack build's HANDOFF lines) so authored z=0 lands exactly on the
+	-- ocean; SKIRT_BOTTOM covers every island whose lowest point IS the skirt.
+	local targetCenterY = (entry.meshBottom or SKIRT_BOTTOM) + boxSize.Y / 2
 	local delta = Vector3.new(pos.X - anchor.X, targetCenterY - boxCFrame.Position.Y, pos.Z - anchor.Z)
 	island:PivotTo(island:GetPivot() + delta)
 
