@@ -14,19 +14,33 @@
 -- numbers - so a second island's boss is another entry here with a
 -- different mix, not new engine code.
 --
--- Attack names are the handlers in CreatureService.BOSS_ATTACKS:
---   snap    lunges forward and bites (a cone in front)
---   tail    lashes the tail round (everyone within its radius, all round)
---   volley  spits a fan of brine globs that land around the player
---   slam    rears up and crashes down: a shockwave ring
---   pull    the lure flares and drags players toward the maw (then snaps)
---   brood   coughs up minions (other creature rows) thrown at the player
---   dive    submerges (untargetable), tunnels under the player, locks under
---           their feet for `lock` seconds (ring tell), bursts up
---   spines  fires a volley of spines that rain down around the player
+-- An attack's engine behaviour is `handler` (CreatureService.BOSS_ATTACKS);
+-- without one, the attack's NAME is the handler - Brinejaw's original book
+-- works that way. The primitives (each parameterized per boss, so no two
+-- islands' movesets share numbers, patterns, or skins):
+--   snap       lunges forward and bites (a cone in front)
+--   tail       lashes the whole body round (a ring)
+--   volley     spits a fan of globs that land around the player
+--   slam       rears up and crashes down: a shockwave ring
+--   pull       drags players toward the maw for its duration
+--   brood      coughs up minions (other creature rows)
+--   dive       submerges, tunnels under the player, ring tell, bursts up
+--              (`shatter` leaves a lingering pool at the burst)
+--   spines     rains a volley of spines around the player
+--   charge     rushes a line (leap / landing slam / hazard trail options)
+--   beam       a sustained jet swept across an arc
+--   poolvolley volley whose globs leave lingering hazard pools
+--   barrage    telegraphed ground strikes in a pattern: scatter / everyone /
+--              line (+fan) / wall / rings (expanding annulus novas)
+--   snaretrap  marks every player's feet; whoever stays is rooted
+--   decoys     glowing lures / drifting mines that blow on proximity
+--   phantom    lights-out vanish, re-emerges at a flank mid-bite
+--   undertow   a long arena-wide drag while wreckage rains
+--   anchortoss hurls an anchor that CHAINS whoever it lands on to the spot
 -- Every attack has windup (the tell) / duration / recover times, its own
--- cooldown, and its damage range; enrage (below `enrageBelow` health)
--- shortens cooldowns and raises damage.
+-- cooldown, and its damage range; `tell` borrows a stock telegraph shape,
+-- `skin` colors the client's effects per island; enrage (below
+-- `enrageBelow` health) shortens cooldowns and raises damage.
 
 local Bosses = {}
 
@@ -198,11 +212,11 @@ Bosses.items.brinejaw = {
 -- Pyrelisk, the Caldera Wyrm: an obsidian-scaled magma serpent that rises
 -- out of the boiling shallows off the shore jetty (the ponds move with every
 -- mesh regen, so the arena sits in the sea off the dock - the one spot the
--- generator keeps stable; Session 4 can move it into the largest pond).
--- Summoned by casting Caldera's Call (Bait.luau). Three phases: bites and
--- broadsides, then it dives the shallows and coughs up oozes - splitters, so
--- the adds multiply - then it enrages and rains embers. Tuned for the FINAL
--- slot-4 band (L22-28, ~40k HP on the creature row; docs/revamp-plan.md).
+-- generator keeps stable). Summoned by casting Caldera's Call (Bait.luau).
+-- Its fight is HEAT MANAGEMENT: lava-wake charges, hardening slag pools and
+-- summit vent-storms burn the standable ground away all fight (see the
+-- phases block). Tuned for the FINAL slot-4 band (L22-28, ~40k HP on the
+-- creature row; docs/revamp-plan.md).
 Bosses.items.pyrelisk = {
 	id = "pyrelisk",
 	name = "Pyrelisk, the Caldera Wyrm",
@@ -232,13 +246,22 @@ Bosses.items.pyrelisk = {
 	enrageBelow = 0.3,
 	enrageCooldownMult = 0.55,
 	enrageDamageMult = 1.4,
+	-- THE FIGHT: heat management. Everything Pyrelisk does sets the arena on
+	-- fire - the wake of its charge, its spit, the summit's vent-storms -
+	-- so the space you can stand in shrinks all fight and the dodge is
+	-- always "where WON'T be burning in two seconds". The magmajet beam
+	-- sweeps you across whatever ground is left.
 	phases = {
-		{ below = 1.0, attacks = { "snap", "volley", "slam" } },
-		{ below = 0.6, attacks = { "snap", "volley", "slam", "dive", "brood", "pull" } },
-		{ below = 0.3, attacks = { "snap", "slam", "dive", "brood", "pull", "tail", "spines", "spines" } },
+		{ below = 1.0, attacks = { "maul", "slagspit", "lavawake" } },
+		{ below = 0.6, attacks = { "maul", "slagspit", "lavawake", "magmajet", "ventstorm" } },
+		{ below = 0.3, attacks = { "maul", "lavawake", "magmajet", "ventstorm", "cinderring", "cinderring" } },
 	},
 	attacks = {
-		snap = {
+		-- The obsidian jaws: fast, short, its melee punish.
+		maul = {
+			handler = "snap",
+			tell = "snap",
+			skin = "lava",
 			windup = 0.7,
 			duration = 0.35,
 			recover = 0.55,
@@ -248,84 +271,93 @@ Bosses.items.pyrelisk = {
 			cone = math.rad(65),
 			damage = { 60, 85 },
 		},
-		-- The magma-glob broadside: its opening ranged pressure, so phase 1
-		-- already teaches "keep moving" the way Brinejaw's volley does later.
-		volley = {
+		-- Magma spit whose globs harden into burning pools where they land.
+		slagspit = {
+			handler = "poolvolley",
+			skin = "lava",
 			windup = 0.7,
 			duration = 0.9,
 			recover = 0.5,
-			cooldown = 3.0,
-			count = 6,
-			spread = 12,
+			cooldown = 5.5,
+			count = 4,
+			spread = 11,
 			flight = 1.0,
-			stagger = 0.13,
-			radius = 8,
-			damage = { 24, 34 },
+			stagger = 0.18,
+			radius = 7,
+			damage = { 22, 32 },
+			pool = { radius = 6.5, duration = 6.5, min = 8, max = 12, skin = "lava" },
 		},
-		slam = { windup = 1.6, duration = 0.3, recover = 0.85, cooldown = 4.2, radius = 26, damage = { 60, 85 } },
-		-- Swims the boiling shallows under the jetty after the player's live
-		-- position, then locks and bursts - Brinejaw's dive with a lava wake.
-		dive = {
-			windup = 0.7,
-			duration = 2.6,
-			lock = 0.9,
-			recover = 0.9,
-			cooldown = 7.5,
-			speed = 32,
-			radius = 13,
-			damage = { 60, 85 },
+		-- The signature: it surges across the shallows in a straight line and
+		-- its wake IS lava - a burning fence laid straight through the arena.
+		lavawake = {
+			handler = "charge",
+			skin = "lava",
+			windup = 1.0,
+			duration = 1.1,
+			recover = 0.8,
+			cooldown = 6.5,
+			length = 36,
+			width = 10,
+			damage = { 58, 80 },
+			trail = { every = 7, radius = 6.5, duration = 7, min = 10, max = 14, skin = "lava" },
 		},
-		-- Coughs up magma oozes: splitters, so every add the players ignore
-		-- becomes two. The swarm pressure IS this boss's signature.
-		brood = {
+		-- Rears up and hoses a magma jet across a 120-degree arc; run WITH
+		-- the sweep or eat ticks.
+		magmajet = {
+			handler = "beam",
+			skin = "lava",
+			windup = 0.9,
+			duration = 2.2,
+			recover = 0.7,
+			cooldown = 8.0,
+			sweep = 120,
+			cone = 16,
+			range = 30,
+			tick = 0.3,
+			damage = { 12, 16 },
+		},
+		-- The mountain answers: the summit rains bombs on marked rings - one
+		-- under every player plus a scatter, arena-wide.
+		ventstorm = {
+			handler = "barrage",
+			skin = "lava",
 			windup = 0.8,
-			duration = 0.4,
+			duration = 2.2,
 			recover = 0.6,
 			cooldown = 10.0,
-			count = 3,
-			rows = { "magma_ooze", "ember_swarm", "fumarole" },
+			pattern = "everyone",
+			extra = 2,
+			spread = 12,
+			arm = 1.2,
+			radius = 7,
+			damage = { 40, 55 },
 		},
-		pull = {
-			windup = 0.5,
-			duration = 2.4,
-			recover = 0.2,
-			cooldown = 6.5,
-			radius = 65,
-			strength = 36,
-			follow = "snap",
-		},
-		tail = {
-			windup = 0.9,
-			duration = 0.45,
-			recover = 0.65,
-			cooldown = 2.4,
-			radius = 21,
-			damage = { 50, 70 },
-		},
-		-- The summit answers: embers rain down around the player. Skinned as
-		-- an eruption by the client; numbers are Brinejaw's spines.
-		spines = {
-			windup = 0.8,
-			duration = 1.6,
-			recover = 0.5,
-			cooldown = 5.0,
-			count = 10,
-			spread = 14,
-			flight = 0.8,
-			radius = 6,
-			damage = { 30, 42 },
+		-- Concentric fire novas detonating outward from its body: step across
+		-- a band before it blows, or stand in the gaps.
+		cinderring = {
+			handler = "barrage",
+			skin = "lava",
+			windup = 1.2,
+			duration = 2.2,
+			recover = 0.7,
+			cooldown = 9.0,
+			pattern = "rings",
+			rings = { 9, 16, 24, 32 },
+			ringWidth = 5,
+			interval = 0.5,
+			arm = 0.55,
+			damage = { 42, 58 },
 		},
 	},
 }
 
 -- ============================================================ Blackmire Fen
 -- Old Gnashroot, the Fen Tyrant: a moss-backed snapping horror - half gator,
--- half drowned oak - that heaves out of the murk off the fen's jetty.
--- Summoned by casting Tyrant's Call (Bait.luau), the Brinejaw ritual. Three
--- phases per the revamp plan: bites and sweeps, then it DIVES into the peat
--- murk and comes up under you while its brood (toads, gulls, leeches) swarms
--- and its roots drag you in, then it enrages into volleys and rains of
--- splintered root-spines.
+-- half drowned oak - that heaves out of the arena pond in the fen's heart.
+-- Summoned by casting Tyrant's Call (Bait.luau). Its fight is THE FEN
+-- GRABBING YOU: root snares spring under your feet, its death-roll churns
+-- the peat into clinging sludge, and root-spear waves march the banks - the
+-- whole island is its body, and standing still is what kills you.
 Bosses.items.old_gnashroot = {
 	id = "old_gnashroot",
 	name = "Old Gnashroot, the Fen Tyrant",
@@ -353,96 +385,104 @@ Bosses.items.old_gnashroot = {
 	enrageBelow = 0.3,
 	enrageCooldownMult = 0.55,
 	enrageDamageMult = 1.4,
+	-- THE FIGHT: mobility denial. The snares root you, the sludge slows you,
+	-- and everything that actually hurts - the death-roll, the root wave -
+	-- is dodged by moving. Get grabbed at the wrong beat and the next thing
+	-- through is what kills you.
 	phases = {
-		{ below = 1.0, attacks = { "snap", "tail", "slam" } },
-		{ below = 0.65, attacks = { "snap", "tail", "slam", "dive", "brood", "pull" } },
-		{ below = 0.3, attacks = { "snap", "slam", "dive", "brood", "pull", "volley", "spines", "spines" } },
+		{ below = 1.0, attacks = { "gnash", "deathroll", "bogspit" } },
+		{ below = 0.65, attacks = { "gnash", "deathroll", "bogspit", "rootwave", "snaretrap" } },
+		{ below = 0.3, attacks = { "gnash", "deathroll", "rootwave", "rootwave", "snaretrap", "bogspit" } },
 	},
 	attacks = {
-		snap = {
+		-- The old jaws: its close-range punish.
+		gnash = {
+			handler = "snap",
+			tell = "snap",
+			skin = "peat",
 			windup = 0.75,
 			duration = 0.35,
 			recover = 0.55,
 			cooldown = 1.8,
-			lunge = 14,
-			radius = 17,
+			lunge = 13,
+			radius = 16,
 			cone = math.rad(65),
 			damage = { 58, 82 },
 		},
-		tail = {
-			windup = 0.9,
-			duration = 0.45,
-			recover = 0.65,
-			cooldown = 2.4,
-			radius = 21,
-			damage = { 48, 68 },
+		-- The gator classic, island-sized: it throws itself into a rolling
+		-- charge across the pond, and the churned peat it leaves behind is a
+		-- clinging sludge lane that slows anyone wading it.
+		deathroll = {
+			handler = "charge",
+			skin = "peat",
+			windup = 1.0,
+			duration = 1.1,
+			recover = 0.85,
+			cooldown = 6.0,
+			length = 34,
+			width = 10,
+			damage = { 55, 76 },
+			trail = { every = 7, radius = 6.5, duration = 6, min = 5, max = 8, slow = 0.55, skin = "peat" },
 		},
-		slam = { windup = 1.6, duration = 0.3, recover = 0.85, cooldown = 4.2, radius = 26, damage = { 58, 82 } },
-		-- Slips under the peat murk after your live position, locks under
-		-- your feet, and the fen floor erupts.
-		dive = {
+		-- Lobbed gouts of peat that linger as sucking sludge pools.
+		bogspit = {
+			handler = "poolvolley",
+			skin = "peat",
 			windup = 0.7,
-			duration = 2.6,
-			lock = 0.9,
-			recover = 0.9,
-			cooldown = 7.5,
-			speed = 31,
-			radius = 13,
-			damage = { 58, 82 },
-		},
-		-- The fen answers: toads, gulls and leeches - the gulls keep flying
-		-- once the boss is dead, which is the point of learning them here.
-		brood = {
-			windup = 0.8,
-			duration = 0.4,
-			recover = 0.6,
-			cooldown = 10.0,
-			count = 4,
-			rows = { "croakjaw_toad", "bog_gull", "mire_leech" },
-		},
-		pull = {
-			windup = 0.5,
-			duration = 2.4,
-			recover = 0.2,
-			cooldown = 6.5,
-			radius = 65,
-			strength = 36,
-			follow = "snap",
-		},
-		-- A fan of peat-black globs.
-		volley = {
-			windup = 0.7,
-			duration = 0.9,
+			duration = 0.8,
 			recover = 0.5,
-			cooldown = 3.0,
-			count = 6,
-			spread = 12,
+			cooldown = 5.5,
+			count = 3,
+			spread = 10,
 			flight = 1.0,
-			stagger = 0.13,
-			radius = 8,
-			damage = { 24, 34 },
+			stagger = 0.2,
+			radius = 7,
+			damage = { 20, 30 },
+			pool = { radius = 7, duration = 6, min = 5, max = 9, slow = 0.5, skin = "peat" },
 		},
-		-- Splintered root-spines rain around the player.
-		spines = {
-			windup = 0.8,
+		-- A rank of root-spears erupts from the murk and marches straight at
+		-- you - sidestep the line, don't outrun it.
+		rootwave = {
+			handler = "barrage",
+			skin = "root",
+			windup = 0.9,
 			duration = 1.6,
+			recover = 0.6,
+			cooldown = 6.5,
+			pattern = "line",
+			count = 7,
+			spacing = 5.5,
+			startAt = 8,
+			interval = 0.16,
+			arm = 0.5,
+			radius = 5,
+			damage = { 30, 44 },
+		},
+		-- ITS gimmick: grasping roots coil up under every player's feet -
+		-- the ring is the escape window; whoever is still inside when they
+		-- close is ROOTED to the spot while the fight keeps coming.
+		snaretrap = {
+			handler = "snaretrap",
+			skin = "root",
+			windup = 0.8,
+			duration = 0.5,
 			recover = 0.5,
-			cooldown = 5.0,
-			count = 10,
-			spread = 14,
-			flight = 0.8,
+			cooldown = 9.0,
+			arm = 1.1,
 			radius = 6,
-			damage = { 30, 42 },
+			damage = { 24, 34 },
+			snare = 1.7,
 		},
 	},
 }
 
 -- ============================================================ Frostmaw Reach
 -- Rimefang, the Glacier Serpent: a white serpent that hunts UNDER the ice
--- sheet - its dive is the island's own ice-hole fishing turned against you.
--- Summoned by casting Glacier's Call. Three phases: bites and ice-shard
--- volleys, then it tunnels under the sheet and calls the cold's brood, then
--- the sky whites out and icicles come down with the slams.
+-- sheet - its undersheet dive is the island's own ice-hole fishing turned
+-- against you. Summoned by casting Glacier's Call. Its fight is THE COLD
+-- ITSELF: the breath and the frost slicks it leaves everywhere chill you
+-- slow, and a slowed player can't clear the bergfall rings or the shard
+-- novas in time - warmth (distance) is the resource you manage.
 Bosses.items.rimefang = {
 	id = "rimefang",
 	name = "Rimefang, the Glacier Serpent",
@@ -469,13 +509,25 @@ Bosses.items.rimefang = {
 	enrageBelow = 0.3,
 	enrageCooldownMult = 0.55,
 	enrageDamageMult = 1.4,
+	-- THE FIGHT: stay warm, stay moving. Chill stacks up from the breath and
+	-- the slicks its hunts leave on the surface; the punishes (bergfall,
+	-- shardnova) are generous to a full-speed player and lethal to a chilled
+	-- one. The undersheet hunt is weighted double from phase 2 - the island's
+	-- fishing holes, hunting back.
 	phases = {
-		{ below = 1.0, attacks = { "snap", "tail", "volley" } },
-		{ below = 0.65, attacks = { "snap", "tail", "volley", "dive", "dive", "brood" } },
-		{ below = 0.3, attacks = { "snap", "volley", "dive", "brood", "slam", "spines", "spines" } },
+		{ below = 1.0, attacks = { "bite", "frostbreath", "breach" } },
+		{ below = 0.65, attacks = { "bite", "frostbreath", "breach", "undersheet", "undersheet", "bergfall" } },
+		{
+			below = 0.3,
+			attacks = { "bite", "frostbreath", "undersheet", "undersheet", "bergfall", "shardnova", "shardnova" },
+		},
 	},
 	attacks = {
-		snap = {
+		-- The needle jaws.
+		bite = {
+			handler = "snap",
+			tell = "snap",
+			skin = "frost",
 			windup = 0.7,
 			duration = 0.35,
 			recover = 0.55,
@@ -485,69 +537,100 @@ Bosses.items.rimefang = {
 			cone = math.rad(65),
 			damage = { 58, 82 },
 		},
-		tail = {
+		-- Rears up and breathes a freezing jet across an arc: modest damage,
+		-- but everything it touches is CHILLED - and slow is how you die to
+		-- the rest of the kit.
+		frostbreath = {
+			handler = "beam",
+			skin = "frost",
 			windup = 0.9,
-			duration = 0.45,
-			recover = 0.65,
-			cooldown = 2.4,
-			radius = 21,
-			damage = { 48, 68 },
+			duration = 2.2,
+			recover = 0.6,
+			cooldown = 7.0,
+			sweep = 100,
+			cone = 18,
+			range = 26,
+			tick = 0.35,
+			damage = { 9, 13 },
+			chill = { mult = 0.55, duration = 1.4 },
 		},
-		-- Ice-shard volley: frozen spray that lands around the player.
-		volley = {
-			windup = 0.7,
-			duration = 0.9,
-			recover = 0.5,
-			cooldown = 3.0,
-			count = 6,
-			spread = 12,
-			flight = 1.0,
-			stagger = 0.13,
-			radius = 8,
-			damage = { 24, 34 },
+		-- Launches clear of the water and arcs across the arena - airborne
+		-- mid-leap, then the crash-down ring; the wake it skids out is a
+		-- frost slick that chills anyone crossing it.
+		breach = {
+			handler = "charge",
+			skin = "frost",
+			windup = 1.1,
+			duration = 1.0,
+			recover = 0.9,
+			cooldown = 7.5,
+			length = 40,
+			width = 9,
+			leap = 6,
+			slamRadius = 12,
+			damage = { 55, 78 },
+			trail = { every = 8, radius = 6, duration = 6, slow = 0.5, skin = "frost" },
 		},
-		-- THE signature: it tunnels under the ice sheet after your live
-		-- position and bursts up through it - weighted double in phase 2.
-		dive = {
+		-- THE signature: it hunts under the ice sheet after your live
+		-- position, bursts up through it, and the shattered surface stays
+		-- behind as a chilling slick. Weighted double from phase 2.
+		undersheet = {
+			handler = "dive",
+			tell = "dive",
+			skin = "frost",
 			windup = 0.6,
-			duration = 2.6,
-			lock = 0.9,
+			duration = 2.4,
+			lock = 0.8,
 			recover = 0.9,
 			cooldown = 6.0,
-			speed = 34,
+			speed = 36,
 			radius = 13,
 			damage = { 58, 82 },
+			shatter = { radius = 9, duration = 5.5, slow = 0.5, skin = "frost" },
 		},
-		brood = {
+		-- The glacier calves: bergs come down on marked rings around you -
+		-- a long fall you can read, unless you're chilled.
+		bergfall = {
+			handler = "barrage",
+			skin = "frost",
 			windup = 0.8,
-			duration = 0.4,
+			duration = 2.0,
 			recover = 0.6,
-			cooldown = 10.0,
-			count = 3,
-			rows = { "frostbite_pup", "iceshard_crab", "aurora_jelly" },
+			cooldown = 8.0,
+			pattern = "scatter",
+			count = 5,
+			spread = 15,
+			arm = 1.3,
+			radius = 8,
+			damage = { 45, 62 },
 		},
-		slam = { windup = 1.6, duration = 0.3, recover = 0.85, cooldown = 4.2, radius = 26, damage = { 58, 82 } },
-		-- Icicle rain: the phase-3 whiteout answers every slam.
-		spines = {
-			windup = 0.8,
-			duration = 1.6,
-			recover = 0.5,
-			cooldown = 5.0,
-			count = 10,
-			spread = 14,
-			flight = 0.8,
-			radius = 6,
-			damage = { 30, 42 },
+		-- Expanding rings of shattering ice detonate outward from its body:
+		-- cross each band before it blows.
+		shardnova = {
+			handler = "barrage",
+			skin = "frost",
+			windup = 1.2,
+			duration = 2.0,
+			recover = 0.7,
+			cooldown = 9.0,
+			pattern = "rings",
+			rings = { 10, 18, 26 },
+			ringWidth = 5,
+			interval = 0.55,
+			arm = 0.55,
+			damage = { 40, 56 },
 		},
 	},
 }
 
 -- ============================================================ Gloomtrench
 -- Noctyss, the Trench Mother: an abyssal angler-queen whose lure is the only
--- light in the arena. She opens with the pull - the lure flares and drags
--- you toward the maw - and in deep phases she dives the black water and
--- calls her brood. Enrage is the dark itself: the client douses her lure
--- between attacks so every tell starts from nothing.
+-- light in the arena. Her fight is LIGHT ITSELF: the lure that drags you in
+-- is also the only thing you can see by; she plants FALSE lures that
+-- detonate on approach, her ink blots your sight where it bursts, and her
+-- phantom hunts start by dousing every light in the water. Enrage is the
+-- dark's answer: the client douses her lure between attacks so every tell
+-- starts from nothing.
 Bosses.items.noctyss = {
 	id = "noctyss",
 	name = "Noctyss, the Trench Mother",
@@ -571,84 +654,128 @@ Bosses.items.noctyss = {
 	enrageBelow = 0.3,
 	enrageCooldownMult = 0.55,
 	enrageDamageMult = 1.4,
+	-- THE FIGHT: trust the right light. The real lure drags you in (then the
+	-- jaws follow); the false lights blow up when approached; the ink blots
+	-- your screen exactly where you'd want to watch her from; and when every
+	-- light goes out at once, she's already under you.
 	phases = {
-		{ below = 1.0, attacks = { "pull", "snap", "volley" } },
-		{ below = 0.6, attacks = { "pull", "snap", "volley", "dive", "brood" } },
-		{ below = 0.3, attacks = { "pull", "snap", "volley", "dive", "brood", "spines", "slam", "slam" } },
+		{ below = 1.0, attacks = { "lurepull", "needlefangs", "inkveil" } },
+		{ below = 0.6, attacks = { "lurepull", "needlefangs", "inkveil", "falselight", "phantom" } },
+		{
+			below = 0.3,
+			attacks = { "lurepull", "needlefangs", "phantom", "phantom", "falselight", "abysscall", "abysscall" },
+		},
 	},
 	attacks = {
 		-- The signature, and her OPENER: the lure flares - the one light in
 		-- the water - and drags you toward the maw, then the jaws follow.
-		pull = {
+		lurepull = {
+			handler = "pull",
+			tell = "pull",
+			skin = "lure",
 			windup = 0.5,
 			duration = 2.4,
 			recover = 0.2,
 			cooldown = 5.5,
 			radius = 65,
 			strength = 40,
-			follow = "snap",
+			follow = "needlefangs",
 		},
-		snap = {
-			windup = 0.65,
+		-- The palisade of needles: fast, short-tell - the punish waiting at
+		-- the end of every pull.
+		needlefangs = {
+			handler = "snap",
+			tell = "snap",
+			skin = "ink",
+			windup = 0.55,
 			duration = 0.35,
 			recover = 0.55,
-			cooldown = 1.8,
+			cooldown = 1.6,
 			lunge = 14,
 			radius = 17,
 			cone = math.rad(65),
 			damage = { 62, 88 },
 		},
-		-- Ink volley: blots of freezing dark that land around the player.
-		volley = {
-			windup = 0.7,
-			duration = 0.9,
-			recover = 0.5,
-			cooldown = 3.0,
-			count = 6,
-			spread = 12,
-			flight = 1.0,
-			stagger = 0.13,
-			radius = 8,
-			damage = { 26, 36 },
-		},
-		dive = {
-			windup = 0.7,
-			duration = 2.6,
-			lock = 0.9,
-			recover = 0.9,
-			cooldown = 7.0,
-			speed = 34,
-			radius = 13,
-			damage = { 62, 88 },
-		},
-		brood = {
+		-- Ink shells burst around you: damage, a lingering blot of freezing
+		-- dark on the water, and a BLINDING splash of black across the screen
+		-- of anyone caught inside.
+		inkveil = {
+			handler = "barrage",
+			skin = "ink",
 			windup = 0.8,
-			duration = 0.4,
-			recover = 0.6,
-			cooldown = 10.0,
-			count = 3,
-			rows = { "gulper_eel", "flashbulb_squid", "trench_skitterer" },
+			duration = 1.4,
+			recover = 0.5,
+			cooldown = 7.0,
+			pattern = "scatter",
+			count = 4,
+			spread = 12,
+			arm = 0.9,
+			radius = 9,
+			damage = { 30, 42 },
+			hitEvent = "inkBlast",
+			pool = { radius = 8, duration = 5, min = 7, max = 11, skin = "ink" },
 		},
-		spines = {
+		-- HER gimmick: three false lures light up and drift the arena. They
+		-- look like hers. Anything that comes close learns the difference.
+		falselight = {
+			handler = "decoys",
+			skin = "lure",
+			windup = 0.9,
+			duration = 0.6,
+			recover = 0.5,
+			cooldown = 12.0,
+			count = 3,
+			spread = 20,
+			trigger = 7,
+			blast = 10,
+			lifetime = 12,
+			drift = 3.5,
+			damage = { 45, 62 },
+		},
+		-- Every light in the water dies at once - hers too - and she is
+		-- simply GONE. The splash you hear next is her surfacing at your
+		-- flank, jaws first.
+		phantom = {
+			handler = "phantom",
+			skin = "ink",
 			windup = 0.8,
 			duration = 1.6,
-			recover = 0.5,
-			cooldown = 5.0,
-			count = 10,
-			spread = 14,
-			flight = 0.8,
-			radius = 6,
-			damage = { 32, 44 },
+			recover = 0.6,
+			cooldown = 8.0,
+			emergeAt = 9,
+			radius = 15,
+			cone = 75,
+			damage = { 62, 88 },
 		},
-		slam = { windup = 1.55, duration = 0.3, recover = 0.85, cooldown = 4.2, radius = 26, damage = { 62, 88 } },
+		-- The trench answers her call: three fans of grasping abyssal arms
+		-- erupt and march at you from her body.
+		abysscall = {
+			handler = "barrage",
+			skin = "ink",
+			windup = 0.9,
+			duration = 1.6,
+			recover = 0.6,
+			cooldown = 7.5,
+			pattern = "line",
+			fan = { -28, 0, 28 },
+			count = 5,
+			spacing = 6,
+			startAt = 8,
+			interval = 0.15,
+			arm = 0.5,
+			radius = 5,
+			damage = { 34, 46 },
+		},
 	},
 }
 
 -- ============================================================ Wreckwater
 -- Admiral Wrack, the Fleet-Eater: the drowned admiral fused into his
--- flagship's bow. Opens with cannon broadsides and the anchor-bite; his
--- brood is a BOARDING PARTY - the island's raid mechanic pointed back at
--- you - and in the last phase the whole wreck surfaces under your feet.
+-- flagship's bow. His fight is a NAVAL ENGAGEMENT: ranked broadside walls
+-- march across the bay, powder kegs drift after you, his dead crew boards
+-- over YOUR rail (the island's raid mechanic pointed back at you) - and his
+-- gimmick is the fouled anchor: it lands where you stand and CHAINS you to
+-- the spot while the next broadside walks in.
 Bosses.items.admiral_wrack = {
 	id = "admiral_wrack",
 	name = "Admiral Wrack, the Fleet-Eater",
@@ -673,49 +800,78 @@ Bosses.items.admiral_wrack = {
 	enrageBelow = 0.3,
 	enrageCooldownMult = 0.55,
 	enrageDamageMult = 1.4,
+	-- THE FIGHT: position like a sailor. Broadsides come in ranked walls you
+	-- slip between, kegs herd you, the boarding party demands attention -
+	-- and the anchor is the killer: chained in place, every one of those
+	-- becomes unavoidable. Break line of the pattern before he throws it.
 	phases = {
-		{ below = 1.0, attacks = { "volley", "snap", "tail" } },
-		{ below = 0.6, attacks = { "volley", "snap", "tail", "brood", "brood", "pull" } },
-		{ below = 0.3, attacks = { "volley", "snap", "brood", "pull", "spines", "dive", "dive" } },
+		{ below = 1.0, attacks = { "anchorbite", "broadside", "keelrush" } },
+		{
+			below = 0.6,
+			attacks = { "anchorbite", "broadside", "keelrush", "anchortoss", "boarding", "boarding", "powderkeg" },
+		},
+		{
+			below = 0.3,
+			attacks = { "anchorbite", "broadside", "broadside", "anchortoss", "boarding", "powderkeg", "keelrush" },
+		},
 	},
 	attacks = {
-		-- The broadside: a heavier, wider volley than any serpent's spit.
-		volley = {
-			windup = 0.8,
-			duration = 1.0,
-			recover = 0.5,
-			cooldown = 2.8,
-			count = 7,
-			spread = 13,
-			flight = 1.0,
-			stagger = 0.12,
-			radius = 8,
-			damage = { 28, 38 },
-		},
-		-- The anchor-bite: he swings the fouled anchor like a jaw.
-		snap = {
-			windup = 0.7,
-			duration = 0.35,
-			recover = 0.55,
-			cooldown = 1.8,
+		-- He swings the fouled anchor like a jaw: slow, huge, his melee.
+		anchorbite = {
+			handler = "snap",
+			tell = "snap",
+			skin = "wreck",
+			windup = 0.85,
+			duration = 0.4,
+			recover = 0.6,
+			cooldown = 2.0,
 			lunge = 14,
 			radius = 18,
 			cone = math.rad(65),
 			damage = { 66, 92 },
 		},
-		-- The boom sweep: the flagship's spar comes round full circle.
-		tail = {
+		-- The signature: a full cannon broadside in RANKED WALLS that march
+		-- across the bay - each rank telegraphed, each a line you step
+		-- between, the whole pattern herding you.
+		broadside = {
+			handler = "barrage",
+			skin = "ember",
 			windup = 0.9,
-			duration = 0.45,
-			recover = 0.65,
-			cooldown = 2.4,
-			radius = 22,
-			damage = { 52, 72 },
+			duration = 2.2,
+			recover = 0.6,
+			cooldown = 8.0,
+			pattern = "wall",
+			ranks = 5,
+			width = 26,
+			rankSpacing = 7,
+			startAt = 10,
+			interval = 0.4,
+			arm = 0.55,
+			radius = 6,
+			damage = { 40, 54 },
 		},
-		-- The boarding party - the raid inverted: his dead crew comes over
-		-- YOUR rail. Weighted double in phase 2; count above every other
-		-- boss's brood.
-		brood = {
+		-- HIS gimmick: the anchor flies at where you stand, and whoever it
+		-- lands on is CHAINED to the spot - a short leash off the anchor
+		-- while the rest of the engagement keeps firing.
+		anchortoss = {
+			handler = "anchortoss",
+			skin = "wreck",
+			windup = 0.9,
+			duration = 0.6,
+			recover = 0.7,
+			cooldown = 10.0,
+			flight = 0.8,
+			radius = 8,
+			damage = { 50, 70 },
+			leash = 13,
+			chainDuration = 3.5,
+		},
+		-- The boarding party - the island's raids pointed back at you: his
+		-- dead crew comes over YOUR rail. Weighted double in phase 2.
+		boarding = {
+			handler = "brood",
+			tell = "brood",
+			skin = "wreck",
 			windup = 0.8,
 			duration = 0.4,
 			recover = 0.6,
@@ -723,38 +879,36 @@ Bosses.items.admiral_wrack = {
 			count = 4,
 			rows = { "drowned_boatswain", "cannonball_crab", "wailing_gunner" },
 		},
-		-- Grappling chains off the bow.
-		pull = {
-			windup = 0.5,
-			duration = 2.4,
-			recover = 0.2,
-			cooldown = 6.0,
-			radius = 65,
-			strength = 38,
-			follow = "snap",
-		},
-		-- Grapeshot rain.
-		spines = {
+		-- Powder kegs roll off the hull and DRIFT AFTER YOU, fuses lit -
+		-- shoot them, outrun them, or feed them to the boarding party.
+		powderkeg = {
+			handler = "decoys",
+			skin = "ember",
 			windup = 0.8,
-			duration = 1.6,
+			duration = 0.5,
 			recover = 0.5,
-			cooldown = 5.0,
-			count = 12,
-			spread = 15,
-			flight = 0.8,
-			radius = 6,
-			damage = { 32, 44 },
+			cooldown = 11.0,
+			count = 4,
+			spread = 16,
+			trigger = 6,
+			blast = 11,
+			lifetime = 14,
+			drift = 4.5,
+			damage = { 50, 68 },
 		},
-		-- The wreck surfaces under you: his dive, phase 3 only, twice-listed.
-		dive = {
-			windup = 0.7,
-			duration = 2.6,
-			lock = 0.9,
+		-- The flagship rams: he heels over and drives the bow through the
+		-- arena in a line, bowsprit first.
+		keelrush = {
+			handler = "charge",
+			skin = "wreck",
+			windup = 1.05,
+			duration = 1.0,
 			recover = 0.9,
-			cooldown = 6.5,
-			speed = 32,
-			radius = 14,
-			damage = { 66, 92 },
+			cooldown = 7.0,
+			length = 42,
+			width = 12,
+			slamRadius = 10,
+			damage = { 62, 85 },
 		},
 	},
 }
@@ -763,11 +917,13 @@ Bosses.items.admiral_wrack = {
 -- The Kraken, Maw of the Maelstrom: the saga's finale. The head is
 -- rangedOnly and invulnerable while any tentacle stands (vulnerableWhen =
 -- "partsDown"): the fight loops melee-the-tentacles -> guns-on-the-head
--- exposure windows -> regrow. Every prior boss's signature returns - the
--- pull is Noctyss's, the dive is Rimefang's, the splitter brood is
--- Pyrelisk's, and the spines are Wrack's grapeshot as a thrown-wreckage
--- storm. Killing it sets Heart_kraken and the finale banner; it unlocks
--- nothing, because there is nothing left to unlock.
+-- exposure windows -> regrow. Its OWN storm carries the rest: tentacles
+-- erupt under every player at once, wreckage and lightning come down on
+-- marked ground, ink novas detonate outward in rings, and in the deep fight
+-- the maelstrom itself drags everyone toward the maw while the sky rains -
+-- the whirlpool the player sailed into, weaponized. Killing it sets
+-- Heart_kraken and the finale banner; it unlocks nothing, because there is
+-- nothing left to unlock.
 Bosses.items.kraken = {
 	id = "kraken",
 	name = "The Kraken, Maw of the Maelstrom",
@@ -803,13 +959,24 @@ Bosses.items.kraken = {
 	enrageBelow = 0.25,
 	enrageCooldownMult = 0.5,
 	enrageDamageMult = 1.4,
+	-- THE FIGHT: the storm escalates. Early it's the beak and the arms; by
+	-- the middle the sky is falling on marked ground; at the end the
+	-- whirlpool itself pulls while everything else keeps coming. The
+	-- tentacle-ring loop (parts, above) runs through all of it.
 	phases = {
-		{ below = 1.0, attacks = { "snap", "tail", "slam", "volley" } },
-		{ below = 0.65, attacks = { "snap", "tail", "slam", "volley", "pull", "dive", "brood" } },
-		{ below = 0.4, attacks = { "snap", "tail", "slam", "volley", "pull", "dive", "brood", "spines", "spines" } },
+		{ below = 1.0, attacks = { "maw", "tentaclelash", "wreckhurl" } },
+		{ below = 0.65, attacks = { "maw", "tentaclelash", "wreckhurl", "stormcall", "inknova" } },
+		{
+			below = 0.4,
+			attacks = { "maw", "tentaclelash", "stormcall", "inknova", "undertow", "wreckhurl" },
+		},
 	},
 	attacks = {
-		snap = {
+		-- The hooked beak, from a maw the size of a harbor mouth.
+		maw = {
+			handler = "snap",
+			tell = "snap",
+			skin = "ink",
 			windup = 0.7,
 			duration = 0.35,
 			recover = 0.55,
@@ -819,69 +986,84 @@ Bosses.items.kraken = {
 			cone = math.rad(70),
 			damage = { 70, 95 },
 		},
-		tail = {
-			windup = 0.9,
-			duration = 0.45,
-			recover = 0.65,
-			cooldown = 2.4,
-			radius = 24,
-			damage = { 55, 75 },
-		},
-		slam = { windup = 1.55, duration = 0.3, recover = 0.85, cooldown = 4.0, radius = 27, damage = { 70, 95 } },
-		-- Ink-and-brine broadside.
-		volley = {
-			windup = 0.7,
-			duration = 1.0,
-			recover = 0.5,
-			cooldown = 2.8,
-			count = 8,
-			spread = 14,
-			flight = 1.0,
-			stagger = 0.11,
-			radius = 8,
-			damage = { 30, 40 },
-		},
-		-- Noctyss's pull, from a maw the size of a harbor mouth.
-		pull = {
-			windup = 0.5,
-			duration = 2.4,
-			recover = 0.2,
-			cooldown = 5.5,
-			radius = 70,
-			strength = 42,
-			follow = "snap",
-		},
-		-- Rimefang's dive, under the whirlpool floor.
-		dive = {
-			windup = 0.7,
-			duration = 2.6,
-			lock = 0.9,
-			recover = 0.9,
-			cooldown = 6.5,
-			speed = 34,
-			radius = 14,
-			damage = { 70, 95 },
-		},
-		-- Pyrelisk's splitter brood plus the storm's own wings.
-		brood = {
+		-- The signature: an arm erupts under EVERY player at once - nobody
+		-- spectates the Kraken. The ring under your feet is yours alone.
+		tentaclelash = {
+			handler = "barrage",
+			skin = "ink",
 			windup = 0.8,
-			duration = 0.4,
+			duration = 1.4,
 			recover = 0.6,
-			cooldown = 9.0,
-			count = 4,
-			rows = { "kraken_spawn", "stormpetrel", "galestreak_flyingfish" },
+			cooldown = 6.0,
+			pattern = "everyone",
+			extra = 1,
+			spread = 10,
+			arm = 1.0,
+			radius = 8,
+			damage = { 55, 75 },
+			hitEvent = "emerge",
 		},
-		-- Wrack's grapeshot as a thrown-wreckage storm.
-		spines = {
+		-- It tears wreckage off the maelstrom's floor and hurls it: marked
+		-- ground, heavy hits.
+		wreckhurl = {
+			handler = "barrage",
+			skin = "wreck",
+			windup = 0.9,
+			duration = 2.0,
+			recover = 0.6,
+			cooldown = 7.0,
+			pattern = "scatter",
+			count = 6,
+			spread = 17,
+			arm = 1.1,
+			radius = 9,
+			damage = { 48, 64 },
+		},
+		-- The storm answers it: lightning comes down on every player's
+		-- position, short fuse.
+		stormcall = {
+			handler = "barrage",
+			skin = "storm",
 			windup = 0.8,
-			duration = 1.8,
+			duration = 1.2,
 			recover = 0.5,
-			cooldown = 4.5,
-			count = 13,
-			spread = 16,
-			flight = 0.8,
+			cooldown = 8.0,
+			pattern = "everyone",
+			extra = 0,
+			arm = 0.8,
 			radius = 7,
-			damage = { 34, 46 },
+			damage = { 58, 78 },
+		},
+		-- Ink novas detonate outward from the mantle in expanding rings.
+		inknova = {
+			handler = "barrage",
+			skin = "ink",
+			windup = 1.1,
+			duration = 2.2,
+			recover = 0.7,
+			cooldown = 9.0,
+			pattern = "rings",
+			rings = { 12, 20, 28, 38 },
+			ringWidth = 6,
+			interval = 0.5,
+			arm = 0.55,
+			damage = { 48, 66 },
+		},
+		-- The maelstrom ITSELF: a long drag toward the maw while wreckage
+		-- rains on whoever it's pulling - swim against the current or ride
+		-- it past the beak.
+		undertow = {
+			handler = "undertow",
+			skin = "storm",
+			windup = 0.9,
+			duration = 6.0,
+			recover = 0.7,
+			cooldown = 14.0,
+			radius = 80,
+			strength = 24,
+			globEvery = 0.7,
+			globRadius = 7,
+			damage = { 30, 40 },
 		},
 	},
 }

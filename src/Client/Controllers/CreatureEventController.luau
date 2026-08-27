@@ -18,6 +18,12 @@
 --     LOCAL character toward the maw with a VectorForce for its duration -
 --     walk away to fight it), spine / spineHit, summon, bossDive, enrage,
 --     bossDown. The health bar and banners are BossHudController's.
+--   - The BOSS ARSENAL (per-island movesets, 2026-08-27) adds moments that
+--     carry a `skin` (the SKIN palette): poolSpawn (lingering hazards),
+--     strikeHit / inkBlast (telegraphed impacts), chill / snare / chain
+--     (the pull's pattern: each client applies the movement effect to its
+--     OWN character if it's inside), decoy / decoyMove / decoyPop, beam,
+--     phantomOut / phantomIn, and telegraph kinds mark / ringTell.
 --
 -- Rules this file keeps: it never writes a creature part's Color
 -- (CombatFeedbackController caches colours and restores them after every
@@ -71,6 +77,25 @@ local COLOR = {
 	bone = Color3.fromRGB(226, 222, 206), -- the boss's spines
 	rage = Color3.fromRGB(255, 80, 60),
 }
+
+-- Per-island boss effect palettes: the server stamps boss-arsenal events
+-- with `skin` (Bosses.luau attack rows) and every drawn effect keys off it,
+-- so Pyrelisk's world burns orange while Rimefang's freezes blue.
+local SKIN = {
+	peat = Color3.fromRGB(116, 118, 52), -- Gnashroot's churned bog sludge
+	root = Color3.fromRGB(122, 220, 96), -- his snare-roots (glow moss)
+	frost = Color3.fromRGB(160, 225, 255), -- Rimefang
+	lava = Color3.fromRGB(255, 122, 40), -- Pyrelisk
+	ink = Color3.fromRGB(158, 112, 228), -- Noctyss's dark (violet so it reads)
+	lure = Color3.fromRGB(255, 214, 120), -- her lantern-gold lights
+	ember = Color3.fromRGB(255, 150, 60), -- Wrack's powder and shot
+	wreck = Color3.fromRGB(120, 220, 180), -- his verdigris ghost-glow
+	storm = Color3.fromRGB(130, 210, 255), -- the Kraken's lightning
+}
+
+local function skinColor(extra, fallback: Color3?): Color3
+	return SKIN[extra.skin] or fallback or COLOR.brine
+end
 
 local GLOB_POOL = 14 -- enough for a boss volley (5) on top of a spine barrage (8)
 local GLOB_SIZE = 0.7
@@ -370,6 +395,79 @@ local function stepPull(now: number)
 	end
 	local ramp = math.clamp((now - pull.start) / PULL_RAMP, 0, 1)
 	pull.force.Force = to.Unit * pull.strength * ramp * root.AssemblyMass
+end
+
+-- ------------------------------------------- movement effects (boss arsenal)
+-- The chill/snare/chain family works like the pull: the server broadcasts
+-- the moment with a radius, each client applies it to its OWN character if
+-- it's inside. One walkspeed effect at a time; while effects overlap, the
+-- harshest multiplier holds until every one has expired, then the captured
+-- base speed is restored exactly.
+
+local moveEffect: { humanoid: Humanoid, baseWalk: number, mult: number, until_: number }? = nil
+
+-- The anchor chain: the local character is leashed to a point for a while.
+local chainState: { center: Vector3, leash: number, until_: number, nextRingAt: number }? = nil
+
+local function endMoveEffect()
+	if moveEffect then
+		local humanoid = moveEffect.humanoid
+		if humanoid and humanoid.Parent then
+			humanoid.WalkSpeed = moveEffect.baseWalk
+		end
+		moveEffect = nil
+	end
+end
+
+local function applyMoveEffect(mult: number, duration: number)
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not humanoid or humanoid.Health <= 0 then
+		return
+	end
+	local now = os.clock()
+	if moveEffect and moveEffect.humanoid == humanoid then
+		moveEffect.mult = math.min(moveEffect.mult, mult)
+		moveEffect.until_ = math.max(moveEffect.until_, now + duration)
+	else
+		endMoveEffect()
+		moveEffect = { humanoid = humanoid, baseWalk = humanoid.WalkSpeed, mult = mult, until_ = now + duration }
+	end
+	humanoid.WalkSpeed = moveEffect.baseWalk * moveEffect.mult
+end
+
+local function endChain()
+	chainState = nil
+end
+
+local function stepEffects(now: number)
+	if moveEffect then
+		local humanoid = moveEffect.humanoid
+		if not humanoid.Parent or humanoid.Health <= 0 then
+			moveEffect = nil -- the character is gone; nothing to restore onto
+		elseif now >= moveEffect.until_ then
+			endMoveEffect()
+		end
+	end
+	if chainState then
+		local root = localRoot()
+		if not root or now >= chainState.until_ then
+			endChain()
+			return
+		end
+		local off = Vector3.new(root.Position.X - chainState.center.X, 0, root.Position.Z - chainState.center.Z)
+		if off.Magnitude > chainState.leash then
+			-- Yanked back to the leash's end; velocity survives, position
+			-- doesn't - it reads as the chain snapping taut.
+			local at = chainState.center + off.Unit * chainState.leash
+			root.CFrame = root.CFrame.Rotation + Vector3.new(at.X, root.Position.Y, at.Z)
+		end
+		if now >= chainState.nextRingAt then
+			chainState.nextRingAt = now + 0.4
+			local point = surfaceUnder(chainState.center)
+			Vfx.ring(point + Vector3.new(0, 0.15, 0), 1.5, chainState.leash, 0.35, SKIN.wreck)
+		end
+	end
 end
 
 -- ---------------------------------------------------------------- per creature states
@@ -689,13 +787,36 @@ EVENTS.telegraph = function(position: Vector3, extra)
 		end
 		Sfx.play("bossTell", position)
 	elseif kind == "pull" then
-		Vfx.flash(position + Vector3.new(0, 4, 0), COLOR.brine, 5, duration)
+		Vfx.flash(position + Vector3.new(0, 4, 0), skinColor(extra), 5, duration)
 	elseif kind == "dive" then
 		Vfx.flash(position, Vfx.Color.foam, 3, duration)
 	elseif kind == "snap" then
 		Vfx.flash(position + Vector3.new(0, 1, 0), Vfx.Color.foam, 3, duration)
+	elseif kind == "mark" and radius then
+		-- A boss-arsenal strike's landing marker: a pulsing ring at the
+		-- point for the whole arm window - be somewhere else when it closes.
+		local point = surfaceUnder(position)
+		local color = skinColor(extra)
+		local pulses = math.max(1, math.floor(duration / 0.22))
+		for i = 0, pulses - 1 do
+			task.delay(i * 0.22, function()
+				Vfx.ring(point + Vector3.new(0, 0.15, 0), radius * 0.35, radius, 0.24, color)
+			end)
+		end
+	elseif kind == "ringTell" and radius then
+		-- An expanding-nova band: the danger is the annulus between `inner`
+		-- and `radius` - safe inside it AND outside it.
+		local point = surfaceUnder(position)
+		local color = skinColor(extra)
+		local inner = tonumber(extra.inner) or radius * 0.7
+		local pulses = math.max(1, math.floor(duration / 0.25))
+		for i = 0, pulses - 1 do
+			task.delay(i * 0.25, function()
+				Vfx.ring(point + Vector3.new(0, 0.15, 0), inner, radius, 0.28, color)
+			end)
+		end
 	else
-		Vfx.flash(position + Vector3.new(0, 2, 0), COLOR.brine, 3, duration)
+		Vfx.flash(position + Vector3.new(0, 2, 0), skinColor(extra), 3, duration)
 	end
 end
 
@@ -811,6 +932,231 @@ EVENTS.exposed = function(position: Vector3)
 	Sfx.play("bossRoar", position)
 end
 
+-- ---------------------------------------------------- boss arsenal moments
+-- (the per-island movesets, 2026-08-27; every one carries `skin`)
+
+-- The decoy lures / powder kegs currently afloat, oldest first.
+local decoyParts: { Part } = {}
+
+local function nearestDecoy(position: Vector3, within: number): (number?, Part?)
+	local bestIdx, bestDist = nil, within
+	for i, part in decoyParts do
+		local d = (part.Position - position).Magnitude
+		if d <= bestDist then
+			bestIdx, bestDist = i, d
+		end
+	end
+	return bestIdx, bestIdx and decoyParts[bestIdx]
+end
+
+-- A lingering ground hazard: bubbling rings for its whole lifetime.
+EVENTS.poolSpawn = function(position: Vector3, extra)
+	local radius = tonumber(extra.radius) or 6
+	local duration = math.min(tonumber(extra.duration) or 5, 20)
+	local color = skinColor(extra)
+	local point = surfaceUnder(position)
+	Vfx.puff(point + Vector3.new(0, 0.2, 0), color, 1.6)
+	Sfx.play("spitSplashGround", point)
+	task.spawn(function()
+		local t0 = os.clock()
+		while os.clock() - t0 < duration do
+			Vfx.ring(point + Vector3.new(0, 0.15, 0), radius * 0.45, radius, 0.6, color)
+			Vfx.puff(
+				point + Vector3.new((math.random() - 0.5) * radius, 0.2, (math.random() - 0.5) * radius),
+				color,
+				0.9
+			)
+			task.wait(0.5)
+		end
+	end)
+end
+
+-- A boss-arsenal strike lands (root spear, berg, cannonball, lightning...).
+EVENTS.strikeHit = function(position: Vector3, extra)
+	local radius = tonumber(extra.radius) or 6
+	local color = skinColor(extra)
+	Vfx.flash(position + Vector3.new(0, 1, 0), color, 4, 0.14)
+	Vfx.ring(position + Vector3.new(0, 0.2, 0), 1, radius, 0.4, color)
+	Vfx.burst(position + Vector3.new(0, 0.5, 0), color, 22)
+	Sfx.play("bossGlobThud", position)
+	feelBlast(position, radius, SHAKE_PULSE, 0.25, color)
+end
+
+-- Noctyss's ink shell: the strike, plus a blot of dark across the screen of
+-- anyone caught inside it.
+EVENTS.inkBlast = function(position: Vector3, extra)
+	local radius = tonumber(extra.radius) or 8
+	EVENTS.strikeHit(position, extra)
+	if localDistance(position) <= radius then
+		flashFrame.BackgroundColor3 = Color3.fromRGB(16, 8, 26)
+		flashFrame.BackgroundTransparency = 0.12
+		TweenService:Create(flashFrame, TweenInfo.new(2.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			BackgroundTransparency = 1,
+		}):Play()
+	end
+end
+
+-- A chilling wash (Rimefang's breath / a frost slick / clinging sludge):
+-- slow yourself if you're inside it.
+EVENTS.chill = function(position: Vector3, extra)
+	local radius = tonumber(extra.radius) or 5
+	if localDistance(position) <= radius then
+		applyMoveEffect(math.clamp(tonumber(extra.mult) or 0.55, 0.05, 1), tonumber(extra.duration) or 1.2)
+		local root = localRoot()
+		if root then
+			Vfx.puff(root.Position - Vector3.new(0, 2.2, 0), skinColor(extra), 0.8)
+		end
+	end
+end
+
+-- Gnashroot's snare closes: whoever is still inside is rooted to the spot.
+EVENTS.snare = function(position: Vector3, extra)
+	local radius = tonumber(extra.radius) or 6
+	local duration = tonumber(extra.duration) or 1.5
+	local color = skinColor(extra)
+	Vfx.burst(position + Vector3.new(0, 0.4, 0), color, 26)
+	Vfx.ring(position + Vector3.new(0, 0.2, 0), radius * 0.5, radius, 0.5, color)
+	Sfx.play("bossSpineHit", position)
+	if localDistance(position) <= radius then
+		applyMoveEffect(0, duration)
+		local root = localRoot()
+		if root then
+			Vfx.burst(root.Position - Vector3.new(0, 2, 0), color, 18)
+		end
+		feelBlast(position, radius, SHAKE_PULSE, 0.2, color)
+	end
+end
+
+-- Wrack's anchor chain: leash yourself to the anchor if it caught you.
+EVENTS.chain = function(position: Vector3, extra)
+	local radius = tonumber(extra.radius) or 10
+	local leash = tonumber(extra.leash) or 13
+	local duration = tonumber(extra.duration) or 3.5
+	local point = surfaceUnder(position)
+	Vfx.burst(point + Vector3.new(0, 0.5, 0), SKIN.wreck, 30)
+	Vfx.ring(point + Vector3.new(0, 0.2, 0), 1.5, leash, 0.6, SKIN.wreck)
+	Sfx.play("bossGlobThud", position)
+	if localDistance(position) <= radius then
+		chainState = {
+			center = position,
+			leash = leash,
+			until_ = os.clock() + duration,
+			nextRingAt = 0,
+		}
+		feelBlast(position, radius, SHAKE_PULSE, 0.3, SKIN.wreck)
+	end
+end
+
+-- A decoy lure / powder keg surfaces.
+EVENTS.decoy = function(position: Vector3, extra)
+	local color = skinColor(extra, SKIN.lure)
+	local part = Instance.new("Part")
+	part.Name = "BossDecoy"
+	part.Shape = Enum.PartType.Ball
+	part.Anchored = true
+	part.CanCollide = false
+	part.CanQuery = false
+	part.CanTouch = false
+	part.CastShadow = false
+	part.Material = Enum.Material.Neon
+	part.Color = color
+	part.Size = Vector3.new(1.6, 1.6, 1.6)
+	part.CFrame = CFrame.new(position)
+	local light = Instance.new("PointLight")
+	light.Color = color
+	light.Brightness = 4
+	light.Range = 16
+	light.Parent = part
+	part.Parent = folder
+	table.insert(decoyParts, part)
+	Vfx.splash(Vector3.new(position.X, World.WATER_Y + 0.2, position.Z), 1.5)
+	Sfx.play("bossTell", position)
+	-- Backstop: if its pop never arrives (stream-out), fade it on its own.
+	task.delay((tonumber(extra.lifetime) or 12) + 3, function()
+		local idx = table.find(decoyParts, part)
+		if idx then
+			table.remove(decoyParts, idx)
+			part:Destroy()
+		end
+	end)
+end
+
+-- A drifting keg moved (low-cadence mirror of the server's drift).
+EVENTS.decoyMove = function(position: Vector3)
+	local _, part = nearestDecoy(position, 7)
+	if part then
+		TweenService:Create(part, TweenInfo.new(0.32, Enum.EasingStyle.Linear), {
+			CFrame = CFrame.new(position),
+		}):Play()
+	end
+end
+
+-- ...and detonates (or fizzles out at the end of its fuse).
+EVENTS.decoyPop = function(position: Vector3, extra)
+	local idx, part = nearestDecoy(position, 9)
+	if idx and part then
+		table.remove(decoyParts, idx)
+		part:Destroy()
+	end
+	local color = skinColor(extra, SKIN.lure)
+	if extra.fizzle then
+		Vfx.puff(position, color, 1.4)
+		return
+	end
+	local radius = tonumber(extra.radius) or 10
+	Vfx.flash(position, color, 6, 0.15)
+	Vfx.shockwave(position, 1.5, radius, 0.45, color, 0.6)
+	Vfx.burst(position, color, 36)
+	Sfx.play("explodeBoom", position)
+	feelBlast(position, radius, SHAKE_EXPLODE, 0.35, color)
+end
+
+-- One tick of a swept jet (magma / frost breath): the burning line itself.
+EVENTS.beam = function(position: Vector3, extra)
+	if typeof(extra.to) ~= "Vector3" then
+		return
+	end
+	local color = skinColor(extra)
+	local to = extra.to
+	local span = to - position
+	local length = span.Magnitude
+	if length < 1 then
+		return
+	end
+	local dir = span / length
+	Vfx.flash(position, color, 3, 0.12)
+	for d = 4, length, 5 do
+		local at = position + dir * d
+		Vfx.puff(at, color, 1.0)
+	end
+	Vfx.ring(surfaceUnder(to) + Vector3.new(0, 0.15, 0), 1, 4, 0.25, color)
+	Sfx.play("pulseZap", position)
+end
+
+-- Noctyss douses every light in the water and vanishes...
+EVENTS.phantomOut = function(position: Vector3, extra)
+	Vfx.splash(Vector3.new(position.X, World.WATER_Y + 0.2, position.Z), 2.5)
+	Sfx.play("burrow", position)
+	if localDistance(position) <= (tonumber(extra.radius) or 60) then
+		flashFrame.BackgroundColor3 = Color3.fromRGB(4, 3, 8)
+		flashFrame.BackgroundTransparency = 0.2
+		TweenService:Create(flashFrame, TweenInfo.new(1.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			BackgroundTransparency = 1,
+		}):Play()
+	end
+end
+
+-- ...and surfaces at somebody's flank, jaws first.
+EVENTS.phantomIn = function(position: Vector3, extra)
+	local radius = tonumber(extra.radius) or 15
+	local at = Vector3.new(position.X, World.WATER_Y + 0.2, position.Z)
+	Vfx.splash(at, 3)
+	Vfx.ring(at, 2, radius * 0.7, 0.5)
+	Vfx.burst(position + Vector3.new(0, 1, 0), skinColor(extra), 30)
+	Sfx.play("emerge", position)
+	feelBlast(position, radius, SHAKE_EMERGE_BIG, 0.3, Color3.fromRGB(120, 80, 180))
+end
+
 -- ...and closes: the tentacle ring re-plants around the arena.
 EVENTS.regrow = function(position: Vector3, extra)
 	local count = tonumber(extra.count) or 6
@@ -876,10 +1222,15 @@ function CreatureEventController.start()
 		stepGlobs(now)
 		stepStates(now)
 		stepPull(now)
+		stepEffects(now)
 	end)
 
-	-- A respawn drops any pull with the old root.
-	player.CharacterAdded:Connect(endPull)
+	-- A respawn drops any pull/chill/snare/chain with the old character.
+	player.CharacterAdded:Connect(function()
+		endPull()
+		endChain()
+		moveEffect = nil -- the old humanoid is gone; the new one spawns clean
+	end)
 
 	task.spawn(function()
 		local creatures = Workspace:WaitForChild(CREATURES_FOLDER, 30)

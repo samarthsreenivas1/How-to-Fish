@@ -1797,6 +1797,10 @@ end
 -- up on the island.
 local BOSS_HEIGHT_TOLERANCE = 14
 
+-- Forward: defined with the boss arsenal below (dive's shatter, defined
+-- above it, spawns one too).
+local spawnPool
+
 -- World-space unit vector the boss is facing (an upright creature's local
 -- +X, turned by yaw0).
 local function bossFacing(creature): Vector3
@@ -1871,18 +1875,25 @@ local function throwGlob(
 	flight: number,
 	now: number,
 	event: string,
-	drawKind: string
+	drawKind: string,
+	extras: { [string]: any }?
 )
 	creature.globs = creature.globs or {}
 	local lo, hi = bossRoll(creature, def, p.damage)
-	table.insert(creature.globs, {
+	local glob = {
 		landing = landing,
 		landAt = now + flight,
 		radius = p.radius,
 		min = lo,
 		max = hi,
 		event = event,
-	})
+	}
+	if extras then
+		for k, v in extras do
+			glob[k] = v
+		end
+	end
+	table.insert(creature.globs, glob)
 	local mouth = creature.model:GetPivot().Position + bossFacing(creature) * 4 + Vector3.new(0, 2, 0)
 	-- `boss = true` picks the boss's own sound set on the client.
 	fireEvent(drawKind, mouth, { to = landing, flight = flight, arc = 10, boss = true })
@@ -2063,11 +2074,16 @@ BOSS_ATTACKS.dive = {
 		end
 		creature.model:PivotTo(poseCFrame(creature, -def.riseDepth, 0, 0))
 	end,
-	finish = function(creature, def, p)
+	finish = function(creature, def, p, now)
 		setBuried(creature, false)
 		local lo, hi = bossRoll(creature, def, p.damage)
 		damagePlayersInRadius(creature.pos, p.radius, lo, hi, creature, 0.5, BOSS_HEIGHT_TOLERANCE)
 		fireEvent("emerge", creature.pos, { radius = p.radius, big = true })
+		-- Rimefang's undersheet hunt: the burst shatters the surface into a
+		-- lingering frost slick (p.shatter = spawnPool spec).
+		if p.shatter then
+			spawnPool(creature, creature.pos, p.shatter, now)
+		end
 	end,
 	recover = function(creature, def, _p, u, sub)
 		-- Bursts up past its rest height and settles back into it.
@@ -2106,6 +2122,502 @@ BOSS_ATTACKS.spines = {
 	end,
 }
 
+-- ==================================================== the boss arsenal (2026-08-27)
+-- The per-island movesets are built from these parameterized primitives; a
+-- Bosses.luau attack names its engine behaviour with `p.handler` (so Old
+-- Gnashroot's "deathroll" and Admiral Wrack's "keelrush" are both `charge`
+-- with different numbers and skins), and `p.skin` colors the client's
+-- effects per island. Three timed systems live on the creature struct and
+-- tick in update() beside globs/puffs, so they keep running mid-attack and
+-- die with the boss: `pools` (lingering ground hazards), `strikes`
+-- (telegraphed point/ring impacts), `lures` (proximity mines / decoys).
+
+local BOSS_POOL_TICK = 0.7
+
+-- A lingering ground hazard: damages and/or slows anyone standing in it.
+-- spec = { radius, duration, min?, max? (damage per tick), slow? (walkspeed
+-- mult the client applies), skin? }. The slow is client-applied like the
+-- lure pull: the server broadcasts a short `chill` covering the pool every
+-- tick and each client applies it to its own character if it's inside.
+function spawnPool(creature, at: Vector3, spec, now: number)
+	creature.pools = creature.pools or {}
+	table.insert(creature.pools, {
+		pos = at,
+		radius = spec.radius,
+		expiresAt = now + spec.duration,
+		nextTickAt = now + 0.3,
+		min = spec.min,
+		max = spec.max,
+		slow = spec.slow,
+		skin = spec.skin,
+	})
+	fireEvent("poolSpawn", at, { radius = spec.radius, duration = spec.duration, skin = spec.skin })
+end
+
+-- A telegraphed impact at a fixed point (or ring): the tell draws at
+-- `tellAt`, the hit lands at `hitAt`. opts: shape ("disc" | "annulus"),
+-- inner/outer (annulus), snare (seconds), chain { leash, duration }, pool
+-- (spawnPool spec), hitEvent, damage { lo, hi } override.
+local function queueStrike(creature, def, p, at: Vector3, tellAt: number, hitAt: number, opts)
+	opts = opts or {}
+	creature.strikes = creature.strikes or {}
+	local lo, hi = nil, nil
+	local range = opts.damage or p.damage
+	if range then
+		lo, hi = bossRoll(creature, def, range)
+	end
+	table.insert(creature.strikes, {
+		pos = at,
+		tellAt = tellAt,
+		hitAt = hitAt,
+		tellFired = false,
+		radius = opts.radius or p.radius,
+		shape = opts.shape,
+		inner = opts.inner,
+		outer = opts.outer,
+		min = lo,
+		max = hi,
+		snare = opts.snare,
+		chain = opts.chain,
+		pool = opts.pool,
+		hitEvent = opts.hitEvent,
+		skin = p.skin,
+	})
+end
+
+-- Everyone standing in the ring band (the expanding-nova shape: safe inside
+-- AND outside; the dodge is stepping across the band before it detonates).
+local function damagePlayersInAnnulus(at: Vector3, inner: number, outer: number, minDmg, maxDmg, source)
+	for _, player in Players:GetPlayers() do
+		local character = player.Character
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		if root and humanoid and humanoid.Health > 0 then
+			local d = (Vector3.new(root.Position.X, 0, root.Position.Z) - Vector3.new(at.X, 0, at.Z)).Magnitude
+			if d >= inner and d <= outer and math.abs(root.Position.Y - at.Y) <= BOSS_HEIGHT_TOLERANCE then
+				PlayerService.damage(player, math.random(minDmg, maxDmg), source, { bypassIframe = true })
+			end
+		end
+	end
+end
+
+-- Every living player's root within `range` of `at`.
+local function livingRootsNear(at: Vector3, range: number): { { player: Player, root: BasePart } }
+	local out = {}
+	for _, player in Players:GetPlayers() do
+		local character = player.Character
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		if root and humanoid and humanoid.Health > 0 then
+			local d = (Vector3.new(root.Position.X, 0, root.Position.Z) - Vector3.new(at.X, 0, at.Z)).Magnitude
+			if d <= range then
+				table.insert(out, { player = player, root = root })
+			end
+		end
+	end
+	return out
+end
+
+local function rotateFlat(v: Vector3, angle: number): Vector3
+	local c, s = math.cos(angle), math.sin(angle)
+	return Vector3.new(v.X * c - v.Z * s, 0, v.X * s + v.Z * c)
+end
+
+-- Charge: picks its line at the moment of firing and rushes it, hitting each
+-- player at most once. p: length, width (contact radius), damage; optional
+-- leap (hop height - the body is airborne mid-arc and can't contact-hit),
+-- slamRadius (a landing shockwave at the end), trail { every + spawnPool
+-- spec } (hazards dropped along the wake).
+BOSS_ATTACKS.charge = {
+	windup = function(creature, _def, _p, u, sub)
+		local e = smoothstep(u)
+		creature.model:PivotTo(poseCFrame(creature, sub + 0.7 * e, 0, math.rad(20) * e))
+	end,
+	fire = function(creature, _def, p, _now, root)
+		local a = creature.attack
+		a.dir = if root then flatUnit(root.Position - creature.pos) else bossFacing(creature)
+		a.hitSet = {}
+		a.dist = 0
+		a.nextTrail = if p.trail then p.trail.every * 0.5 else math.huge
+		creature.yaw0 = yawToward(a.dir)
+		fireEvent("splash", creature.pos, { radius = 4 })
+	end,
+	strike = function(creature, def, p, now, dt, u, _root, sub)
+		local a = creature.attack
+		local step = (p.length / p.duration) * dt
+		creature.pos = resolveHorizontal(creature, a.dir * step)
+		a.dist += step
+		local hop = if p.leap then math.sin(u * math.pi) * p.leap else 0
+		creature.model:PivotTo(poseCFrame(creature, sub + hop, 0, math.rad(-8)))
+		-- Contact damage, once per player per charge - not while airborne.
+		if hop < 1.5 then
+			local lo, hi = bossRoll(creature, def, p.damage)
+			for _, entry in livingRootsNear(creature.pos, p.width) do
+				if not a.hitSet[entry.player] then
+					a.hitSet[entry.player] = true
+					if math.abs(entry.root.Position.Y - creature.pos.Y) <= BOSS_HEIGHT_TOLERANCE then
+						PlayerService.damage(entry.player, math.random(lo, hi), creature, { bypassIframe = true })
+						fireEvent("strikeHit", entry.root.Position, { radius = 3, skin = p.skin })
+					end
+				end
+			end
+		end
+		if p.trail and a.dist >= a.nextTrail then
+			a.nextTrail += p.trail.every
+			spawnPool(creature, creature.pos, p.trail, now)
+		end
+	end,
+	finish = function(creature, def, p, now)
+		if p.slamRadius then
+			local lo, hi = bossRoll(creature, def, p.damage)
+			damagePlayersInRadius(creature.pos, p.slamRadius, lo, hi, creature, 0.5, BOSS_HEIGHT_TOLERANCE)
+			fireEvent("slam", creature.pos, { radius = p.slamRadius, skin = p.skin })
+		end
+		if p.shatter then
+			spawnPool(creature, creature.pos, p.shatter, now)
+		end
+		clampToArena(creature, def)
+	end,
+	recover = function(creature, _def, _p, u, sub)
+		creature.model:PivotTo(poseCFrame(creature, sub, 0, math.rad(-8) * (1 - u)))
+	end,
+}
+
+-- Beam: a sustained jet swept across an arc - the boss's whole body turns
+-- through the sweep, so the dodge is running WITH or against the rotation.
+-- Ticks without the i-frame bypass (it re-hits), so standing in it hurts but
+-- doesn't shred. p: sweep (degrees), cone (half-angle degrees), range, tick,
+-- damage (per tick); optional chill { mult, duration }, sweepDir (+1/-1).
+BOSS_ATTACKS.beam = {
+	windup = function(creature, _def, _p, u, sub)
+		local e = smoothstep(u)
+		creature.model:PivotTo(poseCFrame(creature, sub + 0.6 * e, 0, math.rad(26) * e))
+	end,
+	fire = function(creature, _def, p)
+		local a = creature.attack
+		a.dir0 = creature.yaw0 + math.rad(p.sweep) * 0.5 * (p.sweepDir or 1)
+		a.nextTickAt = 0
+	end,
+	strike = function(creature, def, p, now, _dt, u, _root, sub)
+		local a = creature.attack
+		creature.yaw0 = a.dir0 - math.rad(p.sweep) * u * (p.sweepDir or 1)
+		creature.model:PivotTo(poseCFrame(creature, sub + 0.6, 0, math.rad(10)))
+		if now >= a.nextTickAt then
+			a.nextTickAt = now + (p.tick or 0.3)
+			local facing = bossFacing(creature)
+			local origin = creature.model:GetPivot().Position
+			local lo, hi = bossRoll(creature, def, p.damage)
+			local half = math.rad(p.cone)
+			for _, entry in livingRootsNear(creature.pos, p.range) do
+				local to =
+					Vector3.new(entry.root.Position.X - creature.pos.X, 0, entry.root.Position.Z - creature.pos.Z)
+				if to.Magnitude < 0.01 or math.acos(math.clamp(to.Unit:Dot(facing), -1, 1)) <= half then
+					PlayerService.damage(entry.player, math.random(lo, hi), creature)
+					if p.chill then
+						fireEvent("chill", entry.root.Position, {
+							radius = 4,
+							mult = p.chill.mult,
+							duration = p.chill.duration,
+							skin = p.skin,
+						})
+					end
+				end
+			end
+			fireEvent("beam", origin + facing * 4 + Vector3.new(0, 2, 0), {
+				to = origin + facing * p.range,
+				skin = p.skin,
+			})
+		end
+	end,
+	recover = function(creature, _def, _p, u, sub)
+		creature.model:PivotTo(poseCFrame(creature, sub + 0.6 * (1 - u), 0, math.rad(10) * (1 - u)))
+	end,
+}
+
+-- Poolvolley: the volley, but every glob leaves a lingering pool where it
+-- lands (p.pool = spawnPool spec).
+BOSS_ATTACKS.poolvolley = {
+	windup = BOSS_ATTACKS.volley.windup,
+	fire = function(creature, def, p, now, root)
+		if not root then
+			return
+		end
+		for i = 1, p.count do
+			throwGlob(
+				creature,
+				def,
+				p,
+				scatterAround(root, p.spread),
+				p.flight + (i - 1) * p.stagger,
+				now,
+				"splash",
+				"spit",
+				{
+					pool = p.pool,
+				}
+			)
+		end
+	end,
+	strike = BOSS_ATTACKS.volley.strike,
+}
+
+-- Barrage: a pattern of telegraphed strikes. p.pattern:
+--   "scatter"  - p.count strikes scattered p.spread around the target player
+--   "everyone" - one strike under EVERY living player (plus p.extra
+--                scattered around each), arena-wide pressure
+--   "line"     - p.count strikes marching from the boss toward the target,
+--                p.spacing apart, p.interval seconds between steps; p.fan
+--                (degrees list) repeats the line at offsets
+--   "wall"     - p.ranks ranks of a p.width-wide wall marching from the boss
+--                toward the target (the broadside)
+--   "rings"    - concentric ring bands around the boss (p.rings radii,
+--                p.ringWidth wide), detonating outward - the nova
+-- p.arm is the tell lead (seconds between a strike's ring and its hit).
+BOSS_ATTACKS.barrage = {
+	windup = function(creature, _def, _p, u, sub)
+		creature.model:PivotTo(
+			poseCFrame(creature, sub + 0.3 * u, math.sin(u * 30) * math.rad(2) * u, math.rad(14) * u)
+		)
+	end,
+	fire = function(creature, def, p, now, root)
+		local arm = p.arm or 0.9
+		if p.pattern == "rings" then
+			local center = creature.anchor or creature.pos
+			local width = p.ringWidth or 5
+			for i, r in p.rings do
+				local hitAt = now + arm + (i - 1) * (p.interval or 0.5)
+				queueStrike(creature, def, p, center, hitAt - arm, hitAt, {
+					shape = "annulus",
+					inner = math.max(0, r - width * 0.5),
+					outer = r + width * 0.5,
+				})
+			end
+		elseif p.pattern == "line" then
+			local dir0 = if root then flatUnit(root.Position - creature.pos) else bossFacing(creature)
+			for _, fanDeg in (p.fan or { 0 }) do
+				local dir = rotateFlat(dir0, math.rad(fanDeg))
+				for i = 1, p.count do
+					local at = groundedPos(creature.pos + dir * ((p.startAt or 8) + (i - 1) * p.spacing), 0)
+					local hitAt = now + arm + (i - 1) * (p.interval or 0.16)
+					queueStrike(creature, def, p, at, hitAt - arm, hitAt, {})
+				end
+			end
+		elseif p.pattern == "wall" then
+			local dir = if root then flatUnit(root.Position - creature.pos) else bossFacing(creature)
+			local right = rotateFlat(dir, math.pi * 0.5)
+			local across = math.max(2, math.floor(p.width / 6) + 1)
+			for rank = 0, (p.ranks or 4) - 1 do
+				local d = (p.startAt or 10) + rank * (p.rankSpacing or 7)
+				local hitAt = now + arm + rank * (p.interval or 0.4)
+				for k = 0, across - 1 do
+					local offset = (k / (across - 1) - 0.5) * p.width
+					local at = groundedPos(creature.pos + dir * d + right * offset, 0)
+					queueStrike(creature, def, p, at, hitAt - arm, hitAt, {})
+				end
+			end
+		elseif p.pattern == "everyone" then
+			local center = creature.anchor or creature.pos
+			for _, entry in livingRootsNear(center, def.aggro * 1.5) do
+				local hitAt = now + arm
+				queueStrike(creature, def, p, groundedPos(entry.root.Position, 0), now, hitAt, {
+					snare = p.snare,
+					pool = p.pool,
+				})
+				for _ = 1, p.extra or 0 do
+					queueStrike(creature, def, p, scatterAround(entry.root, p.spread or 10), now, hitAt + 0.3, {})
+				end
+			end
+		else -- scatter
+			if root then
+				for i = 1, p.count do
+					local hitAt = now + arm + (i - 1) * ((p.duration - 0.2) / math.max(p.count, 1))
+					queueStrike(creature, def, p, scatterAround(root, p.spread), hitAt - arm, hitAt, {
+						pool = p.pool,
+					})
+				end
+			end
+		end
+	end,
+	strike = function(creature, _def, _p, now, _dt, _u, _root, sub)
+		creature.model:PivotTo(poseCFrame(creature, sub + 0.3, math.sin(now * 30) * math.rad(2), math.rad(14)))
+	end,
+}
+
+-- Snaretrap: marks the ground under every player's feet; whoever is still
+-- inside when it arms is rooted to the spot. p: arm (the escape window),
+-- radius, damage, snare (root seconds).
+BOSS_ATTACKS.snaretrap = {
+	windup = function(creature, _def, _p, u, sub)
+		creature.model:PivotTo(poseCFrame(creature, sub - 0.4 * u, 0, math.rad(-10) * u))
+	end,
+	fire = function(creature, def, p, now)
+		for _, entry in livingRootsNear(creature.pos, def.aggro * 1.2) do
+			queueStrike(creature, def, p, groundedPos(entry.root.Position, 0), now, now + p.arm, {
+				snare = p.snare,
+			})
+		end
+	end,
+}
+
+-- Decoys: plants glowing lures / drifting mines that detonate when anyone
+-- comes close (or fizzle after p.lifetime). p: count, spread, trigger,
+-- blast, damage, lifetime; optional drift (studs/s toward the nearest
+-- player - the powder keg).
+BOSS_ATTACKS.decoys = {
+	windup = function(creature, _def, _p, u, sub)
+		creature.model:PivotTo(poseCFrame(creature, sub + 0.4 * u, 0, math.rad(18) * u))
+	end,
+	fire = function(creature, def, p, now, root)
+		creature.lures = creature.lures or {}
+		local center = if root then root.Position else creature.pos
+		for _ = 1, p.count do
+			local angle = math.random() * math.pi * 2
+			local r = p.spread * (0.35 + 0.65 * math.random())
+			local at = Vector3.new(center.X + math.cos(angle) * r, World.WATER_Y + 1.2, center.Z + math.sin(angle) * r)
+			local lo, hi = bossRoll(creature, def, p.damage)
+			table.insert(creature.lures, {
+				pos = at,
+				trigger = p.trigger,
+				blast = p.blast,
+				min = lo,
+				max = hi,
+				expiresAt = now + p.lifetime,
+				drift = p.drift,
+				nextMoveAt = 0,
+				skin = p.skin,
+			})
+			fireEvent("decoy", at, { lifetime = p.lifetime, skin = p.skin })
+		end
+	end,
+}
+
+-- Phantom: the lights go out, it vanishes, and it reappears at a player's
+-- flank mid-bite. p: emergeAt (how far from the player it surfaces), radius,
+-- cone (degrees), damage.
+BOSS_ATTACKS.phantom = {
+	windup = function(creature, _def, _p, u, sub)
+		creature.model:PivotTo(poseCFrame(creature, sub - 1.2 * u, 0, math.rad(-12) * u))
+	end,
+	fire = function(creature, _def, p, _now, root)
+		local a = creature.attack
+		setBuried(creature, true)
+		a.appeared = false
+		fireEvent("phantomOut", creature.pos, { radius = 60, skin = p.skin })
+		if root then
+			local angle = math.random() * math.pi * 2
+			local d = p.emergeAt or 9
+			creature.pos = groundedPos(
+				Vector3.new(
+					root.Position.X + math.cos(angle) * d,
+					creature.pos.Y,
+					root.Position.Z + math.sin(angle) * d
+				),
+				creature.halfThickness
+			)
+		end
+	end,
+	strike = function(creature, def, p, _now, _dt, u, root, sub)
+		local a = creature.attack
+		if not a.appeared then
+			creature.model:PivotTo(poseCFrame(creature, -def.riseDepth, 0, 0))
+			if u >= 0.5 then
+				a.appeared = true
+				setBuried(creature, false)
+				if root then
+					creature.yaw0 = yawToward(root.Position - creature.pos)
+				end
+				fireEvent("phantomIn", creature.pos, { radius = p.radius, skin = p.skin })
+			end
+			return
+		end
+		creature.model:PivotTo(poseCFrame(creature, sub + 0.5, 0, math.rad(-12)))
+		if not a.fired and u >= 0.8 then
+			a.fired = true
+			local lo, hi = bossRoll(creature, def, p.damage)
+			damagePlayersInCone(creature.pos, bossFacing(creature), p.radius, math.rad(p.cone), false, lo, hi, creature)
+			fireEvent("bossSnap", bossMouth(creature), { radius = p.radius })
+		end
+	end,
+	finish = function(creature, def)
+		clampToArena(creature, def)
+	end,
+}
+
+-- Undertow: the maelstrom's own current - a long, arena-wide drag toward the
+-- maw while wreckage rains on whoever it's pulling. p: radius, strength,
+-- duration, globEvery, damage (per glob), radius is the pull's reach and the
+-- globs land radius p.globRadius.
+BOSS_ATTACKS.undertow = {
+	windup = function(creature, _def, _p, u, sub)
+		creature.model:PivotTo(poseCFrame(creature, sub + 0.8 * u, 0, math.rad(22) * u))
+	end,
+	fire = function(creature, _def, p, now)
+		local a = creature.attack
+		local center = creature.anchor or creature.pos
+		fireEvent("pull", center, { radius = p.radius, strength = p.strength, duration = p.duration })
+		a.nextGlobAt = now + 0.4
+	end,
+	strike = function(creature, def, p, now, _dt, u, _root, sub)
+		local a = creature.attack
+		creature.model:PivotTo(
+			poseCFrame(
+				creature,
+				sub + 0.8 + math.sin(now * 3) * 0.3,
+				math.sin(u * math.pi * 2) * math.rad(10),
+				math.rad(8)
+			)
+		)
+		if now >= a.nextGlobAt then
+			a.nextGlobAt = now + (p.globEvery or 0.7)
+			local center = creature.anchor or creature.pos
+			local targets = livingRootsNear(center, p.radius)
+			if #targets > 0 then
+				local entry = targets[math.random(#targets)]
+				local at = scatterAround(entry.root, 7)
+				throwGlob(
+					creature,
+					def,
+					{ damage = p.damage, radius = p.globRadius or 7 },
+					at,
+					0.9,
+					now,
+					"spineHit",
+					"spit"
+				)
+			end
+		end
+	end,
+}
+
+-- Anchortoss: hurls the anchor at where the target stands - the ring is the
+-- warning - and whoever it lands on is CHAINED to the spot (the client
+-- leashes its own character to the anchor). p: flight, radius, damage,
+-- leash, chainDuration.
+BOSS_ATTACKS.anchortoss = {
+	windup = function(creature, _def, _p, u, sub)
+		local e = smoothstep(u)
+		creature.model:PivotTo(poseCFrame(creature, sub + 1.3 * e, 0, math.rad(32) * e))
+	end,
+	fire = function(creature, def, p, now, root)
+		if not root then
+			return
+		end
+		local at = groundedPos(root.Position, 0)
+		fireEvent("spine", bossMouth(creature) + Vector3.new(0, 5, 0), {
+			to = at,
+			flight = p.flight,
+			arc = 14,
+			boss = true,
+		})
+		queueStrike(creature, def, p, at, now, now + p.flight, {
+			chain = { leash = p.leash, duration = p.chainDuration, radius = p.radius + 3 },
+		})
+	end,
+	strike = function(creature, _def, _p, _now, _dt, u, _root, sub)
+		creature.model:PivotTo(poseCFrame(creature, sub + 1.3 * (1 - u), 0, math.rad(32 - 46 * u)))
+	end,
+}
+
 -- Which attacks the current health fraction allows: the LAST phase whose
 -- `below` the fraction is at or under.
 local function bossPhaseAttacks(def, hpFraction: number): { string }
@@ -2132,7 +2644,9 @@ local function pickBossAttack(creature, def, now: number): string
 		end
 	end
 	if #pool == 0 then
-		return "snap" -- always something; snap has the shortest cooldown
+		-- Always something: the phase list's first attack (each boss leads
+		-- its lists with its short-cooldown bread-and-butter bite).
+		return bossPhaseAttacks(def, creature.health / creature.maxHealth)[1]
 	end
 	return pool[math.random(#pool)]
 end
@@ -2143,11 +2657,14 @@ local function beginBossAttack(creature, def, name: string, now: number)
 		{ name = name, p = p, phase = "windup", phaseStart = now, phaseUntil = now + p.windup, fired = false }
 	creature.lastAttack = name
 	setMode(creature, "attack", 0, now)
+	-- `p.tell` lets a themed attack borrow a stock telegraph (a renamed bite
+	-- still flashes like a snap); `p.skin` colors the client's effects.
 	fireEvent("telegraph", creature.model:GetPivot().Position, {
-		kind = name,
+		kind = p.tell or name,
 		duration = p.windup,
 		radius = p.radius,
 		facing = bossFacing(creature),
+		skin = p.skin,
 	})
 end
 
@@ -2178,7 +2695,11 @@ local function updateBossAttack(
 )
 	local a = creature.attack
 	local p = a.p
-	local handler = BOSS_ATTACKS[a.name]
+	-- An attack's engine behaviour is `p.handler` (so every boss can name its
+	-- moves in its own voice - "deathroll", "magmajet" - while sharing the
+	-- parameterized primitives); a book entry without one keeps the old rule
+	-- that the attack's NAME is the handler (Brinejaw's book).
+	local handler = BOSS_ATTACKS[p.handler or a.name]
 	if not handler then
 		endBossAttack(creature, def, now)
 		return
@@ -2863,10 +3384,130 @@ local function update(dt: number)
 					table.remove(creature.globs, g)
 					damagePlayersInRadius(glob.landing, glob.radius, glob.min, glob.max, creature, 0.5)
 					fireEvent(glob.event, glob.landing, { radius = glob.radius })
+					if glob.pool then
+						-- A poolvolley glob leaves its lingering hazard.
+						spawnPool(creature, glob.landing, glob.pool, now)
+					end
 				end
 			end
 			if #creature.globs == 0 then
 				creature.globs = nil
+			end
+		end
+		-- The boss arsenal's timed systems (see "the boss arsenal"): each
+		-- keeps running whatever the boss is doing and dies with the struct.
+		if creature.pools then
+			-- Lingering ground hazards: damage and/or slow whoever stands in.
+			for idx = #creature.pools, 1, -1 do
+				local pool = creature.pools[idx]
+				if now >= pool.expiresAt then
+					table.remove(creature.pools, idx)
+				elseif now >= pool.nextTickAt then
+					pool.nextTickAt = now + BOSS_POOL_TICK
+					if pool.min then
+						damagePlayersInRadius(
+							pool.pos,
+							pool.radius,
+							pool.min,
+							pool.max,
+							creature,
+							0.4,
+							BOSS_HEIGHT_TOLERANCE
+						)
+					end
+					if pool.slow then
+						fireEvent("chill", pool.pos, {
+							radius = pool.radius,
+							mult = pool.slow,
+							duration = BOSS_POOL_TICK * 1.7,
+							skin = pool.skin,
+						})
+					end
+				end
+			end
+			if #creature.pools == 0 then
+				creature.pools = nil
+			end
+		end
+		if creature.strikes then
+			-- Telegraphed impacts: ring at tellAt, hit at hitAt.
+			for idx = #creature.strikes, 1, -1 do
+				local s = creature.strikes[idx]
+				if not s.tellFired and now >= s.tellAt then
+					s.tellFired = true
+					fireEvent("telegraph", s.pos, {
+						kind = if s.shape == "annulus" then "ringTell" else "mark",
+						duration = math.max(s.hitAt - now, 0.1),
+						radius = if s.shape == "annulus" then s.outer else s.radius,
+						inner = s.inner,
+						skin = s.skin,
+					})
+				end
+				if now >= s.hitAt then
+					table.remove(creature.strikes, idx)
+					if s.shape == "annulus" then
+						damagePlayersInAnnulus(s.pos, s.inner, s.outer, s.min, s.max, creature)
+					elseif s.min then
+						damagePlayersInRadius(s.pos, s.radius, s.min, s.max, creature, 0.5, BOSS_HEIGHT_TOLERANCE)
+					end
+					fireEvent(s.hitEvent or "strikeHit", s.pos, {
+						radius = s.outer or s.radius,
+						inner = s.inner,
+						skin = s.skin,
+					})
+					if s.snare then
+						fireEvent("snare", s.pos, { radius = s.radius + 1.5, duration = s.snare, skin = s.skin })
+					end
+					if s.chain then
+						fireEvent("chain", s.pos, {
+							radius = s.chain.radius,
+							leash = s.chain.leash,
+							duration = s.chain.duration,
+							skin = s.skin,
+						})
+					end
+					if s.pool then
+						spawnPool(creature, s.pos, s.pool, now)
+					end
+				end
+			end
+			if #creature.strikes == 0 then
+				creature.strikes = nil
+			end
+		end
+		if creature.lures then
+			-- Decoy lures / drifting powder kegs: detonate on proximity,
+			-- fizzle on expiry. Drifters chase the nearest player and mirror
+			-- their movement to the clients at a low cadence.
+			for idx = #creature.lures, 1, -1 do
+				local lure = creature.lures[idx]
+				local root, _, dist = nearestPlayerRoot(lure.pos)
+				if root and lure.drift then
+					lure.pos += flatUnit(root.Position - lure.pos) * lure.drift * dt
+					if now >= lure.nextMoveAt then
+						lure.nextMoveAt = now + 0.3
+						fireEvent("decoyMove", lure.pos, {})
+					end
+				end
+				if root and dist <= lure.trigger then
+					table.remove(creature.lures, idx)
+					damagePlayersInRadius(
+						lure.pos,
+						lure.blast,
+						lure.min,
+						lure.max,
+						creature,
+						0.5,
+						BOSS_HEIGHT_TOLERANCE
+					)
+					fireEvent("decoyPop", lure.pos, { radius = lure.blast, skin = lure.skin })
+				elseif now >= lure.expiresAt then
+					table.remove(creature.lures, idx)
+					fireEvent("decoyPop", lure.pos, { fizzle = true, skin = lure.skin })
+				end
+			end
+			if #creature.lures == 0 then
+				creature.lures = nil
 			end
 		end
 		-- Brine Rot: each stack burns on its own clock and keeps burning while
