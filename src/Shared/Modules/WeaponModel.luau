@@ -31,6 +31,12 @@ local WeaponModel = {}
 -- hanging).
 WeaponModel.HOLD_OFFSET = CFrame.Angles(math.rad(-70), 0, 0) * CFrame.Angles(0, math.rad(-90), 0)
 
+-- A GUN in a third-person hand: the authored +Y is the BORE (gun-mesh
+-- contract, 2026-08-27), so instead of the melee "blade up" carry the bore
+-- lies level, pointing the way the character faces. One knob: if a pack
+-- lands guns rolled sideways in world view, adjust the trailing roll here.
+WeaponModel.HOLD_OFFSET_RANGED = CFrame.Angles(math.rad(-90), 0, 0) * CFrame.Angles(0, math.rad(-90), 0)
+
 local MATERIAL = Enum.Material.SmoothPlastic
 
 -- A block at (0, y, 0) in weapon space, sized (x, y, z).
@@ -153,7 +159,12 @@ local BUILDERS = {
 
 -- The parts a variant may carry, cloned out and renamed to the generic
 -- Weapon_* set. Only Weapon_Grip is required (it's the hand frame).
-local PART_SUFFIXES = { "Haft", "Grip", "Guard", "Pommel", "Head", "Edge", "Spike", "Glow" }
+-- Mag/Action/Sight/Muzzle are the gun-mesh contract (2026-08-27): the
+-- magazine and the cycling action are SEPARATE parts so reload/shoot
+-- animations can move them later, and Weapon_Muzzle is a tiny marker
+-- capping the bore at the tip - the muzzle-flash / projectile origin.
+local PART_SUFFIXES =
+	{ "Haft", "Grip", "Guard", "Pommel", "Head", "Edge", "Spike", "Glow", "Mag", "Action", "Sight", "Muzzle" }
 
 -- Which model colour recolours which part. Haft/guard/pommel are the "handle"
 -- colour, the grip its wrap, the business end the accent, and glowing runes
@@ -167,6 +178,10 @@ local MESH_COLOR_KEY = {
 	Weapon_Edge = "accent",
 	Weapon_Spike = "accent",
 	Weapon_Glow = "glow",
+	Weapon_Mag = "accent",
+	Weapon_Action = "color",
+	Weapon_Sight = "accent",
+	Weapon_Muzzle = "glow",
 }
 
 -- Pulls one variant's parts out of the pack into a fresh Model, renamed to the

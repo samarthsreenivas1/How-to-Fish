@@ -143,6 +143,7 @@ local rig = nil -- Viewmodel rig while a modelled weapon is equipped
 local trail: Trail? = nil
 local gripPart: BasePart? = nil -- the built weapon's grip, for the muzzle
 local gripLength = 0 -- grip -> tip distance of the current weapon, studs
+local muzzlePart: BasePart? = nil -- the Weapon_Muzzle marker, when the mesh carries one
 
 -- The swing clip is applied about swingPivot (the elbow, in camera space -
 -- set at build). `swing` is the one in flight:
@@ -158,16 +159,34 @@ local function clearRig()
 	end
 	trail = nil -- a child of the destroyed rig
 	gripPart = nil
+	muzzlePart = nil
 	swing = nil
 	recoil = 0
 end
 
 -- ---------------------------------------------------------------- build
 
+-- A GUN's hold (rows with `ranged`): the authored +Y is the BORE (gun-mesh
+-- contract, 2026-08-27), so it points camera-forward with a touch of muzzle
+-- rise, carried lower and nearer centre than a blade. GUN_ROLL turns the
+-- sights side (the blade-edge side of the authoring frame) up - it is the
+-- one knob to flip if a pack lands the guns rolled sideways.
+local GUN_GRIP_POSITION = Vector3.new(0.95, -1.2, -1.7)
+local GUN_PITCH = math.rad(4) -- muzzle rise off dead-level
+local GUN_YAW = math.rad(-2)
+local GUN_ROLL = math.rad(90)
+
 -- The grip CFrame in camera space: the authored +Y axis pitched and yawed
 -- to where we want the weapon to point (same construction as the rod's),
--- then rolled about that axis so the blade's edge leads.
-local function gripInCameraSpace(): CFrame
+-- then rolled about that axis so the blade's edge leads - or, for a gun,
+-- so the bore runs forward and the sights sit up.
+local function gripInCameraSpace(isRanged: boolean?): CFrame
+	if isRanged then
+		local direction = CFrame.Angles(0, GUN_YAW, 0)
+			* CFrame.Angles(GUN_PITCH - math.rad(90), 0, 0)
+			* CFrame.Angles(0, GUN_ROLL, 0)
+		return CFrame.new(GUN_GRIP_POSITION) * direction
+	end
 	local direction = CFrame.Angles(0, WEAPON_YAW, 0)
 		* CFrame.Angles(WEAPON_PITCH - math.rad(90), 0, 0)
 		* CFrame.Angles(0, WEAPON_ROLL, 0)
@@ -189,13 +208,17 @@ local function buildRig(character: Model, weaponData)
 
 	local newRig = Viewmodel.newRig("WeaponViewmodel")
 
-	local gripCamera = gripInCameraSpace()
+	local gripCamera = gripInCameraSpace(weaponData.ranged ~= nil)
 	local gripLocal = grip.CFrame
 	weapon.Parent = newRig.model
 	for _, part in weapon:GetDescendants() do
 		if part:IsA("BasePart") then
 			Viewmodel.stripPart(part)
 			newRig:add(part, gripCamera * gripLocal:ToObjectSpace(part.CFrame), GROUP)
+			-- The gun-mesh contract's muzzle marker: the flash / tracer origin.
+			if part.Name == "Weapon_Muzzle" then
+				muzzlePart = part
+			end
 		end
 	end
 
@@ -314,7 +337,15 @@ end
 -- start. Nil when no modelled weapon is up - the caller falls back to the
 -- camera.
 function WeaponViewmodelController.getMuzzlePosition(): Vector3?
-	if not rig or not gripPart then
+	if not rig then
+		return nil
+	end
+	-- The mesh contract's Weapon_Muzzle marker is authoritative (it caps the
+	-- bore exactly); the grip+length projection is the pre-mesh fallback.
+	if muzzlePart then
+		return muzzlePart.Position
+	end
+	if not gripPart then
 		return nil
 	end
 	return gripPart.CFrame:PointToWorldSpace(Vector3.new(0, gripLength, 0))
