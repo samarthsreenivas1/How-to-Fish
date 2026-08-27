@@ -121,8 +121,10 @@ between sessions.
 All meshes go through Studio's Import once and the result is checked in as
 `assets/Assets.rbxm` (see "Asset pipelines"). **The running ledger of which
 `.glb`s currently owe a re-import is `docs/import-checklist.md`** — trust
-it over file dates; as of this rewrite the owed pair is `weapon.glb`
-(melee rebuild 1c1132b) and `rod.glb` (rod round be82f72). If
+it over file dates; as of this rewrite three are owed: `weapon.glb`
+(melee rebuild 1c1132b), `rod.glb` (rod round be82f72), and
+`island_pack.glb` (the swamp declutter + pine-fix pack 384c971 postdates
+the last island import). If
 a catch spawns as a grey ball and Output warns about `FishPack`, the pack
 model is missing or misnamed: it must be `ReplicatedStorage/Assets/FishPack`
 (the old single `Fish` model is unused and can be deleted). If the species
