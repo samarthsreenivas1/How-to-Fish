@@ -364,21 +364,16 @@ local MESH_COLOR = {
 	Volcano_Dunes = Color3.fromRGB(79, 71, 71), -- M_VolAsh (soft ash drifts)
 	Volcano_Scree = Color3.fromRGB(23, 23, 31), -- M_Obsidian (fine ground chunks)
 
-	-- Blackmire Fen (assets/island_swamp_gen.py; palette from the generator).
-	-- Swamp_Base carries three materials (peat/mud/wet mud) so it splits into
-	-- three numbered primitives, same as Island_Base and Volcano_Base.
-	Swamp_Base = Color3.fromRGB(61, 77, 50), -- M_Peat (dark waterlogged moss-peat)
-	Swamp_Base2 = Color3.fromRGB(101, 85, 60), -- M_Mud (the mud "beach")
-	Swamp_Base3 = Color3.fromRGB(74, 63, 47), -- M_WetMud
-	Swamp_Water = Color3.fromRGB(55, 77, 60),
-	Swamp_Trunks = Color3.fromRGB(91, 71, 50),
-	Swamp_Canopy = Color3.fromRGB(83, 115, 62),
-	Swamp_Reeds = Color3.fromRGB(139, 135, 77),
-	Swamp_Snags = Color3.fromRGB(66, 53, 40),
-	Swamp_Hummocks = Color3.fromRGB(86, 75, 55),
-	Swamp_Dock_Planks = Color3.fromRGB(115, 94, 64),
-	Swamp_Dock_Posts = Color3.fromRGB(79, 64, 45),
-	Swamp_Foam = Color3.fromRGB(217, 224, 212),
+	-- Blackmire Fen - RESTARTED FROM SCRATCH (2026-08-27, user; see
+	-- island_gen.py's swamp section). STEP 1 is a bare GREY landform: only
+	-- the three base bands exist, deliberately grey so the raw shape is
+	-- what gets reviewed. The old fen prop entries (Trunks/Canopy/Reeds/
+	-- Snags/Hummocks/Lilies/Stones/Dock/Foam/Water) are gone with the mesh;
+	-- each returns with its rebuild step - a re-added object without an
+	-- entry here renders importer-grey, which is the reminder.
+	Swamp_Base = Color3.fromRGB(140, 140, 140),
+	Swamp_Base2 = Color3.fromRGB(128, 128, 128),
+	Swamp_Base3 = Color3.fromRGB(115, 115, 115),
 
 	-- Frostmaw Reach (assets/island_ice_gen.py).
 	Frostmaw_Base = Color3.fromRGB(234, 239, 244), -- M_Snow
