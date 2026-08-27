@@ -1428,7 +1428,7 @@ def build_volcano():
         f"spawn suggestion X=0 Z={shore - 30:.0f} ground Y~{height_at(0, -(shore - 30)):.1f}; "
         "no dock/props yet - Pyrelisk's arena keys off the OLD dock, re-key when the dock step lands"
     )
-    return [base, lava, trees]
+    return [base, lava, trees, rocks]
 
 
 # ---------------------------------------------------------------- revamp islands (2026-08-25)
@@ -1854,12 +1854,16 @@ def build_swamp_trees():
     Each tree: the solid curved tan trunk (unchanged - the user called the
     bases good), then 3-5 main limbs off the upper trunk, each forking
     twice (occasionally three ways) with an upward bias, so the crown
-    spreads wide like the reference. Still leafless by design. The forest
-    is SPLIT across two objects (Swamp_Trees / Swamp_Trees2, same
-    material+color) because the forked crowns roughly double the geometry
-    and one mesh would breach the importer's triangle budget. Trunks stay
-    collidable (Precise import note); mere + spawn keep-clears hold."""
+    spreads wide like the reference. On top of every crown sits a THICK
+    BUSHY CANOPY (user: "really really thick and bushy"): overlapping
+    noise-lumped leaf blobs - one fat mass over the crown's heart plus a
+    puff at limb tips - so the skeleton wears a full head of foliage. The
+    forest is SPLIT across paired objects (Swamp_Trees/2 wood,
+    Swamp_TreeLeaves/2 canopy) because crowns+canopies breach a single
+    mesh's triangle budget. Trunks stay collidable (Precise import note);
+    canopies are NON-COLLIDE; mere + spawn keep-clears hold."""
     bms = [bmesh.new(), bmesh.new()]
+    leaf_bms = [bmesh.new(), bmesh.new()]
     rng = random.Random(4517)
     mx, my, mr = SWAMP_MERE
     sx, sy = SWAMP_SPAWN
@@ -1869,11 +1873,14 @@ def build_swamp_trees():
         c = math.cos(elev)
         return Vector((math.cos(az) * c, math.sin(az) * c, math.sin(elev)))
 
-    def limb(bm, base, direction, length, radius, depth):
-        """One branch segment, then fork: the reference's Y-splits."""
+    def limb(bm, base, direction, length, radius, depth, tips):
+        """One branch segment, then fork: the reference's Y-splits.
+        Terminal tips collect into `tips` so the canopy knows where the
+        crown actually is."""
         r_top = radius * (0.62 if depth > 0 else 0.22)
         add_cone(bm, tuple(base), radius, max(r_top, 0.05), length, sides=3, tilt=_tilt_toward(direction))
         if depth == 0:
+            tips.append(base + direction * length)
             return
         tip = base + direction * length
         kids = 3 if rng.random() < 0.2 else 2
@@ -1885,7 +1892,7 @@ def build_swamp_trees():
             perp.normalize()
             ang = rng.uniform(0.35, 0.7)
             child = (direction * math.cos(ang) + perp * math.sin(ang) + Vector((0, 0, 0.18))).normalized()
-            limb(bm, tip, child, length * rng.uniform(0.6, 0.78), r_top, depth - 1)
+            limb(bm, tip, child, length * rng.uniform(0.6, 0.78), r_top, depth - 1, tips)
 
     trees, attempts = 0, 0
     while trees < 110 and attempts < 9000:
@@ -1923,17 +1930,51 @@ def build_swamp_trees():
 
         # The expansive crown: 3-5 main limbs off the upper trunk, each a
         # long riser that forks twice - wide like the reference.
+        tips = []
         for _b in range(rng.randint(3, 5)):
             baz = rng.uniform(0, math.tau)
             t = rng.uniform(0.55, 0.95)
             at = joints[1] + (joints[3] - joints[1]) * ((t - 0.33) / 0.67) if t > 0.33 else joints[0]
             elev = rng.uniform(0.45, 0.95)
-            limb(bm, at, dir_of(baz, elev), rng.uniform(4.5, 7.5) * (total_h / 16.0), r0 * 0.3, 2)
+            limb(bm, at, dir_of(baz, elev), rng.uniform(4.5, 7.5) * (total_h / 16.0), r0 * 0.3, 2, tips)
 
-    print(f"[island_gen] swamp trees: {trees} bare trees with forked crowns, split over 2 objects")
+        # The canopy: one fat lumpy mass over the crown's heart, plus a
+        # puff at every third limb tip, all overlapping into one bush.
+        if tips:
+            leaf_bm = leaf_bms[(trees - 1) % 2]
+            centroid = Vector((0, 0, 0))
+            for t_ in tips:
+                centroid += t_
+            centroid /= len(tips)
+            spread = max((max(abs(t_.x - centroid.x), abs(t_.y - centroid.y)) for t_ in tips), default=5.0)
+            big = max(5.5, min(8.5, spread * 1.15))
+            add_blob(
+                leaf_bm,
+                (centroid.x, centroid.y, centroid.z + 0.8),
+                (big, big * rng.uniform(0.85, 1.0), big * 0.62),
+                0.2,
+                salt=trees * 2.9,
+                yaw=rng.uniform(0, math.tau),
+            )
+            for k, t_ in enumerate(tips):
+                if k % 3 != 0:
+                    continue
+                s = rng.uniform(3.6, 5.0)
+                add_blob(
+                    leaf_bm,
+                    (t_.x, t_.y, t_.z + 0.5),
+                    (s, s * rng.uniform(0.8, 1.0), s * 0.66),
+                    0.22,
+                    salt=trees * 7.1 + k,
+                    yaw=rng.uniform(0, math.tau),
+                )
+
+    print(f"[island_gen] swamp trees: {trees} trees, forked crowns + thick canopies, 2x2 objects")
     return [
         object_from_bmesh("Swamp_Trees", bms[0], ["M_TrunkWood"]),
         object_from_bmesh("Swamp_Trees2", bms[1], ["M_TrunkWood"]),
+        object_from_bmesh("Swamp_TreeLeaves", leaf_bms[0], ["M_WillowLeaf"]),
+        object_from_bmesh("Swamp_TreeLeaves2", leaf_bms[1], ["M_WillowLeaf"]),
     ]
 
 
