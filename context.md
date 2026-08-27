@@ -119,6 +119,7 @@ between sessions.
 | **Real projectiles** (2026-08-27) | built, live | bow/crossbow/harpooner fly their own `_Mag` mesh, not tracers (`ranged.projectile`, 648ba2c) |
 | **Voyage-arc map redesign** (2026-08-27) | built, **unreviewed** | islands scattered across one huge sea (legs 4,000→8,700 studs, arc around the cove), boat speeds/seaworthiness retuned per leg, sailing compass on the helm — see "The voyage-arc map" |
 | **Boss redesign: 6 unique movesets + gimmicks + models** (2026-08-27) | built, **unreviewed / creatures.glb re-import pending** | e84f7e9 (engine+data+client) + ba93efb (art): every post-cove boss has its own attack book on a new parameterized boss arsenal, a one-of-a-kind gimmick, and a bespoke Blender model — see "The boss redesign" |
+| **SWAMP RESTART, step 1: bare grey landform** (2026-08-27) | built, **awaiting Studio review / island_pack.glb re-import pending** | 7165cf4: the shipped fen REJECTED and deleted wholesale; `build_swamp` now emits only a grey `Swamp_Base` dome — step-by-step rebuild, each step reviewed before the next — see "The swamp restart" |
 | More archetypes (charger/spitter), style/juggle, arena | not started | see Known gaps |
 
 ### Manual Studio steps — check these first
@@ -732,6 +733,43 @@ boat." Pure code/data — NO re-imports owed by this slice.
 - **Unreviewed in Studio.** Likely tuning asks: leg lengths / travel-time
   feel, boat top speeds, compass size/placement, whether locked islands
   should show on the compass at all, marker colours.
+
+### The swamp restart (2026-08-27, step 1 in the tree)
+
+User verdict on the shipped mangrove fen: "absolutely atrocious" — grey
+unpainted objects in the canopy, water floating above the terrain, prop
+collision walling off the walkable ground. Their chosen fix: **delete the
+whole model and rebuild step by step, one reviewed step per prompt.**
+Everything in this section supersedes the older fen notes (the "authored
+water network", canopy roof, marsh growth, prop scatter — all deleted;
+recover from git before 7165cf4 if a step wants to crib).
+
+- **Step 1 (7165cf4, current)**: `build_swamp` emits ONE object,
+  `Swamp_Base` (three grey band materials M_SwampBase/2/3), off the shared
+  `build_island_base` — a low gently-domed island (~7 studs at the heart),
+  softly lobed coast, standard shore slope and skirt, radius 180. GREY on
+  purpose: the user reviews the raw shape first. HANDOFF: +Z shore at rel
+  Z=158, spawn re-keyed to rel Z=128. NO dock/water/trees/props/foam yet.
+- **While mid-rebuild**: swamp casting is off (no part named `Swamp_Water`
+  exists; the World.luau/WorldService contract wiring is intentionally
+  left in place for its return), and **Old Gnashroot's arena (rel Z=74)
+  is dry ground** — re-key the arena when the water step lands.
+  `WorldService.MESH_COLOR` keeps only the three grey `Swamp_Base*`
+  entries; every prop object must get its entry back when its step lands
+  or it renders importer-grey.
+- **THE LEAK, pinned (real bug this restart exposed)**: `configure()`
+  never resets globals between pack islands, and the shipped
+  ice/gloom/wreck meshes were built with the VOLCANO's
+  `PEAK_JAG`/`PEAK_TERMS`/`CRAG_CALM` still live (the old swamp passed
+  them through untouched). Those values are now pinned EXPLICITLY on the
+  ice overrides so the three approved islands stay byte-identical
+  (verified: gloom mesh bottom -16.53 / gate crest 19.12061 match a HEAD
+  pack build; they drift to -15.28/18.96 without the pin). Any future
+  island inserted into ISLAND_ORDER must set every shape key it cares
+  about — assume the previous island's globals are still loaded.
+- **Next steps (each its own prompt, wait for the ask)**: presumably
+  materials/palette, then water, then landforms/props, then the dock,
+  then the boss arena re-key. Don't build ahead.
 
 ### The boss redesign: unique movesets, gimmicks, models (2026-08-27, unreviewed)
 
