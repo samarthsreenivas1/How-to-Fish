@@ -2366,6 +2366,16 @@ power-up does." Every menu and HUD is now built from one kit:
   editing, `ListAgents` for live peers and claim the file by message;
   prefer small `Edit`s over whole-file `Write`s on shared files; read right
   before editing; after a rewrite, tell the peers.
+  - **THE GIT INDEX IS SHARED TOO (2026-08-27, learned 3× in one day):**
+    concurrent sessions share `.git/index`, so anything you stage and
+    leave sitting gets swept into whichever session commits next
+    (9a59de9/5a68a88 each carried another lane's staged hunks; one commit
+    was split in half). Rule, adopted by all lanes: **stage + commit in
+    ONE uninterrupted shell invocation — never leave anything in the index
+    between tool calls.** For selective landings while a peer's WIP is in
+    the tree: splice (hash-object + update-index + commit, same breath) or
+    do the work in a `git worktree`; build shared artifacts (island_pack)
+    from a worktree of the commit, never from a dirty shared tree.
 - **Never leave an offset on `camera.CFrame` across frames.** Roblox's
   default camera derives each frame's look direction from the camera's
   *current* CFrame, so any rotation applied after the camera scripts
