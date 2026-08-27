@@ -1048,6 +1048,8 @@ def _jagged_disc(bm, cx, cy, rx, ry, z_top, thickness, salt, seg=26):
 
 LAVA_LAKE_LEVEL = 842.0  # crater lake surface; dish floor 830-836, inner lip 852
 LAVA_LAKE_R = 48.0
+LAVA_LIFT = 1.8  # how far the sheet's top rides above its own raycast rock
+LAVA_COLUMNS = 7  # lateral samples per row - every one conforms to the ground
 
 # (bearing_deg, notch_half_width_deg, notch_depth, width_scale). Deliberately
 # UNEVEN, like the old approved design: the 48-deg river is THE main breach.
@@ -1072,20 +1074,46 @@ def _lava_surface(ground, x, y):
     return max(z, -2.2)
 
 
+def _lava_sheet(bm, rows, thickness):
+    """A DRAPED sheet: `rows` is a grid of top-surface Vectors (each already
+    sitting just above its own raycast ground), extruded down by `thickness`
+    and closed with side walls + end caps. Every interior vertex conforms to
+    the rock beneath it, so the surface follows every crag facet - unlike a
+    two-edge strip, whose interpolated middle the rock could poke through
+    (the user's 'lava blending into the rock' report, 2026-08-27)."""
+    top = [[bm.verts.new(p) for p in row] for row in rows]
+    down = Vector((0, 0, thickness))
+    bot = [[bm.verts.new(p - down) for p in row] for row in rows]
+    n, m = len(rows), len(rows[0])
+    for i in range(n - 1):
+        for j in range(m - 1):
+            bm.faces.new((top[i][j], top[i][j + 1], top[i + 1][j + 1], top[i + 1][j]))
+            bm.faces.new((bot[i + 1][j], bot[i + 1][j + 1], bot[i][j + 1], bot[i][j]))
+    for i in range(n - 1):  # side walls
+        bm.faces.new((top[i][0], top[i + 1][0], bot[i + 1][0], bot[i][0]))
+        bm.faces.new((bot[i][m - 1], bot[i + 1][m - 1], top[i + 1][m - 1], top[i][m - 1]))
+    bm.faces.new([top[0][j] for j in range(m)] + [bot[0][j] for j in range(m - 1, -1, -1)])  # start cap
+    bm.faces.new([bot[n - 1][j] for j in range(m)] + [top[n - 1][j] for j in range(m - 1, -1, -1)])  # end cap
+
+
 def _lava_river(bm, ground, bearing_deg, half_width_deg, width_scale):
-    """One river, source to sea, as a single ribbon. Returns its delta centre
-    so build_lava can fan it out and record the pond."""
+    """One river, source to sea, as a single draped sheet resting ON the rock:
+    a steps x LAVA_COLUMNS grid where EVERY vertex raycasts its own ground and
+    sits LAVA_LIFT above it - so the lava coats spurs and sinks into gullies
+    exactly like a flow, never disappears behind a facet, and never floats
+    (the sheet's 4-stud underside is always inside the rock, and its edge
+    walls reach below ground). Returns the delta centre + a mid-apron pool
+    spot."""
     theta0 = math.radians(bearing_deg)
     r0 = LAVA_LAKE_R * 0.72  # starts INSIDE the lake so the join is seamless
     r_end = ring_radius(1.0, theta0) + 52.0  # well past the shore, into the sea
-    steps = 84  # fine enough to track the crag down a 70-deg wall
+    steps = 168  # ~3.5-stud rows: on a 70-deg wall a coarser grid lets facets clip through mid-cell
     # The wander is bounded by the notch's half-width so the river can't climb
     # out of its own carved channel on the way through the rim.
     wander = min(math.radians(half_width_deg) * 0.55, 0.075)
     phase = bearing_deg * 0.37
 
-    left, right = [], []
-    prev_z = LAVA_LAKE_LEVEL
+    rows = []
     pool_at = None
     for i in range(steps + 1):
         t = i / steps
@@ -1093,42 +1121,26 @@ def _lava_river(bm, ground, bearing_deg, half_width_deg, width_scale):
         r = r0 + (r_end - r0) * t
         cx, cy = math.cos(theta) * r, math.sin(theta) * r
 
-        raw = _lava_surface(ground, cx, cy)
-        # On the steep band the wall plunges between samples and neighbouring
-        # crag facets jut PAST a tight-hugging ribbon, occluding slices of it
-        # (the "dashed river" look): ride higher off the rock the harder it
-        # drops, so the sheet stays proud of the columns beside it.
-        drop = max(0.0, prev_z - raw)
-        cz = raw + 1.5 + min(3.5, drop * 0.10)
-        # Lava flows DOWNHILL: a sample that comes back higher than the last
-        # (a crag spur across the line) is pinned, sinking the ribbon into
-        # the spur instead of hopping it - embedded reads as carved-through,
-        # a hop reads as a floating band.
-        cz = min(cz, prev_z + 0.6)
-        prev_z = cz
-
         # Widths: a tight chute up top, broadening down the flank, fanning
         # hard over the last stretch into the sea.
         w = width_scale * (7.0 + 20.0 * t + 6.0 * math.sin(math.pi * t))  # bulges mid-flank
         if t > 0.86:
             w += width_scale * 18.0 * (t - 0.86) / 0.14
         px, py = -math.sin(theta), math.cos(theta)
-        for sign, out in ((1.0, left), (-1.0, right)):
-            ex, ey = cx + px * w * sign, cy + py * w * sign
-            ez = _lava_surface(ground, ex, ey) + 1.5
-            # Edges follow their own ground (that is what keeps the ribbon
-            # ON the crag) but never twist more than a few studs off the
-            # centreline, and never far uphill past it.
-            ez = min(max(ez, cz - 8.0), cz + 3.0)
-            out.append(Vector((ex, ey, ez)))
+        row = []
+        for j in range(LAVA_COLUMNS):
+            frac = -1.0 + 2.0 * j / (LAVA_COLUMNS - 1)
+            ex, ey = cx + px * w * frac, cy + py * w * frac
+            row.append(Vector((ex, ey, _lava_surface(ground, ex, ey) + LAVA_LIFT)))
+        rows.append(row)
 
         # Where the river first crosses the mid-apron, remember the spot for
         # a molten pool beside it.
         if pool_at is None and u_at(cx, cy) >= 0.80:
             pool_at = (cx, cy, _lava_surface(ground, cx, cy))
 
-    add_strip_slab(bm, left, right, 5.0)
-    end = left[-1].lerp(right[-1], 0.5)
+    _lava_sheet(bm, rows, 4.0)
+    end = rows[-1][LAVA_COLUMNS // 2]
     return (end.x, end.y), pool_at
 
 

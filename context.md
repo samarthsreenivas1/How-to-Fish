@@ -905,12 +905,17 @@ playbook applied to Ashfall Caldera — reviewed from PNG previews
   that hugs the real crag via BVH raycasts, runs the full 900-stud flank,
   crosses the apron and fans into a molten sea delta at the waterline.
   Mid-apron pools + deltas recorded in LAVA_PONDS (12 fishable ponds).
-  The 270° spawn/dock wedge stays lava-free. Anti-gap machinery that took
-  three preview rounds: downhill pinning (a sample above the last sinks
-  into the spur, never hops), edge z clamped to the centreline, and
-  ADAPTIVE LIFT (+up to 3.5 where the wall plunges — tight-hugging ribbons
-  got occluded by neighbouring crag facets and read "dashed"). Widths
-  7→27+ studs, bulging mid-flank, ×1.35 on the main breach (48°).
+  The 270° spawn/dock wedge stays lava-free. **Rivers are DRAPED SHEETS,
+  not two-edge strips** (user round: "the lava is blending into the rock…
+  goes behind the rock… make it right above, resting on it, not
+  separated"): a 168×7 grid (`_lava_sheet`) where EVERY vertex raycasts
+  its own ground and sits `LAVA_LIFT` (1.8) above it — a strip's
+  interpolated middle let crag facets poke through; the grid conforms to
+  every facet, coats spurs, sinks into gullies, and its 4-stud underside/
+  edge walls stay inside the rock so nothing ever separates. Row spacing
+  matters: ~3.5 studs, because on a 70° wall a 7-stud row is ~20 studs of
+  drop and facets clip through mid-cell. Widths 7→27+ studs, bulging
+  mid-flank, ×1.35 on the main breach (48°).
   `waters = "volcano"` + Phoenix chase are LIVE again; Volcano_Lava back
   in MESH_COLOR + Neon. LavaController dresses it automatically (bubbles,
   scrolling crust) — it scans `*Lava` by name.
