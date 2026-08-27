@@ -27,9 +27,16 @@ design pivots listed under "Design decisions". Persistence (Slice 9) landed
 (`docs/revamp-plan.md` — the master design) was then **completed in full
 overnight 2026-08-25→26 by five concurrent sessions** — all seven islands,
 all seven bosses and hearts, the ranged engine, the boat, spawner/raids/
-events, and the Kraken finale are in the tree. What remains is the USER's
-morning pass: the batched Studio imports (every new `.glb` → `Assets.rbxm`)
-and the first in-Studio review of everything marked unreviewed.
+events, and the Kraken finale are in the tree. The user's import pass then
+LANDED (all six packs; the game boots and plays end to end), three review
+rounds closed every lane, and the project moved into **post-ship
+iteration** (2026-08-26→27): two island visual-overhaul rounds, a bipedal
+creature redesign, the guns rebuilt as guns, the melee arsenal rebuilt
+with per-family swing classes, a per-gun reload-animation system, and real
+arrow projectiles — see "The post-ship days". Standing re-imports owed at
+any moment are tracked in `docs/import-checklist.md`; as of this rewrite:
+`weapon.glb` (the 15 new melee models) and `rod.glb` (the 25 bespoke
+rods, be82f72).
 
 ## Working style — read this before starting any slice
 
@@ -100,15 +107,22 @@ between sessions.
 | **Islands 3/5/6 + volcano final re-gate** (revamp S4, 2026-08-26) | built, **unreviewed / imports pending** | Frostmaw Reach (`ice`), Gloomtrench (`gloom`), Wreckwater (`wreck`): full 5/5/3/4 kits, 38 creatures + Rimefang/Noctyss/Admiral Wrack, ambient+raid rosters; volcano re-gated L22-28 rewards ×6, Pyrelisk 40k/gate 28 — see "The S4 islands" |
 | **The Maelstrom + the Kraken** (revamp S4, 2026-08-26) | built, **unreviewed** | procedural site (no mesh), `Maelstrom_Water` roster, six-hearts+final-boat gates, Kraken 130k with tentacle ring/exposure windows/`rangedOnly` head, finale banner — see "The finale" |
 | **Trophy Hall + boat shelf + weather** (revamp S4, 2026-08-26) | built, **unreviewed** | `TrophyController` (H), `TrophyShelfController` (heart orbs on the boat), `WeatherService`/`WeatherController` (ice blizzards + gloom perpetual dark w/ lantern rods) |
+| **Review rounds 1-3** (2026-08-26) | **closed, all lanes** | every confirmed finding fixed and committed — see the fix ledger in "The post-ship days" |
+| **Island visual overhaul, rounds 1+2** (2026-08-26→27) | done, in the imported pack | every non-tropical island redesigned to be theme-distinct; Frostmaw went a THIRD round (rejected berg → soft glacier → cornice); pack-authority re-key rule + `meshBottom` born here |
+| **Bipedal creature redesign** (2026-08-26) | done, re-import landed | every humanoid in the CreaturePack got a silhouette, gear and a weapon (0903783) |
+| **Guns rebuilt as guns** (2026-08-27) | done, imported | 15 recognizable firearm silhouettes + the separable `Mag`/`Action`/`Sight`/`Muzzle` part contract + ranged hold poses (fd9c861/c67b5dc/7cc0a90) |
+| **Melee arsenal revamp** (2026-08-27) | built; `weapon.glb` re-import pending | 15 post-cove melee models rebuilt + six per-family swing classes (f309c40/1c1132b) — see "The post-ship days" |
+| **Per-gun reload animations** (2026-08-27) | built, live (code-side) | multi-track clip system: visible mag handling by an appearing left hand, revolver cylinder work, bow nocking... one unique clip per gun (a738a16/4b60215) |
+| **Real projectiles** (2026-08-27) | built, live | bow/crossbow/harpooner fly their own `_Mag` mesh, not tracers (`ranged.projectile`, 648ba2c) |
 | More archetypes (charger/spitter), style/juggle, arena | not started | see Known gaps |
 
 ### Manual Studio steps — check these first
 
 All meshes go through Studio's Import once and the result is checked in as
-`assets/Assets.rbxm` (see "Asset pipelines"). **As of the last rewrite every
-`.glb` predates the current `Assets.rbxm`** (rbxm 13:59, last `fish.glb`
-13:54, island/rod earlier), and the rbxm grew ~34 KB at that export, which
-matches the 31-part species pack — so the imports are believed current. If
+`assets/Assets.rbxm` (see "Asset pipelines"). **The running ledger of which
+`.glb`s currently owe a re-import is `docs/import-checklist.md`** — trust
+it over file dates; as of this rewrite the owed pair is `weapon.glb`
+(melee rebuild 1c1132b) and `rod.glb` (rod round be82f72). If
 a catch spawns as a grey ball and Output warns about `FishPack`, the pack
 model is missing or misnamed: it must be `ReplicatedStorage/Assets/FishPack`
 (the old single `Fish` model is unused and can be deleted). If the species
@@ -521,6 +535,152 @@ island tables verbatim; the ledger of record stays that file.
   stays a boss site); the whirlpool doesn't spin (a LavaController-style
   swirl is the one cosmetic TODO); tentacle ring/aggro numbers are first
   guesses — expect a tuning round.
+
+### The post-ship days (2026-08-26 → 27, all unreviewed-in-Studio unless noted)
+
+The revamp shipped, the user imported everything, the game booted end to
+end for the first time — and then the real iteration started. Everything
+below happened in roughly 48 hours across a rotating multi-session fleet
+(one coordinator arbitrating lanes, heavy art/animation authored by
+dedicated Opus subagents, every landing gated on the four commands +
+review). The pattern that stuck: **orchestrator session + authoring
+agent + a human-visible render reviewed BEFORE commit**, and for art, a
+**three-lane blind-gate protocol** (a non-author session measures, not
+eyeballs, the claimed invariants) as the QA standard.
+
+- **First boot + the import epoch.** All six packs imported
+  (`docs/import-checklist.md` — its ledger is the running truth for what
+  re-imports are owed). Boot-blockers found and fixed the same day: the
+  DataStore acquire now pcall-guards at require time (Studio without API
+  access used to kill the whole server boot), and the four new islands'
+  `<Name>_Base/2/3` primitives got their MESH_COLOR splits (multi-material
+  landforms import as numbered parts — without entries they render
+  importer-grey; the Island_Base precedent, now applied everywhere).
+  **Ambient hostile spawning is OFF by user order**
+  (`Tuning.Spawner.AMBIENT_ENABLED = false`, cc7d945): mobs must not just
+  appear — raids and fishing are the hostile sources. Don't re-enable
+  without the user.
+- **Review rounds 1–3 — closed, every lane.** The confirmed-findings fix
+  ledger (all committed): S1 persistence save-wipe/load-window (44942f6);
+  boat/world hardening ×6 + park-thread races (7383f3b, 6a43db2); raid
+  payouts crediting every hitter (b99abee); AoE burst stacking (7b5fb0e);
+  per-weapon ammo mirrors / stuck auto-fire / respawn zoom (261bf9c);
+  Grave Blunderbuss spread was DEGREES in a RADIANS field — it fired in
+  random directions (3be36dc); the four new water surfaces + all foams
+  joined NON_COLLIDE via a "_Foam" substring (players would have walked on
+  the pools, 39eaeb0); **the weather fog was 100% invisible** — an
+  Atmosphere under Lighting makes Roblox ignore legacy `Lighting.Fog*`,
+  so WeatherController now drives the Atmosphere itself (gloom density
+  0.72→0.58 with a lantern rod; 5d55419 — any future fog work must go
+  through the Atmosphere too); the Maelstrom map card reads YOU ARE HERE
+  on the site (f44a9c4); and the boss bar re-targets the NEAREST live
+  boss and hands over on despawn instead of dying — two bosses can be
+  alive on different islands now (9060296).
+- **Island visual overhaul, rounds 1 and 2.** User verdict on the shipped
+  islands: flat pancakes. Round 1 (pre-restart WIP, committed as the
+  1b28763 baseline) reshaped swamp/gloom/volcano/wreck; round 2 was a
+  four-lane fleet pass making each island unmistakable (mangrove-roof
+  fen, more-lava volcano, open-sea wreck graveyard, gloom overhaul), all
+  collected in the 5904cf0 pack. **Frostmaw took three rounds of its
+  own**: my towering-berg build was REJECTED by the user ("shouldn't be
+  jagged" — reference images wanted soft chunky glacial forms), replaced
+  by the soft-glacier rebuild and then the glacial-cornice iteration
+  (d64d120→dfc039f). Its mesh objects are now Berg / Arch / Walls /
+  Terraces / Crystals / PineSnow / Pines / DeadTrees / SnowMounds /
+  ShardLitter / SnowCaps, with the four big forms rendered
+  `Enum.Material.Ice` (the one non-SmoothPlastic/Neon material in
+  MESH_MATERIAL). Two engine-side rules were born here, both BINDING:
+  **(1) the pack build is the authority for geometry keys** — after any
+  island regen, re-key `Islands.luau` spawns / `Bosses.luau` arenas from
+  the PACK build's printed `HANDOFF` lines, never a solo-island build
+  (cross-island module state drifts low decimals; 682f282 re-keyed the
+  swamp spawn to Z=130 and moved Old Gnashroot into the fen's new
+  interior arena pool at rel (0,0,74) r36); **(2) `meshBottom`** on an
+  Islands entry — an island whose authored geometry dips below the -9
+  skirt (seabed dunes, sunken keels) must declare its true lowest z, or
+  WorldService aligns the bbox bottom on the skirt and the whole island
+  floats (the "floating ships and litter" bug, 8eca70e). The ocean also
+  learned to span past the farthest shore (f8ddb8d) and every island's
+  water now wears the ocean's exact colors (42b73d7). The Frostmaw pines'
+  leaf cones were reported disconnected by the user and fixed at the
+  generator level: tier height now derives from tier spacing (guaranteed
+  1.3-1.55× overlap) and the trunk spans the whole crown (c9695f6).
+- **The bipedal cast redesigned** (0903783, imported). Every humanoid in
+  the CreaturePack got a real silhouette, gear, and a weapon/prop —
+  fleet-split by island; this session's four: FrozenMariner (mid-stride
+  whaler with frozen harpoon + rime-rope), BlizzardWraith (legless
+  storm-shade shredding into wind-torn tatters, solid crystal
+  shard-blade), TempestRevenant (17° haul-lean dragging a barnacled
+  anchor on a chain), StormcallerDjinn (cloud-funnel torso, two-handed
+  forked lightning-rod, chest core + prong arcs in `_Marks` for the
+  in-game Neon). WhirlpoolHorror's buried spiral ridge fixed en route.
+  The four-mesh `_Body/_Fins/_Eyes/_Marks` contract held throughout —
+  weapons are geometry welded into `_Fins`, glow into `_Marks`.
+- **The guns became guns** (fd9c861 → c67b5dc → 7cc0a90, imported). All
+  15 rebuilt as recognizable firearms with ranged HOLD POSES (GUN_* pose
+  constants beside the melee ones) and a NEW GUN-MESH CONTRACT, binding
+  for any future gun: authored butt z=0 → **muzzle exactly at z=LENGTH
+  along the bore (+Z)**; four separable parts per gun —
+  `<Variant>_Mag` (the magazine/arrow/iron — BY CONTRACT separable so
+  reload animations can move it), `_Action` (bolt/lever/cylinder),
+  `_Sight`, `_Muzzle` (a tiny marker at the tip consumed as the
+  muzzle-flash AND projectile origin); sights on +X — and note the glb
+  X-mirror means the in-hand ROLL is +90 for guns where melee uses -90
+  (7cc0a90 fixed exactly this: the first import held every gun upside
+  down).
+- **The melee arsenal revamp** (user: the 15 post-cove weapons were
+  "uninteresting" with "odd animations"). Root cause of the odd feel:
+  every weapon shared the cove's two clips. Now SIX swing classes, one
+  per family, each fitted inside its rows' cooldowns (f309c40): `hack`
+  (wrist-snap diagonal — machete/hatchet/Fenreaver), `thrust`
+  (coil→level lunge→pinned beat→yank — lances/Piercer/Trenchspike/
+  Stormlance), `smash` (hoist→apex hang→crash→buried beat — Glacier
+  Maul), `sweep` (flat level cleave carried off the left edge — Boarding
+  Axe/Galecleaver/Krakenfang), `flourish` (rising rolled back-cut, wrist
+  rolls over into the true diagonal — the three sabers; first clips to
+  use the roll channel), `pummel` (translation-dominant piston punch —
+  Magma Gauntlets). The cove five keep chop/slash untouched per the
+  user. All 15 MODELS rebuilt distinct and island-storied (1c1132b —
+  re-import pending); the melee **edge = +X** convention is verified from
+  geometry and documented in the generator's melee header; all frames
+  unchanged so zero row patches. A latent generator landmine found en
+  route: `slab_with_hole` silently rendered folded garbage when a hole
+  crossed the profile — it now raises loudly with coordinates, gated by a
+  byte-identical pack rebuild (5e4313d).
+- **The reload-animation system** (a738a16 + 4b60215, live code-side —
+  a real new architecture piece). `assets/gun_reload_anim.py` →
+  `Shared/Data/GunReloadAnim.luau`: one MULTI-TRACK clip per gun variant
+  — `weapon` (whole viewmodel about the right elbow, the swing
+  contract), `mag`/`action` (that part LOCAL about its own home:
+  rotation spins in place, translation in camera axes — how a magazine
+  drops out of its well and a cylinder rolls on its axle), `hand` (a
+  LEFT block arm, built parked off-screen on every gun rig, raised by
+  the clips to do the handling; author hand and mag on the same keys —
+  that's what sells the grab). WeaponViewmodelController routes
+  `Weapon_Mag`/`Weapon_Action` into their own rig groups and plays clips
+  **time-scaled to fill the row's server `reloadTime` exactly — the
+  visual can never extend or gate the server's window** (binding rule:
+  retune the ROW if a choreography needs longer, and rebalance
+  DPS if the retune is big). `reloadTime = 0` loaders (bow / crossbow /
+  flintlock / harpooner) play theirs after EVERY shot inside 85% of the
+  cooldown. All 16 clips are unique and reviewed against rendered
+  filmstrips (the pipeline renders per-clip stills; its camera initially
+  stared past the gun rendering black frames — fixed).
+- **Real projectiles** (648ba2c, live). `ranged.projectile = true` on
+  bow/crossbow/harpooner: the flying shot is the weapon's own
+  `<Variant>_Mag` mesh — the very arrow the reload nocks — cloned from a
+  per-variant pool, accent-recolored, flown nose-first down the existing
+  arc with `PivotTo`; procedural arrow fallback pre-import; projectile
+  weapons skip the muzzle flash. Guns keep tracers + flash unchanged.
+- **The Maelstrom turns** (0f9e15f): `MaelstromVfxController` spins the
+  whirlpool disc + a counter-rotating inner layer, client-side, tide/lava
+  ruling (server never moves the anchored disc; the cylinder is round so
+  casts are untouched; the layer is CanQuery=false).
+- **Rod round** (be82f72 — re-import pending): all 25 new-island rods
+  rebuilt bespoke across three lanes, no two alike, rows re-colored,
+  blind non-author gates with measured z-bounds. Rod frame law, binding:
+  the shared 0.95 grip / 7.0 length frame holds, ornament ceiling 7.9
+  (the PhoenixAsh precedent), butts hard at z ≥ 0.
 
 ### First person, arms, and the viewmodels
 
@@ -1973,7 +2133,8 @@ src/
                             (damage/cooldown/reach/knockback, swing clip name, procedural model block, recipe)
       RodCastAnim.luau      GENERATED cast clip
       FistPunchAnim.luau    GENERATED punch clips (jab/cross, track per fist)
-      WeaponSwingAnim.luau  GENERATED weapon swing clips (chop/slash), whole-viewmodel transform about the elbow
+      WeaponSwingAnim.luau  GENERATED weapon swing clips (chop/slash + hack/thrust/smash/sweep/flourish/pummel), whole-viewmodel transform about the elbow
+      GunReloadAnim.luau    GENERATED per-gun multi-track reload clips (weapon/mag/action/hand tracks) - see "The post-ship days"
     Net/
       Remotes.luau          GetInventory, InventoryUpdated, RequestCast, CastAccepted, CastRejected,
                             SubmitReelClick, ReelRoundResult, CastResolved, AbandonCast, RequestEquip,
