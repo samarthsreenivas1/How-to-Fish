@@ -119,7 +119,7 @@ Islands.items = {
 		-- Leg 1 of the voyage: ~4,000 studs NE of the cove (tier-1 crossing).
 		worldPosition = Vector3.new(3700, 0, 1500),
 		radius = 180,
-		spawn = Vector3.new(3700, 4, 1628), -- X/Z: rel Z=128, on the +Z shore of the RESTARTED bare landform (shore at rel Z=158; step-1 pack HANDOFF, 2026-08-27 - no dock yet); Y is the probe's fallback
+		spawn = Vector3.new(3700, 4, 1617), -- X/Z: rel Z=117, on the +Z shore shelf of the restarted island (shore at rel Z=147 since the marsh-enlarge pass; no dock yet); Y is the probe's fallback
 		unlockLevel = 8,
 		boss = "old_gnashroot",
 

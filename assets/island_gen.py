@@ -1119,9 +1119,9 @@ def _interior_spot(ground, u_lo, u_hi, pad=3.0, tries=40):
 SWAMP_WATER_Z = 2.2  # standing-water plane (Blender z; sea is 0)
 SWAMP_BED_Z = 0.9  # the flooded forest floor - ~1.3 studs under the water, wadeable
 SWAMP_ISLET_Z = 3.5  # islet crowns - ~1.3 studs proud of the water
-SWAMP_MARSH_U = 0.60  # the marsh floods the interior out to about here
-SWAMP_RIM_U = 0.70  # by here the ground has climbed back above the water (the rim that holds it in)
-SWAMP_SPAWN = (0.0, -128.0)  # keep-clear: the step-1 spawn (Roblox rel Z=128)
+SWAMP_MARSH_U = 0.72  # the marsh floods the interior out to about here
+SWAMP_RIM_U = 0.82  # by here the ground has climbed back above the water (the rim that holds it in)
+SWAMP_SPAWN = (0.0, -117.0)  # keep-clear: the spawn shelf (Roblox rel Z=117; re-keyed when GRASS_U 0.88 pulled the shore to Z=147)
 SWAMP_MERE = (0.0, -74.0, 30.0)  # the boss mere: forced open water at Old Gnashroot's arena
 
 
@@ -4621,13 +4621,16 @@ ISLANDS = {
             # angular at the marsh edge) - the v2 mesh was half this and the
             # islet edges read as pixelated stair-steps.
             "SEGMENTS": 176,
-            "GRASS_U": 0.74,
+            # The peat runs almost to the coast (user, marsh review: "the
+            # brown [should be] more near the coastline") - the mud band is
+            # a thin coastal fringe now, not a fat ring.
+            "GRASS_U": 0.88,
             "RINGS": [
                 0.0, 0.02, 0.04, 0.06, 0.08, 0.10, 0.12, 0.14, 0.16, 0.18,
                 0.20, 0.22, 0.24, 0.26, 0.28, 0.30, 0.32, 0.34, 0.36, 0.38,
                 0.40, 0.42, 0.44, 0.46, 0.48, 0.50, 0.52, 0.54, 0.56, 0.58,
-                0.60, 0.62, 0.64, 0.66, 0.68, 0.70, 0.74, 0.80, 0.86, 0.92,
-                0.96, 1.0, 1.09, 1.28,
+                0.60, 0.62, 0.64, 0.66, 0.68, 0.70, 0.72, 0.74, 0.76, 0.78,
+                0.80, 0.82, 0.86, 0.90, 0.94, 0.97, 1.0, 1.09, 1.28,
             ],
             # A gentle dome: ~7 studs at the heart easing to the standard
             # shallow shoreline, then the shared underwater skirt.
@@ -4650,7 +4653,10 @@ ISLANDS = {
             ],
             # A softly lobed coast - organic, but nothing extreme.
             "COAST_TERMS": [(2, 0.7, 0.10), (3, 2.9, 0.08), (5, 1.6, 0.06)],
-            "GRASS_TERMS": [(2, 1.1, 0.08), (3, 0.4, 0.06)],
+            # The peat/mud boundary wanders HARD (user: the green circle was
+            # "too uniform... more randomly curved") - four terms, fingers
+            # of green reaching into the mud and back.
+            "GRASS_TERMS": [(2, 1.1, 0.12), (3, 2.3, 0.10), (5, 0.9, 0.065), (8, 4.1, 0.04)],
             # Neutralize the volcano's carry-over (pack build order).
             "CRAG": 0.0,
             "CRAG_RADIAL": 0.0,
