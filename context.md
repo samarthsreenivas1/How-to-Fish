@@ -937,8 +937,20 @@ playbook applied to Ashfall Caldera — reviewed from PNG previews
   ≥24 studs apart. COLLIDABLE — PreciseConvexDecomposition at import (a
   box hull over a spread crown is an invisible wall). The `_apron`
   preview camera now walks the tree band at eye level.
-- **Next steps (each its own prompt, wait for the ask)**: rocks/scatter,
-  the dock (+ Pyrelisk re-key), foam, eruption tie-in. Don't build ahead.
+- **Step 4 — THE ROCKS (same day; user: "large rocks along the volcano
+  and the base... varying in size... randomly generated looks")**: one
+  `Volcano_Rocks` object (M_Obsidian): 58 apron boulders (5-26) + 38
+  massive half-buried FLANK masses (12-30) on the steep cone. Every rock
+  is a composed cluster of 2-4 noise-displaced blobs (independent squash/
+  roughness/yaw; ~1 in 7 grows a shard-fang); big hero blobs pass the new
+  `add_blob(..., subdiv=2)` + heavy roughness — at sub-1/low roughness a
+  large rock reads as a bare icosphere (preview review). Same keep-clears
+  as the trees. **Pack-regen pattern used this round (peer WIP in tree):
+  splice-stage your own hunks, commit, then build the pack from a `git
+  worktree` of that commit into the main checkout** — never from a
+  working tree carrying another lane's uncommitted hunks.
+- **Next steps (each its own prompt, wait for the ask)**: the dock
+  (+ Pyrelisk re-key), foam, eruption tie-in. Don't build ahead.
 
 ### The boss redesign: unique movesets, gimmicks, models (2026-08-27, unreviewed)
 
