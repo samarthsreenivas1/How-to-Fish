@@ -1026,6 +1026,141 @@ def _jagged_disc(bm, cx, cy, rx, ry, z_top, thickness, salt, seg=26):
     add_disc_slab(bm, points, z_top, thickness)
 
 
+# ---------------------------------------------------------------- volcano lava (restart step 2)
+#
+# 2026-08-27, user: "add lava in the volcano and on the sides dripping down...
+# realistic... it shouldn't have gaps... it should flow all the way down from
+# the top to the floor and ocean. a good amount of lava."
+#
+# One `Volcano_Lava` object (the fishable-surface contract name - NEVER split
+# it): a summit crater lake, six rivers pouring out through notches carved in
+# the rim (the entry's NOTCHES drop the 895 lip below the 842 lake at each
+# flow's bearing), each river a SINGLE CONTINUOUS RIBBON (add_strip_slab:
+# consecutive samples share vertices, so gaps are impossible by construction)
+# that hugs the real craggy mesh via BVH raycasts - the deleted old build's
+# hard lesson: the analytic height disagrees with the crag by tens of studs,
+# which is exactly where floating slabs and holes came from. Every river runs
+# lake -> notch -> the full 900-stud flank -> across the ash apron -> a molten
+# DELTA fanning into the sea at the waterline. Mid-apron pools + the deltas
+# are recorded in LAVA_PONDS (the fishable lava, and the keep-clear registry
+# for later prop steps). The 270-deg wedge (spawn now, dock later) stays
+# lava-free: nearest flow bearing is 65 deg away.
+
+LAVA_LAKE_LEVEL = 842.0  # crater lake surface; dish floor 830-836, inner lip 852
+LAVA_LAKE_R = 48.0
+
+# (bearing_deg, notch_half_width_deg, notch_depth, width_scale). Deliberately
+# UNEVEN, like the old approved design: the 48-deg river is THE main breach.
+# Bearings/widths/depths are mirrored into the entry's NOTCHES by hand - keep
+# the two lists in step or a river runs over an uncut rim.
+LAVA_FLOWS = [
+    (318.0, 9.0, 66.0, 1.0),
+    (5.0, 8.0, 62.0, 0.85),
+    (48.0, 13.0, 78.0, 1.35),  # the main breach
+    (100.0, 10.0, 70.0, 1.0),
+    (152.0, 8.0, 64.0, 0.8),
+    (205.0, 11.0, 72.0, 1.15),
+]
+
+
+def _lava_surface(ground, x, y):
+    """The real mesh height at (x, y) - BVH first, analytic fallback - floored
+    just under the waterline so a river entering the sea rides the surface."""
+    z = _drop_to_ground(ground, x, y)
+    if z is None:
+        z = height_at(x, y)
+    return max(z, -2.2)
+
+
+def _lava_river(bm, ground, bearing_deg, half_width_deg, width_scale):
+    """One river, source to sea, as a single ribbon. Returns its delta centre
+    so build_lava can fan it out and record the pond."""
+    theta0 = math.radians(bearing_deg)
+    r0 = LAVA_LAKE_R * 0.72  # starts INSIDE the lake so the join is seamless
+    r_end = ring_radius(1.0, theta0) + 52.0  # well past the shore, into the sea
+    steps = 84  # fine enough to track the crag down a 70-deg wall
+    # The wander is bounded by the notch's half-width so the river can't climb
+    # out of its own carved channel on the way through the rim.
+    wander = min(math.radians(half_width_deg) * 0.55, 0.075)
+    phase = bearing_deg * 0.37
+
+    left, right = [], []
+    prev_z = LAVA_LAKE_LEVEL
+    pool_at = None
+    for i in range(steps + 1):
+        t = i / steps
+        theta = theta0 + wander * math.sin(phase + t * 6.2)
+        r = r0 + (r_end - r0) * t
+        cx, cy = math.cos(theta) * r, math.sin(theta) * r
+
+        raw = _lava_surface(ground, cx, cy)
+        # On the steep band the wall plunges between samples and neighbouring
+        # crag facets jut PAST a tight-hugging ribbon, occluding slices of it
+        # (the "dashed river" look): ride higher off the rock the harder it
+        # drops, so the sheet stays proud of the columns beside it.
+        drop = max(0.0, prev_z - raw)
+        cz = raw + 1.5 + min(3.5, drop * 0.10)
+        # Lava flows DOWNHILL: a sample that comes back higher than the last
+        # (a crag spur across the line) is pinned, sinking the ribbon into
+        # the spur instead of hopping it - embedded reads as carved-through,
+        # a hop reads as a floating band.
+        cz = min(cz, prev_z + 0.6)
+        prev_z = cz
+
+        # Widths: a tight chute up top, broadening down the flank, fanning
+        # hard over the last stretch into the sea.
+        w = width_scale * (7.0 + 20.0 * t + 6.0 * math.sin(math.pi * t))  # bulges mid-flank
+        if t > 0.86:
+            w += width_scale * 18.0 * (t - 0.86) / 0.14
+        px, py = -math.sin(theta), math.cos(theta)
+        for sign, out in ((1.0, left), (-1.0, right)):
+            ex, ey = cx + px * w * sign, cy + py * w * sign
+            ez = _lava_surface(ground, ex, ey) + 1.5
+            # Edges follow their own ground (that is what keeps the ribbon
+            # ON the crag) but never twist more than a few studs off the
+            # centreline, and never far uphill past it.
+            ez = min(max(ez, cz - 8.0), cz + 3.0)
+            out.append(Vector((ex, ey, ez)))
+
+        # Where the river first crosses the mid-apron, remember the spot for
+        # a molten pool beside it.
+        if pool_at is None and u_at(cx, cy) >= 0.80:
+            pool_at = (cx, cy, _lava_surface(ground, cx, cy))
+
+    add_strip_slab(bm, left, right, 5.0)
+    end = left[-1].lerp(right[-1], 0.5)
+    return (end.x, end.y), pool_at
+
+
+def build_lava(ground):
+    LAVA_PONDS.clear()  # this island's records only (shared-registry rule)
+    bm = bmesh.new()
+
+    # The crater lake, filling the summit dish.
+    _jagged_disc(bm, 0.0, 0.0, LAVA_LAKE_R, LAVA_LAKE_R * 0.93, LAVA_LAKE_LEVEL, 8.0, salt=3.1, seg=30)
+
+    deltas = 0
+    for bearing, half_w, _depth, ws in LAVA_FLOWS:
+        (ex, ey), pool_at = _lava_river(bm, ground, bearing, half_w, ws)
+        # The delta: the river fans into a molten sheet at the waterline,
+        # spreading into the sea - sunk deep so its underside is never seen.
+        delta_r = 15.0 * ws
+        _jagged_disc(bm, ex, ey, delta_r, delta_r * 0.8, 0.45, 5.0, salt=bearing * 1.7, seg=18)
+        LAVA_PONDS.append((ex, ey, delta_r))
+        deltas += 1
+        if pool_at is not None:
+            px, py, pz = pool_at
+            pool_r = random.uniform(9.0, 14.0) * ws
+            _jagged_disc(bm, px, py, pool_r, pool_r * random.uniform(0.75, 0.95), pz + 0.55, 4.0, salt=bearing * 2.3, seg=16)
+            LAVA_PONDS.append((px, py, pool_r))
+
+    print(
+        f"[island_gen] HANDOFF volcano lava: lake r{LAVA_LAKE_R:.0f} at {LAVA_LAKE_LEVEL:.0f}, "
+        f"{len(LAVA_FLOWS)} rivers, {deltas} sea deltas, {len(LAVA_PONDS)} fishable ponds recorded"
+    )
+    return object_from_bmesh("Volcano_Lava", bm, ["M_Lava"])
+
+
 # ---------------------------------------------------------------- island builds
 
 
@@ -1051,22 +1186,21 @@ def build_volcano():
     step 1; the rebuild is step-by-step, each step reviewed from PNG previews
     and in Studio before the next.
 
-    STEP 1 - just the shape: ONE object (Volcano_Base, the three volcanic
-    band materials) off the shared build_island_base machinery - a broad ash
-    apron at sea level rising into a single clean smooth cone with a shallow
-    summit crater dish. No crag, no notches, no lava, no props, no dock, no
-    foam. The cone is deliberately UNDERSTATED so its height/steepness/
-    raggedness can be steered by review instead of re-guessed."""
+    STEP 1 - the shape (iterated to the ~895-stud shattered spire on review);
+    STEP 2 - the lava (build_lava: crater lake, six notch-fed rivers running
+    rim to sea, apron pools + molten deltas). Still NO props, NO dock, NO
+    foam - each returns with its own reviewed step."""
     base = build_island_base("Volcano_Base", ["M_VolRock", "M_VolAsh", "M_VolWet"])
-    LAVA_PONDS.clear()  # no lava yet; stale pool records must not leak onward
+    ground = _ground_bvh(base)
+    lava = build_lava(ground)  # step 2: clears + repopulates LAVA_PONDS itself
     shore = ring_radius(1.0, math.radians(270))
     peak = max(h for _, h in PROFILE)
     print(
-        f"[island_gen] HANDOFF volcano (restart step 1): peak ~{peak:.0f}, +Z shore at rel Z={shore:.0f}, "
+        f"[island_gen] HANDOFF volcano (restart step 2): peak ~{peak:.0f}, +Z shore at rel Z={shore:.0f}, "
         f"spawn suggestion X=0 Z={shore - 30:.0f} ground Y~{height_at(0, -(shore - 30)):.1f}; "
-        "no dock/lava/props yet - Pyrelisk's arena keys off the OLD dock, re-key when the dock step lands"
+        "no dock/props yet - Pyrelisk's arena keys off the OLD dock, re-key when the dock step lands"
     )
-    return [base]
+    return [base, lava]
 
 
 # ---------------------------------------------------------------- revamp islands (2026-08-25)
@@ -4673,8 +4807,20 @@ ISLANDS = {
             "CRAG_RADIAL_FREQS": (13.0, 18.0),
             "CRAG_CALM": None,
             "RIM_FLAT": (0.72, 1.0),
-            "NOTCHES": [],
-            "NOTCH_BAND": None,
+            # Step 2's six rim gashes - one per lava river, mirroring
+            # LAVA_FLOWS by hand (bearing, half-width, depth; keep the two
+            # lists in step). Depths drop the 895 lip below the 842 lake so
+            # every river genuinely pours; peak_jag zeroes itself inside
+            # each window so a jagged ridge can't seal a gash.
+            "NOTCHES": [
+                (math.radians(318), math.radians(9), 66.0),
+                (math.radians(5), math.radians(8), 62.0),
+                (math.radians(48), math.radians(13), 78.0),  # the main breach
+                (math.radians(100), math.radians(10), 70.0),
+                (math.radians(152), math.radians(8), 64.0),
+                (math.radians(205), math.radians(11), 72.0),
+            ],
+            "NOTCH_BAND": (0.085, 0.175),  # the summit lip band (lip at u 0.155)
             # The broken asymmetric ridgeline around the summit.
             "PEAK_JAG": 28.0,
             "PEAK_TERMS": [(2, 0.8, 0.45), (3, 2.6, 0.35), (5, 1.1, 0.20)],
@@ -4692,6 +4838,7 @@ ISLANDS = {
                 "M_VolRock": (0.169, 0.161, 0.188),
                 "M_VolAsh": (0.310, 0.278, 0.278),
                 "M_VolWet": (0.200, 0.188, 0.212),
+                "M_Lava": (1.000, 0.420, 0.059),  # molten orange (Neon in-game)
             },
         },
         "build": build_volcano,

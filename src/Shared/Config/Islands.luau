@@ -210,10 +210,11 @@ Islands.items = {
 	-- the bare landform, resized on review ("really really really tall...
 	-- jagged... more randomized"): a ~895-stud shattered spire (broken
 	-- ridgeline to ~950) with heavy crag + a height-varying outline over the
-	-- WHOLE cone, a summit crater dish, and a broad flat ash apron. NO dock,
-	-- NO lava (the `waters = "volcano"` roster and Phoenix chase are dormant
-	-- until the lava step - the Volcano_Lava contract wiring in World.luau
-	-- stays for its return), NO props.
+	-- WHOLE cone, a summit crater dish, and a broad flat ash apron. STEP 2
+	-- (same day): the LAVA is back - a crater lake and six notch-fed rivers
+	-- pouring rim to sea, with mid-apron pools and molten sea deltas as the
+	-- fishable Volcano_Lava (the `waters = "volcano"` roster and Phoenix
+	-- chase are LIVE again). Still NO dock, NO props.
 	volcano = {
 		name = "Ashfall Caldera",
 		blurb = "A towering volcano - fish its shore, brave the lava ponds.",

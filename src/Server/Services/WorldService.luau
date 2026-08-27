@@ -368,13 +368,15 @@ local MESH_COLOR = {
 	Island_Foam = Color3.fromRGB(248, 254, 255),
 
 	-- Ashfall Caldera - RESTARTED FROM SCRATCH (2026-08-27, user; the swamp
-	-- pattern). Step 1 is the bare landform: ONE Volcano_Base object, three
-	-- band materials. The old build's entries (Rocks/Lava/Dock/Foam/
-	-- DeadTrees/Basalt/Vents/Dunes/Scree + Volcano_Lava's Neon override)
-	-- were removed with it - each returns with its rebuild step.
+	-- pattern). Step 1: the bare ~895-stud landform (Volcano_Base, three band
+	-- materials). Step 2: the lava is BACK - crater lake + six notch-fed
+	-- rivers running rim to sea + apron pools/deltas, all ONE Volcano_Lava
+	-- object (the fishable contract). The remaining old entries (Rocks/Dock/
+	-- Foam/DeadTrees/Basalt/Vents/Dunes/Scree) return with their steps.
 	Volcano_Base = Color3.fromRGB(43, 41, 48), -- M_VolRock
 	Volcano_Base2 = Color3.fromRGB(79, 71, 71), -- M_VolAsh
 	Volcano_Base3 = Color3.fromRGB(51, 48, 54), -- M_VolWet
+	Volcano_Lava = Color3.fromRGB(255, 107, 15), -- M_Lava (glows; see MESH_MATERIAL)
 
 	-- Blackmire Fen - RESTARTED FROM SCRATCH (2026-08-27, user; see
 	-- island_gen.py's swamp section). Step 2 brought the fen palette back
@@ -469,9 +471,9 @@ local MESH_COLOR = {
 }
 
 -- Per-part material overrides; anything not listed gets SmoothPlastic (the flat
--- low-poly default). (Volcano_Lava's Neon returns with the volcano rebuild's
--- lava step.)
+-- low-poly default). Lava glows.
 local MESH_MATERIAL = {
+	Volcano_Lava = Enum.Material.Neon,
 	Gloomtrench_GlowCyan = Enum.Material.Neon,
 	Gloomtrench_GlowViolet = Enum.Material.Neon,
 	Wreckwater_GhostGlow = Enum.Material.Neon,

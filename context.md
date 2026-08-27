@@ -895,9 +895,27 @@ playbook applied to Ashfall Caldera — reviewed from PNG previews
 - **Pack regenerated in the same commit** (the a6 rule: whoever lands an
   island change regens the pack after checking peers' uncommitted hunks).
   Stale old-design previews (`_dock`/`_tower`) deleted.
-- **Next steps (each its own prompt, wait for the ask)**: shape tuning
-  (height/steepness/crag), then presumably lava + crater, props, the dock
-  (+ Pyrelisk re-key), eruption tie-in. Don't build ahead.
+- **Step 2 — THE LAVA (same day; user: "realistic... no gaps... all the
+  way from the top to the floor and ocean... a good amount")**: one
+  `Volcano_Lava` object (contract name, never split): a crater lake (r48
+  at 842) + SIX rivers pouring through NOTCHES carved in the rim (the
+  entry's NOTCHES mirror the new `LAVA_FLOWS` table BY HAND — keep them in
+  step or a river runs over an uncut rim), each river ONE continuous
+  `add_strip_slab` ribbon (shared vertices = gap-proof by construction)
+  that hugs the real crag via BVH raycasts, runs the full 900-stud flank,
+  crosses the apron and fans into a molten sea delta at the waterline.
+  Mid-apron pools + deltas recorded in LAVA_PONDS (12 fishable ponds).
+  The 270° spawn/dock wedge stays lava-free. Anti-gap machinery that took
+  three preview rounds: downhill pinning (a sample above the last sinks
+  into the spur, never hops), edge z clamped to the centreline, and
+  ADAPTIVE LIFT (+up to 3.5 where the wall plunges — tight-hugging ribbons
+  got occluded by neighbouring crag facets and read "dashed"). Widths
+  7→27+ studs, bulging mid-flank, ×1.35 on the main breach (48°).
+  `waters = "volcano"` + Phoenix chase are LIVE again; Volcano_Lava back
+  in MESH_COLOR + Neon. LavaController dresses it automatically (bubbles,
+  scrolling crust) — it scans `*Lava` by name.
+- **Next steps (each its own prompt, wait for the ask)**: props/scatter,
+  the dock (+ Pyrelisk re-key), foam, eruption tie-in. Don't build ahead.
 
 ### The boss redesign: unique movesets, gimmicks, models (2026-08-27, unreviewed)
 
