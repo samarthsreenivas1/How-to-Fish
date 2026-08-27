@@ -1403,7 +1403,10 @@ def build_swamp_cattails():
     head_bm = bmesh.new()
     rng = random.Random(2711)
     clusters, stalks, attempts = 0, 0, 0
-    while clusters < 32 and attempts < 1200:
+    # Dense brakes (user: "much more... denser and taller"): ~70 brakes of
+    # 8-14 stalks. Geometry per stalk is trimmed to 3-sided cones so the
+    # whole crop stays well inside the importer's per-mesh triangle budget.
+    while clusters < 70 and attempts < 2600:
         attempts += 1
         theta = rng.uniform(0, math.tau)
         u = rng.uniform(0.10, SWAMP_RIM_U + 0.02)
@@ -1419,36 +1422,38 @@ def build_swamp_cattails():
         if math.hypot(cx - sx, cy - sy) < 26:
             continue  # the spawn shelf stays clear
         clusters += 1
-        for _ in range(rng.randint(4, 7)):
+        for _ in range(rng.randint(8, 14)):
             a = rng.uniform(0, math.tau)
-            d = rng.uniform(0.0, 4.2)
+            d = rng.uniform(0.0, 5.5)
             x, y = cx + math.cos(a) * d, cy + math.sin(a) * d
             g2 = _swamp_height(x, y)
             if not (SWAMP_WATER_Z - 1.0 <= g2 <= SWAMP_WATER_Z + 0.8):
                 continue
             stalks += 1
-            h = rng.uniform(3.4, 5.4)
+            # Heads sit just under the player's eyeline: a character is ~5
+            # studs, so the stalks top out a shade below that.
+            h = rng.uniform(4.0, 4.8)
             lean = (rng.uniform(-0.09, 0.09), rng.uniform(-0.09, 0.09))
             base = (x, y, g2 - 0.4)  # rooted a little under the mud
-            add_cone(stalk_bm, base, 0.15, 0.055, h, sides=4, tilt=lean)
+            add_cone(stalk_bm, base, 0.15, 0.055, h, sides=3, tilt=lean)
             # Blade leaves: shorter, thinner cones fanning off the root.
-            for _b in range(rng.randint(2, 3)):
+            for _b in range(2):
                 ba = rng.uniform(0, math.tau)
                 add_cone(
                     stalk_bm,
                     (x + math.cos(ba) * 0.3, y + math.sin(ba) * 0.3, base[2]),
                     0.17,
                     0.02,
-                    h * rng.uniform(0.45, 0.75),
+                    h * rng.uniform(0.5, 0.75),
                     sides=3,
                     tilt=(math.cos(ba) * 0.17, math.sin(ba) * 0.17),
                 )
             # The seed head: a stubby brown cylinder ~3/4 of the way up,
             # seated on the stalk's own axis so it rides the lean.
             axis = cone_axis(lean, 0.0)
-            hz = h * rng.uniform(0.68, 0.76)
+            hz = h * rng.uniform(0.7, 0.78)
             head_base = (base[0] + axis.x * hz, base[1] + axis.y * hz, base[2] + axis.z * hz)
-            add_cone(head_bm, head_base, 0.17, 0.15, rng.uniform(0.8, 1.15), sides=5, tilt=lean)
+            add_cone(head_bm, head_base, 0.16, 0.14, rng.uniform(0.85, 1.1), sides=4, tilt=lean)
     print(f"[island_gen] swamp cattails: {stalks} stalks in {clusters} brakes")
     return [
         object_from_bmesh("Swamp_Cattails", stalk_bm, ["M_Cattail"]),
