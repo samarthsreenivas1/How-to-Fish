@@ -366,11 +366,11 @@ Bosses.items.old_gnashroot = {
 	islandId = "swamp",
 	-- The bait is the gate, as always: level only, the fen band's end.
 	gate = { level = 14 },
-	-- The fen's interior boss pool: the round-2 island rebuild carved a real
-	-- arena pond inland and its generator prints the placement as a HANDOFF
-	-- line (rel Z=74, radius 36 - pack build 5904cf0, the authoritative
-	-- numbers). It rises out of the peat murk in the island's heart, fought
-	-- from the banks - no longer the open sea off the jetty.
+	-- The fen's interior boss mere: the swamp-restart marsh step authors its
+	-- biggest pool AT this arena spot (step-3 HANDOFF: mere rel X=0 Z=74
+	-- r=26 - the roam disc reaches a few studs onto the banks by design).
+	-- It rises out of the peat murk in the island's heart, fought from the
+	-- banks. Re-key from the swamp HANDOFF line after any marsh relayout.
 	arena = { offset = Vector3.new(0, 0, 74), radius = 36 },
 	aggro = 90,
 	standoff = 14,

@@ -1772,20 +1772,208 @@ def _interior_spot(ground, u_lo, u_hi, pad=3.0, tries=40):
 # rejected wholesale ("absolutely atrocious" - grey unpainted canopy objects,
 # water floating above the terrain, prop collision walling off the walkable
 # ground), and the rebuild is deliberately step-by-step, reviewed in Studio
-# between steps. THIS IS STEP 1: nothing but the landform - a bare, GREY,
-# gently domed island with a lobed coastline. No water, no trees, no props,
-# no dock, no foam yet; each returns only when its step is asked for and the
-# previous one is approved. The old fen machinery (authored pool graph,
-# marsh growth, canopy roof, prop scatter) was deleted with the restart -
-# recover it from git (pre-restart) if a future step wants to crib from it.
+# between steps. Step 1 was the bare flat landform; step 2 the fen palette;
+# THIS IS STEP 3, the marsh: pools of standing water SUNK INTO the ground
+# across the middle. The core rule fixing the old "water floats on the
+# island" bug: every pool's basin is carved into the heightfield itself
+# (_swamp_height clamps the ground down to a real concave WATERBED below the
+# water surface), and the Swamp_Water sheet is emitted from the exact same
+# pool list, drawn smaller than its carve - so terrain and water physically
+# cannot disagree. On top of the pools the interior rolls: dry concave
+# divots and a gentle ground undulation, so the fen reads sunken-in-and-out
+# rather than a snooker table with holes.
+#
+# Next steps (each on its own ask): trees/props, the dock + foam.
+
+SWAMP_WATER_Z = 2.2  # standing-water plane (Blender z; sea is 0, interior ~4.6)
+SWAMP_BED_DROP = 1.6  # how far a pool's bed dips below its water at the edge
+SWAMP_BED_DEEP = 1.4  # EXTRA bed depth at a pool's centre (bowl, not a pan)
+SWAMP_BANK = 9.0  # studs from a pool's rim back up to open ground
+SWAMP_SPAWN = (0.0, -128.0)  # keep-clear: the step-1 spawn (Roblox rel Z=128)
+
+_SWAMP_POOLS = []  # (x, y, r) - the water; also the keep-clear registry
+_SWAMP_DIVOTS = []  # (x, y, r, depth) - dry concave dips, no water
+
+
+def _swamp_layout():
+    """Author the marsh: one big mere for the boss arena plus scattered
+    smaller pools across the interior, then the dry divots between them.
+    Deterministic (own rng) so the layout survives unrelated reseeds."""
+    _SWAMP_POOLS.clear()
+    _SWAMP_DIVOTS.clear()
+    rng = random.Random(1707)
+
+    def clear_of_pools(x, y, r, pad):
+        for px, py, pr in _SWAMP_POOLS:
+            if math.hypot(x - px, y - py) < r + pr + pad:
+                return False
+        return True
+
+    # The mere: the largest pool, at the boss arena spot (Bosses.luau keys
+    # old_gnashroot's arena to Roblox rel Z=74 -> Blender y=-74, radius 36;
+    # the pool sits inside that roam disc so it rises from real water).
+    _SWAMP_POOLS.append((0.0, -74.0, 26.0))
+
+    # Scattered pools: varied sizes, banks kept apart so the ground threads
+    # between them, everything clear of the spawn shore.
+    attempts = 0
+    while len(_SWAMP_POOLS) < 9 and attempts < 300:
+        attempts += 1
+        theta = rng.uniform(0, math.tau)
+        u = rng.uniform(0.10, 0.56)
+        r_world = ring_radius(u, theta)
+        x, y = math.cos(theta) * r_world, math.sin(theta) * r_world
+        r = rng.uniform(9.0, 19.0)
+        if math.hypot(x - SWAMP_SPAWN[0], y - SWAMP_SPAWN[1]) < r + 24:
+            continue
+        # 2 x BANK apart: each sheet reaches 0.75 x BANK past its carve, so
+        # anything tighter would overlap two coplanar water tops (z-fight).
+        if clear_of_pools(x, y, r, SWAMP_BANK * 2.0):
+            _SWAMP_POOLS.append((x, y, r))
+
+    # Dry divots: shallow concave dips scattered between the pools - the
+    # ground sinking in and out without reaching water.
+    attempts = 0
+    while len(_SWAMP_DIVOTS) < 7 and attempts < 300:
+        attempts += 1
+        theta = rng.uniform(0, math.tau)
+        u = rng.uniform(0.08, 0.62)
+        r_world = ring_radius(u, theta)
+        x, y = math.cos(theta) * r_world, math.sin(theta) * r_world
+        r = rng.uniform(8.0, 15.0)
+        if math.hypot(x - SWAMP_SPAWN[0], y - SWAMP_SPAWN[1]) < r + 18:
+            continue
+        if clear_of_pools(x, y, r, 3.0):
+            _SWAMP_DIVOTS.append((x, y, r, rng.uniform(0.8, 1.6)))
+
+
+def _swamp_height(x, y):
+    """The fen's ground: the flat base profile, a gentle interior roll, then
+    every pool basin and dry divot carved in as a concave bowl. Pools clamp
+    with min() so a bed is a bed no matter what the roll wanted there."""
+    h = height_at(x, y)
+    u = u_at(x, y)
+
+    # The interior undulation: low-frequency swells, fading out before the
+    # mud band so the shoreline stays exactly where steps 1-2 put it.
+    interior = 1 - smoothstep(0.62, 0.78, u)
+    if interior > 0:
+        h += noise.noise(Vector((x * 0.016, y * 0.016, 5.3))) * 1.1 * interior
+        h += noise.noise(Vector((x * 0.045, y * 0.045, 11.7))) * 0.35 * interior
+
+    # Dry divots: subtract a cosine bowl, floored above the waterline so
+    # they never accidentally become (dry) pits below water level.
+    for dx, dy, dr, ddepth in _SWAMP_DIVOTS:
+        d = math.hypot(x - dx, y - dy)
+        if d < dr:
+            dip = ddepth * 0.5 * (1 + math.cos(math.pi * d / dr))
+            h = max(h - dip, SWAMP_WATER_Z + 0.5)
+
+    # Pool basins: inside the pool the bed sits below the water surface
+    # (deeper at the centre - a real concave waterbed); across the bank the
+    # target rises smoothly back to wherever the ground already was.
+    for px, py, pr in _SWAMP_POOLS:
+        d = math.hypot(x - px, y - py)
+        if d >= pr + SWAMP_BANK:
+            continue
+        bed_edge = SWAMP_WATER_Z - SWAMP_BED_DROP
+        if d <= pr:
+            bowl = 0.5 * (1 + math.cos(math.pi * d / pr))  # 1 centre -> 0 rim
+            target = bed_edge - SWAMP_BED_DEEP * bowl
+        else:
+            t = smoothstep(0.0, 1.0, (d - pr) / SWAMP_BANK)
+            target = bed_edge + (h - bed_edge) * t
+        h = min(h, target)
+    return h
+
+
+def build_swamp_base():
+    """The fen landform: the shared radial-fan topology, every vertex from
+    _swamp_height so the marsh basins are cut into the real mesh. Materials:
+    the usual bands (peat / mud beach / wet), plus any interior face low
+    enough to be a waterbed or a pool rim is painted wet mud."""
+    bm = bmesh.new()
+    center = bm.verts.new(Vector((0, 0, _swamp_height(0, 0))))
+    rings = []
+    for u in RINGS[1:]:
+        ring = []
+        for s in range(SEGMENTS):
+            theta = (s / SEGMENTS) * math.tau
+            r = ring_radius(u, theta)
+            x, y = math.cos(theta) * r, math.sin(theta) * r
+            ring.append(bm.verts.new(Vector((x, y, _swamp_height(x, y)))))
+        rings.append(ring)
+
+    def band_material(outer_u):
+        if outer_u <= GRASS_U:
+            return 0
+        if outer_u <= 1.0:
+            return 1
+        return 2
+
+    def face(verts, outer_u):
+        f = bm.faces.new(verts)
+        cz = sum(v.co.z for v in verts) / len(verts)
+        if outer_u <= GRASS_U and cz < SWAMP_WATER_Z + 0.45:
+            f.material_index = 2  # a waterbed / pool rim: wet mud
+        else:
+            f.material_index = band_material(outer_u)
+
+    for s in range(SEGMENTS):
+        face((center, rings[0][s], rings[0][(s + 1) % SEGMENTS]), RINGS[1])
+    for i in range(len(rings) - 1):
+        inner, outer = rings[i], rings[i + 1]
+        outer_u = RINGS[i + 2]
+        for s in range(SEGMENTS):
+            s2 = (s + 1) % SEGMENTS
+            face((inner[s], outer[s], outer[s2], inner[s2]), outer_u)
+    return object_from_bmesh("Swamp_Base", bm, ["M_Peat", "M_Mud", "M_WetMud"])
+
+
+def build_swamp_water():
+    """Every pool as ONE object at the contract name (Swamp_Water is what
+    World.FISHABLE_NAMES / WATERS_BY_PART key the "swamp" roster on). Each
+    sheet reaches INTO the rising bank (r + 0.75 x SWAMP_BANK - past the
+    point where the bank climbs back above water level) so its edge is
+    buried inside ground, and its slab bottom sits below the deepest bed -
+    the water can only ever emerge FROM terrain, never show a floating rim.
+    (The first cut drew the sheet SMALLER than the carve; the slab's side
+    wall stood proud in the middle of the basin - the exact old bug.)
+    Pools land in LAVA_PONDS - the shared keep-clear registry later prop
+    steps will read - which is CLEARED first (the volcano builds before us
+    in the pack and leaves its ponds behind)."""
+    bm = bmesh.new()
+    LAVA_PONDS.clear()
+    thickness = SWAMP_BED_DROP + SWAMP_BED_DEEP + 1.0
+    for i, (px, py, pr) in enumerate(_SWAMP_POOLS):
+        points = []
+        seg = 24
+        for s in range(seg):
+            a = (s / seg) * math.tau
+            w = 1 + 0.02 * math.sin(3 * a + i * 1.7) + 0.01 * math.sin(7 * a + i * 3.1)
+            rr = (pr + SWAMP_BANK * 0.75) * w
+            points.append((px + math.cos(a) * rr, py + math.sin(a) * rr))
+        add_disc_slab(bm, points, SWAMP_WATER_Z, thickness)
+        LAVA_PONDS.append((px, py, pr + SWAMP_BANK))
+    return object_from_bmesh("Swamp_Water", bm, ["M_SwampWater"])
 
 
 def build_swamp():
-    base = build_island_base("Swamp_Base", ["M_Peat", "M_Mud", "M_WetMud"])
+    _swamp_layout()
+    objects = [
+        build_swamp_base(),
+        build_swamp_water(),
+    ]
     a = math.radians(270)  # the +Z quadrant the dock will eventually face
     shore = ring_radius(1.0, a)
-    print(f"[island_gen] HANDOFF swamp: shore at +Z (Roblox rel) Z={shore:.0f}; spawn suggestion X=0 Z={shore - 30:.0f} ground Y~{height_at(0, -(shore - 30)):.1f}")
-    return [base]
+    mere = _SWAMP_POOLS[0]
+    print(
+        f"[island_gen] HANDOFF swamp: shore at +Z (Roblox rel) Z={shore:.0f}; spawn X=0 Z={shore - 30:.0f} ground Y~{_swamp_height(0, -(shore - 30)):.1f}"
+    )
+    print(
+        f"[island_gen] HANDOFF swamp: {len(_SWAMP_POOLS)} pools (water Y={SWAMP_WATER_Z}), boss mere (Roblox rel) X={mere[0]:.0f} Z={-mere[1]:.0f} r={mere[2]:.0f}, {len(_SWAMP_DIVOTS)} dry divots"
+    )
+    return objects
 
 
 # ---- Frostmaw Reach -------------------------------------------------------
@@ -5206,11 +5394,16 @@ ISLANDS = {
         "model": "Swamp",
         "overrides": {
             "ISLAND_RADIUS": 180,
-            "SEGMENTS": 96,
+            # Dense enough that a 9-19-stud pool bowl and its banks resolve
+            # in the radial fan (step 3: ~5.4-stud radial spacing across the
+            # marsh interior, ~5 studs angular at the mere).
+            "SEGMENTS": 128,
             "GRASS_U": 0.74,
             "RINGS": [
-                0.0, 0.06, 0.12, 0.18, 0.24, 0.30, 0.36, 0.42, 0.48, 0.54,
-                0.60, 0.66, 0.74, 0.80, 0.86, 0.92, 0.96, 1.0, 1.09, 1.28,
+                0.0, 0.03, 0.06, 0.09, 0.12, 0.15, 0.18, 0.21, 0.24, 0.27,
+                0.30, 0.33, 0.36, 0.39, 0.42, 0.45, 0.48, 0.51, 0.54, 0.57,
+                0.60, 0.63, 0.66, 0.70, 0.74, 0.80, 0.86, 0.92, 0.96, 1.0,
+                1.09, 1.28,
             ],
             # A gentle dome: ~7 studs at the heart easing to the standard
             # shallow shoreline, then the shared underwater skirt.
@@ -5251,6 +5444,10 @@ ISLANDS = {
                 "M_Peat": (0.243, 0.322, 0.204),
                 "M_Mud": (0.396, 0.333, 0.235),
                 "M_WetMud": (0.290, 0.247, 0.184),
+                # Opaque murk - you can't see what's biting (in-game the part
+                # wears the ocean's dress via Ocean.INTERIOR_WATER_NAMES; this
+                # is the preview color).
+                "M_SwampWater": (0.153, 0.239, 0.196),
             },
         },
         "build": build_swamp,
