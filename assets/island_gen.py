@@ -1762,20 +1762,18 @@ def _tilt_toward(direction):
 
 
 def build_swamp_trees():
-    """The fen's trees - a dense DEAD forest for now (user: 'way way way
-    more trees... a ton of them. none of them should have leaves at this
-    point'): ~110 bare trees packed through the marsh, all the reference's
-    smooth curved tan trunks, in two silhouettes -
-      - ARCHERS (~half): the crown throws 3-5 branches that arc out and
-        DOWN (the weeping skeleton, awaiting its leaves in a later step)
-      - SNAGS: taller, barer, more crooked, a few short crooked branches
-    Foliage is deliberately ABSENT; when the leaf step comes it hangs
-    blades off these same branch arcs (Swamp_TreeLeaves keeps its
-    WorldService entries for that return). One object, trimmed to 5-sided
-    trunks / 3-sided branches so ~110 trees stay inside the importer's
-    per-mesh triangle budget. Trunks are collidable (Precise import note);
-    mere + spawn keep-clears hold."""
-    trunk_bm = bmesh.new()
+    """The fen's dead forest: ~110 bare trees with EXPANSIVE forked crowns
+    (user reference: a recursively branching skeleton - long limbs that
+    split into sub-branches that split into twigs, sweeping up and out).
+    Each tree: the solid curved tan trunk (unchanged - the user called the
+    bases good), then 3-5 main limbs off the upper trunk, each forking
+    twice (occasionally three ways) with an upward bias, so the crown
+    spreads wide like the reference. Still leafless by design. The forest
+    is SPLIT across two objects (Swamp_Trees / Swamp_Trees2, same
+    material+color) because the forked crowns roughly double the geometry
+    and one mesh would breach the importer's triangle budget. Trunks stay
+    collidable (Precise import note); mere + spawn keep-clears hold."""
+    bms = [bmesh.new(), bmesh.new()]
     rng = random.Random(4517)
     mx, my, mr = SWAMP_MERE
     sx, sy = SWAMP_SPAWN
@@ -1785,16 +1783,25 @@ def build_swamp_trees():
         c = math.cos(elev)
         return Vector((math.cos(az) * c, math.sin(az) * c, math.sin(elev)))
 
-    def curved_run(bm, base, direction_list, radii, seg_lengths, sides):
-        pos = Vector(base)
-        joints = [Vector(pos)]
-        for i, direction in enumerate(direction_list):
-            add_cone(bm, tuple(pos), radii[i], radii[i + 1], seg_lengths[i], sides=sides, tilt=_tilt_toward(direction))
-            pos = pos + direction * seg_lengths[i]
-            joints.append(Vector(pos))
-        return joints
+    def limb(bm, base, direction, length, radius, depth):
+        """One branch segment, then fork: the reference's Y-splits."""
+        r_top = radius * (0.62 if depth > 0 else 0.22)
+        add_cone(bm, tuple(base), radius, max(r_top, 0.05), length, sides=3, tilt=_tilt_toward(direction))
+        if depth == 0:
+            return
+        tip = base + direction * length
+        kids = 3 if rng.random() < 0.2 else 2
+        for _ in range(kids):
+            rand = Vector((rng.uniform(-1, 1), rng.uniform(-1, 1), rng.uniform(-1, 1)))
+            perp = rand - direction * rand.dot(direction)
+            if perp.length < 1e-3:
+                continue
+            perp.normalize()
+            ang = rng.uniform(0.35, 0.7)
+            child = (direction * math.cos(ang) + perp * math.sin(ang) + Vector((0, 0, 0.18))).normalized()
+            limb(bm, tip, child, length * rng.uniform(0.6, 0.78), r_top, depth - 1)
 
-    trees, archers, snags, attempts = 0, 0, 0, 0
+    trees, attempts = 0, 0
     while trees < 110 and attempts < 9000:
         attempts += 1
         theta = rng.uniform(0, math.tau)
@@ -1809,52 +1816,39 @@ def build_swamp_trees():
         if any(math.hypot(x - px, y - py) < 7.5 for px, py in placed):
             continue
         placed.append((x, y))
+        bm = bms[trees % 2]
         trees += 1
-        archer = rng.random() < 0.5
 
+        # The solid base: the curved 3-segment trunk, as before but with a
+        # gentler final lean so the crown opens ABOVE the tree.
         bend_az = rng.uniform(0, math.tau)
-        if archer:
-            archers += 1
-            total_h = rng.uniform(13.0, 20.0)
-            r0 = rng.uniform(1.0, 1.7)
-            leans = [rng.uniform(0.04, 0.10), rng.uniform(0.16, 0.30), rng.uniform(0.34, 0.52)]
-        else:
-            snags += 1
-            total_h = rng.uniform(18.0, 30.0)
-            r0 = rng.uniform(0.8, 1.5)
-            leans = [rng.uniform(0.02, 0.10), rng.uniform(0.12, 0.30) * rng.choice((1, -1)), rng.uniform(0.25, 0.5)]
-        directions = [dir_of(bend_az, math.pi * 0.5 - abs(l)) for l in leans]
-        radii = [r0, r0 * 0.66, r0 * 0.4, r0 * 0.16]
+        total_h = rng.uniform(12.0, 20.0)
+        r0 = rng.uniform(1.0, 1.7)
+        leans = [rng.uniform(0.03, 0.09), rng.uniform(0.10, 0.22), rng.uniform(0.16, 0.3)]
+        directions = [dir_of(bend_az, math.pi * 0.5 - l) for l in leans]
+        radii = [r0, r0 * 0.7, r0 * 0.48, r0 * 0.3]
         seg = total_h / 3
-        joints = curved_run(trunk_bm, (x, y, g - 0.4), directions, radii, [seg, seg, seg], 5)
-        crown = joints[-1]
+        pos = Vector((x, y, g - 0.4))
+        joints = [Vector(pos)]
+        for i, direction in enumerate(directions):
+            add_cone(bm, tuple(pos), radii[i], radii[i + 1], seg, sides=5, tilt=_tilt_toward(direction))
+            pos = pos + direction * seg
+            joints.append(Vector(pos))
 
-        if archer:
-            for _b in range(rng.randint(3, 5)):
-                baz = rng.uniform(0, math.tau)
-                blen = rng.uniform(4.0, 7.0)
-                b_dirs = [dir_of(baz, rng.uniform(0.5, 0.75)), dir_of(baz, rng.uniform(-0.55, -0.25))]
-                b_radii = [r0 * 0.26, r0 * 0.14, 0.05]
-                curved_run(
-                    trunk_bm, tuple(crown - Vector((0, 0, seg * 0.15))), b_dirs, b_radii, [blen * 0.5, blen * 0.5], 3
-                )
-        else:
-            for _b in range(rng.randint(2, 4)):
-                baz = rng.uniform(0, math.tau)
-                t = rng.uniform(0.55, 0.95)
-                at = joints[0] + (crown - joints[0]) * t
-                add_cone(
-                    trunk_bm,
-                    tuple(at),
-                    r0 * 0.2,
-                    0.05,
-                    rng.uniform(2.5, 5.5),
-                    sides=3,
-                    tilt=_tilt_toward(dir_of(baz, rng.uniform(-0.15, 0.6))),
-                )
+        # The expansive crown: 3-5 main limbs off the upper trunk, each a
+        # long riser that forks twice - wide like the reference.
+        for _b in range(rng.randint(3, 5)):
+            baz = rng.uniform(0, math.tau)
+            t = rng.uniform(0.55, 0.95)
+            at = joints[1] + (joints[3] - joints[1]) * ((t - 0.33) / 0.67) if t > 0.33 else joints[0]
+            elev = rng.uniform(0.45, 0.95)
+            limb(bm, at, dir_of(baz, elev), rng.uniform(4.5, 7.5) * (total_h / 16.0), r0 * 0.3, 2)
 
-    print(f"[island_gen] swamp trees: {trees} bare trees ({archers} archers, {snags} snags) - the dead forest, no leaves yet")
-    return [object_from_bmesh("Swamp_Trees", trunk_bm, ["M_TrunkWood"])]
+    print(f"[island_gen] swamp trees: {trees} bare trees with forked crowns, split over 2 objects")
+    return [
+        object_from_bmesh("Swamp_Trees", bms[0], ["M_TrunkWood"]),
+        object_from_bmesh("Swamp_Trees2", bms[1], ["M_TrunkWood"]),
+    ]
 
 
 def build_swamp():

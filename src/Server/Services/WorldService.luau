@@ -407,6 +407,7 @@ local MESH_COLOR = {
 	-- blocks, never a hull over the whole forest. The leaves ARE
 	-- non-collide - you walk through hanging foliage.
 	Swamp_Trees = Color3.fromRGB(150, 116, 84),
+	Swamp_Trees2 = Color3.fromRGB(150, 116, 84), -- the forest is split over two meshes (triangle budget)
 	Swamp_TreeLeaves = Color3.fromRGB(56, 72, 47),
 
 	-- Frostmaw Reach (assets/island_ice_gen.py).
