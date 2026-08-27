@@ -33,9 +33,11 @@ WeaponModel.HOLD_OFFSET = CFrame.Angles(math.rad(-70), 0, 0) * CFrame.Angles(0, 
 
 -- A GUN in a third-person hand: the authored +Y is the BORE (gun-mesh
 -- contract, 2026-08-27), so instead of the melee "blade up" carry the bore
--- lies level, pointing the way the character faces. One knob: if a pack
--- lands guns rolled sideways in world view, adjust the trailing roll here.
-WeaponModel.HOLD_OFFSET_RANGED = CFrame.Angles(math.rad(-90), 0, 0) * CFrame.Angles(0, math.rad(-90), 0)
+-- lies level, pointing the way the character faces. The trailing yaw is
+-- +90 for the same reason as the viewmodel's GUN_ROLL: the glb import
+-- mirrors the authored X axis, so the sights side needs the opposite
+-- roll to sit up (the -90 first guess carried guns upside down).
+WeaponModel.HOLD_OFFSET_RANGED = CFrame.Angles(math.rad(-90), 0, 0) * CFrame.Angles(0, math.rad(90), 0)
 
 local MATERIAL = Enum.Material.SmoothPlastic
 

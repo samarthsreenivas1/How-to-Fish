@@ -174,9 +174,12 @@ end
 local GUN_GRIP_POSITION = Vector3.new(0.95, -1.2, -1.7)
 local GUN_PITCH = math.rad(4) -- muzzle rise off dead-level
 local GUN_YAW = math.rad(-2)
--- -90 matches WEAPON_ROLL's convention: the authored +X (sights side, per
--- the gun-mesh contract) rolls to screen-up under the bore-forward pitch.
-local GUN_ROLL = math.rad(-90)
+-- +90, NOT -90: the glb import mirrors the authored X axis (Blender +X
+-- lands at Roblox -X - the same handedness gotcha the creature pack
+-- documents), so the sights side arrives on LOCAL -X and needs the
+-- opposite roll to face screen-up. Confirmed in hand 2026-08-27 (the
+-- -90 first guess held every rifle upside down).
+local GUN_ROLL = math.rad(90)
 
 -- The grip CFrame in camera space: the authored +Y axis pitched and yawed
 -- to where we want the weapon to point (same construction as the rod's),
