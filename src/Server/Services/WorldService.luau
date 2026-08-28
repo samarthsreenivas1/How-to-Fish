@@ -18,6 +18,7 @@ local Islands = require(Shared.Config.Islands)
 local Boats = require(Shared.Data.Boats)
 local Bosses = require(Shared.Data.Bosses)
 local Ocean = require(Shared.Config.Ocean)
+local SwampTrees = require(Shared.Data.SwampTrees)
 local World = require(Shared.Config.World)
 local Progression = require(Shared.Modules.Progression)
 local Remotes = require(Shared.Net.Remotes)
@@ -337,6 +338,17 @@ local NON_COLLIDE = {
 	"Swamp_TreeLeaves",
 	"Swamp_TreeLeaves2",
 	"Swamp_TreeLeaves3",
+	-- The tree WOOD too (user, 2026-08-28: "random barriers blocking me
+	-- from walking"): each imported mesh carries ~52 whole trees, and
+	-- whatever collision hull import fidelity gave it spans the air BETWEEN
+	-- them - invisible walls. Collision fidelity cannot be set at runtime
+	-- (see placeIsland), so the meshes go fully pass-through and
+	-- buildSwampTrunkColliders plants one invisible box per TRUNK from the
+	-- generator's SwampTrees table instead - solid trees, no phantom walls,
+	-- correct under ANY import setting.
+	"Swamp_Trees",
+	"Swamp_Trees2",
+	"Swamp_Trees3",
 	"Swamp_HangMoss",
 	"Swamp_Vines",
 	-- The open-sea ghost hulks (round 2) and the bay wrecks' rotted sail
@@ -1807,11 +1819,50 @@ local function buildMaelstromSite(parent: Instance, id: string, entry): boolean
 	return true
 end
 
+-- One invisible collider per swamp trunk (Shared/Data/SwampTrees.luau,
+-- written by the island generator with every swamp build): the tree MESHES
+-- are pass-through (see NON_COLLIDE), so these boxes are the only thing a
+-- player collides with in the forest - the trunk itself, never a hull
+-- spanning the air between trees. Positions are island-local, relative to
+-- the Swamp_Base bbox centre (the same anchor placeIsland uses), so they
+-- land exactly on the placed mesh's trunks. CanQuery is off: casts fly
+-- through the forest exactly as before (the RimWall precedent).
+local function buildSwampTrunkColliders(island: Model)
+	local base = island:FindFirstChild("Swamp_Base", true)
+	if not base or not base:IsA("BasePart") then
+		warn("[WorldService] swamp trunk colliders: no Swamp_Base part; skipping")
+		return
+	end
+	local origin = SwampTrees.origin
+	for _, row in SwampTrees.trunks do
+		local p = Instance.new("Part")
+		p.Name = "SwampTrunk"
+		p.Anchored = true
+		p.CanCollide = true
+		p.CanQuery = false
+		p.CanTouch = false
+		p.Transparency = 1
+		p.CastShadow = false
+		local side = row.r * 1.7
+		local height = row.top + 1.5
+		p.Size = Vector3.new(side, height, side)
+		p.CFrame = CFrame.new(
+			base.Position.X + (row.x - origin.x),
+			(-1.5 + row.top) * 0.5,
+			base.Position.Z + (row.z - origin.z)
+		)
+		p.Parent = island
+	end
+end
+
 local function loadIslands(parent: Instance)
 	for _, id in Islands.order do
 		local entry = Islands.items[id]
 		if entry and not entry.site then
 			placed[id] = placeIsland(parent, id, entry)
+			if id == "swamp" and placed[id] and placedModels[id] then
+				buildSwampTrunkColliders(placedModels[id])
+			end
 		end
 	end
 	-- Site entries (out of Islands.order, no mesh) build themselves: the
