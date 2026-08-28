@@ -25,8 +25,49 @@ Ocean.TEXTURE_ID = 132930391524358
 
 -- The plane itself. The texture is transparent between its lines, so this is
 -- the colour of the water. Darkened twice now (user, 2026-08-22).
+-- These are the OPEN-SEA base values: near an island that declares a `water`
+-- palette (Islands.luau), the client blends away from them (see Ocean.TINT).
 Ocean.COLOR = Color3.fromRGB(18, 88, 150)
 Ocean.REFLECTANCE = 0.04
+
+-- The sea floor slab under every tile. A constant, not a per-tile literal,
+-- because it is both the server's resting colour (WorldService.buildOcean)
+-- and the client blend's reset value (OceanController).
+Ocean.SEABED_COLOR = Color3.fromRGB(30, 45, 55)
+
+-- ---------------------------------------------------------------- island tint
+--
+-- Per-island water colours (user, 2026-08-28: "when I visit a new island
+-- there should be a new environment... for the swamp a green/brown murky
+-- color... smoothly transition into that color"). Each island may declare a
+-- `water` palette in Islands.luau; OceanController blends the visible sea
+-- toward it as the camera approaches, and back to the base above on the way
+-- out. All client-side and visual-only, like the tide.
+Ocean.TINT = {
+	-- The spatial band, measured in studs PAST the island's nominal radius:
+	-- fully the island's palette inside radius + FADE_NEAR (docks stay fully
+	-- tinted while you fish off them), fully the open-sea base beyond
+	-- radius + FADE_FAR, smoothstepped between. FADE_FAR is sized so a boat
+	-- crossing reads a ~15-25s colour roll on approach, the whole band sits
+	-- inside the animation radius, and radius + FADE_FAR never reaches
+	-- halfway to a neighbouring island (spacing is 4000+; radii <= 700).
+	FADE_NEAR = 300,
+	FADE_FAR = 1500,
+
+	-- Time smoothing on top of the spatial band: the applied colour eases
+	-- toward the target with this time-constant, so a teleport FADES over a
+	-- couple of seconds instead of snapping the whole sea.
+	TAU = 1.5, -- seconds
+
+	-- How often the target is recomputed from the camera position. The
+	-- probe is a handful of distance checks; between probes the per-frame
+	-- easing keeps everything smooth.
+	PROBE_INTERVAL = 0.25, -- seconds
+
+	-- When every colour channel is within this of its target, the blend is
+	-- settled and the per-frame writes stop entirely.
+	EPSILON = 1 / 512,
+}
 
 -- ---------------------------------------------------------------- tide
 --

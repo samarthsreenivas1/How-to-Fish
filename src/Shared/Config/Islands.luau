@@ -54,6 +54,17 @@ Islands.order = { "tropical", "swamp", "ice", "volcano", "gloom", "wreck" }
 --                   2026-08-27 "floating ships and litter" bug). Re-key from
 --                   the pack build's HANDOFF mesh-bottom lines after any
 --                   island mesh regen.
+--   water         - OPTIONAL per-island water palette (user, 2026-08-28:
+--                   "when I visit a new island, there should be a new
+--                   environment"). { color, caustics?, causticsTransparency?,
+--                   reflectance?, seabed? }. The server dresses the island's
+--                   interior pools in it at placement (WorldService.
+--                   applyMeshColors) and the client blends the surrounding
+--                   SEA toward it as the camera sails in (OceanController,
+--                   tuned by Ocean.TINT). Absent = the open-sea base
+--                   (Ocean.COLOR etc.) - the starter cove stays tropical
+--                   blue by omission. Any field left out falls back to the
+--                   matching Ocean/LAYERS base value.
 --   radius        - nominal shoreline radius (the generator's ISLAND_RADIUS);
 --                   used to space islands and to size the ocean around them.
 --   spawn         - world position a teleport drops the player on. Only X/Z
@@ -119,6 +130,15 @@ Islands.items = {
 		-- Leg 1 of the voyage: ~4,000 studs NE of the cove (tier-1 crossing).
 		worldPosition = Vector3.new(3700, 0, 1500),
 		radius = 180,
+		-- Peat murk: opaque, dead-flat, light barely gets in (the fen's
+		-- design is "you can't see what's biting").
+		water = {
+			color = Color3.fromRGB(62, 72, 38),
+			caustics = Color3.fromRGB(168, 180, 110),
+			causticsTransparency = 0.72,
+			reflectance = 0.01,
+			seabed = Color3.fromRGB(46, 38, 24),
+		},
 		spawn = Vector3.new(3700, 4, 1617), -- X/Z: rel Z=117, on the +Z shore shelf of the restarted island (shore at rel Z=147 since the marsh-enlarge pass; no dock yet); Y is the probe's fallback
 		unlockLevel = 8,
 		boss = "old_gnashroot",
@@ -161,6 +181,14 @@ Islands.items = {
 		-- Leg 2: ~4,800 studs on from the fen, deeper into the north-east.
 		worldPosition = Vector3.new(6800, 0, 5200),
 		radius = 230,
+		-- Black-blue under-shelf water with hard, glassy glints.
+		water = {
+			color = Color3.fromRGB(22, 62, 92),
+			caustics = Color3.fromRGB(185, 235, 255),
+			causticsTransparency = 0.45,
+			reflectance = 0.09,
+			seabed = Color3.fromRGB(26, 40, 54),
+		},
 		spawn = Vector3.new(6800, 8, 5374), -- X/Z: shore before the dock (planks run rel Z=192..238); Y is the probe's fallback (ground ~7.4 after the soft-glacier rebuild)
 		unlockLevel = 15,
 		boss = "rimefang",
@@ -226,6 +254,14 @@ Islands.items = {
 		-- skirt (pack HANDOFF 2026-08-27; the old -9.74 was the deleted
 		-- flank rocks). Re-key when a rebuild step dips below the skirt.
 		radius = 660, -- near the 2048-stud import cap (bbox ~1971 measured 2026-08-28; the walk-room re-key)
+		-- Ash-choked grey-teal with an ember-warm shimmer in the light.
+		water = {
+			color = Color3.fromRGB(38, 54, 60),
+			caustics = Color3.fromRGB(255, 186, 120),
+			causticsTransparency = 0.65,
+			reflectance = 0.03,
+			seabed = Color3.fromRGB(36, 30, 26),
+		},
 		spawn = Vector3.new(11800, 3, 3111), -- X/Z: rel Z=511 on the +Z ash apron, right in front of the dock (planks run rel Z=532..597, walk-room-re-key HANDOFF); Y is the probe's fallback
 		unlockLevel = 22,
 		-- Pyrelisk guards it (summoned by Caldera's Call, exactly the Brinejaw
@@ -276,6 +312,14 @@ Islands.items = {
 		worldPosition = Vector3.new(15400, 0, -2700),
 		meshBottom = -16.53, -- the trench floor is authored well below the -9 skirt (pack 384c971)
 		radius = 200,
+		-- Ink. The light gives up here; the caustics barely register.
+		water = {
+			color = Color3.fromRGB(10, 22, 38),
+			caustics = Color3.fromRGB(90, 160, 200),
+			causticsTransparency = 0.78,
+			reflectance = 0.02,
+			seabed = Color3.fromRGB(12, 16, 24),
+		},
 		spawn = Vector3.new(15400, 4, -2546), -- X/Z: shore before the dock (planks run rel Z=172..216); Y is the probe's fallback
 		unlockLevel = 29,
 		boss = "noctyss",
@@ -321,6 +365,14 @@ Islands.items = {
 		-- fleet hung above the water (user, 2026-08-27). Pack 384c971.
 		meshBottom = -18.25,
 		radius = 210,
+		-- Ghost-ship grey-green with a spectral pale-green light.
+		water = {
+			color = Color3.fromRGB(46, 78, 78),
+			caustics = Color3.fromRGB(152, 232, 200),
+			causticsTransparency = 0.58,
+			reflectance = 0.05,
+			seabed = Color3.fromRGB(30, 42, 40),
+		},
 		spawn = Vector3.new(12500, 4, -9333), -- X/Z: shore before the dock (planks run rel Z=185..231); Y is the probe's fallback
 		unlockLevel = 36,
 		boss = "admiral_wrack",
@@ -374,11 +426,22 @@ Islands.items = {
 		-- Fight-stack columns and the sunken fleet's keels dip well below the
 		-- -9 skirt (generator HANDOFF, 2026-08-27 build).
 		meshBottom = -11.95,
+
 		-- Leg 6, the last crossing: ~8,700 studs of open storm-sea from
 		-- Wreckwater, due south of home - the arc closes back toward the cove,
 		-- so the finale rages on the starter island's own horizon.
 		worldPosition = Vector3.new(4800, 0, -13500),
 		radius = 260,
+		-- Storm slate with an electric glint - echoes Maelstrom_StormGlow.
+		-- Only the SEA around the site tints; the whirlpool disc itself is
+		-- MaelstromVfxController's and is never touched by the blend.
+		water = {
+			color = Color3.fromRGB(26, 48, 66),
+			caustics = Color3.fromRGB(140, 220, 255),
+			causticsTransparency = 0.5,
+			reflectance = 0.06,
+			seabed = Color3.fromRGB(20, 30, 40),
+		},
 		spawn = Vector3.new(4800, 6, -13456), -- the spawn stack on +Z (authored top Y=6.0; the procedural platform matches)
 		unlockLevel = 43,
 		boss = "kraken",
@@ -398,6 +461,24 @@ function Islands.islandAt(position: Vector3, margin: number?): (string?, any)
 		end
 	end
 	return nil, nil
+end
+
+-- The nearest island (or the Maelstrom site) to `position` by XZ distance to
+-- its centre, plus that distance - islandAt's smooth sibling: islandAt is a
+-- binary in/out test, this one lets a caller measure HOW FAR into an
+-- approach it is (OceanController's water-colour blend). Future
+-- consolidation target for the hand-rolled nearest-island loops in
+-- WeatherController, IslandsController and BoatController - not refactored
+-- here to keep this change small.
+function Islands.nearestIsland(position: Vector3): (string?, any, number)
+	local bestId, bestEntry, bestDistance = nil, nil, math.huge
+	for id, entry in Islands.items do
+		local d = Vector3.new(position.X - entry.worldPosition.X, 0, position.Z - entry.worldPosition.Z).Magnitude
+		if d < bestDistance then
+			bestId, bestEntry, bestDistance = id, entry, d
+		end
+	end
+	return bestId, bestEntry, bestDistance
 end
 
 -- The cast-range multiplier that applies to a cast from `position`: the

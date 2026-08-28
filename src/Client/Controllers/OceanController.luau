@@ -30,6 +30,7 @@ local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Islands = require(Shared.Config.Islands)
 local Ocean = require(Shared.Config.Ocean)
 local World = require(Shared.Config.World)
 
@@ -63,11 +64,103 @@ local bands = {}
 -- Every part that rides the tide and drifts its caustics: the sea's grid
 -- tiles (each named World.OCEAN_NAME) and the interior island waters
 -- (Ocean.INTERIOR_WATER_NAMES - the fen pools, ice holes, gloom lake, wreck
--- bay; each dressed by the server exactly like the sea). One list because
--- they move identically. { part, rest = CFrame, lifted = boolean? }
+-- bay; each dressed by the server in its ISLAND's palette). One list because
+-- they move identically; `kind` tells the colour pass apart - only "sea"
+-- entries are tinted (the server is the sole owner of interior colours).
+-- { part, rest = CFrame, kind = "sea"|"interior", lifted = boolean?,
+--   tinted = boolean? }
 local waters = {}
 
+-- The sea-floor slabs. Their own list, NOT `waters` - seabeds sit at
+-- SEABED_Y and must never ride the tide; they only take the colour blend.
+-- { part, tinted = boolean? }
+local seabeds = {}
+
 local elapsed = 0
+
+-- ---------------------------------------------------------------- island tint
+--
+-- The sea shifts colour as you approach an island that declares a `water`
+-- palette (Islands.luau; user, 2026-08-28: "when I visit a new island, there
+-- should be a new environment... smoothly transition"). Every ~PROBE_INTERVAL
+-- the camera's nearest island sets a TARGET palette, faded over the spatial
+-- band radius+FADE_NEAR..radius+FADE_FAR; every frame the APPLIED palette
+-- eases toward the target (TAU), and one uniform colour is written to every
+-- near sea tile - uniform on purpose: tiles are 2040 studs, so per-tile
+-- colours would draw hard straight seams across the sea. Once every channel
+-- is within EPSILON of its target the blend is settled and the writes stop.
+local TINT = Ocean.TINT
+local BASE_CAUSTICS = Ocean.LAYERS[1].color
+local BASE_CAUSTICS_T = Ocean.LAYERS[1].transparency
+
+local applied = {
+	color = Ocean.COLOR,
+	caustics = BASE_CAUSTICS,
+	causticsT = BASE_CAUSTICS_T,
+	reflectance = Ocean.REFLECTANCE,
+	seabed = Ocean.SEABED_COLOR,
+}
+local target = {
+	color = Ocean.COLOR,
+	caustics = BASE_CAUSTICS,
+	causticsT = BASE_CAUSTICS_T,
+	reflectance = Ocean.REFLECTANCE,
+	seabed = Ocean.SEABED_COLOR,
+}
+local lastProbe = -math.huge
+local firstProbe = true
+local settled = false
+
+local function trackSeabed(part: BasePart)
+	for _, entry in seabeds do
+		if entry.part == part then
+			return
+		end
+	end
+	table.insert(seabeds, { part = part })
+end
+
+-- Recompute the target palette from the camera position: the nearest
+-- island's `water` block, faded by how deep into its band the camera is.
+local function probeTint(camPos: Vector3)
+	local t = 0
+	local palette = nil
+	local _, entry, distance = Islands.nearestIsland(camPos)
+	if entry and entry.water then
+		palette = entry.water
+		local radius = entry.radius or World.ISLAND_RADIUS
+		-- 1 inside radius+FADE_NEAR, 0 beyond radius+FADE_FAR, smoothstepped.
+		local raw = ((radius + TINT.FADE_FAR) - distance) / (TINT.FADE_FAR - TINT.FADE_NEAR)
+		t = math.clamp(raw, 0, 1)
+		t = t * t * (3 - 2 * t)
+	end
+	if palette and t > 0 then
+		target.color = Ocean.COLOR:Lerp(palette.color, t)
+		target.caustics = BASE_CAUSTICS:Lerp(palette.caustics or BASE_CAUSTICS, t)
+		target.causticsT = BASE_CAUSTICS_T + ((palette.causticsTransparency or BASE_CAUSTICS_T) - BASE_CAUSTICS_T) * t
+		target.reflectance = Ocean.REFLECTANCE + ((palette.reflectance or Ocean.REFLECTANCE) - Ocean.REFLECTANCE) * t
+		target.seabed = Ocean.SEABED_COLOR:Lerp(palette.seabed or Ocean.SEABED_COLOR, t)
+	else
+		target.color = Ocean.COLOR
+		target.caustics = BASE_CAUSTICS
+		target.causticsT = BASE_CAUSTICS_T
+		target.reflectance = Ocean.REFLECTANCE
+		target.seabed = Ocean.SEABED_COLOR
+	end
+end
+
+local function channelsSettled(): boolean
+	local function near3(a: Color3, b: Color3): boolean
+		return math.abs(a.R - b.R) < TINT.EPSILON
+			and math.abs(a.G - b.G) < TINT.EPSILON
+			and math.abs(a.B - b.B) < TINT.EPSILON
+	end
+	return near3(applied.color, target.color)
+		and near3(applied.caustics, target.caustics)
+		and near3(applied.seabed, target.seabed)
+		and math.abs(applied.causticsT - target.causticsT) < TINT.EPSILON
+		and math.abs(applied.reflectance - target.reflectance) < TINT.EPSILON
+end
 
 -- ---------------------------------------------------------------- tide
 
@@ -99,7 +192,8 @@ local function trackWater(part: BasePart)
 			return
 		end
 	end
-	table.insert(waters, { part = part, rest = part.CFrame })
+	local interior = Ocean.INTERIOR_WATER_NAMES[part.Name] == true
+	table.insert(waters, { part = part, rest = part.CFrame, kind = if interior then "interior" else "sea" })
 
 	local function adoptLayers()
 		for _, config in Ocean.LAYERS do
@@ -113,7 +207,9 @@ local function trackWater(part: BasePart)
 					end
 				end
 				if not known then
-					table.insert(layers, { texture = texture, config = config, part = part })
+					-- `interior` layers keep their server-set island tint;
+					-- the colour pass only touches sea layers.
+					table.insert(layers, { texture = texture, config = config, part = part, interior = interior })
 				end
 			end
 		end
@@ -129,6 +225,8 @@ local function scanWorld(world: Instance)
 				trackFoam(descendant)
 			elseif Ocean.INTERIOR_WATER_NAMES[descendant.Name] or descendant.Name == World.OCEAN_NAME then
 				trackWater(descendant)
+			elseif descendant.Name == "Seabed" then
+				trackSeabed(descendant)
 			end
 		end
 	end
@@ -150,11 +248,54 @@ local function step(dt: number)
 		return dx * dx + dz * dz < ANIMATE_RADIUS * ANIMATE_RADIUS
 	end
 
+	-- Island tint: recompute the target from the camera every PROBE_INTERVAL,
+	-- ease the applied palette toward it every frame, stop writing once
+	-- settled. On the very first probe the applied palette SNAPS to the
+	-- target - a player rejoining mid-fen should find the murk already there,
+	-- not watch the water dye itself; every later change fades.
+	if camPos and elapsed - lastProbe >= TINT.PROBE_INTERVAL then
+		lastProbe = elapsed
+		probeTint(camPos)
+		if firstProbe then
+			firstProbe = false
+			applied.color = target.color
+			applied.caustics = target.caustics
+			applied.causticsT = target.causticsT
+			applied.reflectance = target.reflectance
+			applied.seabed = target.seabed
+		end
+		settled = channelsSettled()
+	end
+	if not settled then
+		local k = 1 - math.exp(-dt / TINT.TAU)
+		applied.color = applied.color:Lerp(target.color, k)
+		applied.caustics = applied.caustics:Lerp(target.caustics, k)
+		applied.causticsT += (target.causticsT - applied.causticsT) * k
+		applied.reflectance += (target.reflectance - applied.reflectance) * k
+		applied.seabed = applied.seabed:Lerp(target.seabed, k)
+		settled = channelsSettled()
+	end
+
 	-- Texture drift (near layers only - see ANIMATE_RADIUS).
 	local wobble = math.sin(elapsed * TAU / Ocean.WOBBLE_PERIOD)
 	for index, layer in layers do
 		if layer.part and (not layer.part.Parent or not isNear(layer.part)) then
+			-- A tinted layer leaving the near set resets to base once, like
+			-- the tide's `lifted` - never gated on `settled`, so a teleport
+			-- can't strand an off-colour patch of light on the horizon.
+			if layer.tinted then
+				layer.texture.Color3 = BASE_CAUSTICS
+				layer.texture.Transparency = BASE_CAUSTICS_T
+				layer.tinted = nil
+			end
 			continue
+		end
+		-- The caustics light takes the blended palette on sea layers only;
+		-- interior layers keep the island tint the server dressed them in.
+		if not layer.interior and not settled then
+			layer.texture.Color3 = applied.caustics
+			layer.texture.Transparency = applied.causticsT
+			layer.tinted = true
 		end
 		local config = layer.config
 		-- Alternate layers wobble opposite ways so, if there is ever more
@@ -198,9 +339,43 @@ local function step(dt: number)
 			if isNear(entry.part) then
 				entry.part.CFrame = entry.rest + Vector3.new(0, lift, 0)
 				entry.lifted = true
-			elseif entry.lifted then
-				entry.part.CFrame = entry.rest
-				entry.lifted = nil
+				-- The island tint rides the same near set: one uniform
+				-- colour across every near SEA tile (per-tile colours would
+				-- seam at 2040-stud edges). Interior pools are never touched
+				-- - the server dressed them in their island's palette.
+				if entry.kind == "sea" and not settled then
+					entry.part.Color = applied.color
+					entry.part.Reflectance = applied.reflectance
+					entry.tinted = true
+				end
+			else
+				-- Reset once on the way out - the tint reset deliberately in
+				-- the same always-runs branch as the tide's, so a teleport
+				-- un-stains the tiles it left behind.
+				if entry.lifted then
+					entry.part.CFrame = entry.rest
+					entry.lifted = nil
+				end
+				if entry.tinted then
+					entry.part.Color = Ocean.COLOR
+					entry.part.Reflectance = Ocean.REFLECTANCE
+					entry.tinted = nil
+				end
+			end
+		end
+	end
+
+	-- Seabeds take only the colour, never the tide.
+	for _, entry in seabeds do
+		if entry.part.Parent then
+			if isNear(entry.part) then
+				if not settled then
+					entry.part.Color = applied.seabed
+					entry.tinted = true
+				end
+			elseif entry.tinted then
+				entry.part.Color = Ocean.SEABED_COLOR
+				entry.tinted = nil
 			end
 		end
 	end
@@ -253,15 +428,18 @@ function OceanController.init()
 		end
 		local isFoam = string.find(descendant.Name, FOAM_MATCH, 1, true) ~= nil
 		local isWater = Ocean.INTERIOR_WATER_NAMES[descendant.Name] == true or descendant.Name == World.OCEAN_NAME
-		if isFoam or isWater then
+		local isSeabed = descendant.Name == "Seabed"
+		if isFoam or isWater or isSeabed then
 			-- Defer a frame: a part's Size/CFrame can still be settling on the
 			-- frame it appears, and those are captured as its resting pose.
 			task.defer(function()
 				if descendant.Parent then
 					if isFoam then
 						trackFoam(descendant)
-					else
+					elseif isWater then
 						trackWater(descendant)
+					else
+						trackSeabed(descendant)
 					end
 				end
 			end)

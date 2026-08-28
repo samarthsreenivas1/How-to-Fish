@@ -243,7 +243,9 @@ local function buildOcean(parent: Instance)
 				Name = "Seabed",
 				Size = Vector3.new(OCEAN_TILE, 4, OCEAN_TILE),
 				CFrame = CFrame.new(cx, World.SEABED_Y, cz),
-				Color = Color3.fromRGB(30, 45, 55),
+				-- A shared constant, not a literal: the client's island water
+				-- blend tints near seabeds and needs this as the reset value.
+				Color = Ocean.SEABED_COLOR,
 				Material = Enum.Material.SmoothPlastic,
 				CanCollide = false,
 				Parent = parent,
@@ -555,24 +557,47 @@ local MESH_MATERIAL = {
 	Frostmaw_Crystals = Enum.Material.Ice,
 }
 
-local function applyMeshColors(island: Model)
+local function applyMeshColors(island: Model, entry: any)
+	-- The island's own water palette, if it declares one (Islands.luau
+	-- `water`, 2026-08-28): the fen's pools are born peat-murky, the gloom
+	-- lake ink, and so on. Absent = the ocean's base dress, as before.
+	local palette = entry and entry.water
 	for _, descendant in island:GetDescendants() do
 		if descendant:IsA("MeshPart") then
-			-- Interior island waters wear the ocean's exact dress (user,
-			-- 2026-08-27): same colour, material, reflectance and caustics
-			-- layers as the sea plane, so a fen pool or an ice hole reads as
-			-- WATER, not a painted slab. Takes precedence over the island
-			-- palette; OceanController scrolls the layers and tides the part.
+			-- Interior island waters wear real water's dress (user,
+			-- 2026-08-27 "the same water"; recoloured per island 2026-08-28):
+			-- same material and caustics layers as the sea, coloured by the
+			-- island's palette. Takes precedence over the island mesh
+			-- palette; OceanController scrolls the layers and tides the part
+			-- but never recolours interiors - the server is the sole owner
+			-- of these colours.
 			if Ocean.INTERIOR_WATER_NAMES[descendant.Name] then
-				descendant.Color = Ocean.COLOR
+				descendant.Color = if palette then palette.color else Ocean.COLOR
 				descendant.Material = Enum.Material.SmoothPlastic
-				descendant.Reflectance = Ocean.REFLECTANCE
+				descendant.Reflectance = if palette and palette.reflectance
+					then palette.reflectance
+					else Ocean.REFLECTANCE
 				local appearance = descendant:FindFirstChildWhichIsA("SurfaceAppearance")
 				if appearance then
 					appearance:Destroy()
 				end
 				if not descendant:FindFirstChild(Ocean.LAYERS[1].name) then
 					addWaterLayers(descendant)
+				end
+				-- The caustics layer keeps the sea's drift but takes the
+				-- palette's light: dull olive in the fen, ember-warm on the
+				-- volcano shore. (addWaterLayers itself stays base - it also
+				-- dresses every open-sea tile.)
+				if palette then
+					local layer = descendant:FindFirstChild(Ocean.LAYERS[1].name)
+					if layer and layer:IsA("Texture") then
+						if palette.caustics then
+							layer.Color3 = palette.caustics
+						end
+						if palette.causticsTransparency then
+							layer.Transparency = palette.causticsTransparency
+						end
+					end
 				end
 				continue
 			end
@@ -705,7 +730,7 @@ local function placeIsland(parent: Instance, id: string, entry): boolean
 		end
 	end
 
-	applyMeshColors(island)
+	applyMeshColors(island, entry)
 
 	-- Place it. Vertically: skirt bottom at its authored depth so EVERY
 	-- island's waterline lines up with the one ocean plane. Horizontally: the

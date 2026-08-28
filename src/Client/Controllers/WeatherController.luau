@@ -72,6 +72,19 @@ local MIST_FOG_END = 340
 local BLIZZARD_DENSITY = 0.55
 local BLIZZARD_FOG_END = 190
 
+-- The remaining islands' standing moods (user, 2026-08-28: "when I visit a
+-- new island, there should be a new environment" - the fog shifts with the
+-- water). Same client-only model as the fen's mist: being there IS the
+-- weather. Tuned to sit alongside the per-island water palettes in
+-- Islands.luau - ash over the volcano's grey-teal, ghost-green over the
+-- wreck's spectral sea, storm slate over the maelstrom.
+local ASH_DENSITY = 0.36
+local ASH_FOG_END = 420
+local GHOST_DENSITY = 0.4
+local GHOST_FOG_END = 380
+local STORM_DENSITY = 0.48
+local STORM_FOG_END = 300
+
 local defaults = nil -- Lighting snapshot, taken at init
 local atmosphere: Atmosphere? = nil -- Lighting's Atmosphere (replicated from the server)
 local atmosphereDefaults = nil -- its snapshot, taken when it appears
@@ -273,6 +286,77 @@ local function applyMist()
 	setSnow(false)
 end
 
+-- The caldera: warm grey ash hanging in the air, the sun an ember behind it.
+local function applyAsh()
+	tweenLighting({
+		Ambient = Color3.fromRGB(44, 38, 34),
+		OutdoorAmbient = Color3.fromRGB(128, 112, 100),
+		ClockTime = defaults.ClockTime,
+		Brightness = defaults.Brightness * 0.85,
+	})
+	tweenFog({
+		Density = ASH_DENSITY,
+		Color = Color3.fromRGB(150, 138, 126),
+		Decay = Color3.fromRGB(120, 100, 88),
+		Haze = 2.6,
+		Glare = 0.3,
+	}, {
+		FogEnd = ASH_FOG_END,
+		FogStart = 24,
+		FogColor = Color3.fromRGB(142, 130, 118),
+	})
+	setLamp(false, 0)
+	setSnow(false)
+end
+
+-- The ghost fleet: a cold green-grey sea mist, the light gone spectral -
+-- matches the wreck's grey-green water and the hulks' pale glow.
+local function applyGhost()
+	tweenLighting({
+		Ambient = Color3.fromRGB(30, 38, 36),
+		OutdoorAmbient = Color3.fromRGB(120, 134, 126),
+		ClockTime = defaults.ClockTime,
+		Brightness = defaults.Brightness * 0.85,
+	})
+	tweenFog({
+		Density = GHOST_DENSITY,
+		Color = Color3.fromRGB(140, 158, 150),
+		Decay = Color3.fromRGB(96, 120, 110),
+		Haze = 2.2,
+		Glare = 0,
+	}, {
+		FogEnd = GHOST_FOG_END,
+		FogStart = 20,
+		FogColor = Color3.fromRGB(132, 148, 140),
+	})
+	setLamp(false, 0)
+	setSnow(false)
+end
+
+-- The maelstrom: slate stormlight, dense haze, a hard glare where the sun
+-- fights through - the finale's sea is already storm-dark under it.
+local function applyStorm()
+	tweenLighting({
+		Ambient = Color3.fromRGB(26, 30, 36),
+		OutdoorAmbient = Color3.fromRGB(84, 94, 108),
+		ClockTime = defaults.ClockTime,
+		Brightness = defaults.Brightness * 0.7,
+	})
+	tweenFog({
+		Density = STORM_DENSITY,
+		Color = Color3.fromRGB(96, 110, 124),
+		Decay = Color3.fromRGB(70, 82, 96),
+		Haze = 3.0,
+		Glare = 0.5,
+	}, {
+		FogEnd = STORM_FOG_END,
+		FogStart = 14,
+		FogColor = Color3.fromRGB(90, 102, 116),
+	})
+	setLamp(false, 0)
+	setSnow(false)
+end
+
 local function applyGloom(lanternHeld: boolean)
 	tweenLighting({
 		Ambient = Color3.fromRGB(14, 12, 22),
@@ -296,13 +380,31 @@ local function applyGloom(lanternHeld: boolean)
 	setSnow(false)
 end
 
+-- Every standing island mood, keyed by where you are. Blizzards stay
+-- separate: they are server-windowed events layered over the ice island,
+-- not a standing mood.
+local STANDING_MODES: { [string]: string } = {
+	gloom = "gloom",
+	swamp = "mist",
+	volcano = "ash",
+	wreck = "ghost",
+	maelstrom = "storm",
+}
+
+local APPLY: { [string]: () -> () } = {
+	blizzard = applyBlizzard,
+	mist = applyMist,
+	ash = applyAsh,
+	ghost = applyGhost,
+	storm = applyStorm,
+	clear = applyClear,
+}
+
 local function refresh()
 	local here = currentIslandId()
 	local mode = "clear"
-	if here == "gloom" then
-		mode = "gloom"
-	elseif here == "swamp" then
-		mode = "mist"
+	if here and STANDING_MODES[here] then
+		mode = STANDING_MODES[here]
 	elseif here and blizzards[here] then
 		mode = "blizzard"
 	end
@@ -310,13 +412,7 @@ local function refresh()
 	if mode == "gloom" then
 		applyGloom(holdingLanternRod())
 	elseif mode ~= currentMode then
-		if mode == "blizzard" then
-			applyBlizzard()
-		elseif mode == "mist" then
-			applyMist()
-		else
-			applyClear()
-		end
+		APPLY[mode]()
 	end
 	currentMode = mode
 end
@@ -350,17 +446,17 @@ function WeatherController.init()
 			Glare = instance.Glare,
 		}
 		-- Adopted mid-mode (it replicated after we fogged via the legacy
-		-- fallback): re-apply so the real fog takes over.
+		-- fallback): re-apply so the real fog takes over. Covers every
+		-- mode, not just gloom/blizzard (2026-08-28 - mist and the three
+		-- new island moods re-apply the same way).
 		if currentMode ~= "clear" then
 			local mode = currentMode
-			currentMode = "clear"
 			if mode == "gloom" then
 				applyGloom(holdingLanternRod())
-				currentMode = mode
-			elseif mode == "blizzard" then
-				applyBlizzard()
-				currentMode = mode
+			elseif APPLY[mode] then
+				APPLY[mode]()
 			end
+			currentMode = mode
 		end
 	end
 	local existing = Lighting:FindFirstChildOfClass("Atmosphere")
