@@ -17,6 +17,7 @@ local Services = script.Services
 local ORDER = {
 	"DataService", -- first: owns persistence; later services register their slices in init()
 	"WorldService",
+	"BossArenaService", -- after WorldService (waterline/world conventions): builds each boss's lair arena out in the ocean
 	"InventoryService",
 	"PlayerService", -- before CreatureService: the rusher's contact damage routes through it
 	"RodService", -- after InventoryService: reads the equipped rod

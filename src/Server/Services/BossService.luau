@@ -34,15 +34,26 @@ local Creatures = require(Shared.Data.Creatures)
 local Progression = require(Shared.Modules.Progression)
 local Remotes = require(Shared.Net.Remotes)
 
+local BossArenaService = require(script.Parent.BossArenaService)
 local CreatureService = require(script.Parent.CreatureService)
 local InventoryService = require(script.Parent.InventoryService)
 local ProgressionService = require(script.Parent.ProgressionService)
+local WorldService = require(script.Parent.WorldService)
 
 local BossService = {}
 
 -- A player counts as "on" an island within its radius plus this much
 -- (the dock runs well past the shoreline).
 local ISLAND_MARGIN = 160
+
+-- The lair-arena fight flow (BossArenas islands only; an island with no
+-- arena row keeps the old fight-in-place behavior - the Kraken's site).
+local SUMMON_GATHER_RADIUS = 60 -- summoner's companions within this come along, studs
+local RETURN_DELAY = 4 -- seconds between the kill and the ride home
+local RETURN_NEAR = 120 -- past the roam disc: still "at the fight" for the return trip
+local ABANDON_RADIUS = 300 -- a participant this close to the arena keeps the fight alive
+local ABANDON_SECONDS = 20 -- empty this long -> the boss sinks back (despawn)
+local ABANDON_GRACE = 10 -- after the rise: never reap a fight still starting up
 
 -- Attribute name for a beaten island boss.
 local function clearedAttribute(islandId: string): string
@@ -61,6 +72,11 @@ end
 
 -- islandId -> the live boss Model, while one is up.
 local active: { [string]: Model } = {}
+
+-- islandId -> the running lair fight, while one is up on an arena island:
+-- { bossId, participants: {Player}, startedAt }. Cleared on the win and by
+-- the abandon reaper. Fight-in-place islands never get an entry.
+local fights: { [string]: { bossId: string, participants: { Player }, startedAt: number } } = {}
 
 -- ============================================================ gate
 
@@ -111,16 +127,77 @@ end
 -- ============================================================ spawning
 
 local function arenaPosition(boss): Vector3
+	-- Lair islands fight at their arena out in the ocean; the rest (the
+	-- Kraken's whirlpool site) keep the old spot beside the island.
+	local center = BossArenaService.centerFor(boss.islandId)
+	if center then
+		return Vector3.new(center.X, World.WATER_Y, center.Z)
+	end
 	local island = Islands.items[boss.islandId]
 	local origin = if island then island.worldPosition else Vector3.zero
 	return Vector3.new(origin.X + boss.arena.offset.X, World.WATER_Y, origin.Z + boss.arena.offset.Z)
 end
 
-local function raise(boss)
+-- Move one character, safely out of a boat seat if need be - the containment
+-- sweep's pattern: Sit = false does not kill the SeatWeld in the same step,
+-- so pivoting through it would drag the whole boat along.
+local function moveTo(player: Player, cframe: CFrame)
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if not character or not root then
+		return
+	end
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	local seatPart = humanoid and humanoid.SeatPart
+	if seatPart then
+		humanoid.Sit = false
+		local weld = seatPart:FindFirstChild("SeatWeld")
+		if weld then
+			weld:Destroy()
+		end
+		task.defer(function()
+			if character.Parent and root.Parent then
+				root.AssemblyLinearVelocity = Vector3.zero
+				character:PivotTo(cframe)
+			end
+		end)
+	else
+		root.AssemblyLinearVelocity = Vector3.zero
+		character:PivotTo(cframe)
+	end
+end
+
+-- The summoner plus every living player standing with them (within
+-- SUMMON_GATHER_RADIUS on the same island) - standing that close to a Call
+-- being cast is the invitation.
+local function gatherParty(summoner: Player, islandId: string): { Player }
+	local party = { summoner }
+	local root = summoner.Character and summoner.Character:FindFirstChild("HumanoidRootPart")
+	if not root then
+		return party
+	end
+	for _, player in Players:GetPlayers() do
+		if player ~= summoner and onIsland(player, islandId) then
+			local character = player.Character
+			local otherRoot = character and character:FindFirstChild("HumanoidRootPart")
+			local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+			if otherRoot and humanoid and humanoid.Health > 0 then
+				local d =
+					Vector3.new(otherRoot.Position.X - root.Position.X, 0, otherRoot.Position.Z - root.Position.Z).Magnitude
+				if d <= SUMMON_GATHER_RADIUS then
+					table.insert(party, player)
+				end
+			end
+		end
+	end
+	return party
+end
+
+local function raise(boss): Model?
 	local row = Creatures.items[boss.creature]
 	if not row then
 		warn(string.format("[BossService] boss %q names unknown creature row %q", boss.id, boss.creature))
-		return
+		return nil
 	end
 	-- No throw target: it surfaces where it's put and the boss archetype plays
 	-- its own rise from the deep (Bosses.riseDepth / riseTime).
@@ -131,6 +208,7 @@ local function raise(boss)
 			active[boss.islandId] = nil
 		end
 	end)
+	return model
 end
 
 -- The boss of the island `player` is standing on, or nil.
@@ -178,7 +256,31 @@ function BossService.summonFor(player: Player, bossId: string?): (boolean, strin
 	if not BossService.qualifies(player, boss) then
 		return false, "You're not ready for this" -- only reachable for a boss whose gate names gear
 	end
-	raise(boss)
+
+	if not raise(boss) then
+		return false, "Nothing answers the call here"
+	end
+
+	-- A lair island: the call drags the summoner and everyone standing with
+	-- them to the boss's arena out in the open sea. Deferred so the cast's
+	-- CastResolved { summoned } reaches the client and closes the cast BEFORE
+	-- the camera jumps. Fight-in-place islands (no arena row) skip all this.
+	if BossArenaService.centerFor(boss.islandId) then
+		local party = gatherParty(player, boss.islandId)
+		fights[boss.islandId] = {
+			bossId = boss.id,
+			participants = party,
+			startedAt = os.clock(),
+		}
+		local ring = BossArenaService.ringPositions(boss.islandId, #party, boss.arena.radius + 8)
+		task.defer(function()
+			for i, member in party do
+				if member.Parent == Players and ring[i] then
+					moveTo(member, ring[i])
+				end
+			end
+		end)
+	end
 	return true
 end
 
@@ -228,19 +330,100 @@ local function onKilled(row, _grade: string, killer: Player?, extra)
 		unlocks = nextEntry and nextEntry.name or nil,
 		finale = (island and island.site) == true or nil,
 	})
+
+	-- The ride home from the lair: a beat to take the kill in, then every
+	-- participant still standing at the arena is set back on the island. The
+	-- proximity filter quietly excludes the dead (they respawned at the world
+	-- spawn) and anyone who already travelled out.
+	local fight = fights[boss.islandId]
+	fights[boss.islandId] = nil
+	if fight then
+		local center = arenaPosition(boss)
+		local nearLimit = boss.arena.radius + RETURN_NEAR
+		task.delay(RETURN_DELAY, function()
+			for _, member in fight.participants do
+				local character = member.Parent == Players and member.Character
+				local root = character and character:FindFirstChild("HumanoidRootPart")
+				local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+				if root and humanoid and humanoid.Health > 0 then
+					local d = Vector3.new(root.Position.X - center.X, 0, root.Position.Z - center.Z).Magnitude
+					if d <= nearLimit then
+						WorldService.teleportToIsland(member, boss.islandId)
+					end
+				end
+			end
+		end)
+	end
 end
 
 -- ============================================================ lifecycle
 
 function BossService.init()
 	CreatureService.Killed.Event:Connect(onKilled)
+
+	-- A leaver is out of the fight; the abandon reaper below handles a fight
+	-- this empties.
+	Players.PlayerRemoving:Connect(function(player)
+		for _, fight in fights do
+			local index = table.find(fight.participants, player)
+			if index then
+				table.remove(fight.participants, index)
+			end
+		end
+	end)
 end
 
 function BossService.start()
-	-- No polling: the boss only rises when summoned (summonFor, off the
-	-- capstone bait's cast). The earlier auto-raise (first qualifying player
-	-- on the island) was replaced on 2026-08-23 so the summon is a deliberate
-	-- ritual rather than an ambush.
+	-- No polling for RAISES: the boss only rises when summoned (summonFor,
+	-- off the capstone bait's cast). The earlier auto-raise (first qualifying
+	-- player on the island) was replaced on 2026-08-23 so the summon is a
+	-- deliberate ritual rather than an ambush.
+	--
+	-- The abandon reaper: a lair fight whose participants are all dead, gone,
+	-- or fled sinks its boss back into the sea, so the island can summon
+	-- again. (Before the lair arenas, an abandoned boss lingered forever.)
+	task.spawn(function()
+		local emptySince: { [string]: number } = {}
+		while true do
+			task.wait(2)
+			local now = os.clock()
+			for islandId, fight in fights do
+				local model = active[islandId]
+				local boss = Bosses.items[fight.bossId]
+				if not model or not boss then
+					fights[islandId] = nil
+					emptySince[islandId] = nil
+					continue
+				end
+				-- Never reap a fight still rising / gathering itself.
+				if now - fight.startedAt < boss.riseTime + ABANDON_GRACE then
+					continue
+				end
+				local center = arenaPosition(boss)
+				local present = 0
+				for _, member in fight.participants do
+					local character = member.Parent == Players and member.Character
+					local root = character and character:FindFirstChild("HumanoidRootPart")
+					local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+					if root and humanoid and humanoid.Health > 0 then
+						local d = Vector3.new(root.Position.X - center.X, 0, root.Position.Z - center.Z).Magnitude
+						if d <= boss.arena.radius + ABANDON_RADIUS then
+							present += 1
+						end
+					end
+				end
+				if present > 0 then
+					emptySince[islandId] = nil
+				elseif not emptySince[islandId] then
+					emptySince[islandId] = now
+				elseif now - emptySince[islandId] >= ABANDON_SECONDS then
+					emptySince[islandId] = nil
+					fights[islandId] = nil
+					model:Destroy() -- AncestryChanged clears active[islandId]
+				end
+			end
+		end
+	end)
 end
 
 return BossService
