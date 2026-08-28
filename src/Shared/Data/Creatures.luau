@@ -85,9 +85,43 @@ export type Creature = {
 	-- row uses archetype "boss" and rarity "Boss" (never rolled from a cast;
 	-- BossService spawns it), and must carry its own `rewards` + `drops`.
 	boss: string?,
+
+	-- ---- The kit engine (hostile revamp, 2026-08-28) ----
+	-- A row with `moves` fights on CreatureService's kit engine - the boss
+	-- attack book scaled down. Each move: the boss vocabulary
+	-- (name/handler/windup/duration/recover/cooldown/damage/radius/tell/skin
+	-- + any handler-specific params), plus `below` (only picked at/below this
+	-- HP fraction - mini-phases), `follow` (forced next move - combos),
+	-- `weight` (pick weighting), `range` (held until the player is this
+	-- close), `expose` (seconds of double-damage daze after the recover).
+	-- Rows WITHOUT `moves` behave exactly as before.
+	moves: { { [string]: any } }?,
+	-- The quirk layer (CreatureService GIMMICKS): { kind = "harden" |
+	-- "frenzy" | "phasey" | "spines" | "static" | "slippery" | "leech" |
+	-- "deathburst", ...params }.
+	gimmick: { [string]: any }?,
+	-- Between-moves locomotion for a kitted row: nil = the generic prowl
+	-- (face + close + breathe); an archetype name opts into that archetype's
+	-- FULL updater (its built-in attack then runs as part of the kit).
+	movement: string?,
+	-- Per-row overrides: Tuning.Creature keys (plus STANDOFF/TURN_RATE_DEG),
+	-- the contact-damage band, and the pause between move picks.
+	tuning: { [string]: number }?,
+	contactDamage: { number }?, -- { min, max }; default = the archetype global
+	attackGap: { number }?, -- { min, max } seconds; default = KIT_DEFAULTS
 }
 
 Creatures.items = {} :: { [string]: Creature }
+
+-- Kit pacing defaults by rarity: how long a kitted creature pauses between
+-- move picks when its row doesn't say. Tighter tiers fight busier.
+Creatures.KIT_DEFAULTS = {
+	Common = { gapMin = 2.5, gapMax = 3.5 },
+	Uncommon = { gapMin = 2.0, gapMax = 3.0 },
+	Rare = { gapMin = 1.6, gapMax = 2.6 },
+	Epic = { gapMin = 1.2, gapMax = 2.0 },
+	Legendary = { gapMin = 1.0, gapMax = 1.6 },
+}
 
 -- ============================================================ Common
 
@@ -97,6 +131,25 @@ Creatures.items.perch = {
 	rarity = "Common",
 	archetype = "rusher",
 	health = 60,
+	-- KIT PILOT (engine slice, 2026-08-28): the dojo's first lesson - one
+	-- slow, honest leap, and a body that goes flying when you hit it back.
+	moves = {
+		{
+			name = "flipslap",
+			handler = "lunge",
+			windup = 0.9,
+			duration = 0.35,
+			recover = 0.6,
+			cooldown = 3.0,
+			damage = { 4, 7 },
+			reach = 8,
+			hop = 2.5,
+			radius = 4,
+			tell = "snap",
+			skin = "brine",
+		},
+	},
+	gimmick = { kind = "slippery", mult = 2.2 },
 	body = {
 		model = "FishPack",
 		species = "Perch",
@@ -163,6 +216,43 @@ Creatures.items.cod = {
 	rarity = "Uncommon",
 	archetype = "spitter",
 	health = 220,
+	-- KIT PILOT: the classic spit rebuilt on the kit system (the boss
+	-- `volley` handler at minnow scale), plus a close-range flare that
+	-- leaves it wide open - punishing it is the lesson.
+	moves = {
+		{
+			name = "loogie",
+			handler = "volley",
+			windup = 0.8,
+			duration = 0.5,
+			recover = 0.5,
+			cooldown = 4.0,
+			damage = { 6, 10 },
+			count = 1,
+			spread = 3,
+			flight = 0.9,
+			stagger = 0,
+			radius = 5,
+			range = 34,
+			skin = "brine",
+		},
+		{
+			name = "gillflare",
+			handler = "snap",
+			windup = 0.6,
+			duration = 0.3,
+			recover = 0.4,
+			cooldown = 5.0,
+			damage = { 5, 8 },
+			lunge = 5,
+			radius = 6,
+			cone = math.rad(70),
+			range = 10,
+			expose = 1.2,
+			tell = "snap",
+			skin = "brine",
+		},
+	},
 	body = {
 		model = "FishPack",
 		species = "Cod",
@@ -245,6 +335,58 @@ Creatures.items.snapjaw_crab = {
 	rarity = "Rare",
 	archetype = "rusher",
 	health = 280,
+	-- KIT PILOT: the first Rare kit - a two-snip combo (`follow`), a cone
+	-- gust that shoves you off its face, and a shell that hardens during
+	-- windups: hit the recover windows, not the tells.
+	moves = {
+		{
+			name = "snip",
+			handler = "snap",
+			windup = 0.55,
+			duration = 0.3,
+			recover = 0.35,
+			cooldown = 2.6,
+			damage = { 8, 12 },
+			lunge = 5,
+			radius = 7,
+			cone = math.rad(70),
+			range = 14,
+			follow = "snip2",
+			tell = "snap",
+			skin = "brine",
+		},
+		{
+			name = "snip2",
+			handler = "snap",
+			windup = 0.3,
+			duration = 0.3,
+			recover = 0.5,
+			cooldown = 6.0,
+			damage = { 8, 12 },
+			lunge = 4,
+			radius = 7,
+			cone = math.rad(70),
+			weight = 0, -- follow-only: the second half of the combo
+			tell = "snap",
+			skin = "brine",
+		},
+		{
+			name = "bubblejet",
+			handler = "gustpush",
+			windup = 0.8,
+			duration = 0.3,
+			recover = 0.5,
+			cooldown = 6.5,
+			damage = { 5, 8 },
+			radius = 12,
+			cone = math.rad(45),
+			push = 55,
+			range = 11,
+			tell = "gustTell",
+			skin = "brine",
+		},
+	},
+	gimmick = { kind = "harden", mult = 0.35 },
 	drops = {
 		materials = { barnacle_chitin = { 1, 2 }, fish_scale = { 1, 2 } },
 	},

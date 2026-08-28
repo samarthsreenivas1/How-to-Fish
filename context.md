@@ -1025,6 +1025,47 @@ playbook applied to Ashfall Caldera — reviewed from PNG previews
   hunks rode into adjacent swamp-lane commits (shared git index between
   concurrent sessions — 9a59de9/5a68a88; flagged in commit messages).
 
+### The kit engine: per-row hostile movesets (2026-08-28, engine slice)
+
+User: "revamp all of the hostiles... unique movesets unique to each hostile
+and each environment... fun to fight and menacing." Scope settled: tiered
+by rarity (C 1 move + quirk -> L showcase); THIS slice is the ENGINE only -
+island-by-island kits come next (full bestiary designed, in the plan file
+okay-now-lets-revamp-gleaming-treehouse.md); Bestiary menu/charms/drops
+deferred by user order.
+
+- **The boss attack book now serves everyone**: `BOSS_ATTACKS` renamed
+  `ATTACK_HANDLERS` (Bosses.luau data strings unchanged);
+  begin/update/endBossAttack take any `book`; a row with `moves`
+  (Creatures.luau - the boss vocabulary minus phases + `below` HP gates,
+  `follow` combos, `weight`, `range`, `expose`) runs `updateKitted`:
+  attack in flight -> the shared loop (sub=0); otherwise `updateProwl`
+  (or the row's `movement` archetype updater, opt-in) + a weighted pick.
+  `weight = 0` = follow-only (combo halves). `Creatures.KIT_DEFAULTS`
+  paces gaps by rarity. Rows without `moves` are byte-identical.
+- **Interrupts are the fun loop**: a juggle launch or a stun CLEARS the
+  attack mid-windup; a move's `expose` opens a double-damage daze window
+  (rides the charger's Exposed attribute tell - no new client language).
+- **Gimmick registry** (`gimmick = {kind,...}` on kitted rows, consulted
+  from damage/hitModifiers/kill/tryContact/applyKnockback): harden (windup
+  armour), frenzy (mutates the cached book's enrage mults), phasey
+  (blink-out after N hits), spines, static, slippery, leech, deathburst.
+- **5 hostile-scale handlers** join the arsenal: `lunge`, `conebreath`,
+  `ringpulse` (sweep, or `invert` safe-centre nova), `mortar` (queueStrike
+  marks + snare/chain/pool riders), `gustpush` (displacement - the client
+  runs the pull machinery in REVERSE; stepPull's <4-stud dead zone now
+  only applies to positive pulls, and to.Unit is guarded at d~0).
+- **Client**: telegraph kinds `coneTell` + `gustTell`; `gust` event; the
+  three fired-but-never-rendered events finally drawn (gasPuff,
+  crustCrack, rebornRise); Cracked/Downed attribute visuals wired.
+  `tune(creature, key)` + `row.contactDamage` give rows per-row numbers.
+- **Pilot kits** (dojo, skin `brine`): Perch = Flip Slap lunge + slippery;
+  Cod = Lobbed Loogie (boss `volley` at minnow scale) + Gill Flare with
+  a 1.2s expose; Snapjaw Crab = Snip-Snip follow combo + Bubble Jet cone
+  gust + harden. **Unreviewed in Studio** - verify per the plan
+  (tell/dodge/punish, interrupt, Brinejaw regression), then the island
+  content slices begin.
+
 ### The boss redesign: unique movesets, gimmicks, models (2026-08-27, unreviewed)
 
 User: the bosses "all have the exact same moveset... mediocre designs and

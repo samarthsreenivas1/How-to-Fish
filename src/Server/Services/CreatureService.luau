@@ -60,6 +60,19 @@ end
 local CreatureService = {}
 
 local C = Tuning.Creature
+
+-- Per-row override of a Tuning.Creature knob (hostile revamp): a kitted row
+-- may carry `tuning = { KEY = n }`; everything else reads the global.
+local function tune(creature, key: string)
+	local t = creature.row.tuning
+	return (t and t[key]) or C[key]
+end
+
+-- Forward declarations: the kit engine (mid-file) delegates locomotion into
+-- ARCHETYPE_UPDATERS (populated after every updater is defined), and the
+-- health/hit paths above it consult the gimmick registry defined with it.
+local ARCHETYPE_UPDATERS
+local gimmickOf
 local Perks = Tuning.Perks
 
 -- Flat array of creature structs; see `spawn` for the fields.
@@ -638,6 +651,13 @@ local function kill(creature, killer: Player?)
 	creature.dead = true
 	byModel[creature.model] = nil
 
+	-- Gimmick layer: a deathburst detonates here, while `pos` still means
+	-- something and before Killed pays anyone out.
+	local gimmick = gimmickOf(creature)
+	if gimmick and gimmick.onKill then
+		gimmick.onKill(creature)
+	end
+
 	-- A boss part (a Kraken tentacle): its death counts the ring down, and
 	-- the last one opens the head's exposure window (damage() refuses the
 	-- head while partsAlive > 0; updateBoss owns the regrow clock).
@@ -783,6 +803,13 @@ function CreatureService.damage(creature, amount: number, attacker: Player?, opt
 		end
 	end
 
+	-- The gimmick layer (kit engine): harden's windup armour, frenzy's
+	-- ignition, phasey's blink-out - one consult, one place.
+	local gimmick = gimmickOf(creature)
+	if gimmick and gimmick.onDamage then
+		amount = gimmick.onDamage(creature, amount, os.clock()) or amount
+	end
+
 	creature.health = math.max(0, creature.health - amount)
 	creature.model:SetAttribute(ATTR_HEALTH, creature.health)
 
@@ -823,6 +850,16 @@ end
 function CreatureService.hitModifiers(creature, from: Vector3?): (number, number)
 	if type(creature) ~= "table" or creature.dead then
 		return 1, 0
+	end
+	-- A kitted creature's expose window (a move's `expose` field): the same
+	-- double-damage punish the charger's turn has always had.
+	if creature.exposedUntil and os.clock() < creature.exposedUntil then
+		return C.CHARGE_EXPOSED_DAMAGE_MULT, 0
+	end
+	-- Gimmicks that answer melee (spines' reflect, static's shock).
+	local gimmick = gimmickOf(creature)
+	if gimmick and gimmick.onHit then
+		return gimmick.onHit(creature)
 	end
 	local archetype = creature.row.archetype
 	if archetype == "thornback" then
@@ -896,6 +933,12 @@ function CreatureService.applyKnockback(creature, direction: Vector3, speed: num
 		-- passive fish take the full push. Scaling here rather than at the call
 		-- site keeps every weapon row's own `knockback` number meaningful.
 		local resist = C.KNOCKBACK_MULT_BY_ARCHETYPE[creature.row.archetype] or 1
+		-- The slippery gimmick overrides the resist outright: this thing is
+		-- MEANT to rocket across the beach.
+		local g = creature.row.gimmick
+		if g and g.kind == "slippery" then
+			resist = g.mult or 2
+		end
 		-- Additive, so rapid hits stack into a bigger shove.
 		creature.knockVel = (creature.knockVel or Vector3.zero) + flat.Unit * (speed * resist)
 	end
@@ -911,6 +954,12 @@ function CreatureService.applyKnockback(creature, direction: Vector3, speed: num
 	end
 	local launch = (lift or 0) * liftMult
 	if launch > 0 then
+		-- A launch interrupts a kitted move mid-flight: cancelling a windup
+		-- with a well-timed uproot/juggle is a real counter, not a no-op.
+		if creature.attack then
+			creature.attack = nil
+			creature.nextAttackAt = os.clock() + 1.0
+		end
 		-- Set (not add): every hit launches from the current height at the
 		-- weapon's full lift, so a juggle keeps a steady rhythm instead of
 		-- accelerating away. The jelly already hovers, so it launches from
@@ -1283,7 +1332,17 @@ local function tryContact(
 ): boolean
 	if player and dist <= radius and now - (creature.lastHitAt or 0) >= C.CONTACT_COOLDOWN then
 		creature.lastHitAt = now
-		PlayerService.damage(player, math.random(minDmg, maxDmg), creature)
+		-- A kitted row's own contact band beats the archetype's global one.
+		local band = creature.row.contactDamage
+		if band then
+			minDmg, maxDmg = band[1], band[2]
+		end
+		local dealt = math.random(minDmg, maxDmg)
+		PlayerService.damage(player, dealt, creature)
+		local gimmick = gimmickOf(creature)
+		if gimmick and gimmick.onContact then
+			gimmick.onContact(creature, dealt)
+		end
 		return true
 	end
 	return false
@@ -1910,10 +1969,10 @@ end
 --   finish(creature, def, p, now)                    - once, as the strike ends
 --   recover(creature, def, p, u, sub)                - pose the recovery (u 0..1)
 -- A handler without a pose hook just sits at its submerged rest pose.
-local BOSS_ATTACKS = {}
+local ATTACK_HANDLERS = {}
 
 -- Jaw Snap: rears back, then lunges and bites everything in front.
-BOSS_ATTACKS.snap = {
+ATTACK_HANDLERS.snap = {
 	windup = function(creature, _def, _p, u, sub)
 		creature.model:PivotTo(poseCFrame(creature, sub + 0.8 * u, 0, math.rad(24) * u))
 	end,
@@ -1938,7 +1997,7 @@ BOSS_ATTACKS.snap = {
 -- target through the windup, so a lone player was always in front and it
 -- never landed (playtest, 2026-08-22). The dodge is distance: back off
 -- past the ring the tell draws.
-BOSS_ATTACKS.tail = {
+ATTACK_HANDLERS.tail = {
 	windup = function(creature, _def, _p, u, sub)
 		creature.model:PivotTo(poseCFrame(creature, sub, math.rad(-28) * u, 0))
 	end,
@@ -1953,7 +2012,7 @@ BOSS_ATTACKS.tail = {
 }
 
 -- Brine Volley: a fan of globs that splash down around the player.
-BOSS_ATTACKS.volley = {
+ATTACK_HANDLERS.volley = {
 	windup = function(creature, _def, _p, u, sub)
 		creature.model:PivotTo(poseCFrame(creature, sub + 0.4 * u, 0, math.rad(30) * u))
 	end,
@@ -1980,7 +2039,7 @@ BOSS_ATTACKS.volley = {
 }
 
 -- Tidal Slam: rears right up, crashes down - a shockwave ring.
-BOSS_ATTACKS.slam = {
+ATTACK_HANDLERS.slam = {
 	windup = function(creature, _def, _p, u, sub)
 		local e = smoothstep(u)
 		creature.model:PivotTo(poseCFrame(creature, sub + 3.0 * e, 0, math.rad(38) * e))
@@ -2000,7 +2059,7 @@ BOSS_ATTACKS.slam = {
 
 -- Lure Pull: the lure flares and drags every nearby player toward the maw
 -- (the clients apply the pull to their own character), then it snaps.
-BOSS_ATTACKS.pull = {
+ATTACK_HANDLERS.pull = {
 	fire = function(creature, _def, p)
 		fireEvent("pull", creature.model:GetPivot().Position, {
 			radius = p.radius,
@@ -2014,7 +2073,7 @@ BOSS_ATTACKS.pull = {
 }
 
 -- Spawn Brood: coughs up minions, thrown at the player.
-BOSS_ATTACKS.brood = {
+ATTACK_HANDLERS.brood = {
 	windup = function(creature, _def, _p, u, sub)
 		creature.model:PivotTo(poseCFrame(creature, sub + 0.3 * u, 0, math.rad(-16) * u))
 	end,
@@ -2040,7 +2099,7 @@ BOSS_ATTACKS.brood = {
 -- THEN with a ring tell on the surface - the window to get clear - before
 -- bursting up there. It may surface on the deck itself; the prowl's arena
 -- clamp walks it back into the water afterwards.
-BOSS_ATTACKS.dive = {
+ATTACK_HANDLERS.dive = {
 	windup = function(creature, def, _p, u, sub)
 		local e = smoothstep(u)
 		creature.model:PivotTo(poseCFrame(creature, sub + (-def.riseDepth - sub) * e, 0, math.rad(-30) * e))
@@ -2094,7 +2153,7 @@ BOSS_ATTACKS.dive = {
 }
 
 -- Spine Barrage: quivers, then rains spines down around the player.
-BOSS_ATTACKS.spines = {
+ATTACK_HANDLERS.spines = {
 	windup = function(creature, _def, _p, u, sub)
 		creature.model:PivotTo(
 			poseCFrame(creature, sub + 0.2 * u, math.sin(u * 40) * math.rad(2) * u, math.rad(12) * u)
@@ -2228,7 +2287,7 @@ end
 -- leap (hop height - the body is airborne mid-arc and can't contact-hit),
 -- slamRadius (a landing shockwave at the end), trail { every + spawnPool
 -- spec } (hazards dropped along the wake).
-BOSS_ATTACKS.charge = {
+ATTACK_HANDLERS.charge = {
 	windup = function(creature, _def, _p, u, sub)
 		local e = smoothstep(u)
 		creature.model:PivotTo(poseCFrame(creature, sub + 0.7 * e, 0, math.rad(20) * e))
@@ -2288,7 +2347,7 @@ BOSS_ATTACKS.charge = {
 -- Ticks without the i-frame bypass (it re-hits), so standing in it hurts but
 -- doesn't shred. p: sweep (degrees), cone (half-angle degrees), range, tick,
 -- damage (per tick); optional chill { mult, duration }, sweepDir (+1/-1).
-BOSS_ATTACKS.beam = {
+ATTACK_HANDLERS.beam = {
 	windup = function(creature, _def, _p, u, sub)
 		local e = smoothstep(u)
 		creature.model:PivotTo(poseCFrame(creature, sub + 0.6 * e, 0, math.rad(26) * e))
@@ -2336,8 +2395,8 @@ BOSS_ATTACKS.beam = {
 
 -- Poolvolley: the volley, but every glob leaves a lingering pool where it
 -- lands (p.pool = spawnPool spec).
-BOSS_ATTACKS.poolvolley = {
-	windup = BOSS_ATTACKS.volley.windup,
+ATTACK_HANDLERS.poolvolley = {
+	windup = ATTACK_HANDLERS.volley.windup,
 	fire = function(creature, def, p, now, root)
 		if not root then
 			return
@@ -2358,7 +2417,7 @@ BOSS_ATTACKS.poolvolley = {
 			)
 		end
 	end,
-	strike = BOSS_ATTACKS.volley.strike,
+	strike = ATTACK_HANDLERS.volley.strike,
 }
 
 -- Barrage: a pattern of telegraphed strikes. p.pattern:
@@ -2373,7 +2432,7 @@ BOSS_ATTACKS.poolvolley = {
 --   "rings"    - concentric ring bands around the boss (p.rings radii,
 --                p.ringWidth wide), detonating outward - the nova
 -- p.arm is the tell lead (seconds between a strike's ring and its hit).
-BOSS_ATTACKS.barrage = {
+ATTACK_HANDLERS.barrage = {
 	windup = function(creature, _def, _p, u, sub)
 		creature.model:PivotTo(
 			poseCFrame(creature, sub + 0.3 * u, math.sin(u * 30) * math.rad(2) * u, math.rad(14) * u)
@@ -2446,7 +2505,7 @@ BOSS_ATTACKS.barrage = {
 -- Snaretrap: marks the ground under every player's feet; whoever is still
 -- inside when it arms is rooted to the spot. p: arm (the escape window),
 -- radius, damage, snare (root seconds).
-BOSS_ATTACKS.snaretrap = {
+ATTACK_HANDLERS.snaretrap = {
 	windup = function(creature, _def, _p, u, sub)
 		creature.model:PivotTo(poseCFrame(creature, sub - 0.4 * u, 0, math.rad(-10) * u))
 	end,
@@ -2463,7 +2522,7 @@ BOSS_ATTACKS.snaretrap = {
 -- comes close (or fizzle after p.lifetime). p: count, spread, trigger,
 -- blast, damage, lifetime; optional drift (studs/s toward the nearest
 -- player - the powder keg).
-BOSS_ATTACKS.decoys = {
+ATTACK_HANDLERS.decoys = {
 	windup = function(creature, _def, _p, u, sub)
 		creature.model:PivotTo(poseCFrame(creature, sub + 0.4 * u, 0, math.rad(18) * u))
 	end,
@@ -2494,7 +2553,7 @@ BOSS_ATTACKS.decoys = {
 -- Phantom: the lights go out, it vanishes, and it reappears at a player's
 -- flank mid-bite. p: emergeAt (how far from the player it surfaces), radius,
 -- cone (degrees), damage.
-BOSS_ATTACKS.phantom = {
+ATTACK_HANDLERS.phantom = {
 	windup = function(creature, _def, _p, u, sub)
 		creature.model:PivotTo(poseCFrame(creature, sub - 1.2 * u, 0, math.rad(-12) * u))
 	end,
@@ -2547,7 +2606,7 @@ BOSS_ATTACKS.phantom = {
 -- maw while wreckage rains on whoever it's pulling. p: radius, strength,
 -- duration, globEvery, damage (per glob), radius is the pull's reach and the
 -- globs land radius p.globRadius.
-BOSS_ATTACKS.undertow = {
+ATTACK_HANDLERS.undertow = {
 	windup = function(creature, _def, _p, u, sub)
 		creature.model:PivotTo(poseCFrame(creature, sub + 0.8 * u, 0, math.rad(22) * u))
 	end,
@@ -2593,7 +2652,7 @@ BOSS_ATTACKS.undertow = {
 -- warning - and whoever it lands on is CHAINED to the spot (the client
 -- leashes its own character to the anchor). p: flight, radius, damage,
 -- leash, chainDuration.
-BOSS_ATTACKS.anchortoss = {
+ATTACK_HANDLERS.anchortoss = {
 	windup = function(creature, _def, _p, u, sub)
 		local e = smoothstep(u)
 		creature.model:PivotTo(poseCFrame(creature, sub + 1.3 * e, 0, math.rad(32) * e))
@@ -2673,6 +2732,16 @@ local function endBossAttack(creature, def, now: number)
 	local rage = if creature.enraged then def.enrageCooldownMult else 1
 	creature.cooldowns = creature.cooldowns or {}
 	creature.cooldowns[a.name] = now + a.p.cooldown * rage
+	-- A move with `expose = seconds` leaves the creature wide open after its
+	-- recover: hits land at the charger's exposed multiplier for the window
+	-- (hitModifiers), and the client draws the dazed tell off the attribute.
+	if a.p.expose then
+		creature.exposedUntil = now + a.p.expose
+		-- The attribute is the tell: the client already draws the charger's
+		-- dazed sparks off Exposed, so every kitted expose window inherits
+		-- that language for free (no boss-roar "exposed" event - too grand).
+		creature.model:SetAttribute(ATTR_EXPOSED, true)
+	end
 	if a.p.follow then
 		creature.forcedAttack = a.p.follow
 		creature.nextAttackAt = now + 0.15
@@ -2699,7 +2768,7 @@ local function updateBossAttack(
 	-- moves in its own voice - "deathroll", "magmajet" - while sharing the
 	-- parameterized primitives); a book entry without one keeps the old rule
 	-- that the attack's NAME is the handler (Brinejaw's book).
-	local handler = BOSS_ATTACKS[p.handler or a.name]
+	local handler = ATTACK_HANDLERS[p.handler or a.name]
 	if not handler then
 		endBossAttack(creature, def, now)
 		return
@@ -2752,6 +2821,457 @@ local function updateBossAttack(
 			endBossAttack(creature, def, now)
 		end
 	end
+end
+
+-- ---------------------------------------------------- hostile-scale arsenal (hostile revamp, 2026-08-28)
+-- Five primitives sized for ordinary hostiles, joining the boss arsenal in
+-- the same table so a kit and a boss book draw from one vocabulary. All
+-- fully parameterized - variety comes from the rows, not from new code.
+
+-- Lunge: a tracked hop-leap at the player, cone hit on landing. p: reach
+-- (max leap), hop (arc height), cone (half-angle rad; default a 60-deg
+-- bite), knockback?, pool? (spawnPool spec at the landing).
+ATTACK_HANDLERS.lunge = {
+	windup = function(creature, _def, _p, u, sub)
+		creature.model:PivotTo(poseCFrame(creature, sub, 0, math.rad(-12) * u))
+	end,
+	fire = function(creature, _def, p, _now, root)
+		local a = creature.attack
+		if root then
+			local to = Vector3.new(root.Position.X - creature.pos.X, 0, root.Position.Z - creature.pos.Z)
+			a.leap = math.min(to.Magnitude, p.reach or 14)
+			a.dir = if to.Magnitude > 0.01 then to.Unit else bossFacing(creature)
+		else
+			a.leap = p.reach or 14
+			a.dir = bossFacing(creature)
+		end
+	end,
+	strike = function(creature, def, p, _now, dt, u, _root, sub)
+		local a = creature.attack
+		creature.pos = resolveHorizontal(creature, a.dir * (a.leap / math.max(p.duration, 1e-3)) * dt)
+		local hop = (p.hop or 3) * 4 * u * (1 - u)
+		creature.model:PivotTo(poseCFrame(creature, sub + hop, 0, math.rad(18) * (1 - u)))
+		if not a.fired and u >= 0.72 then
+			a.fired = true
+			local lo, hi = bossRoll(creature, def, p.damage)
+			damagePlayersInCone(creature.pos, a.dir, p.radius or 6, p.cone or math.rad(60), false, lo, hi, creature)
+			if p.pool then
+				spawnPool(creature, creature.pos, p.pool, os.clock())
+			end
+			fireEvent("slam", creature.pos, { radius = p.radius or 6, skin = p.skin })
+		end
+	end,
+}
+
+-- Cone breath: a held jet from the mouth swept over `duration`, ticking
+-- damage inside the cone. p: reach, cone (half-angle), tickEvery?, pool?
+-- (a hazard line left along the centreline as it ends).
+ATTACK_HANDLERS.conebreath = {
+	windup = function(creature, _def, _p, u, sub)
+		creature.model:PivotTo(poseCFrame(creature, sub + 0.5 * u, 0, math.rad(-20) * u))
+	end,
+	strike = function(creature, def, p, now, dt, u, root, sub)
+		local a = creature.attack
+		if root then
+			-- The jet tracks slowly - walking OUT of the cone is the dodge.
+			creature.yaw0 = approachAngle(creature.yaw0, yawToward(root.Position - creature.pos), math.rad(40) * dt)
+		end
+		creature.model:PivotTo(poseCFrame(creature, sub + 0.5, 0, math.rad(8)))
+		if now >= (a.nextTickAt or 0) then
+			a.nextTickAt = now + (p.tickEvery or 0.35)
+			local lo, hi = bossRoll(creature, def, p.damage)
+			local facing = bossFacing(creature)
+			damagePlayersInCone(creature.pos, facing, p.reach or 12, p.cone or math.rad(35), false, lo, hi, creature)
+			fireEvent("beam", creature.pos + Vector3.new(0, 1.5, 0), {
+				to = creature.pos + facing * (p.reach or 12) + Vector3.new(0, 1, 0),
+				skin = p.skin,
+			})
+		end
+		if u >= 0.95 and not a.fired and p.pool then
+			a.fired = true
+			local facing = bossFacing(creature)
+			spawnPool(creature, creature.pos + facing * (p.reach or 12) * 0.6, p.pool, now)
+		end
+	end,
+}
+
+-- Ring pulse: an expanding shockwave band swept outward over `duration`
+-- (step across or outrun it) - or, with `invert`, one detonation of the
+-- annulus [safeRadius, radius] at the end of the strike: the SAFE spot is
+-- up close, and the tell says so. p: radius (outer), ringWidth?, safeRadius
+-- (invert), invert?.
+ATTACK_HANDLERS.ringpulse = {
+	windup = function(creature, _def, p, u, sub)
+		if u < 0.05 and not creature.attack.tellFired then
+			creature.attack.tellFired = true
+			if p.invert then
+				fireEvent("telegraph", creature.pos, {
+					kind = "ringTell",
+					duration = p.windup + p.duration,
+					inner = p.safeRadius or 6,
+					radius = p.radius,
+					skin = p.skin,
+				})
+			end
+		end
+		creature.model:PivotTo(poseCFrame(creature, sub + 0.9 * u, 0, 0))
+	end,
+	strike = function(creature, def, p, _now, _dt, u, _root, sub)
+		local a = creature.attack
+		creature.model:PivotTo(poseCFrame(creature, sub + 0.9 * (1 - u), 0, 0))
+		if p.invert then
+			if not a.fired and u >= 0.95 then
+				a.fired = true
+				local lo, hi = bossRoll(creature, def, p.damage)
+				damagePlayersInAnnulus(creature.pos, p.safeRadius or 6, p.radius, lo, hi, creature)
+				fireEvent("pulse", creature.pos, { radius = p.radius, skin = p.skin })
+			end
+			return
+		end
+		-- The sweeping band: each player is hit at most once per pulse.
+		if not a.fired then
+			a.fired = true
+			fireEvent("pulse", creature.pos, { radius = p.radius, skin = p.skin })
+		end
+		local front = p.radius * u
+		local band = p.ringWidth or 4
+		a.hitPlayers = a.hitPlayers or {}
+		local lo, hi = bossRoll(creature, def, p.damage)
+		for _, entry in livingRootsNear(creature.pos, front) do
+			local d = (Vector3.new(entry.root.Position.X, 0, entry.root.Position.Z) - Vector3.new(
+				creature.pos.X,
+				0,
+				creature.pos.Z
+			)).Magnitude
+			if d >= front - band and not a.hitPlayers[entry.player] then
+				a.hitPlayers[entry.player] = true
+				PlayerService.damage(entry.player, math.random(lo, hi), creature, { bypassIframe = true })
+			end
+		end
+	end,
+}
+
+-- Mortar: N telegraphed ground marks (queueStrike - the marks land on their
+-- own clock, whatever the creature does next). p: count, spread, delay
+-- (tell-to-hit), stagger, aim ("player" scatters around the player,
+-- "self" around the creature), plus queueStrike riders: shape/inner/outer,
+-- snare, chain, pool, hitEvent.
+ATTACK_HANDLERS.mortar = {
+	windup = function(creature, _def, _p, u, sub)
+		creature.model:PivotTo(poseCFrame(creature, sub + 0.6 * u, 0, math.rad(-16) * u))
+	end,
+	fire = function(creature, def, p, now, root)
+		local count = p.count or 3
+		for i = 1, count do
+			local at
+			if root and (p.aim or "player") == "player" then
+				at = scatterAround(root, p.spread or 7)
+			else
+				local angle = math.random() * math.pi * 2
+				local r = math.sqrt(math.random()) * (p.spread or 10)
+				at = groundedPos(creature.pos + Vector3.new(math.cos(angle) * r, 0, math.sin(angle) * r), 0)
+			end
+			local tellAt = now + (i - 1) * (p.stagger or 0.25)
+			queueStrike(creature, def, p, at, tellAt, tellAt + (p.delay or 1.1), {
+				shape = p.shape,
+				inner = p.inner,
+				outer = p.outer,
+				snare = p.snare,
+				chain = p.chain,
+				pool = p.pool,
+				hitEvent = p.hitEvent,
+			})
+		end
+	end,
+}
+
+-- Gust push: a displacement shove - radial, or a cone with `cone` set. The
+-- client moves the character (the `pull` machinery, mirrored outward);
+-- optional light damage. p: radius, push (studs/s), lift?, cone?, damage?.
+ATTACK_HANDLERS.gustpush = {
+	windup = function(creature, _def, _p, u, sub)
+		creature.model:PivotTo(poseCFrame(creature, sub + 0.7 * u, 0, math.rad(-10) * u))
+	end,
+	fire = function(creature, def, p, _now)
+		local facing = bossFacing(creature)
+		fireEvent("gust", creature.pos, {
+			radius = p.radius,
+			push = p.push or 42,
+			lift = p.lift or 0,
+			duration = math.max(p.duration, 0.15),
+			cone = p.cone,
+			facing = if p.cone then facing else nil,
+			skin = p.skin,
+		})
+		if p.damage then
+			local lo, hi = bossRoll(creature, def, p.damage)
+			if p.cone then
+				damagePlayersInCone(creature.pos, facing, p.radius, p.cone, false, lo, hi, creature)
+			else
+				damagePlayersInRadius(creature.pos, p.radius, lo, hi, creature, 0.7)
+			end
+		end
+	end,
+}
+
+-- ============================================================ per-row move kits (hostile revamp, 2026-08-28)
+--
+-- The boss attack book, scaled down to ordinary hostiles: a creature row may
+-- carry `moves` (Creatures.luau - the boss attack vocabulary minus phases:
+-- windup/duration/recover/cooldown/damage/radius/tell/skin per move, plus
+-- `below` for HP-gated moves, `follow` for combos, `weight` for the pick,
+-- `range` to hold a move until the player is close enough) and `gimmick`
+-- (the quirk registry below). A row WITHOUT `moves` behaves exactly as
+-- before - the whole revamp lands island-by-island with no flag day.
+--
+-- The attack loop is the BOSS loop: begin/update/endBossAttack already read
+-- only `def.attacks / turnRate / attackGapMin/Max / enrageCooldownMult` (and
+-- handlers read `enrageDamageMult` via bossRoll, `riseDepth`/`aggro` for
+-- dive-style moves; clampToArena no-ops without `creature.anchor`) - so a
+-- kitted creature just feeds those functions a `book` built from its row
+-- instead of a Bosses entry. Between moves it walks with `updateProwl`
+-- below - or, when a row names `movement = "<archetype>"`, that archetype's
+-- full updater (opt-in: the archetype's own built-in attack then runs AS
+-- part of the kit).
+
+-- Pacing/contact defaults per rarity live in Creatures.KIT_DEFAULTS so the
+-- content rows and their defaults sit in one file.
+
+-- The book the shared attack loop needs, built once per creature and cached.
+-- `enrage*` fields start neutral; the `frenzy` gimmick mutates them live.
+local function kitBook(creature)
+	local book = creature.kitBook
+	if book then
+		return book
+	end
+	local row = creature.row
+	local defaults = Creatures.KIT_DEFAULTS[row.rarity] or Creatures.KIT_DEFAULTS.Common
+	local attacks = {}
+	for _, move in row.moves do
+		attacks[move.name] = move
+	end
+	book = {
+		attacks = attacks,
+		moves = row.moves,
+		turnRate = math.rad((row.tuning and row.tuning.TURN_RATE_DEG) or 200),
+		attackGapMin = (row.attackGap and row.attackGap[1]) or defaults.gapMin,
+		attackGapMax = (row.attackGap and row.attackGap[2]) or defaults.gapMax,
+		enrageCooldownMult = 1,
+		enrageDamageMult = 1,
+		-- Dive/phantom-style handlers read these; sane ground-hostile values.
+		riseDepth = 6,
+		aggro = C.RUSH_AGGRO_RANGE,
+	}
+	creature.kitBook = book
+	return book
+end
+
+-- Pick the next move: honor a forced follow, then weighted-pick among moves
+-- that are off cooldown, whose `below` HP gate passes, and whose `range`
+-- covers the player. Returns nil when nothing qualifies (keep walking).
+local function pickKitMove(creature, book, now: number, dist: number): string?
+	if creature.forcedAttack then
+		local forced = creature.forcedAttack
+		creature.forcedAttack = nil
+		return forced
+	end
+	local hpFraction = creature.health / creature.maxHealth
+	local pool, total = {}, 0
+	for _, move in book.moves do
+		local readyAt = creature.cooldowns and creature.cooldowns[move.name] or 0
+		if
+			now >= readyAt
+			and hpFraction <= (move.below or 1)
+			and dist <= (move.range or C.RUSH_AGGRO_RANGE)
+			and (move.name ~= creature.lastAttack or #book.moves == 1)
+		then
+			-- weight 0 = follow-only: reachable through another move's
+			-- `follow`, never picked on its own.
+			local weight = move.weight or 1
+			if weight > 0 then
+				total += weight
+				table.insert(pool, { name = move.name, weight = weight })
+			end
+		end
+	end
+	if total <= 0 then
+		return nil
+	end
+	local roll = math.random() * total
+	for _, entry in pool do
+		roll -= entry.weight
+		if roll <= 0 then
+			return entry.name
+		end
+	end
+	return pool[#pool].name
+end
+
+-- The default kitted locomotion: face the nearest player, close to standoff,
+-- breathe. ~The prowl half of the boss loop at ground level. Idles as a
+-- resting catch when nobody is near.
+local function updateProwl(creature, now: number, dt: number)
+	slideKnockback(creature, dt)
+	local root, _, dist = nearestPlayerRoot(creature.pos)
+	if not root or dist > tune(creature, "RUSH_AGGRO_RANGE") then
+		local hop, yaw, pitch = flop(creature, now)
+		creature.model:PivotTo(poseCFrame(creature, hop, yaw, pitch))
+		return
+	end
+	creature.yaw0 = approachAngle(creature.yaw0, yawToward(root.Position - creature.pos), math.rad(220) * dt)
+	local standoff = (creature.row.tuning and creature.row.tuning.STANDOFF) or 8
+	local delta = Vector3.new(root.Position.X - creature.pos.X, 0, root.Position.Z - creature.pos.Z)
+	if delta.Magnitude > standoff then
+		creature.pos = resolveHorizontal(creature, delta.Unit * tune(creature, "SHAMBLE_SPEED") * dt)
+	end
+	local breathe = math.sin(now * 2.1) * 0.12
+	creature.model:PivotTo(poseCFrame(creature, math.max(0, breathe), 0, 0))
+end
+
+-- The kitted updater: attack in flight -> drive the shared loop; otherwise
+-- walk (prowl, or the row's named `movement` archetype) and consider a pick.
+local function updateKitted(creature, now: number, dt: number)
+	local book = kitBook(creature)
+
+	-- A phasey blink-out returns here (gimmick registry below).
+	if creature.phaseyUntil then
+		if now < creature.phaseyUntil then
+			return -- hidden: no pose, no pick
+		end
+		creature.phaseyUntil = nil
+		creature.untargetable = false
+		fireEvent("phantomIn", creature.pos, {})
+	end
+
+	-- An expose window (move `expose` field) closing.
+	if creature.exposedUntil and now >= creature.exposedUntil then
+		creature.exposedUntil = nil
+		creature.model:SetAttribute(ATTR_EXPOSED, false)
+	end
+
+	local root, player, dist = nearestPlayerRoot(creature.pos)
+
+	if creature.attack then
+		updateBossAttack(creature, book, now, dt, root, player, dist, 0)
+		return
+	end
+
+	local movement = creature.row.movement
+	local walker = (movement and ARCHETYPE_UPDATERS[movement]) or updateProwl
+	walker(creature, now, dt)
+
+	if root and now >= (creature.nextAttackAt or 0) then
+		local name = pickKitMove(creature, book, now, dist)
+		if name then
+			beginBossAttack(creature, book, name, now)
+		end
+	end
+end
+
+-- ============================================================ gimmicks (the quirk layer)
+--
+-- Small passive/reactive behaviours a row opts into via `gimmick = { kind,
+-- ... }`. Each hook is consulted from exactly one engine point:
+--   onDamage(creature, amount, now)  -> modified amount   (damage(), pre-HP)
+--   onHit(creature)                  -> mult, reflect     (hitModifiers())
+--   onContact(creature, dealt)                            (tryContact(), after a landed ram)
+--   onKill(creature)                                      (kill(), before Killed fires)
+local GIMMICKS = {}
+
+-- Armoured while telegraphing: hits during a windup do a fraction, so
+-- panic-swinging into a tell is punished and the recover window is the
+-- reward. { kind = "harden", mult = 0.35? }
+GIMMICKS.harden = {
+	onDamage = function(creature, amount)
+		if creature.attack and creature.attack.phase == "windup" then
+			return amount * (creature.row.gimmick.mult or 0.35)
+		end
+		return amount
+	end,
+}
+
+-- Ignites below a health fraction: Enraged attr, faster cooldowns, harder
+-- hits (mutates the cached book). { kind = "frenzy", below = 0.4?, cooldownMult
+-- = 0.65?, damageMult = 1.25? }
+GIMMICKS.frenzy = {
+	onDamage = function(creature, amount)
+		local g = creature.row.gimmick
+		if not creature.enraged and (creature.health - amount) / creature.maxHealth <= (g.below or 0.4) then
+			creature.enraged = true
+			creature.model:SetAttribute(ATTR_ENRAGED, true)
+			local book = creature.kitBook
+			if book then
+				book.enrageCooldownMult = g.cooldownMult or 0.65
+				book.enrageDamageMult = g.damageMult or 1.25
+			end
+			fireEvent("enrage", creature.pos, {})
+		end
+		return amount
+	end,
+}
+
+-- Blinks out after every N hits: briefly untargetable, reappears offset.
+-- { kind = "phasey", hits = 3?, gap = 0.7?, hop = 9? }
+GIMMICKS.phasey = {
+	onDamage = function(creature, amount, now)
+		local g = creature.row.gimmick
+		creature.phaseyHits = (creature.phaseyHits or 0) + 1
+		if creature.phaseyHits >= (g.hits or 3) and not creature.phaseyUntil and creature.health - amount > 0 then
+			creature.phaseyHits = 0
+			creature.phaseyUntil = now + (g.gap or 0.7)
+			creature.untargetable = true
+			creature.attack = nil
+			fireEvent("phantomOut", creature.pos, {})
+			local angle = math.random() * math.pi * 2
+			local hop = Vector3.new(math.cos(angle), 0, math.sin(angle)) * (g.hop or 9)
+			creature.pos = groundedPos(creature.pos + hop, creature.halfThickness)
+		end
+		return amount
+	end,
+}
+
+-- Thorns, front-agnostic: melee reflect. { kind = "spines", reflect = n }
+GIMMICKS.spines = {
+	onHit = function(creature)
+		return 1, creature.row.gimmick.reflect or C.THORN_REFLECT
+	end,
+}
+
+-- Statically charged: every melee hit shocks the attacker a little.
+-- { kind = "static", shock = n? }
+GIMMICKS.static = {
+	onHit = function(creature)
+		return 1, creature.row.gimmick.shock or math.floor(C.PULSE_SHOCK_DAMAGE * 0.5)
+	end,
+}
+
+-- Comedy physics: knockback sends it flying. { kind = "slippery", mult = 2? }
+-- (Consulted in applyKnockback, not via a hook - one line there.)
+GIMMICKS.slippery = {}
+
+-- Heals a fraction of the contact damage it deals. { kind = "leech", frac = 0.5? }
+GIMMICKS.leech = {
+	onContact = function(creature, dealt)
+		local g = creature.row.gimmick
+		creature.health = math.min(creature.maxHealth, creature.health + math.ceil(dealt * (g.frac or 0.5)))
+		creature.model:SetAttribute(ATTR_HEALTH, creature.health)
+	end,
+}
+
+-- Detonates on death. { kind = "deathburst", radius = 9?, damage = {lo,hi}? }
+GIMMICKS.deathburst = {
+	onKill = function(creature)
+		local g = creature.row.gimmick
+		local radius = g.radius or 9
+		local range = g.damage or { 8, 14 }
+		damagePlayersInRadius(creature.pos, radius, range[1], range[2], creature, 0.6)
+		fireEvent("explode", creature.pos, { radius = radius })
+	end,
+}
+
+function gimmickOf(creature)
+	local g = creature.row.gimmick
+	return g and GIMMICKS[g.kind]
 end
 
 -- The Kraken's tentacle ring (Bosses entry `parts`): `count` copies of
@@ -3315,7 +3835,7 @@ local function updateSkythief(creature, now: number, dt: number)
 	end
 end
 
-local ARCHETYPE_UPDATERS = {
+ARCHETYPE_UPDATERS = {
 	boss = updateBoss,
 	companion = updateCompanion,
 	flyer = updateFlyer,
@@ -3616,6 +4136,8 @@ local function update(dt: number)
 			if not creature.stunShown then
 				creature.stunShown = true
 				creature.model:SetAttribute(ATTR_STUNNED, true)
+				-- Same interrupt rule as the juggle: the stun eats the move.
+				creature.attack = nil
 			end
 			slideKnockback(creature, dt)
 			local hop, yaw, pitch = flop(creature, now)
@@ -3628,7 +4150,9 @@ local function update(dt: number)
 				creature.stunnedUntil = nil
 				creature.model:SetAttribute(ATTR_STUNNED, false)
 			end
-			local updater = ARCHETYPE_UPDATERS[creature.row.archetype]
+			-- A row with `moves` fights on the kit engine; the archetype
+			-- string then only names its between-moves locomotion.
+			local updater = if creature.row.moves then updateKitted else ARCHETYPE_UPDATERS[creature.row.archetype]
 			if updater then
 				-- A hostile: its own state machine owns the knockback slide,
 				-- flop and pivot for this frame.

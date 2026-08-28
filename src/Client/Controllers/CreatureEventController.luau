@@ -388,13 +388,17 @@ local function stepPull(now: number)
 	end
 	local to = Vector3.new(pull.center.X - root.Position.X, 0, pull.center.Z - root.Position.Z)
 	local d = to.Magnitude
-	-- Only inside the radius, and never past the maw itself.
-	if d > pull.radius or d < 4 then
+	-- Only inside the radius - and, for a PULL, never past the maw itself.
+	-- A negative strength is a gust (the kit engine's push): the close zone
+	-- must keep working there, because being shoved off a creature you're
+	-- standing on is the whole move.
+	if d > pull.radius or (d < 4 and pull.strength > 0) then
 		pull.force.Force = Vector3.zero
 		return
 	end
+	local dir = if d > 0.05 then to.Unit else Vector3.zAxis
 	local ramp = math.clamp((now - pull.start) / PULL_RAMP, 0, 1)
-	pull.force.Force = to.Unit * pull.strength * ramp * root.AssemblyMass
+	pull.force.Force = dir * pull.strength * ramp * root.AssemblyMass
 end
 
 -- ------------------------------------------- movement effects (boss arsenal)
@@ -568,6 +572,20 @@ local function watch(model: Instance)
 	if model:GetAttribute(ATTR_ENRAGED) == true then
 		setMarksGlow(model, true)
 	end
+
+	-- Cracked (crust): the exposed core glows until the crust reseals.
+	-- Server has written this attribute since S4; first client wiring.
+	model:GetAttributeChangedSignal("Cracked"):Connect(function()
+		setMarksGlow(model, model:GetAttribute("Cracked") == true)
+	end)
+
+	-- Downed (reborn): the not-quite-corpse smoulders while it waits to rise.
+	model:GetAttributeChangedSignal("Downed"):Connect(function()
+		if model:GetAttribute("Downed") == true then
+			Vfx.puff(model:GetPivot().Position + Vector3.new(0, 1, 0), Color3.fromRGB(120, 110, 105), 2.5)
+			setMarksGlow(model, false)
+		end
+	end)
 end
 
 local function unwatch(model: Instance)
@@ -815,6 +833,32 @@ EVENTS.telegraph = function(position: Vector3, extra)
 				Vfx.ring(point + Vector3.new(0, 0.15, 0), inner, radius, 0.28, color)
 			end)
 		end
+	elseif kind == "coneTell" and radius then
+		-- A directional wedge (cone breath, an aimed grab): flashes marching
+		-- out along the facing for the whole windup - step OUT of the line.
+		local facing = if typeof(extra.facing) == "Vector3" then extra.facing else Vector3.zAxis
+		local point = surfaceUnder(position)
+		local color = skinColor(extra)
+		local pulses = math.max(1, math.floor(duration / 0.22))
+		for i = 0, pulses - 1 do
+			task.delay(i * 0.22, function()
+				for step = 1, 3 do
+					local at = point + facing * (radius * step / 3)
+					Vfx.ring(at + Vector3.new(0, 0.15, 0), 1, 2 + step, 0.2, color)
+				end
+			end)
+		end
+	elseif kind == "gustTell" and radius then
+		-- Wind gathering: an in-rushing ring + rising puffs, then the shove.
+		local point = surfaceUnder(position)
+		local color = skinColor(extra)
+		Vfx.shockwave(position + Vector3.new(0, 2, 0), radius, 3, duration, color, 0.5)
+		local pulses = math.max(1, math.floor(duration / 0.25))
+		for i = 0, pulses - 1 do
+			task.delay(i * 0.25, function()
+				Vfx.puff(point + Vector3.new(0, 0.4, 0), color, 1.4)
+			end)
+		end
 	else
 		Vfx.flash(position + Vector3.new(0, 2, 0), skinColor(extra), 3, duration)
 	end
@@ -930,6 +974,70 @@ EVENTS.exposed = function(position: Vector3)
 	Vfx.flash(at, Color3.fromRGB(255, 210, 110), 9, 0.5)
 	Vfx.burst(at, Color3.fromRGB(255, 210, 110), 50)
 	Sfx.play("bossRoar", position)
+end
+
+-- A displacement shove (the kit engine's gustpush): the pull machinery run
+-- in reverse - the local character is blown OUT of the radius. `cone` gusts
+-- only move you when you stand inside the wedge.
+EVENTS.gust = function(position: Vector3, extra)
+	local radius = tonumber(extra.radius) or 14
+	local push = tonumber(extra.push) or 42
+	local duration = tonumber(extra.duration) or 0.4
+	local inRange = localDistance(position) <= radius
+	if inRange and typeof(extra.facing) == "Vector3" and tonumber(extra.cone) then
+		local root = localRoot()
+		if root then
+			local to = Vector3.new(root.Position.X - position.X, 0, root.Position.Z - position.Z)
+			if
+				to.Magnitude > 0.01
+				and math.acos(math.clamp(to.Unit:Dot(extra.facing), -1, 1)) > tonumber(extra.cone)
+			then
+				inRange = false
+			end
+		end
+	end
+	if inRange then
+		beginPull(position, radius, -push, duration)
+	end
+	local color = skinColor(extra)
+	Vfx.shockwave(position + Vector3.new(0, 2, 0), 2, radius, duration, color, 0.35)
+	Vfx.puff(position + Vector3.new(0, 1, 0), color, 2.2)
+	Sfx.play("pulseZap", position)
+end
+
+-- A gas cloud's lingering puff (fired by the gascloud archetype since S4;
+-- rendered for the first time with the kit engine pass).
+EVENTS.gasPuff = function(position: Vector3, extra)
+	local radius = tonumber(extra.radius) or 6
+	local lifetime = tonumber(extra.lifetime) or 4
+	local point = surfaceUnder(position)
+	local color = Color3.fromRGB(150, 168, 120)
+	local pulses = math.max(2, math.floor(lifetime / 0.6))
+	for i = 0, pulses - 1 do
+		task.delay(i * 0.6, function()
+			Vfx.puff(point + Vector3.new(0, 0.6, 0), color, radius * 0.35)
+		end)
+	end
+	Vfx.ring(point + Vector3.new(0, 0.15, 0), radius * 0.5, radius, 0.5, color)
+end
+
+-- The Slagheart's crust breaking: shards off the shell, the core exposed
+-- (the Cracked attribute drives the glow; this is the moment).
+EVENTS.crustCrack = function(position: Vector3)
+	Vfx.burst(position + Vector3.new(0, 2, 0), Color3.fromRGB(60, 62, 74), 40)
+	Vfx.flash(position + Vector3.new(0, 2, 0), Color3.fromRGB(255, 120, 40), 5, 0.3)
+	Sfx.play("hitCrack", position)
+end
+
+-- The Phoenix (and any reborn) getting back up: an ember pillar.
+EVENTS.rebornRise = function(position: Vector3)
+	for i = 0, 3 do
+		task.delay(i * 0.12, function()
+			Vfx.flash(position + Vector3.new(0, 2 + i * 2.5, 0), Color3.fromRGB(255, 140, 60), 4, 0.3)
+		end)
+	end
+	Vfx.burst(position + Vector3.new(0, 2, 0), Color3.fromRGB(255, 140, 60), 60)
+	Sfx.play("bossRise", position)
 end
 
 -- ---------------------------------------------------- boss arsenal moments
