@@ -47,6 +47,7 @@ local ORDER = {
 	"BossHudController", -- no dependencies; the boss health bar off a creature's BossName/Health attributes + rise/down banners off CreatureEvent
 	"RaidHudController", -- no dependencies; raid countdown/wave line + cards off the RaidState remote, filtered to the local island
 	"WeatherController", -- no dependencies; blizzard fog / event ambience off the WorldEvent remote + own-position checks
+	"NpcDialogController", -- after CameraController: the NPC talking window off the NpcDialog remote (borrows the cursor while open)
 }
 
 local loaded = {}

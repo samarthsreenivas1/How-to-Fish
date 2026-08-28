@@ -36,6 +36,7 @@ local ORDER = {
 	"SpawnerService", -- after Creature + World: ambient island hostiles off Islands.items[id].ambient
 	"RaidService", -- after Spawner + Creature + Progression: wave raids off Islands.items[id].raid
 	"WeatherService", -- after Spawner (blizzard biases flyers): timed weather windows on the WorldEvent remote
+	"NpcService", -- last: places the islands' talking NPCs on ground the placed islands provide (probes Workspace/World)
 }
 
 local loaded = {}

@@ -132,6 +132,14 @@ local DEFS = {
 	-- (EruptionService and its "eruption" kind were REMOVED with the volcano
 	-- restart, 2026-08-27, by user order - don't reintroduce unprompted.)
 	{ name = "WorldEvent", class = "RemoteEvent" }, -- server -> clients: { kind, islandId, active }
+
+	-- NPCs (NpcService <-> NpcDialogController). The server pushes a dialog
+	-- PANE ({ npcId, name, title, pane, lines, choices }) when a prompt is
+	-- triggered or a choice advances the conversation; the client echoes a
+	-- choice id back. The server re-validates distance + state on every
+	-- choice - the pane the client claims to be in is never trusted.
+	{ name = "NpcDialog", class = "RemoteEvent" }, -- server -> client: dialog pane
+	{ name = "NpcChoice", class = "RemoteEvent" }, -- client -> server: npcId, choiceId
 }
 
 local Remotes = {}
