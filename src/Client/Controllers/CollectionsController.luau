@@ -227,6 +227,17 @@ function CollectionsController.start()
 		if type(delta) ~= "table" then
 			return
 		end
+		if delta.completedWaters then
+			ProgressionController.pop(
+				string.format(
+					"Collection complete: %s! +%d coins",
+					tostring(delta.completedWaters),
+					tonumber(delta.coins) or 0
+				),
+				Theme.Color.green
+			)
+			return
+		end
 		local entry = snapshot[delta.speciesId]
 		if type(entry) ~= "table" then
 			entry = { n = 0, best = delta.best, first = os.time() }
