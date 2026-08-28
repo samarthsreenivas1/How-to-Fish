@@ -146,6 +146,12 @@ local DEFS = {
 	{ name = "GetQuests", class = "RemoteFunction" }, -- client -> server: () -> { active, completed }
 	{ name = "QuestsUpdated", class = "RemoteEvent" }, -- server -> client: the same snapshot
 	{ name = "QuestProgress", class = "RemoteEvent" }, -- server -> client: { questId, name, objectiveIndex, count, needed, done, ready }
+
+	-- The fishing bestiary (CollectionService). Same idiom again; the
+	-- Granted delta's isFirst drives the "New species!" toast.
+	{ name = "GetCollections", class = "RemoteFunction" }, -- client -> server: () -> { [speciesId] = { n, best, first } }
+	{ name = "CollectionsUpdated", class = "RemoteEvent" }, -- server -> client: the same table (full)
+	{ name = "CollectionGranted", class = "RemoteEvent" }, -- server -> client: { speciesId, n, best, isFirst }
 }
 
 local Remotes = {}

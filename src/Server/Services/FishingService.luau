@@ -38,6 +38,7 @@ local World = require(Shared.Config.World)
 
 local BaitService = require(script.Parent.BaitService)
 local QuestService = require(script.Parent.QuestService)
+local CollectionService = require(script.Parent.CollectionService)
 local BossService = require(script.Parent.BossService)
 local CreatureService = require(script.Parent.CreatureService)
 local DataService = require(script.Parent.DataService)
@@ -406,6 +407,8 @@ local function resolveCast(player: Player, cast, reason: string?)
 			rarity = creature.rarity,
 			waters = cast.waters,
 		})
+		-- The bestiary's one recording call (Beyond the Cast B1).
+		CollectionService.recordCatch(player, creature.id, grade)
 
 		-- Chum's shoal: spare fish thrown up from a ring around the bobber, so
 		-- their arcs spread out instead of stacking into one pile.
