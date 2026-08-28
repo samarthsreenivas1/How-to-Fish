@@ -128,6 +128,8 @@ Keep `XP_BASE 60 / XP_EXPONENT 1.35 / MAX_LEVEL 50`. AMENDED 2026-08-27 (map red
 
 Within a band, gates: U at A, R at A+1, R at A+3, E at A+4/5, Legendary at band end (heart-gated).
 
+> **AMENDED 2026-08-28 (user orders, post-ship):** (1) THE ALL-HOSTILE PIVOT — the passive `flopper` archetype is extinct; every one of the plan's fish rows was converted in place to a hostile archetype (drops/rarities/kits unchanged, so this table's economy stands). (2) HEALTH RE-CURVE for the tail bands: creature HP now targets solo TTK at each band's best weapon of ~3-4s Common / ~8-10s Uncommon / ~11-13s Rare / ~15-18s Epic / ~30s Legendary-chase. Gloom/wreck/maelstrom rows that exceeded this were cut (18 rows; the worst, Stormking Tuna, sat at boss-grade 26k and is now 16k). Any future row should be keyed to those TTK targets, not to the pre-amendment neighbours.
+
 **Rollout interim states** (keep the game playable after every session):
 - After S1: tropical (final, L1–7) → volcano at slot 2, unlock 8, interim gates L8–14, rewards ×2.
 - After S2: tropical → swamp (final, slot 2) → volcano at slot 3, (6000,0,0), unlock 15, gates L15–21, rewards ×3.5, guns added.
