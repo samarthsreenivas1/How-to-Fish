@@ -34,6 +34,11 @@ Equipment.WEAPON_ATTRIBUTE = "EquippedWeaponId"
 -- not held - so it is deliberately absent from Equipment.KINDS below.
 Equipment.BAIT_ATTRIBUTE = "SelectedBaitId"
 
+-- Which trinket is worn (its Trinkets id, unset until one is equipped).
+-- Like bait, NOT a hand kind - a charm hangs round the neck, not in a fist -
+-- so it too stays out of Equipment.KINDS. Published by InventoryService.
+Equipment.TRINKET_ATTRIBUTE = "EquippedTrinketId"
+
 Equipment.ROD = "rod"
 Equipment.WEAPON = "weapon"
 

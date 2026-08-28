@@ -20,6 +20,7 @@ local Bait = require(Shared.Data.Bait)
 local Boats = require(Shared.Data.Boats)
 local Bosses = require(Shared.Data.Bosses)
 local Rods = require(Shared.Data.Rods)
+local Trinkets = require(Shared.Data.Trinkets)
 local Weapons = require(Shared.Data.Weapons)
 local Remotes = require(Shared.Net.Remotes)
 
@@ -53,6 +54,16 @@ local CATEGORIES = {
 	{
 		key = "weapon",
 		items = Weapons.items,
+		owns = function(player: Player, item)
+			return InventoryService.ownsItem(player, item.id), "You already own that."
+		end,
+		grant = function(player: Player, item)
+			InventoryService.grantItem(player, item.id)
+		end,
+	},
+	{
+		key = "trinket",
+		items = Trinkets.items,
 		owns = function(player: Player, item)
 			return InventoryService.ownsItem(player, item.id), "You already own that."
 		end,

@@ -20,6 +20,8 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Progression = require(Shared.Modules.Progression)
 local Remotes = require(Shared.Net.Remotes)
 local Tuning = require(Shared.Config.Tuning)
+local Equipment = require(Shared.Config.Equipment)
+local Trinkets = require(Shared.Data.Trinkets)
 
 local CreatureService = require(script.Parent.CreatureService)
 local DataService = require(script.Parent.DataService)
@@ -140,6 +142,15 @@ local function onKilled(row, grade: string, killer: Player?, extra)
 	if bounty ~= 1 then
 		coins = math.floor(coins * bounty + 0.5)
 		xp = math.floor(xp * bounty + 0.5)
+	end
+
+	-- The worn trinket's coinBonus (Trinkets.luau) - THE one consumer of
+	-- that perk field. Read off the server-set attribute, never the client.
+	local trinketId = killer:GetAttribute(Equipment.TRINKET_ATTRIBUTE)
+	local trinket = trinketId and Trinkets.items[trinketId]
+	local coinBonus = trinket and trinket.perk and trinket.perk.coinBonus
+	if coinBonus and coins > 0 then
+		coins = math.floor(coins * (1 + coinBonus) + 0.5)
 	end
 
 	ProgressionService.addCoins(killer, coins)

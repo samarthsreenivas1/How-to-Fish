@@ -75,6 +75,7 @@ local DEFS = {
 	{ name = "CraftResult", class = "RemoteEvent" }, -- server -> client: { ok, itemId, reason? }
 	{ name = "RequestEquipRod", class = "RemoteEvent" }, -- client -> server: rodId
 	{ name = "RequestEquipWeapon", class = "RemoteEvent" }, -- client -> server: weaponId
+	{ name = "RequestEquipTrinket", class = "RemoteEvent" }, -- client -> server: trinketId (worn charm - the EquippedTrinketId attribute)
 
 	-- Admin/dev cheat panel (AdminService / AdminController). Server-gated to
 	-- Studio + an admin allowlist, so the event existing for everyone is safe.

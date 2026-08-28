@@ -32,6 +32,7 @@ local Bosses = require(Shared.Data.Bosses)
 local Materials = require(Shared.Data.Materials)
 local Rods = require(Shared.Data.Rods)
 local Weapons = require(Shared.Data.Weapons)
+local Trinkets = require(Shared.Data.Trinkets)
 local Progression = require(Shared.Modules.Progression)
 local Rarity = require(Shared.Modules.Rarity)
 local Remotes = require(Shared.Net.Remotes)
@@ -75,6 +76,18 @@ local TABS = {
 		attribute = Equipment.WEAPON_ATTRIBUTE,
 		equipRemote = Remotes.RequestEquipWeapon,
 		equipKind = Equipment.WEAPON,
+	},
+	{
+		kind = "trinket",
+		label = "Charms",
+		token = "CHARM",
+		noun = "charm",
+		items = Trinkets.items,
+		attribute = Equipment.TRINKET_ATTRIBUTE,
+		equipRemote = Remotes.RequestEquipTrinket,
+		-- No equipKind: a charm is worn, not held - equipping never changes
+		-- the hand, so no RequestEquip(kind) follows (the server ignores the
+		-- nil kind the shared button fires).
 	},
 	{
 		kind = "bait",
@@ -263,6 +276,8 @@ local function showDetail(itemId: string?)
 			item.hullHealth,
 			item.seaworthiness
 		)
+	elseif activeTab.kind == "trinket" then
+		spec.description = item.blurb
 	else
 		spec.effects = Describe.baitEffects(item.effect)
 	end
@@ -347,11 +362,12 @@ local function showDetail(itemId: string?)
 			},
 		}
 	elseif owned then
-		spec.state = if equipped then "IN HAND" else "OWNED"
+		local wornWord = if activeTab.kind == "trinket" then "WORN" else "IN HAND"
+		spec.state = if equipped then wornWord else "OWNED"
 		spec.stateColor = if equipped then C.accent else C.panelLight
 		spec.actions = {
 			{
-				text = if equipped then "In Hand" else "Equip",
+				text = if equipped then (if activeTab.kind == "trinket" then "Worn" else "In Hand") else "Equip",
 				style = if equipped then "secondary" else "primary",
 				enabled = not equipped,
 				disabledText = C.green,
@@ -457,7 +473,7 @@ local function refreshCard(itemId: string)
 		local equipped = equippedId() == itemId
 		handle.setEquipped(equipped)
 		if equipped then
-			handle.setTag("IN HAND", C.green)
+			handle.setTag(if activeTab.kind == "trinket" then "WORN" else "IN HAND", C.green)
 		elseif owned then
 			handle.setTag("OWNED", C.textDim)
 		elseif item.recipe then

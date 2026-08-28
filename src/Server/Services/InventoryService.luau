@@ -29,6 +29,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Equipment = require(Shared.Config.Equipment)
 local Rods = require(Shared.Data.Rods)
 local Weapons = require(Shared.Data.Weapons)
+local Trinkets = require(Shared.Data.Trinkets)
 local Remotes = require(Shared.Net.Remotes)
 
 local DataService = require(script.Parent.DataService)
@@ -41,6 +42,7 @@ local inventories: { [Player]: { string } } = {}
 -- owned weapon when the weapon is.
 local equippedRod: { [Player]: string } = {}
 local equippedWeapon: { [Player]: string } = {}
+local equippedTrinket: { [Player]: string } = {}
 
 -- What's actually in the hands right now: Equipment.ROD or Equipment.WEAPON.
 local equippedKind: { [Player]: string } = {}
@@ -142,6 +144,22 @@ function InventoryService.setEquippedWeapon(player: Player, weaponId: string): b
 	return setEquippedOf(player, weaponId, equippedWeapon, Equipment.WEAPON_ATTRIBUTE, Equipment.WEAPON)
 end
 
+-- The worn trinket. Not a hand kind: nothing changes in anyone's grip, so
+-- there is no equippedKind interplay - just ownership-checked publication of
+-- the attribute the perk consumers read.
+function InventoryService.setEquippedTrinket(player: Player, trinketId: string): boolean
+	if not Trinkets.items[trinketId] then
+		return false
+	end
+	local owned = inventories[player]
+	if not owned or not table.find(owned, trinketId) then
+		return false
+	end
+	equippedTrinket[player] = trinketId
+	player:SetAttribute(Equipment.TRINKET_ATTRIBUTE, trinketId)
+	return true
+end
+
 -- ============================================================ ownership
 
 local function pushInventory(player: Player)
@@ -149,9 +167,9 @@ local function pushInventory(player: Player)
 end
 
 -- Adds an item to the player's inventory (crafting). No-op if already owned;
--- false if the id isn't a real rod or weapon. Does not equip it.
+-- false if the id isn't a real rod, weapon or trinket. Does not equip it.
 function InventoryService.grantItem(player: Player, itemId: string): boolean
-	if not Rods.items[itemId] and not Weapons.items[itemId] then
+	if not Rods.items[itemId] and not Weapons.items[itemId] and not Trinkets.items[itemId] then
 		return false
 	end
 	local owned = inventories[player]
@@ -204,7 +222,7 @@ local function loadSlice(player: Player, slice)
 		for _, itemId in slice.items do
 			if
 				type(itemId) == "string"
-				and (Rods.items[itemId] or Weapons.items[itemId])
+				and (Rods.items[itemId] or Weapons.items[itemId] or Trinkets.items[itemId])
 				and not table.find(owned, itemId)
 			then
 				table.insert(owned, itemId)
@@ -227,6 +245,14 @@ local function loadSlice(player: Player, slice)
 	then
 		equippedWeapon[player] = slice.equippedWeapon
 	end
+	if
+		type(slice.equippedTrinket) == "string"
+		and Trinkets.items[slice.equippedTrinket]
+		and table.find(owned, slice.equippedTrinket)
+	then
+		equippedTrinket[player] = slice.equippedTrinket
+		player:SetAttribute(Equipment.TRINKET_ATTRIBUTE, slice.equippedTrinket)
+	end
 	player:SetAttribute(Equipment.ROD_ATTRIBUTE, equippedRod[player])
 	player:SetAttribute(Equipment.WEAPON_ATTRIBUTE, equippedWeapon[player])
 	pushInventory(player)
@@ -240,6 +266,7 @@ local function serializeSlice(player: Player)
 		items = table.clone(inventories[player] or {}),
 		equippedRod = equippedRod[player],
 		equippedWeapon = equippedWeapon[player],
+		equippedTrinket = equippedTrinket[player],
 	}
 end
 
@@ -264,6 +291,7 @@ local function releasePlayer(player: Player)
 	inventories[player] = nil
 	equippedRod[player] = nil
 	equippedWeapon[player] = nil
+	equippedTrinket[player] = nil
 	equippedKind[player] = nil
 end
 
@@ -293,6 +321,13 @@ function InventoryService.init()
 			return
 		end
 		InventoryService.setEquippedWeapon(player, weaponId)
+	end)
+
+	Remotes.RequestEquipTrinket.OnServerEvent:Connect(function(player: Player, trinketId)
+		if type(trinketId) ~= "string" then
+			return
+		end
+		InventoryService.setEquippedTrinket(player, trinketId)
 	end)
 end
 
