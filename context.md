@@ -784,6 +784,48 @@ boat." Pure code/data — NO re-imports owed by this slice.
   feel, boat top speeds, compass size/placement, whether locked islands
   should show on the compass at all, marker colours.
 
+### Armor (2026-08-28, four-lane build, core landed)
+
+User order: full armor system - helmet/chest/legs SETS with set bonuses,
+crafted from creature-dropped materials, distributed through the NPCs,
+Blender models, ~12 collectible sets - split across all four sessions.
+
+- **The contract (a6, LANDED 753f5c2)**: `Shared/Data/Armor.luau` - sets
+  (`bonus` = ONLY health/defense/damageBonus, every field has a live
+  consumer) + pieces (slot, flat `defense`, optional `health`, optional
+  `recipe`; recipe-less = NPC/quest-only). Worn state = three server-set
+  attributes (`EquippedHelmetId/ChestId/LegsId`, nil when bare),
+  published by InventoryService (`setEquippedArmor` infers the slot;
+  persistence additive in the inventory slice; `RequestEquipArmor`).
+  Consumers, one reader each: PlayerService.damage subtracts
+  `Armor.defenseOf` FLAT with a 25%-of-hit floor; PlayerService
+  recomputes MaxHealth from `Armor.healthOf` on spawn + live on
+  attribute change (gained max is also granted as current);
+  CombatService.landHit multiplies the set-bonus damageBonus beside the
+  trinket's. Crafting = one 'armor' descriptor; shops sell finished
+  pieces via `kind = "item"` slots (owned -> refused before coins move);
+  quest rewards carry `items = {id...}`. Client: Armor tab (armorWorn
+  spans the three attributes; WORN tags; set bonus in the detail pane).
+  Pilot sets on existing mats: Chitin Shell (cove) + Boneplate (L14-18).
+  check_content now enforces: full trios per set, known slots/sets, and
+  NO bonus field without a consumer.
+- **Lane f5**: 10 armor-stock materials LANDED (ee01ac5, per band:
+  tidehide/brine_sinew, mire_hide/fen_chitin, rimewool/everfrost_plate,
+  cinder_scale/basalt_weave, duskhide/abyss_silk; 30 dropper rows keyed
+  to the TTK re-curve) + 4 sets (Mirewalker/Rimebound/Cindershell/
+  Duskveil) + their NPC distribution.
+- **Lane how-to-fish-80**: `assets/armor_gen.py` + armor.glb (ArmorPack;
+  mesh names `sets[id].modelPrefix .. "_Helm"/"_Chest"/"_Legs"`) +
+  ArmorService welding worn pieces onto characters off the attributes
+  (procedural fallback boxes pre-import; NO collision on worn pieces).
+- **Lane f9**: 4 sets (Tideward/CorsairsRest/Stormcaller/Wraithbound -
+  Wraithbound is deliberately the only all-three-fields bonus) + their
+  models after 80's skeleton + ICONS for every piece (rod-icon flow,
+  monogram fallback until sliced).
+- **Import owed once models land**: armor.glb (their lane's checklist row).
+- **Unreviewed in Studio**; expect a stat/economy tuning round once all
+  twelve sets are in.
+
 ### Beyond the Cast: NPCs, quests, collections, economy (2026-08-28, unreviewed)
 
 The approved plan (user picked "NPCs + quests first") landed in full - 12

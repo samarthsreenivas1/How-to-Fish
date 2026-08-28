@@ -73,6 +73,8 @@ creatures_text = read("Data/Creatures.luau")
 rods_text = read("Data/Rods.luau")
 weapons_text = read("Data/Weapons.luau")
 bait_text = read("Data/Bait.luau")
+armor_text = read("Data/Armor.luau")
+trinkets_text = read("Data/Trinkets.luau")
 bosses_text = read("Data/Bosses.luau")
 islands_text = read("Config/Islands.luau")
 tuning_text = read("Config/Tuning.luau")
@@ -83,6 +85,8 @@ creatures = blocks(creatures_text)
 rods = blocks(rods_text)
 weapons = blocks(weapons_text)
 baits = blocks(bait_text)
+armor_pieces = blocks(armor_text)
+trinkets = blocks(trinkets_text)
 bosses = blocks(bosses_text)
 islands = blocks(islands_text)
 # Islands.items is written as one literal table, not per-id assignments.
@@ -106,7 +110,7 @@ fishable_names = set(re.findall(r"([A-Za-z_][A-Za-z0-9_]*)\s*=\s*true", braced(w
 # ---------------------------------------------------------------- invariants
 
 # 1. Recipes: every material exists AND is obtainable; heart gates name real bosses.
-for label, table in (("rod", rods), ("weapon", weapons), ("bait", baits)):
+for label, table in (("rod", rods), ("weapon", weapons), ("bait", baits), ("armor", armor_pieces), ("trinket", trinkets)):
     for iid, block in table.items():
         recipe = braced(block, "recipe")
         if not recipe:
@@ -122,6 +126,34 @@ for label, table in (("rod", rods), ("weapon", weapons), ("bait", baits)):
             for boss in re.findall(r'"([A-Za-z0-9_]+)"', hearts):
                 if boss not in bosses:
                     problem(f"{label} {iid}: requiresHearts names unknown boss '{boss}'")
+
+
+# 2b. Armor: every piece names a real set and a real slot; every set fields a
+# full helmet/chest/legs trio (a set that can't complete can't bonus); set
+# bonuses only use fields with live consumers.
+armor_sets = {}
+sets_section = re.search(r"Armor\.sets\.([A-Za-z0-9_]+)", armor_text)
+armor_set_ids = set(re.findall(r"Armor\.sets\.([A-Za-z0-9_]+)\s*=", armor_text))
+for pid, block in armor_pieces.items():
+    m = re.search(r'set\s*=\s*"([A-Za-z0-9_]+)"', block)
+    s = re.search(r'slot\s*=\s*"([a-z]+)"', block)
+    if not m or m.group(1) not in armor_set_ids:
+        problem(f"armor {pid}: names unknown set")
+    if not s or s.group(1) not in ("helmet", "chest", "legs"):
+        problem(f"armor {pid}: bad slot")
+    if m and s:
+        armor_sets.setdefault(m.group(1), set()).add(s.group(1))
+for sid in armor_set_ids:
+    slots = armor_sets.get(sid, set())
+    if slots != {"helmet", "chest", "legs"}:
+        problem(f"armor set {sid}: incomplete trio (has {sorted(slots)})")
+ALLOWED_BONUS = {"name", "description", "health", "defense", "damageBonus"}
+for sid in armor_set_ids:
+    set_block = braced(armor_text.split("Armor.sets." + sid, 1)[1], "bonus")
+    if set_block:
+        for field in re.findall(r"([A-Za-z_][A-Za-z0-9_]*)\s*=", set_block):
+            if field not in ALLOWED_BONUS:
+                problem(f"armor set {sid}: bonus field '{field}' has no consumer")
 
 # 2. Creature drops name real materials; waters keys are wired; boss backrefs hold.
 water_keys = set(waters_by_part.values()) | {"ocean"}
@@ -199,7 +231,7 @@ if problems:
         print("  -", p)
     sys.exit(1)
 print(
-    f"CONTENT CHECK OK: {len(materials)} materials, {len(creatures)} creatures, "
+    f"CONTENT CHECK OK: {len(materials)} materials, {len(creatures)} creatures, {len(armor_pieces)} armor pieces in {len(armor_set_ids)} sets, {len(trinkets)} trinkets, "
     f"{len(rods)} rods, {len(weapons)} weapons, {len(baits)} baits, "
     f"{len(bosses)} bosses, {len(island_ids)} islands"
 )
