@@ -1,10 +1,11 @@
 --!nonstrict
 -- CraftingService.luau
--- Turns materials + coins into rods and weapons. The recipe lives on the
--- item's row (Rods.items.<id>.recipe / Weapons.items.<id>.recipe =
--- { requiresLevel, coins, materials, requiresHearts? }); this service just
--- validates and spends. Item-agnostic on purpose: an id is looked up in every content
--- table that can carry a recipe, and InventoryService.grantItem takes either.
+-- Turns materials + coins into anything with a recipe row. The recipe lives
+-- on the item ({ requiresLevel, coins, materials, requiresHearts?, yield? });
+-- this service validates and spends, and CATEGORIES below says what each
+-- craftable kind IS: its data table, its ownership rule, its grant. Adding a
+-- craftable category (trinkets, furniture, cosmetics...) is ONE descriptor
+-- entry plus a client tab - the validation/spend path never changes.
 --
 -- Validation order matters for atomicity. Coins are checked (peeked) before
 -- anything is spent, then the materials are spent (all-or-nothing), then the
@@ -32,6 +33,73 @@ local QuestService = require(script.Parent.QuestService)
 
 local CraftingService = {}
 
+-- What each craftable kind IS. `owns(player, item) -> blocked, reason?`
+-- guards re-crafting (bait never blocks: it's a stackable consumable; a
+-- boat is a LADDER - owning is a tier number and each hull builds onto the
+-- previous, so exactly the next tier up is craftable); `grant` hands the
+-- finished thing over. Lookup order is cosmetic - ids are unique across
+-- tables by construction (check_content enforces the data files).
+local CATEGORIES = {
+	{
+		key = "rod",
+		items = Rods.items,
+		owns = function(player: Player, item)
+			return InventoryService.ownsItem(player, item.id), "You already own that."
+		end,
+		grant = function(player: Player, item)
+			InventoryService.grantItem(player, item.id)
+		end,
+	},
+	{
+		key = "weapon",
+		items = Weapons.items,
+		owns = function(player: Player, item)
+			return InventoryService.ownsItem(player, item.id), "You already own that."
+		end,
+		grant = function(player: Player, item)
+			InventoryService.grantItem(player, item.id)
+		end,
+	},
+	{
+		key = "bait",
+		items = Bait.items,
+		owns = function()
+			return false
+		end,
+		grant = function(player: Player, item)
+			BaitService.grant(player, item.id, item.recipe.yield)
+		end,
+	},
+	{
+		key = "boat",
+		items = Boats.items,
+		owns = function(player: Player, item)
+			local tier = BoatService.tierOf(player)
+			if tier >= item.tier then
+				return true, "You already own that."
+			end
+			if item.tier ~= tier + 1 then
+				local needed = Boats.byTier[item.tier - 1]
+				return true, string.format("Build the %s first.", needed and needed.name or "previous hull")
+			end
+			return false
+		end,
+		grant = function(player: Player, item)
+			BoatService.grantTier(player, item.tier)
+		end,
+	},
+}
+
+local function categoryOf(itemId: string)
+	for _, category in CATEGORIES do
+		local item = category.items[itemId]
+		if item then
+			return category, item
+		end
+	end
+	return nil, nil
+end
+
 local function fail(player: Player, itemId: string, reason: string)
 	Remotes.CraftResult:FireClient(player, { ok = false, itemId = itemId, reason = reason })
 end
@@ -49,33 +117,16 @@ local function onRequestCraft(player: Player, itemId)
 		return
 	end
 
-	local item = Rods.items[itemId] or Weapons.items[itemId] or Bait.items[itemId] or Boats.items[itemId]
+	local category, item = categoryOf(itemId)
 	local recipe = item and item.recipe
-	if not recipe then
+	if not (category and recipe) then
 		fail(player, itemId, "That can't be crafted.")
 		return
 	end
 
-	-- Bait is a stackable consumable, so the "already own it" guard (which stops
-	-- re-crafting a rod/weapon you already hold) must not apply to it - you
-	-- always want to make more bait. A boat is a LADDER: owning is a tier
-	-- number, not an inventory id, and each hull is built onto the previous
-	-- one - so crafting demands exactly the next tier up.
-	local isBait = Bait.items[itemId] ~= nil
-	local isBoat = Boats.items[itemId] ~= nil
-	if isBoat then
-		local tier = BoatService.tierOf(player)
-		if tier >= item.tier then
-			fail(player, itemId, "You already own that.")
-			return
-		end
-		if item.tier ~= tier + 1 then
-			local needed = Boats.byTier[item.tier - 1]
-			fail(player, itemId, string.format("Build the %s first.", needed and needed.name or "previous hull"))
-			return
-		end
-	elseif not isBait and InventoryService.ownsItem(player, itemId) then
-		fail(player, itemId, "You already own that.")
+	local blocked, reason = category.owns(player, item)
+	if blocked then
+		fail(player, itemId, reason or "You already own that.")
 		return
 	end
 
@@ -114,16 +165,7 @@ local function onRequestCraft(player: Player, itemId)
 	end
 	ProgressionService.spendCoins(player, recipe.coins)
 
-	-- Bait bumps a stackable count (by the recipe's yield); a boat raises the
-	-- BoatTier attribute; rods/weapons add an owned id. Same recipe/spend path
-	-- up to here.
-	if isBait then
-		BaitService.grant(player, itemId, recipe.yield)
-	elseif isBoat then
-		BoatService.grantTier(player, item.tier)
-	else
-		InventoryService.grantItem(player, itemId)
-	end
+	category.grant(player, item)
 	-- The quest funnel: one line, the whole hook (Beyond the Cast A4).
 	QuestService.notify("craft", { player = player, itemId = itemId })
 	Remotes.CraftResult:FireClient(player, { ok = true, itemId = itemId })
