@@ -22,6 +22,7 @@ local ORDER = {
 	"PlayerService", -- before CreatureService: the rusher's contact damage routes through it
 	"RodService", -- after InventoryService: reads the equipped rod
 	"WeaponService", -- after InventoryService: welds the equipped crafted weapon for other players
+	"ArmorService", -- after InventoryService: welds worn armor pieces (Armor.ATTRIBUTES) onto characters for other players
 	"CreatureService", -- before FishingService: a resolved cast spawns through it
 	"MaterialService", -- after CreatureService (listens to Killed), before FishingService (grants on cast resolve)
 	"BaitService", -- after MaterialService; before FishingService (spends bait per cast) + CraftingService (grants bait)
