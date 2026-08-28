@@ -50,6 +50,7 @@ Npcs.items.old_maren = {
 		"Come back when you've got your sea legs. Old Maren always has work for willing hands.",
 	},
 	quests = { "marens_wager", "teeth_of_the_cove", "the_wider_water" },
+	shop = "marens_stall", -- Shops.luau id: the Browse-wares pane
 }
 
 return Npcs

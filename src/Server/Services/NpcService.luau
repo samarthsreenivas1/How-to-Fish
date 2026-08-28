@@ -24,12 +24,27 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Islands = require(Shared.Config.Islands)
 local Npcs = require(Shared.Data.Npcs)
 local Quests = require(Shared.Data.Quests)
+local Shops = require(Shared.Data.Shops)
+local Bait = require(Shared.Data.Bait)
 local Creatures = require(Shared.Data.Creatures)
 local Materials = require(Shared.Data.Materials)
 local Remotes = require(Shared.Net.Remotes)
 local CreatureModel = require(Shared.Modules.CreatureModel)
 
 local QuestService = require(script.Parent.QuestService)
+local MaterialService = require(script.Parent.MaterialService)
+local BaitService = require(script.Parent.BaitService)
+local DataService = require(script.Parent.DataService)
+
+-- ProgressionService boots below us in ORDER (it listens to Killed);
+-- spendCoins has no init-order dependence - the QuestService precedent.
+local ProgressionService = nil
+local function progression()
+	if not ProgressionService then
+		ProgressionService = require(script.Parent.ProgressionService)
+	end
+	return ProgressionService
+end
 
 local NpcService = {}
 
@@ -180,6 +195,66 @@ local function rewardText(rewards): string
 	return "Reward: " .. table.concat(parts, ", ")
 end
 
+-- A shop slot's shelf label ("5x Chum - 60c").
+local function slotText(slot): string
+	local name = slot.id
+	if slot.kind == "bait" then
+		local row = Bait.items[slot.id]
+		name = row and row.name or slot.id
+	elseif slot.kind == "material" then
+		local row = Materials.items[slot.id]
+		name = row and row.name or slot.id
+	end
+	return string.format("%dx %s - %d coins", slot.amount, name, slot.price)
+end
+
+-- The shop pane: the stall's shelves as buy buttons. `remark` carries the
+-- outcome of the last purchase ("There you go." / "Short on coin, love.").
+local function sendShop(player: Player, npc, remark: string?)
+	local shop = npc.shop and Shops.items[npc.shop]
+	if not shop then
+		return
+	end
+	local lines = {}
+	if remark then
+		table.insert(lines, remark)
+	end
+	table.insert(lines, "Have a look, then. Coin up front.")
+	local choices = {}
+	for index, slot in shop.stock do
+		table.insert(choices, { id = "buy:" .. index, label = slotText(slot) })
+	end
+	table.insert(choices, { id = "back", label = "Done" })
+	Remotes.NpcDialog:FireClient(player, {
+		npcId = npc.id,
+		name = npc.name,
+		title = npc.title,
+		pane = "shop",
+		lines = lines,
+		choices = choices,
+	})
+end
+
+-- One purchase: re-derive the slot server-side (the client only ever names
+-- an index), check + spend coins, grant, answer with a fresh shop pane.
+local function buySlot(player: Player, npc, index: number)
+	local shop = npc.shop and Shops.items[npc.shop]
+	local slot = shop and shop.stock[index]
+	if not slot or not DataService.isLoaded(player) then
+		return
+	end
+	if not progression().spendCoins(player, slot.price) then
+		sendShop(player, npc, "Short on coin, love. Come back heavier.")
+		return
+	end
+	if slot.kind == "bait" then
+		BaitService.grant(player, slot.id, slot.amount)
+	elseif slot.kind == "material" then
+		MaterialService.grant(player, slot.id, slot.amount)
+	end
+	sendShop(player, npc, "There you go. Anything else?")
+end
+
 -- The greeting pane: the NPC's lines (plus an optional leading remark from
 -- whatever just happened), then a button per offerable/ready quest, then
 -- farewell. A fresh push re-renders the client's window - that IS the pane
@@ -210,6 +285,9 @@ local function sendGreeting(player: Player, npc, remark: string?)
 				string.format('(Still at work on "%s", I see. Come back when it\'s done.)', offer.quest.name)
 			)
 		end
+	end
+	if npc.shop and Shops.items[npc.shop] then
+		table.insert(choices, { id = "shop", label = "Browse wares" })
 	end
 	table.insert(choices, { id = "farewell", label = "Farewell" })
 	Remotes.NpcDialog:FireClient(player, {
@@ -274,6 +352,15 @@ local function onChoice(player: Player, npcId, choiceId)
 	end
 	if choiceId == "back" then
 		sendGreeting(player, npc)
+		return
+	end
+	if choiceId == "shop" then
+		sendShop(player, npc)
+		return
+	end
+	local buyIndex = string.match(choiceId, "^buy:(%d+)$")
+	if buyIndex then
+		buySlot(player, npc, tonumber(buyIndex))
 		return
 	end
 	local action, questId = string.match(choiceId, "^(%w+):(.+)$")

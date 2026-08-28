@@ -49,22 +49,26 @@ local function buildUi()
 	linesFrame = Kit.scroll(body, {
 		name = "Lines",
 		position = UDim2.new(0, 20, 0, 16),
-		size = UDim2.new(1, -40, 1, -(16 + 64 + 12)),
+		size = UDim2.new(1, -40, 1, -(16 + 106 + 12)),
 		gap = 12,
 		padding = 2,
 	})
 
+	-- Two rows' worth of choice buttons, wrapping right-to-left: a shop
+	-- pane can carry five or six (its shelves + Done) where the greeting
+	-- carries two.
 	choicesFrame = Kit.frame(body, {
 		Name = "Choices",
 		AnchorPoint = Vector2.new(0, 1),
 		Position = UDim2.new(0, 20, 1, -14),
-		Size = UDim2.new(1, -40, 0, 46),
+		Size = UDim2.new(1, -40, 0, 96),
 	})
 	local layout = Instance.new("UIListLayout")
 	layout.FillDirection = Enum.FillDirection.Horizontal
 	layout.HorizontalAlignment = Enum.HorizontalAlignment.Right
-	layout.VerticalAlignment = Enum.VerticalAlignment.Center
-	layout.Padding = UDim.new(0, 10)
+	layout.VerticalAlignment = Enum.VerticalAlignment.Bottom
+	layout.Padding = UDim.new(0, 8)
+	layout.Wraps = true
 	layout.Parent = choicesFrame
 
 	modal.close.Activated:Connect(function()
