@@ -2010,12 +2010,20 @@ def build_swamp_smalls():
 
 def _tilt_toward(direction):
     """The add_cone tilt (a, b) whose axis points along unit `direction`.
-    add_cone's axis for tilt (a, b) is Ry(b)Rx(a) @ +Z =
-    (sin b cos a, -sin a, cos b cos a), so a = asin(-dy) and
-    b = asin(dx / cos a)."""
-    a = math.asin(max(-1.0, min(1.0, -direction.y)))
-    ca = math.cos(a)
-    b = math.asin(max(-1.0, min(1.0, direction.x / ca))) if abs(ca) > 1e-4 else 0.0
+    The original derivation had the rotation order backwards AND could
+    not aim below the horizontal - every affected branch was DRAWN off
+    its intended direction while children attached at the intended tip:
+    the floating-branch bug (user screenshots, 2026-08-28). Now solved
+    exactly for the true axis Rx(a)Ry(b) @ +Z, and VERIFIED on every
+    call: the produced axis must match the request or this raises."""
+    # cone_axis applies Rx(a) @ Ry(b) @ +Z = (sin b, -sin a cos b,
+    # cos a cos b): b = asin(dx) keeps cos b >= 0, and a = atan2(-dy, dz)
+    # covers every quadrant - downward directions included - exactly.
+    b = math.asin(max(-1.0, min(1.0, direction.x)))
+    a = math.atan2(-direction.y, direction.z) if (abs(direction.y) + abs(direction.z)) > 1e-6 else 0.0
+    axis = cone_axis((a, b), 0.0)
+    if axis.dot(direction) < 0.998:
+        raise ValueError(f"[island_gen] _tilt_toward failed to aim: want {tuple(direction)}, got {tuple(axis)}")
     return (a, b)
 
 
@@ -2049,10 +2057,15 @@ def build_swamp_trees():
 
     def limb(bm, base, direction, length, radius, depth, tips):
         """One branch segment, then fork: the reference's Y-splits.
-        Terminal tips collect into `tips` so the canopy knows where the
-        crown actually is."""
+        Every segment's BASE is sunk `radius` back along its own axis, so
+        the cone root is buried inside whatever it grows from (trunk or
+        parent tip) - a joint can gap only if the anchor itself is off the
+        wood, which the trunk-polyline fix below rules out. Terminal tips
+        collect into `tips` so the canopy knows where the crown is."""
         r_top = radius * (0.62 if depth > 0 else 0.22)
-        add_cone(bm, tuple(base), radius, max(r_top, 0.05), length, sides=3, tilt=_tilt_toward(direction))
+        sink = radius * 1.1 + 0.1
+        root = base - direction * sink
+        add_cone(bm, tuple(root), radius, max(r_top, 0.05), length + sink, sides=3, tilt=_tilt_toward(direction))
         if depth == 0:
             tips.append(base + direction * length)
             return
@@ -2108,7 +2121,13 @@ def build_swamp_trees():
         for _b in range(rng.randint(3, 5)):
             baz = rng.uniform(0, math.tau)
             t = rng.uniform(0.55, 0.95)
-            at = joints[1] + (joints[3] - joints[1]) * ((t - 0.33) / 0.67) if t > 0.33 else joints[0]
+            # ON the trunk: walk the actual joint polyline (the old code
+            # lerped the joint1->joint3 CHORD, which the curved trunk bows
+            # away from - limb bases hung up to a stud off the wood).
+            s = t * 3.0
+            i = min(int(s), 2)
+            frac = s - i
+            at = joints[i].lerp(joints[i + 1], frac)
             elev = rng.uniform(0.45, 0.95)
             limb(bm, at, dir_of(baz, elev), rng.uniform(4.5, 7.5) * (total_h / 16.0), r0 * 0.3, 2, tips)
 
