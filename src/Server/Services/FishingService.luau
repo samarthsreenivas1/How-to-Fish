@@ -128,8 +128,12 @@ end
 -- Rods.LOCKED_ARCHETYPES is invisible to every rod except one whose perk
 -- `callsArchetype` names it - that's what puts the drowned behind the
 -- Bonecaster rather than behind luck.
--- The passive catch. Everything else fights back, which is what a "danger"
--- bait asks for and what drops the advanced crafting mats.
+-- The passive catch - EXTINCT as of 2026-08-28 (user: "we don't need passive
+-- enemies anymore... all of the creatures we fish up should be hostile"):
+-- every former "flopper" row now carries a hostile archetype, so no row
+-- matches this any more. The constant and its two filters stay wired (cheap,
+-- and correct if a passive row ever returns), but note Venom Roe's
+-- hostileOnly is a NO-OP now - every catch already fights.
 local PASSIVE_ARCHETYPE = "flopper"
 
 -- Which water a row belongs to. A row without `waters` is an ocean row, so
@@ -246,8 +250,11 @@ local function shoalRow(waters: string?)
 	local rows = {}
 	for _, row in bucket do
 		-- Same water rule as the main roll: chumming the lava brings up more
-		-- lava fish, not a perch.
-		if row.archetype == PASSIVE_ARCHETYPE and (waters == nil or watersOf(row) == waters) then
+		-- lava fish, not a perch. (Was passive-only; with the 2026-08-28
+		-- all-hostile pivot the shoal extra is any Common of these waters -
+		-- and it fights too, which suits a chum slick just fine. Without this
+		-- change Chum would silently do nothing: no passive rows exist.)
+		if waters == nil or watersOf(row) == waters then
 			table.insert(rows, row)
 		end
 	end

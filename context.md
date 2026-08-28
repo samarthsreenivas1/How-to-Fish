@@ -2212,6 +2212,28 @@ power-up does." Every menu and HUD is now built from one kit:
   `skythief` archetypes shipped alongside (grounded recovery after each dive
   is the melee counterplay; the skythief steals your resting catch).
 - **Every catch is fought and killed.** No auto-collect tier.
+- **EVERY CATCH IS HOSTILE (2026-08-28, user: "we don't need passive
+  enemies anymore").** The passive `flopper` archetype is EXTINCT: all 39
+  fish rows were converted in place to hostile archetypes (flavor-matched
+  - gars/marlins/tunas `charger`, cods/hagfish `spitter`, catfish
+  `burrower`, rays/oarfish/coelacanth `pulser`, ghost carp `drifter`, the
+  small stuff `rusher`); rows/drops/rarities/species meshes untouched, so
+  the material economy and every recipe still stand. Knock-ons, all
+  deliberate: the JUGGLE system now has almost nothing to lift (hostiles
+  are launch-pinned; Shellcrusher's Uproot is the counter-perk and now
+  matters more); the skythief's steal-a-resting-catch is DORMANT (nothing
+  passive rests; it still flies and dives); Venom Roe's `hostileOnly` is a
+  NO-OP (kept wired + honest in its description pending a redesign);
+  Chum's `shoal` was RETARGETED from passive-Commons to any-Common of the
+  cast's waters - without that it would have silently done nothing.
+- **Health rebalance (same order: "some enemies have way too much
+  health").** 18 gloom/wreck/maelstrom rows were cut against band-end
+  weapon DPS targets (Rare ~11-13s solo TTK, Epic ~15-18s, Legendary
+  chase ~30s): the worst was Stormking Tuna at 26,000 - equal to the
+  RIMEFANG BOSS - now 16,000; maelstrom Epics 13-15k -> 8.5-9.5k, Rares
+  8.8-9.4k -> 6.2-6.6k; wreck Epics 9-9.8k -> 6-6.5k, Legendary 16k ->
+  11k; gloom Epics 5.8-6.2k -> 4.2-4.5k, Legendary 10k -> 8k. Cove/swamp/
+  ice/volcano were already on-curve and untouched.
 - **A landed catch is thrown at the player by physics** and lands inland
   behind them. A scoped exception to "no physics on creatures".
 - **The game is first person.** Hands are **block Roblox limbs** in the
