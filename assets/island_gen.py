@@ -1276,10 +1276,10 @@ def build_volcano_trees(ground):
     bm = bmesh.new()
     placed = []
     made, attempts = 0, 0
-    while made < 46 and attempts < 2600:
+    while made < 60 and attempts < 3400:  # density held as the apron grew
         attempts += 1
         theta = random.uniform(0, math.tau)
-        u = random.uniform(0.73, 0.97)
+        u = random.uniform(0.63, 0.97)  # the widened apron (re-keyed 2026-08-28)
         # The spawn/dock corridor on 270 stays clear (the walk off the beach).
         if abs(((theta - math.radians(270) + math.pi) % math.tau) - math.pi) < math.radians(9):
             continue
@@ -1392,8 +1392,8 @@ def build_volcano_rocks(ground):
     # BARE by user order (2026-08-27, "remove all rocks on the side of the
     # volcano" - the embedded-ledge experiment is gone too): nothing above
     # u 0.64 but mountain, crag and lava.
-    apron = scatter(_volcano_rock, 52, 0.76, 0.985, 5.0, 14.0, 0.18, 26.0, 10.0, 4.0, salt0=610.0, embed=0.35)
-    talus = scatter(_volcano_rock, 44, 0.64, 0.75, 8.0, 18.0, 0.22, 28.0, 10.0, 1.5, salt0=980.0, embed=0.5)
+    apron = scatter(_volcano_rock, 70, 0.66, 0.985, 5.0, 14.0, 0.18, 26.0, 10.0, 4.0, salt0=610.0, embed=0.35)
+    talus = scatter(_volcano_rock, 44, 0.56, 0.65, 8.0, 18.0, 0.22, 28.0, 10.0, 1.5, salt0=980.0, embed=0.5)
     print(f"[island_gen] HANDOFF volcano rocks: {apron} apron boulders + {talus} talus at the cliff foot; flanks bare")
     return object_from_bmesh("Volcano_Rocks", bm, ["M_Obsidian"])
 
@@ -5511,12 +5511,17 @@ ISLANDS = {
             # nothing. If a later volcano step wants its own stream, pin SEED
             # explicitly on swamp/ice/gloom/wreck FIRST.
             "SEED": 7,
-            "ISLAND_RADIUS": 640,
+            # 640 -> 660 (2026-08-28, user: "the island itself is just too
+            # small... not much room to walk around"): the bbox was 1912 of
+            # the 2048 import cap, so most of the new room comes from the
+            # PROFILE below - the cone's footprint pulled in from u 0.70 to
+            # 0.58 - and the radius takes the remaining safe headroom.
+            "ISLAND_RADIUS": 660,
             "SEGMENTS": 96,  # finer facets so the shattered rock reads on 900-stud cliffs
             # One material boundary: bare volcanic rock cone above, ash apron
             # (the walked ground) below.
-            "GRASS_U": 0.70,
-            "RINGS": [0.0, 0.05, 0.11, 0.155, 0.19, 0.25, 0.32, 0.40, 0.48, 0.56, 0.63, 0.70, 0.76, 0.82, 0.90, 1.0, 1.09, 1.28],
+            "GRASS_U": 0.58,
+            "RINGS": [0.0, 0.045, 0.10, 0.14, 0.175, 0.225, 0.28, 0.34, 0.40, 0.46, 0.52, 0.58, 0.68, 0.78, 0.88, 0.95, 1.0, 1.09, 1.28],
             # Round 3 (user: "too uniform... taller and more jagged... really
             # really really tall... the whole shape more randomized"): a ~895
             # summit lip (up to ~950 with the jag) over near-vertical craggy
@@ -5528,22 +5533,29 @@ ISLANDS = {
             # u 0.22-0.92), CRAG_RADIAL (the plan outline wobbles per ring,
             # so the silhouette wanders at every height), and PEAK_JAG (the
             # upper cone's ridgeline rises/falls per angle).
+            # The 2026-08-28 "more room to walk" re-key: same 895 summit,
+            # same silhouette, but the whole cone compressed into u <= 0.58
+            # (its true footprint barely changes - the RADII up top were kept
+            # near-identical by picking smaller u on a bigger R) so the flat
+            # walkable apron runs 0.58-1.0: ~230 studs wide at the spawn
+            # bearing, ~1.6-1.7x the old ground area.
             "PROFILE": [
                 (0.000, 830.0),  # crater dish floor
-                (0.050, 836.0),
-                (0.110, 852.0),  # inner crater wall
-                (0.155, 895.0),  # the summit lip
-                (0.190, 812.0),  # near-vertical under the lip
-                (0.250, 655.0),
-                (0.320, 492.0),
-                (0.400, 338.0),
-                (0.480, 215.0),
-                (0.560, 122.0),
-                (0.630, 62.0),
-                (0.700, 27.0),  # cone meets the ash apron
-                (0.760, 12.0),
-                (0.820, 6.5),
-                (0.900, 3.2),
+                (0.045, 836.0),
+                (0.100, 852.0),  # inner crater wall
+                (0.140, 895.0),  # the summit lip
+                (0.175, 812.0),  # near-vertical under the lip
+                (0.225, 655.0),
+                (0.280, 492.0),
+                (0.340, 338.0),
+                (0.400, 225.0),
+                (0.460, 135.0),
+                (0.520, 68.0),
+                (0.580, 30.0),  # cone meets the ash apron
+                (0.680, 12.0),
+                (0.780, 6.0),
+                (0.880, 3.2),
+                (0.950, 1.7),
                 (1.000, 1.0),  # shore: ~0.5 studs per 10, the tide band
                 (1.090, -1.8),
                 (1.280, SKIRT_BOTTOM),
@@ -5562,7 +5574,7 @@ ISLANDS = {
             # no two heights alike - the whole shape randomized, per the user.
             "CRAG_RADIAL_FREQS": (13.0, 18.0),
             "CRAG_CALM": None,
-            "RIM_FLAT": (0.72, 1.0),
+            "RIM_FLAT": (0.60, 1.0),
             # Step 2's six rim gashes - one per lava river, mirroring
             # LAVA_FLOWS by hand (bearing, half-width, depth; keep the two
             # lists in step). Depths drop the 895 lip below the 842 lake so
@@ -5576,7 +5588,7 @@ ISLANDS = {
                 (math.radians(152), math.radians(8), 64.0),
                 (math.radians(205), math.radians(11), 72.0),
             ],
-            "NOTCH_BAND": (0.085, 0.175),  # the summit lip band (lip at u 0.155)
+            "NOTCH_BAND": (0.075, 0.16),  # the summit lip band (lip at u 0.14)
             # The broken asymmetric ridgeline around the summit.
             "PEAK_JAG": 28.0,
             "PEAK_TERMS": [(2, 0.8, 0.45), (3, 2.6, 0.35), (5, 1.1, 0.20)],

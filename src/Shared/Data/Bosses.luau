@@ -232,12 +232,12 @@ Bosses.items.pyrelisk = {
 	-- open sea past the last plank, and it hauls itself TOWARD the deck the
 	-- way Brinejaw does. (The 2026-08-25 review caught the original 590, which
 	-- put the fight underneath the jetty's mid-span.)
-	-- Re-keyed to the REBUILT dock (2026-08-27 restart step 5; pack HANDOFF:
-	-- planks run rel Z=527..592 on the +Z lane): the arena centre sits 40
-	-- studs of open sea past the last plank, fought from the dock end
-	-- exactly like Brinejaw's - the stable-spot rule holds because the dock
-	-- bearing/length are pinned overrides, not sampled geometry.
-	arena = { offset = Vector3.new(0, 0, 632), radius = 30 },
+	-- Keyed to the dock (walk-room re-key 2026-08-28; HANDOFF: planks run
+	-- rel Z=532..597 on the +Z lane): the arena centre sits 40 studs of open
+	-- sea past the last plank, fought from the dock end exactly like
+	-- Brinejaw's - stable because the dock bearing/length are pinned
+	-- overrides, not sampled geometry.
+	arena = { offset = Vector3.new(0, 0, 637), radius = 30 },
 	aggro = 90,
 	standoff = 14,
 	hitRadius = 6, -- at scale 1, pivot to the jaw; x1.5 = 9, matching Brinejaw's frame
