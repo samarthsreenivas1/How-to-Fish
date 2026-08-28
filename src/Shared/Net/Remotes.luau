@@ -140,6 +140,12 @@ local DEFS = {
 	-- choice - the pane the client claims to be in is never trusted.
 	{ name = "NpcDialog", class = "RemoteEvent" }, -- server -> client: dialog pane
 	{ name = "NpcChoice", class = "RemoteEvent" }, -- client -> server: npcId, choiceId
+
+	-- Quests (QuestService). The materials idiom: pull once on load, full
+	-- push on any state change, delta for the HUD progress pop.
+	{ name = "GetQuests", class = "RemoteFunction" }, -- client -> server: () -> { active, completed }
+	{ name = "QuestsUpdated", class = "RemoteEvent" }, -- server -> client: the same snapshot
+	{ name = "QuestProgress", class = "RemoteEvent" }, -- server -> client: { questId, name, objectiveIndex, count, needed, done, ready }
 }
 
 local Remotes = {}

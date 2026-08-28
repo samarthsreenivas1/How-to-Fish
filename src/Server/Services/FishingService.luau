@@ -37,6 +37,7 @@ local Tuning = require(Shared.Config.Tuning)
 local World = require(Shared.Config.World)
 
 local BaitService = require(script.Parent.BaitService)
+local QuestService = require(script.Parent.QuestService)
 local BossService = require(script.Parent.BossService)
 local CreatureService = require(script.Parent.CreatureService)
 local DataService = require(script.Parent.DataService)
@@ -398,6 +399,13 @@ local function resolveCast(player: Player, cast, reason: string?)
 		end
 
 		CreatureService.spawn(creature, cast.landing, target, grade, extra)
+		-- The quest funnel: one line, the whole hook (Beyond the Cast A2).
+		QuestService.notify("catch", {
+			player = player,
+			species = creature.id,
+			rarity = creature.rarity,
+			waters = cast.waters,
+		})
 
 		-- Chum's shoal: spare fish thrown up from a ring around the bobber, so
 		-- their arcs spread out instead of stacking into one pile.

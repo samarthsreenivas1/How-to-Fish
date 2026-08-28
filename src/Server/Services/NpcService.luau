@@ -23,8 +23,13 @@ local Workspace = game:GetService("Workspace")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Islands = require(Shared.Config.Islands)
 local Npcs = require(Shared.Data.Npcs)
+local Quests = require(Shared.Data.Quests)
+local Creatures = require(Shared.Data.Creatures)
+local Materials = require(Shared.Data.Materials)
 local Remotes = require(Shared.Net.Remotes)
 local CreatureModel = require(Shared.Modules.CreatureModel)
+
+local QuestService = require(script.Parent.QuestService)
 
 local NpcService = {}
 
@@ -121,18 +126,122 @@ end
 
 -- ============================================================ dialog
 
--- The pane push. A1: one pane ("greeting") with one choice. The choice list
--- is data the client renders as buttons and echoes back by id - the server
--- decides what each id does, so a forged id is just ignored.
-local function sendGreeting(player: Player, npc)
+-- Player-facing text for an objective / a reward bundle. Server-built so
+-- the client stays a dumb renderer.
+local function objectiveText(objective): string
+	if objective.type == "catch" or objective.type == "kill" then
+		local what = "creatures"
+		if objective.species then
+			local row = Creatures.items[objective.species]
+			what = row and row.name or objective.species
+		elseif objective.rarity then
+			what = objective.rarity .. " catches"
+		end
+		local where = if objective.waters then string.format(" from %s waters", objective.waters) else ""
+		local verb = if objective.type == "catch" then "Catch" else "Slay"
+		return string.format("%s %d %s%s", verb, objective.count or 1, what, where)
+	end
+	if objective.type == "craft" then
+		return string.format("Craft: %s", tostring(objective.itemId))
+	end
+	if objective.type == "deliver" then
+		local parts = {}
+		for matId, amount in objective.materials or {} do
+			local row = Materials.items[matId]
+			table.insert(parts, string.format("%d %s", amount, row and row.name or matId))
+		end
+		return "Bring me " .. table.concat(parts, ", ")
+	end
+	if objective.type == "visit" then
+		local entry = Islands.items[objective.island]
+		return string.format("Set foot on %s", entry and entry.name or tostring(objective.island))
+	end
+	return "?"
+end
+
+local function rewardText(rewards): string
+	local parts = {}
+	if rewards.coins then
+		table.insert(parts, string.format("%d coins", rewards.coins))
+	end
+	if rewards.xp then
+		table.insert(parts, string.format("%d XP", rewards.xp))
+	end
+	for matId, amount in rewards.materials or {} do
+		local row = Materials.items[matId]
+		table.insert(parts, string.format("%d %s", amount, row and row.name or matId))
+	end
+	for baitId, amount in rewards.bait or {} do
+		table.insert(parts, string.format("%d %s", amount, baitId))
+	end
+	if #parts == 0 then
+		return ""
+	end
+	return "Reward: " .. table.concat(parts, ", ")
+end
+
+-- The greeting pane: the NPC's lines (plus an optional leading remark from
+-- whatever just happened), then a button per offerable/ready quest, then
+-- farewell. A fresh push re-renders the client's window - that IS the pane
+-- machine; the server never trusts what the client claims to be looking at.
+local function sendGreeting(player: Player, npc, remark: string?)
+	local lines = {}
+	if remark then
+		table.insert(lines, remark)
+	end
+	for _, line in npc.greeting do
+		table.insert(lines, line)
+	end
+	local choices = {}
+	for _, offer in QuestService.offersFor(player, npc) do
+		if offer.status == "available" then
+			table.insert(choices, {
+				id = "offer:" .. offer.quest.id,
+				label = string.format('"%s"', offer.quest.name),
+			})
+		elseif offer.status == "active" and offer.ready then
+			table.insert(choices, {
+				id = "turnin:" .. offer.quest.id,
+				label = string.format("Turn in: %s", offer.quest.name),
+			})
+		elseif offer.status == "active" then
+			table.insert(
+				lines,
+				string.format('(Still at work on "%s", I see. Come back when it\'s done.)', offer.quest.name)
+			)
+		end
+	end
+	table.insert(choices, { id = "farewell", label = "Farewell" })
 	Remotes.NpcDialog:FireClient(player, {
 		npcId = npc.id,
 		name = npc.name,
 		title = npc.title,
 		pane = "greeting",
-		lines = npc.greeting,
+		lines = lines,
+		choices = choices,
+	})
+end
+
+-- The offer pane: the pitch, the terms, accept or step back.
+local function sendOffer(player: Player, npc, quest)
+	local lines = { quest.blurb, "" }
+	for _, objective in quest.objectives do
+		table.insert(lines, "- " .. objectiveText(objective))
+	end
+	local rewards = rewardText(quest.rewards or {})
+	if rewards ~= "" then
+		table.insert(lines, "")
+		table.insert(lines, rewards)
+	end
+	Remotes.NpcDialog:FireClient(player, {
+		npcId = npc.id,
+		name = npc.name,
+		title = npc.title,
+		pane = "offer",
+		lines = lines,
 		choices = {
-			{ id = "farewell", label = "Farewell" },
+			{ id = "accept:" .. quest.id, label = "I'll do it" },
+			{ id = "back", label = "Not now" },
 		},
 	})
 end
@@ -157,13 +266,44 @@ end
 
 local function onChoice(player: Player, npcId, choiceId)
 	local npc = type(npcId) == "string" and Npcs.items[npcId]
-	if not npc or not playerNear(player, npc.id, TALK_RANGE) then
+	if not npc or type(choiceId) ~= "string" or not playerNear(player, npc.id, TALK_RANGE) then
 		return
 	end
 	if choiceId == "farewell" then
-		-- Nothing server-side yet: the client closes its own modal. Quest
-		-- accept / turn-in / shop choices land here with their slices.
+		return -- the client closes its own modal
+	end
+	if choiceId == "back" then
+		sendGreeting(player, npc)
 		return
+	end
+	local action, questId = string.match(choiceId, "^(%w+):(.+)$")
+	local quest = questId and Quests.items[questId]
+	-- Only quests THIS npc gives are actionable here (a forged id for
+	-- another giver's quest is ignored).
+	local isGivers = false
+	for _, id in npc.quests or {} do
+		if id == questId then
+			isGivers = true
+		end
+	end
+	if not (quest and isGivers) then
+		return
+	end
+	if action == "offer" then
+		sendOffer(player, npc, quest)
+	elseif action == "accept" then
+		if QuestService.accept(player, questId) then
+			sendGreeting(player, npc, "Then it's settled. Off you go.")
+		else
+			sendGreeting(player, npc)
+		end
+	elseif action == "turnin" then
+		local ok, reason = QuestService.tryTurnIn(player, questId)
+		if ok then
+			sendGreeting(player, npc, string.format('Ha! Knew you had it in you. That squares "%s".', quest.name))
+		else
+			sendGreeting(player, npc, reason or "Not yet, love.")
+		end
 	end
 end
 

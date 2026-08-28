@@ -49,6 +49,7 @@ Npcs.items.old_maren = {
 		"Everything out there bites now, love - reel it in, knock it down, and bring me the stories.",
 		"Come back when you've got your sea legs. Old Maren always has work for willing hands.",
 	},
+	quests = { "marens_wager" },
 }
 
 return Npcs

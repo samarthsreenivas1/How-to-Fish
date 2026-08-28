@@ -25,6 +25,7 @@ local ORDER = {
 	"CreatureService", -- before FishingService: a resolved cast spawns through it
 	"MaterialService", -- after CreatureService (listens to Killed), before FishingService (grants on cast resolve)
 	"BaitService", -- after MaterialService; before FishingService (spends bait per cast) + CraftingService (grants bait)
+	"QuestService", -- after Data + Material + Bait (rewards/delivery); before FishingService (its resolveCast reports catches)
 	"FishingService", -- after InventoryService: reads the equipped rod's reel config
 	"CombatService", -- after CreatureService + InventoryService: swings route through both (reads the equipped weapon row)
 	"ProgressionService", -- after CreatureService: pays coins + XP off its Killed event

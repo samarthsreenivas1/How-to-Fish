@@ -19,6 +19,7 @@ local Remotes = require(Shared.Net.Remotes)
 local Theme = require(script.Parent.Parent.UI.Theme)
 local Kit = require(script.Parent.Parent.UI.Kit)
 local CameraController = require(script.Parent.CameraController)
+local ProgressionController = require(script.Parent.ProgressionController)
 
 local player = Players.LocalPlayer
 
@@ -159,6 +160,27 @@ function NpcDialogController.start()
 		end
 		renderPane(payload)
 		NpcDialogController.setOpen(true)
+	end)
+
+	-- The quest progress pop ("Maren's Wager 3/5"). Lives here until the
+	-- quest log controller arrives (A3), which takes it over.
+	Remotes.QuestProgress.OnClientEvent:Connect(function(delta)
+		if type(delta) ~= "table" then
+			return
+		end
+		if delta.ready then
+			ProgressionController.pop(string.format("%s - ready to turn in!", tostring(delta.name)), Theme.Color.accent)
+		else
+			ProgressionController.pop(
+				string.format(
+					"%s  %d/%d",
+					tostring(delta.name),
+					tonumber(delta.count) or 0,
+					tonumber(delta.needed) or 0
+				),
+				Theme.Color.accent
+			)
+		end
 	end)
 end
 
