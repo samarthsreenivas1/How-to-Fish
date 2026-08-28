@@ -49,6 +49,7 @@ Shops.items.marens_stall = {
 Shops.items.halvards_cache = {
 	id = "halvards_cache",
 	stock = {
+		{ kind = "item", id = "rimebound_legs", amount = 1, price = 1400 },
 		{ kind = "material", id = "everice", amount = 2, price = 420 },
 		{ kind = "material", id = "glacier_shard", amount = 1, price = 520 },
 	},
@@ -65,6 +66,7 @@ Shops.items.halvards_cache = {
 Shops.items.brakks_forge = {
 	id = "brakks_forge",
 	stock = {
+		{ kind = "item", id = "cindershell_chest", amount = 1, price = 3200 },
 		{ kind = "material", id = "sulfur", amount = 3, price = 380 },
 		{ kind = "material", id = "ember", amount = 2, price = 450 },
 	},

@@ -224,4 +224,214 @@ Armor.items.boneplate_legs = {
 	recipe = { requiresLevel = 16, coins = 750, materials = { cursed_bone = 6, bog_iron = 3 } },
 }
 
+-- ============================================================ the island sets (f5 lane, 2026-08-28)
+-- One set per mid-game band, each built from that island's armor-stock
+-- materials (ee01ac5) + its signature mat, and each with ONE piece that
+-- never touches the forge - a quest or a shopkeeper has it (recipe = nil).
+
+-- Blackmire Fen (L8-14): peat-cured leathers. Helm is Morra's quest reward.
+Armor.sets.mirewalker = {
+	id = "mirewalker",
+	name = "Mirewalker",
+	blurb = "Gator leather and fen chitin, cured in peat. The bog stops claiming your boots and starts making them.",
+	modelPrefix = "Mirewalker",
+	bonus = {
+		name = "Bog-Blooded",
+		description = "Full set: +12 max health.",
+		health = 12,
+	},
+}
+
+Armor.items.mirewalker_helm = {
+	id = "mirewalker_helm",
+	name = "Mirewalker Hood",
+	set = "mirewalker",
+	slot = "helmet",
+	rarity = "Uncommon",
+	color = Color3.fromRGB(104, 96, 58),
+	defense = 2,
+	-- No recipe: Morra pays it for "A Skin for the Mire" (Quests.luau).
+}
+
+Armor.items.mirewalker_chest = {
+	id = "mirewalker_chest",
+	name = "Mirewalker Jerkin",
+	set = "mirewalker",
+	slot = "chest",
+	rarity = "Uncommon",
+	color = Color3.fromRGB(104, 96, 58),
+	defense = 3,
+	health = 2,
+	recipe = { requiresLevel = 11, coins = 520, materials = { mire_hide = 6, fen_chitin = 3, bog_iron = 2 } },
+}
+
+Armor.items.mirewalker_legs = {
+	id = "mirewalker_legs",
+	name = "Mirewalker Waders",
+	set = "mirewalker",
+	slot = "legs",
+	rarity = "Uncommon",
+	color = Color3.fromRGB(104, 96, 58),
+	defense = 2,
+	health = 1,
+	recipe = { requiresLevel = 9, coins = 380, materials = { mire_hide = 5, fen_chitin = 2, gator_scute = 2 } },
+}
+
+-- Frostmaw Reach (L15-21): rimewool under everfrost shell. Legs are
+-- Halvard's stock (Shops.luau).
+Armor.sets.rimebound = {
+	id = "rimebound",
+	name = "Rimebound",
+	blurb = "Rimewool for the blood, everfrost for the blows. The reach stops biting first.",
+	modelPrefix = "Rimebound",
+	bonus = {
+		name = "Hearthfrost",
+		description = "Full set: +3 defense.",
+		defense = 3,
+	},
+}
+
+Armor.items.rimebound_helm = {
+	id = "rimebound_helm",
+	name = "Rimebound Cowl",
+	set = "rimebound",
+	slot = "helmet",
+	rarity = "Rare",
+	color = Color3.fromRGB(148, 194, 232),
+	defense = 3,
+	health = 1,
+	recipe = { requiresLevel = 16, coins = 1100, materials = { rimewool = 6, everfrost_plate = 2, glacier_shard = 1 } },
+}
+
+Armor.items.rimebound_chest = {
+	id = "rimebound_chest",
+	name = "Rimebound Hauberk",
+	set = "rimebound",
+	slot = "chest",
+	rarity = "Rare",
+	color = Color3.fromRGB(148, 194, 232),
+	defense = 5,
+	health = 2,
+	recipe = { requiresLevel = 19, coins = 1800, materials = { rimewool = 8, everfrost_plate = 4, glacier_shard = 2 } },
+}
+
+Armor.items.rimebound_legs = {
+	id = "rimebound_legs",
+	name = "Rimebound Greaves",
+	set = "rimebound",
+	slot = "legs",
+	rarity = "Rare",
+	color = Color3.fromRGB(148, 194, 232),
+	defense = 4,
+	health = 1,
+	-- No recipe: Halvard sells the pair he made for a keel-hand who never
+	-- came back off the sheet (halvards_cache).
+}
+
+-- Ashfall Caldera (L22-28): cinderscale mail on basaltweave. Chest is
+-- Brakk's stock (Shops.luau).
+Armor.sets.cindershell = {
+	id = "cindershell",
+	name = "Cindershell",
+	blurb = "Cinderscale mail on a basaltweave backing. Walks through embers; picks fights on the way.",
+	modelPrefix = "Cindershell",
+	bonus = {
+		name = "Emberwalk",
+		description = "Full set: +5% damage.",
+		damageBonus = 0.05,
+	},
+}
+
+Armor.items.cindershell_helm = {
+	id = "cindershell_helm",
+	name = "Cindershell Casque",
+	set = "cindershell",
+	slot = "helmet",
+	rarity = "Rare",
+	color = Color3.fromRGB(214, 106, 44),
+	defense = 5,
+	health = 2,
+	recipe = {
+		requiresLevel = 23,
+		coins = 2600,
+		materials = { cinder_scale = 6, basalt_weave = 2, obsidian_shard = 2 },
+	},
+}
+
+Armor.items.cindershell_chest = {
+	id = "cindershell_chest",
+	name = "Cindershell Cuirass",
+	set = "cindershell",
+	slot = "chest",
+	rarity = "Rare",
+	color = Color3.fromRGB(214, 106, 44),
+	defense = 6,
+	health = 4,
+	-- No recipe: Brakk forged exactly one and priced it like he means to
+	-- keep it (brakks_forge).
+}
+
+Armor.items.cindershell_legs = {
+	id = "cindershell_legs",
+	name = "Cindershell Greaves",
+	set = "cindershell",
+	slot = "legs",
+	rarity = "Rare",
+	color = Color3.fromRGB(214, 106, 44),
+	defense = 5,
+	health = 3,
+	recipe = { requiresLevel = 26, coins = 3400, materials = { cinder_scale = 8, basalt_weave = 4, magma_core = 1 } },
+}
+
+-- Gloomtrench (L29-35): duskhide lined with abyss silk. Helm is Lumen's
+-- quest reward.
+Armor.sets.duskveil = {
+	id = "duskveil",
+	name = "Duskveil",
+	blurb = "Duskhide lined with abyss silk. The dark reads it as one of its own.",
+	modelPrefix = "Duskveil",
+	bonus = {
+		name = "One With the Dark",
+		description = "Full set: +18 max health, +4% damage.",
+		health = 18,
+		damageBonus = 0.04,
+	},
+}
+
+Armor.items.duskveil_helm = {
+	id = "duskveil_helm",
+	name = "Duskveil Cowl",
+	set = "duskveil",
+	slot = "helmet",
+	rarity = "Epic",
+	color = Color3.fromRGB(42, 40, 56),
+	defense = 6,
+	health = 4,
+	-- No recipe: Lumen pays it for "A Veil Against the Dark" (Quests.luau).
+}
+
+Armor.items.duskveil_chest = {
+	id = "duskveil_chest",
+	name = "Duskveil Shroud",
+	set = "duskveil",
+	slot = "chest",
+	rarity = "Epic",
+	color = Color3.fromRGB(42, 40, 56),
+	defense = 8,
+	health = 6,
+	recipe = { requiresLevel = 33, coins = 7200, materials = { duskhide = 8, abyss_silk = 4, lantern_gland = 2 } },
+}
+
+Armor.items.duskveil_legs = {
+	id = "duskveil_legs",
+	name = "Duskveil Leggings",
+	set = "duskveil",
+	slot = "legs",
+	rarity = "Epic",
+	color = Color3.fromRGB(42, 40, 56),
+	defense = 7,
+	health = 5,
+	recipe = { requiresLevel = 30, coins = 5600, materials = { duskhide = 6, abyss_silk = 3, gloom_scale = 4 } },
+}
+
 return Armor

@@ -117,6 +117,20 @@ Quests.items.murk_harvest = {
 }
 
 -- ============================================================ the Reach (Halvard)
+Quests.items.a_skin_for_the_mire = {
+	id = "a_skin_for_the_mire",
+	name = "A Skin for the Mire",
+	giver = "morra",
+	blurb = "Bring me gator leather worth the name and I'll cut you a hood the bog can't tell from itself.",
+	prereq = "murk_harvest",
+	requiresLevel = 9,
+	objectives = {
+		{ type = "catch", count = 6, waters = "swamp" },
+		{ type = "materials", materials = { mire_hide = 3 } },
+	},
+	rewards = { coins = 420, xp = 340, items = { "mirewalker_helm" } },
+}
+
 Quests.items.pups_and_lines = {
 	id = "pups_and_lines",
 	name = "Pups and Lines",
@@ -163,6 +177,20 @@ Quests.items.what_the_dark_eats = {
 	objectives = { { type = "kill", count = 3, species = "gulper_eel" } },
 	rewards = { coins = 1600, xp = 1000 },
 }
+Quests.items.a_veil_against_the_dark = {
+	id = "a_veil_against_the_dark",
+	name = "A Veil Against the Dark",
+	giver = "lumen",
+	blurb = "The trench takes the ones it can see. Bring me duskhide and it will stop seeing you.",
+	prereq = "what_the_dark_eats",
+	requiresLevel = 30,
+	objectives = {
+		{ type = "catch", count = 8, waters = "gloom" },
+		{ type = "materials", materials = { duskhide = 3 } },
+	},
+	rewards = { coins = 2400, xp = 1700, items = { "duskveil_helm" } },
+}
+
 Quests.items.gullet_census = {
 	id = "gullet_census",
 	name = "Gullet Census",
