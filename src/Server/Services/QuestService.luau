@@ -163,9 +163,18 @@ function QuestService.offersFor(player: Player, npc): { { quest: any, status: st
 		local quest = Quests.items[questId]
 		if quest then
 			local entry = s.active[questId]
+			-- A daily re-offers only once the UTC day has turned since its
+			-- last turn-in; the completed timestamp is the whole clock.
+			local completedAt = s.completed[questId]
+			local repeatableNow = quest.repeatable
+				and (
+					quest.repeatable ~= "daily"
+					or not completedAt
+					or math.floor(completedAt / 86400) < math.floor(os.time() / 86400)
+				)
 			if entry then
 				table.insert(out, { quest = quest, status = "active", ready = allObjectivesDone(quest, entry) })
-			elseif not s.completed[questId] or quest.repeatable then
+			elseif not completedAt or repeatableNow then
 				local levelOk = not quest.requiresLevel
 					or (player:GetAttribute(Progression.ATTR.level) or Progression.START_LEVEL)
 						>= quest.requiresLevel
@@ -185,8 +194,17 @@ function QuestService.accept(player: Player, questId: string): boolean
 	if not (s and quest) or not DataService.isLoaded(player) then
 		return false
 	end
-	if s.active[questId] or (s.completed[questId] and not quest.repeatable) then
+	if s.active[questId] then
 		return false
+	end
+	local completedAt = s.completed[questId]
+	if completedAt then
+		if not quest.repeatable then
+			return false
+		end
+		if quest.repeatable == "daily" and math.floor(completedAt / 86400) >= math.floor(os.time() / 86400) then
+			return false
+		end
 	end
 	s.active[questId] = { progress = {} }
 	push(player)

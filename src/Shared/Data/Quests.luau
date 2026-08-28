@@ -97,4 +97,112 @@ Quests.items.the_wider_water = {
 	rewards = { coins = 500, xp = 420 },
 }
 
+-- ============================================================ the fen (Morra)
+Quests.items.leech_tithe = {
+	id = "leech_tithe",
+	name = "Leech Tithe",
+	giver = "morra",
+	blurb = "The murk is fat with leeches and thin with everything else. Redress the balance.",
+	objectives = { { type = "kill", count = 5, species = "mire_leech" } },
+	rewards = { coins = 260, xp = 220 },
+}
+Quests.items.murk_harvest = {
+	id = "murk_harvest",
+	name = "Murk Harvest",
+	giver = "morra",
+	blurb = "Six things pulled living from the fen's own water. The fen will notice. That's rather the point.",
+	prereq = "leech_tithe",
+	objectives = { { type = "catch", count = 6, waters = "swamp" } },
+	rewards = { coins = 380, xp = 300, materials = { fen_venom = 2 } },
+}
+
+-- ============================================================ the Reach (Halvard)
+Quests.items.pups_and_lines = {
+	id = "pups_and_lines",
+	name = "Pups and Lines",
+	giver = "halvard",
+	blurb = "Frostbite pups. Sweet-looking. They eat my catch lines whole. Three fewer would warm my week.",
+	objectives = { { type = "kill", count = 3, species = "frostbite_pup" } },
+	rewards = { coins = 520, xp = 420 },
+}
+Quests.items.under_the_sheet = {
+	id = "under_the_sheet",
+	name = "Under the Sheet",
+	giver = "halvard",
+	blurb = "Five from the holes, landed clean. The sheet gives nothing to the timid.",
+	prereq = "pups_and_lines",
+	objectives = { { type = "catch", count = 5, waters = "ice" } },
+	rewards = { coins = 700, xp = 560, materials = { everice = 2 } },
+}
+
+-- ============================================================ the Caldera (Brakk)
+Quests.items.the_sulfur_toll = {
+	id = "the_sulfur_toll",
+	name = "The Sulfur Toll",
+	giver = "brakk",
+	blurb = "The forge eats sulfur and I'm short. Bring four measures and we'll call the smoke between us settled.",
+	objectives = { { type = "deliver", materials = { sulfur = 4 } } },
+	rewards = { coins = 900, xp = 640 },
+}
+Quests.items.lake_of_fire = {
+	id = "lake_of_fire",
+	name = "Lake of Fire",
+	giver = "brakk",
+	blurb = "Five out of the melt. If your line survives the ponds, you're worth arming.",
+	prereq = "the_sulfur_toll",
+	objectives = { { type = "catch", count = 5, waters = "volcano" } },
+	rewards = { coins = 1200, xp = 800, materials = { ember = 3 } },
+}
+
+-- ============================================================ the Trench (Lumen)
+Quests.items.what_the_dark_eats = {
+	id = "what_the_dark_eats",
+	name = "What the Dark Eats",
+	giver = "lumen",
+	blurb = "Gulpers circle the lamp at slack tide. Thin them before they learn to swallow light whole.",
+	objectives = { { type = "kill", count = 3, species = "gulper_eel" } },
+	rewards = { coins = 1600, xp = 1000 },
+}
+Quests.items.gullet_census = {
+	id = "gullet_census",
+	name = "Gullet Census",
+	giver = "lumen",
+	blurb = "Five specimens from the black water, for the log. The log must be FED, you understand. Kept. Kept-fed.",
+	prereq = "what_the_dark_eats",
+	objectives = { { type = "catch", count = 5, waters = "gloom" } },
+	rewards = { coins = 2000, xp = 1300, materials = { lantern_gland = 2 } },
+}
+
+-- ============================================================ the Bay (Hollow)
+Quests.items.ledger_of_teeth = {
+	id = "ledger_of_teeth",
+	name = "Ledger of Teeth",
+	giver = "hollow",
+	blurb = "Cannonball crabs, eating the fleet's stores. The book says four must answer for it. The book is never wrong.",
+	objectives = { { type = "kill", count = 4, species = "cannonball_crab" } },
+	rewards = { coins = 2600, xp = 1600 },
+}
+
+-- ============================================================ dailies
+-- repeatable = "daily": offered again each new UTC day (QuestService gates
+-- the re-offer; the reward is the login habit, priced under a chain quest).
+Quests.items.the_daily_haul = {
+	id = "the_daily_haul",
+	name = "The Daily Haul",
+	giver = "old_maren",
+	blurb = "Same as every day, love: eight in the basket. The cove doesn't feed itself.",
+	repeatable = "daily",
+	objectives = { { type = "catch", count = 8 } },
+	rewards = { coins = 220, xp = 180 },
+}
+Quests.items.salvage_rights = {
+	id = "salvage_rights",
+	name = "Salvage Rights",
+	giver = "hollow",
+	blurb = "Standing contract: six entries struck from the ledger, any name. Renewed daily. The fleet is patient; the book is not.",
+	repeatable = "daily",
+	objectives = { { type = "kill", count = 6 } },
+	rewards = { coins = 800, xp = 520 },
+}
+
 return Quests

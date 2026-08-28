@@ -195,6 +195,29 @@ local function rewardText(rewards): string
 	return "Reward: " .. table.concat(parts, ", ")
 end
 
+-- Today's full shelf list for a shop: the fixed stock plus `rotating.slots`
+-- picks from the pool, drawn WITHOUT replacement by a Random seeded from the
+-- UTC day and the shop id - deterministic, so a buy re-derives the identical
+-- shelves and nothing needs storing. Rolls over at midnight UTC.
+local function stockToday(shop): { any }
+	local shelves = table.clone(shop.stock)
+	local rotating = shop.rotating
+	if rotating and rotating.slots > 0 and #rotating.pool > 0 then
+		local seed = math.floor(os.time() / 86400) * 131
+		for i = 1, #shop.id do
+			seed += string.byte(shop.id, i) * i
+		end
+		local rng = Random.new(seed)
+		local pool = table.clone(rotating.pool)
+		for _ = 1, math.min(rotating.slots, #pool) do
+			local pick = rng:NextInteger(1, #pool)
+			table.insert(shelves, pool[pick])
+			table.remove(pool, pick)
+		end
+	end
+	return shelves
+end
+
 -- A shop slot's shelf label ("5x Chum - 60c").
 local function slotText(slot): string
 	local name = slot.id
@@ -221,7 +244,7 @@ local function sendShop(player: Player, npc, remark: string?)
 	end
 	table.insert(lines, "Have a look, then. Coin up front.")
 	local choices = {}
-	for index, slot in shop.stock do
+	for index, slot in stockToday(shop) do
 		table.insert(choices, { id = "buy:" .. index, label = slotText(slot) })
 	end
 	table.insert(choices, { id = "back", label = "Done" })
@@ -239,7 +262,7 @@ end
 -- an index), check + spend coins, grant, answer with a fresh shop pane.
 local function buySlot(player: Player, npc, index: number)
 	local shop = npc.shop and Shops.items[npc.shop]
-	local slot = shop and shop.stock[index]
+	local slot = shop and stockToday(shop)[index]
 	if not slot or not DataService.isLoaded(player) then
 		return
 	end
