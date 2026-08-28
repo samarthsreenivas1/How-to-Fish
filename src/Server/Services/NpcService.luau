@@ -25,6 +25,8 @@ local Islands = require(Shared.Config.Islands)
 local Npcs = require(Shared.Data.Npcs)
 local Quests = require(Shared.Data.Quests)
 local Shops = require(Shared.Data.Shops)
+local Armor = require(Shared.Data.Armor)
+local Trinkets = require(Shared.Data.Trinkets)
 local Bait = require(Shared.Data.Bait)
 local Creatures = require(Shared.Data.Creatures)
 local Materials = require(Shared.Data.Materials)
@@ -35,6 +37,7 @@ local QuestService = require(script.Parent.QuestService)
 local MaterialService = require(script.Parent.MaterialService)
 local BaitService = require(script.Parent.BaitService)
 local DataService = require(script.Parent.DataService)
+local InventoryService = require(script.Parent.InventoryService)
 
 -- ProgressionService boots below us in ORDER (it listens to Killed);
 -- spendCoins has no init-order dependence - the QuestService precedent.
@@ -189,6 +192,10 @@ local function rewardText(rewards): string
 	for baitId, amount in rewards.bait or {} do
 		table.insert(parts, string.format("%d %s", amount, baitId))
 	end
+	for _, itemId in rewards.items or {} do
+		local row = Armor.items[itemId] or Trinkets.items[itemId]
+		table.insert(parts, row and row.name or itemId)
+	end
 	if #parts == 0 then
 		return ""
 	end
@@ -227,6 +234,12 @@ local function slotText(slot): string
 	elseif slot.kind == "material" then
 		local row = Materials.items[slot.id]
 		name = row and row.name or slot.id
+	elseif slot.kind == "item" then
+		-- A finished thing (armor piece, rod, weapon, trinket): one grant,
+		-- no amount on the shelf label.
+		local row = Armor.items[slot.id] or Trinkets.items[slot.id]
+		name = row and row.name or slot.id
+		return string.format("%s - %d coins", name, slot.price)
 	end
 	return string.format("%dx %s - %d coins", slot.amount, name, slot.price)
 end
@@ -266,6 +279,13 @@ local function buySlot(player: Player, npc, index: number)
 	if not slot or not DataService.isLoaded(player) then
 		return
 	end
+	if slot.kind == "item" then
+		-- Owned already? Refuse BEFORE coins move.
+		if InventoryService.ownsItem(player, slot.id) then
+			sendShop(player, npc, "You've already got one of those, love.")
+			return
+		end
+	end
 	if not progression().spendCoins(player, slot.price) then
 		sendShop(player, npc, "Short on coin, love. Come back heavier.")
 		return
@@ -274,6 +294,8 @@ local function buySlot(player: Player, npc, index: number)
 		BaitService.grant(player, slot.id, slot.amount)
 	elseif slot.kind == "material" then
 		MaterialService.grant(player, slot.id, slot.amount)
+	elseif slot.kind == "item" then
+		InventoryService.grantItem(player, slot.id)
 	end
 	sendShop(player, npc, "There you go. Anything else?")
 end

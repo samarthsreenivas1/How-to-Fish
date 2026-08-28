@@ -19,6 +19,7 @@ local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Armor = require(Shared.Data.Armor)
 local Tuning = require(Shared.Config.Tuning)
 
 local PlayerService = {}
@@ -76,6 +77,14 @@ function PlayerService.damage(player: Player, amount: number, _source: any?, opt
 	end
 	lastDamaged[player] = now
 
+	-- Worn armor: flat reduction from Armor.defenseOf (pieces + set bonus) -
+	-- THE defense consumer. The floor keeps at least a quarter of any hit,
+	-- so no set ever makes a band's enemies tickle.
+	local defense = Armor.defenseOf(player)
+	if defense > 0 then
+		amount = math.max(math.ceil(amount * 0.25), amount - defense)
+	end
+
 	humanoid:TakeDamage(amount)
 	return true
 end
@@ -96,19 +105,49 @@ function PlayerService.heal(player: Player, amount: number): boolean
 	return true
 end
 
-local function onCharacterAdded(character: Model)
+-- Max health = the base plus worn armor's bonus (Armor.healthOf - THE
+-- health consumer). Recomputed on spawn and whenever an armor attribute
+-- changes; gaining max also grants the delta as current (equipping armor
+-- feels good), losing max just clamps.
+local function applyMaxHealth(player: Player)
+	local humanoid = humanoidOf(player)
+	if not humanoid then
+		return
+	end
+	local target = P.MAX_HEALTH + Armor.healthOf(player)
+	local delta = target - humanoid.MaxHealth
+	humanoid.MaxHealth = target
+	if delta > 0 then
+		humanoid.Health = math.min(target, humanoid.Health + delta)
+	else
+		humanoid.Health = math.min(target, humanoid.Health)
+	end
+end
+
+local function onCharacterAdded(player: Player, character: Model)
 	local humanoid = character:WaitForChild("Humanoid", 10)
 	if humanoid and humanoid:IsA("Humanoid") then
-		humanoid.MaxHealth = P.MAX_HEALTH
-		humanoid.Health = P.MAX_HEALTH
+		humanoid.MaxHealth = P.MAX_HEALTH + Armor.healthOf(player)
+		humanoid.Health = humanoid.MaxHealth
 	end
 end
 
 local function onPlayerAdded(player: Player)
-	player.CharacterAdded:Connect(onCharacterAdded)
+	player.CharacterAdded:Connect(function(character)
+		onCharacterAdded(player, character)
+	end)
 	if player.Character then
-		onCharacterAdded(player.Character)
+		onCharacterAdded(player, player.Character)
 	end
+	-- Armor changes retune the max live.
+	player.AttributeChanged:Connect(function(attribute: string)
+		for _, name in Armor.ATTRIBUTES do
+			if attribute == name then
+				applyMaxHealth(player)
+				return
+			end
+		end
+	end)
 end
 
 -- Slow out-of-combat regen: once REGEN_DELAY has passed since the last hit,

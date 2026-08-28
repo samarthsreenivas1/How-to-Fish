@@ -31,6 +31,7 @@ Shops.items.marens_stall = {
 		{ kind = "material", id = "driftwood", amount = 5, price = 45 },
 		{ kind = "material", id = "kelp_fiber", amount = 5, price = 45 },
 		{ kind = "material", id = "nacre", amount = 1, price = 120 },
+		{ kind = "item", id = "chitin_helm", amount = 1, price = 480 },
 	},
 	rotating = {
 		slots = 2,

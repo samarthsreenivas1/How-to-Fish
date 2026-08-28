@@ -30,6 +30,7 @@ local Equipment = require(Shared.Config.Equipment)
 local Rods = require(Shared.Data.Rods)
 local Weapons = require(Shared.Data.Weapons)
 local Trinkets = require(Shared.Data.Trinkets)
+local Armor = require(Shared.Data.Armor)
 local Remotes = require(Shared.Net.Remotes)
 
 local DataService = require(script.Parent.DataService)
@@ -43,6 +44,8 @@ local inventories: { [Player]: { string } } = {}
 local equippedRod: { [Player]: string } = {}
 local equippedWeapon: { [Player]: string } = {}
 local equippedTrinket: { [Player]: string } = {}
+-- Worn armor by slot ("helmet"/"chest"/"legs" -> piece id).
+local equippedArmor: { [Player]: { [string]: string } } = {}
 
 -- What's actually in the hands right now: Equipment.ROD or Equipment.WEAPON.
 local equippedKind: { [Player]: string } = {}
@@ -147,6 +150,28 @@ end
 -- The worn trinket. Not a hand kind: nothing changes in anyone's grip, so
 -- there is no equippedKind interplay - just ownership-checked publication of
 -- the attribute the perk consumers read.
+-- Wearing an armor piece: slot inferred from the row; ownership checked;
+-- published as the slot's attribute (Armor.ATTRIBUTES) for every consumer
+-- and the worn-model welds.
+function InventoryService.setEquippedArmor(player: Player, pieceId: string): boolean
+	local piece = Armor.items[pieceId]
+	if not piece then
+		return false
+	end
+	local owned = inventories[player]
+	if not owned or not table.find(owned, pieceId) then
+		return false
+	end
+	local worn = equippedArmor[player]
+	if not worn then
+		worn = {}
+		equippedArmor[player] = worn
+	end
+	worn[piece.slot] = pieceId
+	player:SetAttribute(Armor.ATTRIBUTES[piece.slot], pieceId)
+	return true
+end
+
 function InventoryService.setEquippedTrinket(player: Player, trinketId: string): boolean
 	if not Trinkets.items[trinketId] then
 		return false
@@ -169,7 +194,12 @@ end
 -- Adds an item to the player's inventory (crafting). No-op if already owned;
 -- false if the id isn't a real rod, weapon or trinket. Does not equip it.
 function InventoryService.grantItem(player: Player, itemId: string): boolean
-	if not Rods.items[itemId] and not Weapons.items[itemId] and not Trinkets.items[itemId] then
+	if
+		not Rods.items[itemId]
+		and not Weapons.items[itemId]
+		and not Trinkets.items[itemId]
+		and not Armor.items[itemId]
+	then
 		return false
 	end
 	local owned = inventories[player]
@@ -222,7 +252,7 @@ local function loadSlice(player: Player, slice)
 		for _, itemId in slice.items do
 			if
 				type(itemId) == "string"
-				and (Rods.items[itemId] or Weapons.items[itemId] or Trinkets.items[itemId])
+				and (Rods.items[itemId] or Weapons.items[itemId] or Trinkets.items[itemId] or Armor.items[itemId])
 				and not table.find(owned, itemId)
 			then
 				table.insert(owned, itemId)
@@ -253,6 +283,18 @@ local function loadSlice(player: Player, slice)
 		equippedTrinket[player] = slice.equippedTrinket
 		player:SetAttribute(Equipment.TRINKET_ATTRIBUTE, slice.equippedTrinket)
 	end
+	if type(slice.equippedArmor) == "table" then
+		local worn = equippedArmor[player] or {}
+		equippedArmor[player] = worn
+		for slot in Armor.ATTRIBUTES do
+			local pieceId = slice.equippedArmor[slot]
+			local piece = type(pieceId) == "string" and Armor.items[pieceId]
+			if piece and piece.slot == slot and table.find(owned, pieceId) then
+				worn[slot] = pieceId
+				player:SetAttribute(Armor.ATTRIBUTES[slot], pieceId)
+			end
+		end
+	end
 	player:SetAttribute(Equipment.ROD_ATTRIBUTE, equippedRod[player])
 	player:SetAttribute(Equipment.WEAPON_ATTRIBUTE, equippedWeapon[player])
 	pushInventory(player)
@@ -267,6 +309,7 @@ local function serializeSlice(player: Player)
 		equippedRod = equippedRod[player],
 		equippedWeapon = equippedWeapon[player],
 		equippedTrinket = equippedTrinket[player],
+		equippedArmor = if equippedArmor[player] then table.clone(equippedArmor[player]) else nil,
 	}
 end
 
@@ -292,6 +335,7 @@ local function releasePlayer(player: Player)
 	equippedRod[player] = nil
 	equippedWeapon[player] = nil
 	equippedTrinket[player] = nil
+	equippedArmor[player] = nil
 	equippedKind[player] = nil
 end
 
@@ -328,6 +372,13 @@ function InventoryService.init()
 			return
 		end
 		InventoryService.setEquippedTrinket(player, trinketId)
+	end)
+
+	Remotes.RequestEquipArmor.OnServerEvent:Connect(function(player: Player, pieceId)
+		if type(pieceId) ~= "string" then
+			return
+		end
+		InventoryService.setEquippedArmor(player, pieceId)
 	end)
 end
 

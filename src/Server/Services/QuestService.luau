@@ -30,6 +30,7 @@ local Progression = require(Shared.Modules.Progression)
 local DataService = require(script.Parent.DataService)
 local MaterialService = require(script.Parent.MaterialService)
 local BaitService = require(script.Parent.BaitService)
+local InventoryService = require(script.Parent.InventoryService)
 local CreatureService = require(script.Parent.CreatureService)
 
 -- ProgressionService sits BELOW this service in ORDER (it must boot after
@@ -243,6 +244,11 @@ function QuestService.tryTurnIn(player: Player, questId: string): (boolean, stri
 	end
 	for baitId, amount in rewards.bait or {} do
 		BaitService.grant(player, baitId, amount)
+	end
+	-- Finished items (armor pieces, rods, weapons, trinkets) - granted by
+	-- id; already-owned ids are InventoryService no-ops.
+	for _, itemId in rewards.items or {} do
+		InventoryService.grantItem(player, itemId)
 	end
 
 	s.active[questId] = nil

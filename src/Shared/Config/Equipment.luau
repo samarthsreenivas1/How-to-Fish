@@ -39,6 +39,13 @@ Equipment.BAIT_ATTRIBUTE = "SelectedBaitId"
 -- so it too stays out of Equipment.KINDS. Published by InventoryService.
 Equipment.TRINKET_ATTRIBUTE = "EquippedTrinketId"
 
+-- The three worn armor slots (Shared/Data/Armor.luau owns the slot list and
+-- these same names as Armor.ATTRIBUTES - the armor consumers read via that
+-- module). Like bait and the trinket: worn, not held; no hand kind.
+Equipment.HELMET_ATTRIBUTE = "EquippedHelmetId"
+Equipment.CHEST_ATTRIBUTE = "EquippedChestId"
+Equipment.LEGS_ATTRIBUTE = "EquippedLegsId"
+
 Equipment.ROD = "rod"
 Equipment.WEAPON = "weapon"
 

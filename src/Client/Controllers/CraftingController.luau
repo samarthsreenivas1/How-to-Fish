@@ -33,6 +33,7 @@ local Materials = require(Shared.Data.Materials)
 local Rods = require(Shared.Data.Rods)
 local Weapons = require(Shared.Data.Weapons)
 local Trinkets = require(Shared.Data.Trinkets)
+local Armor = require(Shared.Data.Armor)
 local Progression = require(Shared.Modules.Progression)
 local Rarity = require(Shared.Modules.Rarity)
 local Remotes = require(Shared.Net.Remotes)
@@ -76,6 +77,18 @@ local TABS = {
 		attribute = Equipment.WEAPON_ATTRIBUTE,
 		equipRemote = Remotes.RequestEquipWeapon,
 		equipKind = Equipment.WEAPON,
+	},
+	{
+		kind = "armor",
+		label = "Armor",
+		token = "ARM",
+		noun = "piece",
+		items = Armor.items,
+		-- Worn state spans three attributes; armorWorn() handles it and the
+		-- refresh hookup listens to all three. `attribute` stays one of them
+		-- for the generic machinery that only needs "some" attribute.
+		attribute = Equipment.HELMET_ATTRIBUTE,
+		equipRemote = Remotes.RequestEquipArmor,
 	},
 	{
 		kind = "trinket",
@@ -156,6 +169,14 @@ end
 
 local function equippedId(): string?
 	return player:GetAttribute(activeTab.attribute)
+end
+
+-- Armor has THREE worn attributes; a piece is worn when its own slot's
+-- attribute names it. Every kind=="armor" branch uses this instead of
+-- equippedId().
+local function armorWorn(item): boolean
+	local attribute = Armor.ATTRIBUTES[item.slot]
+	return attribute ~= nil and player:GetAttribute(attribute) == item.id
 end
 
 -- ============================================================ recipe section
@@ -252,7 +273,7 @@ local function showDetail(itemId: string?)
 	end
 
 	local owned = ownedSet[itemId]
-	local equipped = equippedId() == itemId
+	local equipped = if activeTab.kind == "armor" then armorWorn(item) else equippedId() == itemId
 	local spec = {
 		name = item.name,
 		rarity = item.rarity,
@@ -276,6 +297,15 @@ local function showDetail(itemId: string?)
 			item.hullHealth,
 			item.seaworthiness
 		)
+	elseif activeTab.kind == "armor" then
+		local set = Armor.sets[item.set]
+		local statLine = string.format(
+			"Defense %d%s",
+			item.defense,
+			if item.health then string.format("  ·  +%d health", item.health) else ""
+		)
+		local bonusLine = if set then string.format("Set bonus - %s: %s", set.bonus.name, set.bonus.description) else ""
+		spec.description = string.format("%s\n\n%s\n%s", set and set.blurb or "", statLine, bonusLine)
 	elseif activeTab.kind == "trinket" then
 		spec.description = item.blurb
 	else
@@ -362,12 +392,14 @@ local function showDetail(itemId: string?)
 			},
 		}
 	elseif owned then
-		local wornWord = if activeTab.kind == "trinket" then "WORN" else "IN HAND"
+		local wornWord = if activeTab.kind == "trinket" or activeTab.kind == "armor" then "WORN" else "IN HAND"
 		spec.state = if equipped then wornWord else "OWNED"
 		spec.stateColor = if equipped then C.accent else C.panelLight
 		spec.actions = {
 			{
-				text = if equipped then (if activeTab.kind == "trinket" then "Worn" else "In Hand") else "Equip",
+				text = if equipped
+					then (if activeTab.kind == "trinket" or activeTab.kind == "armor" then "Worn" else "In Hand")
+					else "Equip",
 				style = if equipped then "secondary" else "primary",
 				enabled = not equipped,
 				disabledText = C.green,
@@ -470,10 +502,13 @@ local function refreshCard(itemId: string)
 		end
 	else
 		local owned = ownedSet[itemId]
-		local equipped = equippedId() == itemId
+		local equipped = if activeTab.kind == "armor" then armorWorn(item) else equippedId() == itemId
 		handle.setEquipped(equipped)
 		if equipped then
-			handle.setTag(if activeTab.kind == "trinket" then "WORN" else "IN HAND", C.green)
+			handle.setTag(
+				if activeTab.kind == "trinket" or activeTab.kind == "armor" then "WORN" else "IN HAND",
+				C.green
+			)
 		elseif owned then
 			handle.setTag("OWNED", C.textDim)
 		elseif item.recipe then
@@ -687,6 +722,9 @@ function CraftingController.init()
 			Equipment.ROD_ATTRIBUTE,
 			Equipment.WEAPON_ATTRIBUTE,
 			Equipment.BAIT_ATTRIBUTE,
+			Equipment.HELMET_ATTRIBUTE,
+			Equipment.CHEST_ATTRIBUTE,
+			Equipment.LEGS_ATTRIBUTE,
 		}
 	do
 		player:GetAttributeChangedSignal(attr):Connect(refresh)
