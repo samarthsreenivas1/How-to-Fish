@@ -94,7 +94,8 @@ Quests.items.the_wider_water = {
 		{ type = "deliver", materials = { kelp_fiber = 6 } },
 		{ type = "visit", island = "swamp" },
 	},
-	rewards = { coins = 500, xp = 420 },
+	-- The cowl is gear for the journey she just talked you into.
+	rewards = { coins = 500, xp = 420, items = { "tideward_helm" } },
 }
 
 -- ============================================================ the fen (Morra)
@@ -208,7 +209,7 @@ Quests.items.ledger_of_teeth = {
 	giver = "hollow",
 	blurb = "Cannonball crabs, eating the fleet's stores. The book says four must answer for it. The book is never wrong.",
 	objectives = { { type = "kill", count = 4, species = "cannonball_crab" } },
-	rewards = { coins = 2600, xp = 1600 },
+	rewards = { coins = 2600, xp = 1600, items = { "corsairs_rest_helm" } },
 }
 
 -- ============================================================ dailies

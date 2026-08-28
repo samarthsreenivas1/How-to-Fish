@@ -434,4 +434,228 @@ Armor.items.duskveil_legs = {
 	recipe = { requiresLevel = 30, coins = 5600, materials = { duskhide = 6, abyss_silk = 3, gloom_scale = 4 } },
 }
 
+-- ============================================================ 0f's four sets
+-- (Cove-late, wreck, maelstrom and the cross-island traveler band - all on
+-- EXISTING materials, per the armor-system lane split.)
+
+-- Tideward: the first real armor after the chitin shell - lacquered scale
+-- lames with a pearl clasp, built for the voyage out of the cove.
+Armor.sets.tideward = {
+	id = "tideward",
+	name = "Tideward",
+	blurb = "Fish-scale lames lacquered stiff and clasped with pearl. Made for leaving the cove, not for staying.",
+	modelPrefix = "Tideward",
+	bonus = {
+		name = "Open Water",
+		description = "Full set: +16 max health, +3 defense.",
+		health = 16,
+		defense = 3,
+	},
+}
+
+Armor.items.tideward_helm = {
+	id = "tideward_helm",
+	name = "Tideward Cowl",
+	set = "tideward",
+	slot = "helmet",
+	rarity = "Uncommon",
+	color = Color3.fromRGB(150, 176, 194),
+	defense = 3,
+	-- No recipe: Old Maren hands it over for making the first crossing (the
+	-- Wider Water quest), and her stall sells it to anyone who sailed past
+	-- her advice.
+}
+
+Armor.items.tideward_chest = {
+	id = "tideward_chest",
+	name = "Tideward Lamellar",
+	set = "tideward",
+	slot = "chest",
+	rarity = "Uncommon",
+	color = Color3.fromRGB(150, 176, 194),
+	defense = 5,
+	health = 4,
+	recipe = { requiresLevel = 11, coins = 380, materials = { fish_scale = 8, barnacle_chitin = 4, pearl = 1 } },
+}
+
+Armor.items.tideward_legs = {
+	id = "tideward_legs",
+	name = "Tideward Tassets",
+	set = "tideward",
+	slot = "legs",
+	rarity = "Uncommon",
+	color = Color3.fromRGB(150, 176, 194),
+	defense = 4,
+	health = 2,
+	recipe = { requiresLevel = 10, coins = 300, materials = { fish_scale = 6, kelp_fiber = 5 } },
+}
+
+-- Corsair's Rest: ghost-fleet salvage plate - the tank set. Sold out of
+-- Quartermaster Hollow's locker (chest and legs) and pinned to his ledger
+-- quest (helm); the fleet does not teach outsiders to forge its dead.
+Armor.sets.corsairs_rest = {
+	id = "corsairs_rest",
+	name = "Corsair's Rest",
+	blurb = "Plank cuirass, doubloon rivets, a half-cape of spectral sailcloth. The fleet buries nothing it can still use.",
+	modelPrefix = "CorsairsRest",
+	bonus = {
+		name = "Dead Man's Watch",
+		description = "Full set: +35 max health, +10 defense.",
+		health = 35,
+		defense = 10,
+	},
+}
+
+Armor.items.corsairs_rest_helm = {
+	id = "corsairs_rest_helm",
+	name = "Corsair's Tricorne",
+	set = "corsairs_rest",
+	slot = "helmet",
+	rarity = "Epic",
+	color = Color3.fromRGB(96, 118, 112),
+	defense = 8,
+	health = 5,
+	-- No recipe: struck from Hollow's ledger (the Ledger of Teeth reward).
+}
+
+Armor.items.corsairs_rest_chest = {
+	id = "corsairs_rest_chest",
+	name = "Corsair's Cuirass",
+	set = "corsairs_rest",
+	slot = "chest",
+	rarity = "Epic",
+	color = Color3.fromRGB(96, 118, 112),
+	defense = 14,
+	health = 10,
+	-- No recipe: sold from Hollow's locker (Shops.hollows_locker).
+}
+
+Armor.items.corsairs_rest_legs = {
+	id = "corsairs_rest_legs",
+	name = "Corsair's Sea Boots",
+	set = "corsairs_rest",
+	slot = "legs",
+	rarity = "Epic",
+	color = Color3.fromRGB(96, 118, 112),
+	defense = 10,
+	health = 6,
+	-- No recipe: sold from Hollow's locker (Shops.hollows_locker).
+}
+
+-- Stormcaller: the finale's damage set - storm glass over blackened cloth,
+-- lightning caged in the seams. Crafted only, at the arc's end.
+Armor.sets.stormcaller = {
+	id = "stormcaller",
+	name = "Stormcaller",
+	blurb = "Storm glass cut into plate, the lightning still moving inside it. Wearing the weather, more or less.",
+	modelPrefix = "Stormcaller",
+	bonus = {
+		name = "Eye of the Storm",
+		description = "Full set: +12% weapon damage.",
+		damageBonus = 0.12,
+	},
+}
+
+Armor.items.stormcaller_helm = {
+	id = "stormcaller_helm",
+	name = "Stormcaller Crown",
+	set = "stormcaller",
+	slot = "helmet",
+	rarity = "Legendary",
+	color = Color3.fromRGB(120, 160, 200),
+	defense = 7,
+	health = 4,
+	recipe = { requiresLevel = 43, coins = 9000, materials = { storm_glass = 6, thunder_pearl = 2 } },
+}
+
+Armor.items.stormcaller_chest = {
+	id = "stormcaller_chest",
+	name = "Stormcaller Aegis",
+	set = "stormcaller",
+	slot = "chest",
+	rarity = "Legendary",
+	color = Color3.fromRGB(120, 160, 200),
+	defense = 12,
+	health = 8,
+	recipe = {
+		requiresLevel = 45,
+		coins = 16000,
+		materials = { storm_glass = 10, maelstrom_core = 1, riptide_scale = 6 },
+	},
+}
+
+Armor.items.stormcaller_legs = {
+	id = "stormcaller_legs",
+	name = "Stormcaller Greaves",
+	set = "stormcaller",
+	slot = "legs",
+	rarity = "Legendary",
+	color = Color3.fromRGB(120, 160, 200),
+	defense = 9,
+	health = 5,
+	recipe = {
+		requiresLevel = 44,
+		coins = 12000,
+		materials = { storm_glass = 8, riptide_scale = 4, thunder_pearl = 1 },
+	},
+}
+
+-- Wraithbound: the traveler's set. No vendor and no single home - each
+-- piece needs essences from a different corner of the arc (wreck wraiths,
+-- ice auroras, gloom ichor), so finishing it IS a voyage. The only set
+-- that touches all three bonus fields, as befits a jack of all trades.
+Armor.sets.wraithbound = {
+	id = "wraithbound",
+	name = "Wraithbound",
+	blurb = "Wraith-shroud over dark lacquer, aurora ribbon at the seams, joints black with abyss ichor. Three seas, one suit.",
+	modelPrefix = "Wraithbound",
+	bonus = {
+		name = "Far Waters",
+		description = "Full set: +25 max health, +6 defense, +6% weapon damage.",
+		health = 25,
+		defense = 6,
+		damageBonus = 0.06,
+	},
+}
+
+Armor.items.wraithbound_helm = {
+	id = "wraithbound_helm",
+	name = "Wraithbound Veil",
+	set = "wraithbound",
+	slot = "helmet",
+	rarity = "Epic",
+	color = Color3.fromRGB(134, 150, 168),
+	defense = 6,
+	health = 4,
+	recipe = { requiresLevel = 32, coins = 3200, materials = { wraith_essence = 3, aurora_essence = 2 } },
+}
+
+Armor.items.wraithbound_chest = {
+	id = "wraithbound_chest",
+	name = "Wraithbound Shroudplate",
+	set = "wraithbound",
+	slot = "chest",
+	rarity = "Epic",
+	color = Color3.fromRGB(134, 150, 168),
+	defense = 10,
+	health = 7,
+	recipe = {
+		requiresLevel = 36,
+		coins = 5200,
+		materials = { wraith_essence = 4, abyss_ichor = 3, aurora_essence = 2 },
+	},
+}
+
+Armor.items.wraithbound_legs = {
+	id = "wraithbound_legs",
+	name = "Wraithbound Striders",
+	set = "wraithbound",
+	slot = "legs",
+	rarity = "Epic",
+	color = Color3.fromRGB(134, 150, 168),
+	defense = 7,
+	health = 5,
+	recipe = { requiresLevel = 34, coins = 4000, materials = { abyss_ichor = 3, wraith_essence = 2 } },
+}
+
 return Armor

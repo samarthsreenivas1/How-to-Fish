@@ -32,6 +32,9 @@ Shops.items.marens_stall = {
 		{ kind = "material", id = "kelp_fiber", amount = 5, price = 45 },
 		{ kind = "material", id = "nacre", amount = 1, price = 120 },
 		{ kind = "item", id = "chitin_helm", amount = 1, price = 480 },
+		-- The Tideward cowl is Old Maren's quest gift (the_wider_water);
+		-- the stall sells it to anyone who sailed past her advice.
+		{ kind = "item", id = "tideward_helm", amount = 1, price = 900 },
 	},
 	rotating = {
 		slots = 2,
@@ -75,6 +78,27 @@ Shops.items.brakks_forge = {
 		pool = {
 			{ kind = "material", id = "obsidian_shard", amount = 1, price = 700 },
 			{ kind = "material", id = "magma_core", amount = 1, price = 1200 },
+		},
+	},
+}
+
+-- Quartermaster Hollow's locker: the drowned fleet's salvage, sold by the
+-- book. The Corsair's Rest plate is bought, never forged - the fleet does
+-- not teach outsiders to work its dead (the helm is quest-pinned instead:
+-- ledger_of_teeth).
+Shops.items.hollows_locker = {
+	id = "hollows_locker",
+	stock = {
+		{ kind = "item", id = "corsairs_rest_chest", amount = 1, price = 5200 },
+		{ kind = "item", id = "corsairs_rest_legs", amount = 1, price = 3800 },
+		{ kind = "material", id = "ghost_plank", amount = 2, price = 600 },
+		{ kind = "material", id = "spectral_sailcloth", amount = 1, price = 750 },
+	},
+	rotating = {
+		slots = 1,
+		pool = {
+			{ kind = "material", id = "tarnished_doubloon", amount = 2, price = 520 },
+			{ kind = "material", id = "wraith_essence", amount = 1, price = 950 },
 		},
 	},
 }

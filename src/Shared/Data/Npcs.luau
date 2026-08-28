@@ -132,6 +132,7 @@ Npcs.items.hollow = {
 		"Name and business in the ledger. Everything in this bay is owed to somebody, and I keep the book.",
 		"The crabs have been eating my inventory. Literally. See to it and the fleet remembers its friends.",
 	},
+	shop = "hollows_locker", -- Shops.luau id: the fleet's salvage, armor included
 	quests = { "ledger_of_teeth", "salvage_rights" },
 }
 
