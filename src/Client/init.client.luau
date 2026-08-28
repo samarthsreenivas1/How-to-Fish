@@ -42,7 +42,8 @@ local ORDER = {
 	-- whole client boot (first person, viewmodels, every menu) - so only ever add
 	-- one together with its Controllers/<name>.luau file (2026-08-22 incident).
 	"BaitController", -- no dependencies; active-bait HUD indicator + Q cycle off GetBait/BaitUpdated + the SelectedBaitId attribute
-	"MenuButtonsController", -- after Inventory + Crafting + Admin + Islands: bottom-left menu buttons, ALT frees the cursor
+	"QuestController", -- after CameraController + Progression (pop): the quest log (J) + on-screen tracker off GetQuests/QuestsUpdated/QuestProgress
+	"MenuButtonsController", -- after Inventory + Crafting + Admin + Islands + Quest: bottom-left menu buttons, ALT frees the cursor
 	"CreatureEventController", -- after CombatVfx (camera kick) + Progression (coin pop): enemy states off creature attributes, moments off the CreatureEvent remote
 	"BossHudController", -- no dependencies; the boss health bar off a creature's BossName/Health attributes + rise/down banners off CreatureEvent
 	"RaidHudController", -- no dependencies; raid countdown/wave line + cards off the RaidState remote, filtered to the local island

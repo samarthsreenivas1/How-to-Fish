@@ -32,6 +32,7 @@ local CraftingController = require(script.Parent.CraftingController)
 local InventoryController = require(script.Parent.InventoryController)
 local IslandsController = require(script.Parent.IslandsController)
 local TrophyController = require(script.Parent.TrophyController)
+local QuestController = require(script.Parent.QuestController)
 
 local player = Players.LocalPlayer
 
@@ -64,6 +65,14 @@ local BUTTONS = {
 		hint = "T",
 		color = Color3.fromRGB(40, 120, 110),
 		controller = IslandsController,
+	},
+	{
+		id = "quests",
+		label = "Quests",
+		token = "QUEST",
+		hint = "J",
+		color = Color3.fromRGB(178, 132, 38),
+		controller = QuestController,
 	},
 	{
 		id = "trophies",
