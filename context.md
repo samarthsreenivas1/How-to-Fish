@@ -119,6 +119,7 @@ between sessions.
 | **Real projectiles** (2026-08-27) | built, live | bow/crossbow/harpooner fly their own `_Mag` mesh, not tracers (`ranged.projectile`, 648ba2c) |
 | **Voyage-arc map redesign** (2026-08-27) | built, **unreviewed** | islands scattered across one huge sea (legs 4,000→8,700 studs, arc around the cove), boat speeds/seaworthiness retuned per leg, sailing compass on the helm — see "The voyage-arc map" |
 | **Boss redesign: 6 unique movesets + gimmicks + models** (2026-08-27) | built, **unreviewed / creatures.glb re-import pending** | e84f7e9 (engine+data+client) + ba93efb (art): every post-cove boss has its own attack book on a new parameterized boss arsenal, a one-of-a-kind gimmick, and a bespoke Blender model — see "The boss redesign" |
+| **Beyond the Cast: NPCs/quests/collections/economy** (2026-08-28) | built, **unreviewed**, NO re-import | b918da0..b119701: 7 NPCs w/ dialog+shops, 14 quests (log J + tracker), fishing bestiary (N) w/ set rewards, trinket charm slot + 4 live perks, coin-sink shops w/ daily rotation — see "Beyond the Cast" |
 | **SWAMP RESTART, step 1: bare grey landform** (2026-08-27) | built, **awaiting Studio review / island_pack.glb re-import pending** | 7165cf4: the shipped fen REJECTED and deleted wholesale; `build_swamp` now emits only a grey `Swamp_Base` dome — step-by-step rebuild, each step reviewed before the next — see "The swamp restart" |
 | More archetypes (charger/spitter), style/juggle, arena | not started | see Known gaps |
 
@@ -782,6 +783,62 @@ boat." Pure code/data — NO re-imports owed by this slice.
 - **Unreviewed in Studio.** Likely tuning asks: leg lengths / travel-time
   feel, boat top speeds, compass size/placement, whether locked islands
   should show on the compass at all, marker colours.
+
+### Beyond the Cast: NPCs, quests, collections, economy (2026-08-28, unreviewed)
+
+The approved plan (user picked "NPCs + quests first") landed in full - 12
+slices, commits b918da0..b119701, NO Studio re-import needed (all
+code+data; live on next boot). The plan file:
+`~/.claude/plans/cross-session-message-from-uds-tmp-cc-s-swirling-kurzweil.md`.
+
+- **NPCs** (`Shared/Data/Npcs.luau` + `NpcService`, ORDER last): seven
+  named characters, one per island incl. Old Maren on the cove, placed
+  relative to each island's SPAWN (probed Y; un-imported islands skip).
+  Bodies = repainted CreaturePack bipeds via CreatureModel.build, parked
+  OUTSIDE the Creatures folder - no AI/combat, anchored, non-collide.
+  ProximityPrompt -> server pushes dialog PANES over `NpcDialog`; client
+  (`NpcDialogController`) is a dumb pane renderer echoing choice ids over
+  `NpcChoice`; server re-validates distance + state per choice. The pane
+  machine is flat (greeting | offer | shop) BY RULE - never a tree.
+- **Quests** (`Shared/Data/Quests.luau` + `QuestService`, ORDER between
+  Bait and Fishing): typed objectives (catch/kill/craft/deliver/visit),
+  prereq + level gates, `repeatable = "daily"` (UTC-day gate off the
+  completed timestamp). Progress funnel = `QuestService.notify` from
+  exactly THREE one-line sites (resolveCast catch, CraftingService craft,
+  and its own Killed subscription + 3s islandAt poller for visit - both
+  arrival paths count). An event ticks EVERY matching objective.
+  Persisted as the `quests` slice. 14 quests: Maren's 3-quest cove chain
+  + 2 per island + 2 dailies. Client: quest log (J / QUESTS tile) +
+  top-left tracker (`QuestController`).
+- **Collections** (`CollectionService` + `CollectionsController`): an
+  angler's log (kills don't count) - count / best grade / first-landed
+  per species, `collections` slice (shape `{species, completedWaters}`;
+  B1-era flat shape accepted on load forever). "New species!" toast;
+  Fishing Log modal (N / LOG tile) with one tab per waters and ???
+  silhouettes; island SET completion pays once (coins + signature mats)
+  and sets the permanent `Collection_<waters>` attribute - never revoked.
+- **Trinkets** (`Shared/Data/Trinkets.luau`): the charm slot
+  (`EquippedTrinketId`, worn not held - no hand-kind interplay), crafted
+  via the new CATEGORIES descriptor table in CraftingService (the C1
+  refactor: adding a craftable category = one descriptor + one client
+  TAB). Five charms sinking the thin mats; perk rule enforced - ONE
+  field, ONE reader, and a field only ships WITH its consumer
+  (`Trinkets.wornPerk` is the shared lookup): coinBonus
+  (ProgressionService.onKilled), rareLuck (FishingService.rollCreature -
+  now takes player), damageBonus (CombatService.landHit, melee+ranged),
+  lootBonus (MaterialService.onKilled). reelWindow deliberately
+  unshipped. Client: Charms tab, WORN tag.
+- **Shops** (`Shared/Data/Shops.luau`, panes in NpcService): the coin
+  SINK. Fixed shelves + `rotating = {slots, pool}` drawn per UTC day by
+  a Random seeded from day+shopId - deterministic, buys re-derive the
+  shelves, nothing stored. Buys send a slot INDEX only. Maren, Halvard
+  (ice), Brakk (volcano) trade.
+- **Persistence**: three additive DataService slices + one inventory
+  field (equippedTrinket); all id-validated on load; v1 profiles safe.
+- **Unreviewed in Studio.** Likely tuning: NPC placements/facing vs the
+  real islands, quest counts/rewards vs the TTK re-curve, shop prices
+  (economy rule: a normal session should out-earn the shop), tracker
+  position, dialog sizing, NPC body species choices.
 
 ### The swamp restart (2026-08-27, step 1 in the tree)
 
