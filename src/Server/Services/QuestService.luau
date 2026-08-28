@@ -22,6 +22,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Islands = require(Shared.Config.Islands)
 local Quests = require(Shared.Data.Quests)
 local Remotes = require(Shared.Net.Remotes)
 local Progression = require(Shared.Modules.Progression)
@@ -29,6 +30,7 @@ local Progression = require(Shared.Modules.Progression)
 local DataService = require(script.Parent.DataService)
 local MaterialService = require(script.Parent.MaterialService)
 local BaitService = require(script.Parent.BaitService)
+local CreatureService = require(script.Parent.CreatureService)
 
 -- ProgressionService sits BELOW this service in ORDER (it must boot after
 -- CreatureService to hear Killed), so it is required lazily at reward time:
@@ -45,6 +47,18 @@ end
 local QuestService = {}
 
 local state: { [Player]: { active: { [string]: any }, completed: { [string]: number } } } = {}
+
+-- Which island each player was last seen standing on, for the "visit"
+-- objective: the poller below notifies on CHANGE, so a quest accepted while
+-- already standing there still needs a genuine arrival... except it
+-- doesn't - the poller seeds nil, so the first tick after accept counts
+-- the island you're on. Deliberate: "set foot on the fen" reading as
+-- already-done for someone standing in the fen is correct, not a bug.
+local lastIsland: { [Player]: string? } = {}
+
+-- How often the visit poller looks. Islands.islandAt is pure math over a
+-- handful of entries; 3s is generous for an objective about arriving.
+local VISIT_POLL = 3.0
 
 -- ============================================================ replication
 
@@ -304,6 +318,7 @@ function QuestService.init()
 		serialize = serializeSlice,
 		release = function(player: Player)
 			state[player] = nil
+			lastIsland[player] = nil
 		end,
 	})
 	Remotes.GetQuests.OnServerInvoke = function(player: Player)
@@ -316,6 +331,37 @@ function QuestService.start()
 	for _, player in Players:GetPlayers() do
 		onPlayerAdded(player)
 	end
+
+	-- Kills: subscribe to the Killed event ourselves (the Progression /
+	-- Material precedent) - zero edits to combat code. `killer` may be nil
+	-- (an explosion chain, a raid clear); only a real player progresses.
+	CreatureService.Killed.Event:Connect(function(row, _grade, killer)
+		if typeof(killer) == "Instance" and killer:IsA("Player") then
+			QuestService.notify("kill", { player = killer, species = row.id, rarity = row.rarity })
+		end
+	end)
+
+	-- Visits: poll each player's island and notify on change. This catches
+	-- BOTH arrival paths - the travel menu and sailing in by boat - with no
+	-- edits to WorldService.
+	task.spawn(function()
+		while true do
+			task.wait(VISIT_POLL)
+			for _, player in Players:GetPlayers() do
+				if state[player] then
+					local character = player.Character
+					local root = character and character:FindFirstChild("HumanoidRootPart")
+					if root then
+						local here = Islands.islandAt(root.Position)
+						if here and here ~= lastIsland[player] then
+							lastIsland[player] = here
+							QuestService.notify("visit", { player = player, island = here })
+						end
+					end
+				end
+			end
+		end
+	end)
 end
 
 return QuestService

@@ -65,4 +65,36 @@ Quests.items.marens_wager = {
 	rewards = { coins = 150, xp = 120 },
 }
 
+-- The follow-up: the cove's crabs have been at her drying racks.
+Quests.items.teeth_of_the_cove = {
+	id = "teeth_of_the_cove",
+	name = "Teeth of the Cove",
+	giver = "old_maren",
+	blurb = "The snapjaws have chewed through two of my racks this week. Thin them out - and while you're wading, land me something with a bit of shine to it.",
+	prereq = "marens_wager",
+	objectives = {
+		{ type = "kill", count = 4, species = "snapjaw_crab" },
+		{ type = "catch", count = 2, rarity = "Rare" },
+	},
+	rewards = { coins = 320, xp = 260, materials = { driftwood = 4 } },
+}
+
+-- The chain's capstone: she points you at the wider world. Craft (the
+-- bamboo rod is the first recipe anyone can reach), bring her kelp for her
+-- racks, and set foot on the fen - every objective type is live from here.
+Quests.items.the_wider_water = {
+	id = "the_wider_water",
+	name = "The Wider Water",
+	giver = "old_maren",
+	blurb = "You've outgrown my little cove, love. Lash yourself a proper rod, bring me kelp for the racks before you go - and when you stand in the Blackmire mud, think of old Maren.",
+	prereq = "teeth_of_the_cove",
+	requiresLevel = 5,
+	objectives = {
+		{ type = "craft", itemId = "bamboo_rod" },
+		{ type = "deliver", materials = { kelp_fiber = 6 } },
+		{ type = "visit", island = "swamp" },
+	},
+	rewards = { coins = 500, xp = 420 },
+}
+
 return Quests

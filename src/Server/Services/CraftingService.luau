@@ -28,6 +28,7 @@ local DataService = require(script.Parent.DataService)
 local InventoryService = require(script.Parent.InventoryService)
 local MaterialService = require(script.Parent.MaterialService)
 local ProgressionService = require(script.Parent.ProgressionService)
+local QuestService = require(script.Parent.QuestService)
 
 local CraftingService = {}
 
@@ -123,6 +124,8 @@ local function onRequestCraft(player: Player, itemId)
 	else
 		InventoryService.grantItem(player, itemId)
 	end
+	-- The quest funnel: one line, the whole hook (Beyond the Cast A4).
+	QuestService.notify("craft", { player = player, itemId = itemId })
 	Remotes.CraftResult:FireClient(player, { ok = true, itemId = itemId })
 end
 
