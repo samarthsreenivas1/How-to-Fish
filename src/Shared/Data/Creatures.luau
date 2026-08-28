@@ -200,6 +200,9 @@ Creatures.items.bass = {
 	rarity = "Uncommon",
 	archetype = "charger",
 	health = 180,
+	drops = {
+		materials = { tidehide = { 1, 1 }, fish_scale = { 1, 2 } },
+	},
 	body = {
 		model = "FishPack",
 		species = "Bass",
@@ -269,6 +272,9 @@ Creatures.items.catfish = {
 	rarity = "Uncommon",
 	archetype = "burrower",
 	health = 240,
+	drops = {
+		materials = { tidehide = { 1, 1 }, fish_scale = { 1, 2 } },
+	},
 	body = {
 		model = "FishPack",
 		species = "Catfish",
@@ -410,7 +416,7 @@ Creatures.items.drowned_deckhand = {
 	archetype = "shambler",
 	health = 300,
 	drops = {
-		materials = { cursed_bone = { 1, 2 }, pearl = { 1, 1 } },
+		materials = { brine_sinew = { 1, 1 }, cursed_bone = { 1, 2 }, pearl = { 1, 1 } },
 	},
 	body = {
 		model = "CreaturePack",
@@ -432,6 +438,9 @@ Creatures.items.tuna = {
 	rarity = "Epic",
 	archetype = "charger",
 	health = 600,
+	drops = {
+		materials = { tidehide = { 1, 2 }, fish_scale = { 3, 4 }, pearl = { 1, 2 } },
+	},
 	body = {
 		model = "FishPack",
 		species = "Tuna",
@@ -452,7 +461,7 @@ Creatures.items.drowned_angler = {
 	archetype = "shambler",
 	health = 500,
 	drops = {
-		materials = { cursed_bone = { 2, 3 }, barnacle_chitin = { 1, 2 } },
+		materials = { brine_sinew = { 1, 2 }, cursed_bone = { 2, 3 }, barnacle_chitin = { 1, 2 } },
 		items = { { id = "scale_blade", chance = 0.1 } },
 	},
 	body = {
@@ -504,7 +513,7 @@ Creatures.items.gullet_cod = {
 	archetype = "spitter",
 	health = 200,
 	drops = {
-		materials = { fish_scale = { 1, 2 } },
+		materials = { brine_sinew = { 1, 1 }, fish_scale = { 1, 2 } },
 	},
 	body = {
 		model = "CreaturePack",
@@ -771,7 +780,7 @@ Creatures.items.emberfin_perch = {
 	health = 420,
 	waters = "volcano",
 	rewards = { coins = { 24, 48 }, xp = 72 },
-	drops = { materials = { ember = { 1, 2 } } },
+	drops = { materials = { cinder_scale = { 1, 1 }, ember = { 1, 2 } } },
 	body = {
 		model = "FishPack",
 		species = "Emberfin",
@@ -809,7 +818,7 @@ Creatures.items.magma_guppy = {
 	health = 470,
 	waters = "volcano",
 	rewards = { coins = { 24, 48 }, xp = 72 },
-	drops = { materials = { ember = { 1, 2 } } },
+	drops = { materials = { cinder_scale = { 1, 1 }, ember = { 1, 2 } } },
 	body = {
 		model = "FishPack",
 		species = "MagmaGuppy",
@@ -866,7 +875,7 @@ Creatures.items.pyre_salmon = {
 	health = 2130,
 	waters = "volcano",
 	rewards = { coins = { 210, 330 }, xp = 540 },
-	drops = { materials = { magma_core = { 1, 1 }, obsidian_shard = { 1, 2 } } },
+	drops = { materials = { cinder_scale = { 1, 2 }, magma_core = { 1, 1 }, obsidian_shard = { 1, 2 } } },
 	body = {
 		model = "FishPack",
 		species = "PyreSalmon",
@@ -981,7 +990,7 @@ Creatures.items.obsidian_shardback = {
 	health = 1890,
 	waters = "volcano",
 	rewards = { coins = { 210, 330 }, xp = 540 },
-	drops = { materials = { obsidian_shard = { 2, 3 } } },
+	drops = { materials = { basalt_weave = { 1, 2 }, obsidian_shard = { 2, 3 } } },
 	body = {
 		model = "CreaturePack",
 		species = "Shardback",
@@ -1026,7 +1035,7 @@ Creatures.items.lodestone_eel = {
 	health = 2840,
 	waters = "volcano",
 	rewards = { coins = { 540, 840 }, xp = 1320 },
-	drops = { materials = { magma_core = { 1, 1 }, obsidian_shard = { 1, 2 } } },
+	drops = { materials = { basalt_weave = { 1, 2 }, magma_core = { 1, 1 }, obsidian_shard = { 1, 2 } } },
 	body = {
 		model = "CreaturePack",
 		species = "LodestoneEel",
@@ -1049,7 +1058,7 @@ Creatures.items.slagheart_golem = {
 	health = 2730,
 	waters = "volcano",
 	rewards = { coins = { 540, 840 }, xp = 1320 },
-	drops = { materials = { magma_core = { 1, 2 }, obsidian_shard = { 2, 3 } } },
+	drops = { materials = { basalt_weave = { 1, 3 }, magma_core = { 1, 2 }, obsidian_shard = { 2, 3 } } },
 	body = {
 		model = "CreaturePack",
 		species = "SlagGolem",
@@ -1169,7 +1178,7 @@ Creatures.items.mudwhisker_catfish = {
 	health = 165,
 	waters = "swamp",
 	rewards = { coins = { 8, 16 }, xp = 24 },
-	drops = { materials = { bog_iron = { 1, 2 } } },
+	drops = { materials = { mire_hide = { 1, 1 }, bog_iron = { 1, 2 } } },
 	body = {
 		model = "FishPack",
 		species = "Catfish",
@@ -1250,7 +1259,7 @@ Creatures.items.croakjaw_toad = {
 	health = 300,
 	waters = "swamp",
 	rewards = { coins = { 24, 40 }, xp = 70 },
-	drops = { materials = { gator_scute = { 1, 1 } } },
+	drops = { materials = { mire_hide = { 1, 1 }, gator_scute = { 1, 1 } } },
 	body = {
 		model = "CreaturePack",
 		species = "CroakjawToad",
@@ -1290,7 +1299,7 @@ Creatures.items.snagtooth_gator = {
 	health = 620,
 	waters = "swamp",
 	rewards = { coins = { 70, 110 }, xp = 180 },
-	drops = { materials = { gator_scute = { 1, 2 } } },
+	drops = { materials = { mire_hide = { 1, 2 }, gator_scute = { 1, 2 } } },
 	body = {
 		model = "CreaturePack",
 		species = "SnagtoothGator",
@@ -1334,7 +1343,7 @@ Creatures.items.dread_dragonfly = {
 	health = 440,
 	waters = "swamp",
 	rewards = { coins = { 70, 110 }, xp = 180 },
-	drops = { materials = { wisp_light = { 1, 1 }, fish_scale = { 1, 2 } } },
+	drops = { materials = { fen_chitin = { 1, 1 }, wisp_light = { 1, 1 }, fish_scale = { 1, 2 } } },
 	body = {
 		model = "CreaturePack",
 		species = "DreadDragonfly",
@@ -1354,7 +1363,7 @@ Creatures.items.sunken_trapper = {
 	health = 560,
 	waters = "swamp",
 	rewards = { coins = { 70, 110 }, xp = 180 },
-	drops = { materials = { wisp_light = { 1, 1 }, pearl = { 1, 1 } } },
+	drops = { materials = { fen_chitin = { 1, 2 }, wisp_light = { 1, 1 }, pearl = { 1, 1 } } },
 	body = {
 		model = "CreaturePack",
 		species = "SunkenTrapper",
@@ -1375,7 +1384,7 @@ Creatures.items.fen_serpent = {
 	health = 1050,
 	waters = "swamp",
 	rewards = { coins = { 180, 280 }, xp = 440 },
-	drops = { materials = { fen_venom = { 1, 2 } } },
+	drops = { materials = { fen_chitin = { 1, 2 }, fen_venom = { 1, 2 } } },
 	body = {
 		model = "CreaturePack",
 		species = "FenSerpent",
@@ -1515,7 +1524,7 @@ Creatures.items.snowdrift_sculpin = {
 	health = 240,
 	waters = "ice",
 	rewards = { coins = { 14, 28 }, xp = 42 },
-	drops = { materials = { rime_pelt = { 1, 1 }, glacier_shard = { 1, 1 } } },
+	drops = { materials = { rimewool = { 1, 1 }, rime_pelt = { 1, 1 }, glacier_shard = { 1, 1 } } },
 	body = {
 		model = "FishPack",
 		species = "SnowdriftSculpin",
@@ -1554,7 +1563,7 @@ Creatures.items.frostbite_pup = {
 	health = 580,
 	waters = "ice",
 	rewards = { coins = { 42, 70 }, xp = 122 },
-	drops = { materials = { rime_pelt = { 1, 2 } } },
+	drops = { materials = { rimewool = { 1, 1 }, rime_pelt = { 1, 2 } } },
 	body = {
 		model = "CreaturePack",
 		species = "FrostbitePup",
@@ -1576,7 +1585,7 @@ Creatures.items.hailfin_skua = {
 	health = 540,
 	waters = "ice",
 	rewards = { coins = { 42, 70 }, xp = 122 },
-	drops = { materials = { rime_pelt = { 1, 2 }, glacier_shard = { 1, 1 } } },
+	drops = { materials = { rimewool = { 1, 1 }, rime_pelt = { 1, 2 }, glacier_shard = { 1, 1 } } },
 	body = {
 		model = "CreaturePack",
 		species = "HailfinSkua",
@@ -1617,7 +1626,7 @@ Creatures.items.glacial_lurker = {
 	health = 1150,
 	waters = "ice",
 	rewards = { coins = { 122, 192 }, xp = 315 },
-	drops = { materials = { everice = { 1, 2 } } },
+	drops = { materials = { everfrost_plate = { 1, 2 }, everice = { 1, 2 } } },
 	body = {
 		model = "CreaturePack",
 		species = "GlacialLurker",
@@ -1638,7 +1647,7 @@ Creatures.items.frozen_mariner = {
 	health = 1250,
 	waters = "ice",
 	rewards = { coins = { 122, 192 }, xp = 315 },
-	drops = { materials = { everice = { 1, 2 }, rime_pelt = { 1, 2 } } },
+	drops = { materials = { everfrost_plate = { 1, 2 }, everice = { 1, 2 }, rime_pelt = { 1, 2 } } },
 	body = {
 		model = "CreaturePack",
 		species = "FrozenMariner",
@@ -1682,7 +1691,7 @@ Creatures.items.icevein_pike = {
 	health = 1900,
 	waters = "ice",
 	rewards = { coins = { 315, 490 }, xp = 770 },
-	drops = { materials = { aurora_essence = { 1, 2 } } },
+	drops = { materials = { everfrost_plate = { 1, 3 }, aurora_essence = { 1, 2 } } },
 	body = {
 		model = "CreaturePack",
 		species = "IceveinPike",
@@ -1830,7 +1839,7 @@ Creatures.items.gulper_eel = {
 	health = 2000,
 	waters = "gloom",
 	rewards = { coins = { 120, 200 }, xp = 350 },
-	drops = { materials = { gloom_scale = { 2, 3 } } },
+	drops = { materials = { duskhide = { 1, 1 }, gloom_scale = { 2, 3 } } },
 	body = {
 		model = "CreaturePack",
 		species = "GulperEel",
@@ -1851,7 +1860,7 @@ Creatures.items.flashbulb_squid = {
 	health = 1850,
 	waters = "gloom",
 	rewards = { coins = { 120, 200 }, xp = 350 },
-	drops = { materials = { lantern_gland = { 1, 1 }, gloom_scale = { 1, 2 } } },
+	drops = { materials = { abyss_silk = { 1, 1 }, lantern_gland = { 1, 1 }, gloom_scale = { 1, 2 } } },
 	body = {
 		model = "CreaturePack",
 		species = "FlashbulbSquid",
@@ -1894,7 +1903,7 @@ Creatures.items.lanternjaw_angler = {
 	health = 3400,
 	waters = "gloom",
 	rewards = { coins = { 350, 550 }, xp = 900 },
-	drops = { materials = { lantern_gland = { 1, 2 } } },
+	drops = { materials = { abyss_silk = { 1, 2 }, lantern_gland = { 1, 2 } } },
 	body = {
 		model = "CreaturePack",
 		species = "LanternjawAngler",
@@ -1916,7 +1925,7 @@ Creatures.items.vampire_squid = {
 	health = 3100,
 	waters = "gloom",
 	rewards = { coins = { 350, 550 }, xp = 900 },
-	drops = { materials = { lantern_gland = { 1, 2 }, gloom_scale = { 2, 3 } } },
+	drops = { materials = { duskhide = { 1, 2 }, lantern_gland = { 1, 2 }, gloom_scale = { 2, 3 } } },
 	body = {
 		model = "CreaturePack",
 		species = "VampireSquid",
@@ -1958,7 +1967,7 @@ Creatures.items.void_ray = {
 	health = 4200,
 	waters = "gloom",
 	rewards = { coins = { 900, 1400 }, xp = 2200 },
-	drops = { materials = { abyss_ichor = { 1, 2 } } },
+	drops = { materials = { abyss_silk = { 1, 2 }, abyss_ichor = { 1, 2 } } },
 	body = {
 		model = "CreaturePack",
 		species = "VoidRay",
@@ -1979,7 +1988,7 @@ Creatures.items.silt_stalker = {
 	health = 4500,
 	waters = "gloom",
 	rewards = { coins = { 900, 1400 }, xp = 2200 },
-	drops = { materials = { abyss_ichor = { 1, 2 }, trench_chitin = { 2, 3 } } },
+	drops = { materials = { duskhide = { 1, 3 }, abyss_ichor = { 1, 2 }, trench_chitin = { 2, 3 } } },
 	body = {
 		model = "CreaturePack",
 		species = "SiltStalker",

@@ -383,6 +383,112 @@ Materials.items.maelstrom_core = {
 
 -- Stable display order for the HUD / crafting list (table iteration order
 -- isn't guaranteed). Basic first, then rare, then the creature drops by island.
+-- ============================================================ armor stock (2026-08-28)
+-- The armor system's raw materials (Shared/Data/Armor.luau recipes): hides,
+-- weaves and plates skinned off the islands' hostiles. Two per band, an
+-- everyday piece-stock (Uncommon) and the set's structural stock (Rare+),
+-- so an armor recipe reads "farm these two creatures on this island".
+
+Materials.items.tidehide = {
+	id = "tidehide",
+	name = "Tidehide",
+	description = "Salt-cured skin off the cove's bigger catches. Tans into a leather that shrugs off spray and worse.",
+	tier = "rare",
+	rarity = "Uncommon",
+	icon = "",
+	color = Color3.fromRGB(178, 142, 96),
+}
+
+Materials.items.brine_sinew = {
+	id = "brine_sinew",
+	name = "Brine Sinew",
+	description = "Cord stripped from the drowned. It never dried out, and it never will - the stitch that holds armor together.",
+	tier = "rare",
+	rarity = "Rare",
+	icon = "",
+	color = Color3.fromRGB(120, 144, 132),
+}
+
+Materials.items.mire_hide = {
+	id = "mire_hide",
+	name = "Mirehide",
+	description = "Gator leather with the peat still in it. Waterproof the way only the fen knows how.",
+	tier = "rare",
+	rarity = "Uncommon",
+	icon = "",
+	color = Color3.fromRGB(104, 96, 58),
+}
+
+Materials.items.fen_chitin = {
+	id = "fen_chitin",
+	name = "Fen Chitin",
+	description = "Segmented shell plate off the marsh's armoured things. Light, springy, and it does not rot.",
+	tier = "rare",
+	rarity = "Rare",
+	icon = "",
+	color = Color3.fromRGB(84, 110, 70),
+}
+
+Materials.items.rimewool = {
+	id = "rimewool",
+	name = "Rimewool",
+	description = "Underfur combed from the reach's pups and skuas, frost and all. Warm enough to sleep on the ice sheet.",
+	tier = "rare",
+	rarity = "Uncommon",
+	icon = "",
+	color = Color3.fromRGB(224, 234, 242),
+}
+
+Materials.items.everfrost_plate = {
+	id = "everfrost_plate",
+	name = "Everfrost Plate",
+	description = "A slab of ice off something that fought back, and it has not begun to melt. Armor-smiths pray it never does.",
+	tier = "rare",
+	rarity = "Rare",
+	icon = "",
+	color = Color3.fromRGB(148, 194, 232),
+}
+
+Materials.items.cinder_scale = {
+	id = "cinder_scale",
+	name = "Cinderscale",
+	description = "A scale that cooled with the fire still inside. Warm in the hand; a mail shirt of them walks through embers.",
+	tier = "rare",
+	rarity = "Uncommon",
+	icon = "",
+	color = Color3.fromRGB(214, 106, 44),
+}
+
+Materials.items.basalt_weave = {
+	id = "basalt_weave",
+	name = "Basaltweave",
+	description = "Stone fibre teased off the caldera's golems and shardbacks, woven like cloth. Cloth that stops a blade.",
+	tier = "rare",
+	rarity = "Rare",
+	icon = "",
+	color = Color3.fromRGB(66, 68, 82),
+}
+
+Materials.items.duskhide = {
+	id = "duskhide",
+	name = "Duskhide",
+	description = "Skin from the trench's stalkers, black past black. Light falls into it and does not come out.",
+	tier = "rare",
+	rarity = "Rare",
+	icon = "",
+	color = Color3.fromRGB(42, 40, 56),
+}
+
+Materials.items.abyss_silk = {
+	id = "abyss_silk",
+	name = "Abyss Silk",
+	description = "Spun by nothing anyone has seen alive. Threads of the dark itself; armor lined with it weighs nothing at all.",
+	tier = "rare",
+	rarity = "Epic",
+	icon = "",
+	color = Color3.fromRGB(96, 74, 140),
+}
+
 Materials.order = {
 	"driftwood",
 	"kelp_fiber",
@@ -416,6 +522,17 @@ Materials.order = {
 	"riptide_scale",
 	"thunder_pearl",
 	"maelstrom_core",
+	-- armor stock (2026-08-28)
+	"tidehide",
+	"brine_sinew",
+	"mire_hide",
+	"fen_chitin",
+	"rimewool",
+	"everfrost_plate",
+	"cinder_scale",
+	"basalt_weave",
+	"duskhide",
+	"abyss_silk",
 }
 
 return Materials
