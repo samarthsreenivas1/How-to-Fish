@@ -23,6 +23,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Materials = require(Shared.Data.Materials)
+local Trinkets = require(Shared.Data.Trinkets)
 local Remotes = require(Shared.Net.Remotes)
 local Tuning = require(Shared.Config.Tuning)
 
@@ -126,6 +127,9 @@ local function onKilled(row, grade: string, killer: Player?, info)
 	if type(info) == "table" and type(info.bounty) == "number" then
 		mult *= info.bounty
 	end
+
+	-- The worn trinket's lootBonus (Trinkets.luau) - THE one consumer.
+	mult *= 1 + (Trinkets.wornPerk(killer, "lootBonus") or 0)
 
 	local batch = {}
 	for matId, range in table_ do

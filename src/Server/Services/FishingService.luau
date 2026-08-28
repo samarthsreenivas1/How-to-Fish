@@ -37,6 +37,7 @@ local Tuning = require(Shared.Config.Tuning)
 local World = require(Shared.Config.World)
 
 local BaitService = require(script.Parent.BaitService)
+local Trinkets = require(Shared.Data.Trinkets)
 local QuestService = require(script.Parent.QuestService)
 local CollectionService = require(script.Parent.CollectionService)
 local BossService = require(script.Parent.BossService)
@@ -162,12 +163,14 @@ local function allowedRows(bucket, perk, effect, waters: string?)
 	return rows
 end
 
-local function rollCreature(rodData, effect, bonusLuck: number?, waters: string?)
+local function rollCreature(player: Player, rodData, effect, bonusLuck: number?, waters: string?)
 	-- Rarity is rolled at cast time now, before any minigame result exists (so
 	-- the minigame can be chosen by it - see onRequestCast). Luck is the rod's
 	-- stat times the selected bait's luck multiplier times any streak bonus
 	-- (Chum Line); the minigame still decides the grade, not the rarity.
 	local luck = rodData.stats.luck * ((effect and effect.luck) or 1) * (1 + (bonusLuck or 0))
+	-- The worn trinket's rareLuck (Trinkets.luau) - THE one consumer.
+	luck *= 1 + (Trinkets.wornPerk(player, "rareLuck") or 0)
 
 	local perk = rodData.perk
 	local floor = if perk and perk.minRarity then rarityIndex(perk.minRarity) else 1
@@ -291,7 +294,7 @@ local function onCreatureKilled(_row, _grade: string, killer: Player?, info)
 
 	-- Always another hostile, and always from the same water the first one came
 	-- out of - a chain started in the crater must not summon sea creatures.
-	local next_ = rollCreature(rodData, { hostileOnly = true }, TB.CHAIN_LUCK_STEP * link, info.chainWaters)
+	local next_ = rollCreature(killer, rodData, { hostileOnly = true }, TB.CHAIN_LUCK_STEP * link, info.chainWaters)
 	if not next_ then
 		return
 	end
@@ -564,7 +567,7 @@ local function onRequestCast(player: Player, claimedLanding)
 	-- minigame falls to the Common tier (the reel). The cast is still played
 	-- and still graded - the grade scales the haul.
 	local salvage = baitEffect and baitEffect.salvage
-	local creature = if salvage then nil else rollCreature(rodData, baitEffect, streakBonus, waters)
+	local creature = if salvage then nil else rollCreature(player, rodData, baitEffect, streakBonus, waters)
 	local rarity = if creature then creature.rarity else "Common"
 	local kind = Minigames.pickForRarity(rarity, seed)
 	local mod = Minigames.get(kind)

@@ -31,6 +31,7 @@ local RunService = game:GetService("RunService")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Equipment = require(Shared.Config.Equipment)
 local Tuning = require(Shared.Config.Tuning)
+local Trinkets = require(Shared.Data.Trinkets)
 local Weapons = require(Shared.Data.Weapons)
 local Remotes = require(Shared.Net.Remotes)
 local ShotAim = require(Shared.Modules.ShotAim)
@@ -137,6 +138,9 @@ local function landHit(player: Player, weapon, target, from: Vector3, opts): num
 		end
 	end
 
+	-- The worn trinket's damageBonus (Trinkets.luau) - THE one consumer;
+	-- landHit is shared by melee and ranged, so both benefit.
+	damageMult *= 1 + (Trinkets.wornPerk(player, "damageBonus") or 0)
 	local amount = math.floor(math.random(weapon.damage[1], weapon.damage[2]) * damageMult + 0.5)
 	local remaining = CreatureService.damage(target, amount, player)
 	if shock > 0 then
