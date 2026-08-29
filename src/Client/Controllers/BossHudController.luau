@@ -11,6 +11,20 @@
 -- CreatureEvent remote (bossRise / bossDown, with the boss's name and what
 -- the win unlocked) - the same remote CreatureEventController draws from.
 --
+-- THE SEAL (2026-08-29). Two of the bosses cannot simply be attacked, and a
+-- bar that just sits there while you empty a magazine into an invulnerable
+-- boss is a bar that lies. Both cases are readable from data the client
+-- already has, so the bar carries the fight's own rule:
+--   * entrenched (Brinejaw) - `Bosses.items.*.entrenched`. It is untargetable
+--     the whole time it holds its perch and only opens for an EARNED stagger,
+--     which the server announces with the Exposed attribute on the model.
+--   * a tentacle ring (the Kraken) - `Bosses.items.*.parts`. The head is
+--     refused while any arm stands; the exposed / regrow events that already
+--     draw its cards below are the same two edges, so they drive the bar too.
+-- Anything else is an ordinary boss you can hit whenever you like, and its
+-- bar behaves exactly as it did before - the seal must never read on a boss
+-- that hasn't got one.
+--
 -- Sits below the fishing grade banner (y=40) and the level-up banner (y=84)
 -- so the three never overlap.
 
@@ -21,6 +35,7 @@ local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Remotes = require(Shared.Net.Remotes)
+local Bosses = require(Shared.Data.Bosses)
 
 local Theme = require(script.Parent.Parent.UI.Theme)
 
@@ -34,6 +49,8 @@ local ATTR_BOSS_NAME = "BossName"
 local ATTR_HEALTH = "Health"
 local ATTR_MAX_HEALTH = "MaxHealth"
 local ATTR_ENRAGED = "Enraged"
+local ATTR_CREATURE_ID = "CreatureId" -- the Creatures row id, our link into Bosses
+local ATTR_EXPOSED = "Exposed" -- an entrenched boss's earned window is open
 
 -- ---------------------------------------------------------------- layout
 
@@ -48,25 +65,78 @@ local BAR_RAGE_COLOR = Color3.fromRGB(255, 80, 60)
 local BAR_BACK = Color3.fromRGB(14, 18, 24)
 local BAR_FILL_TIME = 0.18
 
+-- Sealed: cold plate, and the fill goes half-lit - the bar reads as switched
+-- off, which is exactly what the health number is doing. Open: the gold the
+-- exposure card already speaks in, at full brightness with the track's edge
+-- breathing so it's caught out of the corner of an eye mid-dodge.
+local BAR_SEALED_COLOR = Color3.fromRGB(126, 142, 160)
+local BAR_SEALED_FADE = 0.2
+local BAR_SEALED_STROKE = Color3.fromRGB(178, 194, 212)
+local BAR_OPEN_COLOR = Theme.Color.gold
+local STROKE_THIN = 1.5
+local STROKE_OPEN = 3
+local STROKE_PULSE = 4.5
+local PULSE_TIME = 0.5
+local STATUS_SIZE = 12
+
+-- What the bar says in each state. Kept to the truth the engine actually
+-- enforces: an entrenched boss refuses every hit until it staggers, and a
+-- ringed head refuses every hit until the last arm is down.
+local STATUS_OPEN = "EXPOSED - STRIKE NOW"
+local STATUS_SEALED = {
+	entrenched = "SEALED - HITS DO NOTHING UNTIL IT STAGGERS",
+	ring = "SEALED - BRING THE ARMS DOWN FIRST",
+}
+
 local CARD_Y = 0.3 -- of the screen, for the rise / cleared cards
 local CARD_TITLE_SIZE = 38
 local CARD_SUB_SIZE = 18
 local CARD_IN = 0.45
 local CARD_HOLD = 2.6
 local CARD_OUT = 0.6
+-- The stagger card is on a short hold on purpose: the shortest punish window
+-- in the game is 2.2 s (Brinejaw's slam on bare sand), and this has to be off
+-- the screen inside that - both so it never says "strike now" at a boss that
+-- has already stood back up, and so it isn't in the way while you spend it.
+local CARD_HOLD_SHORT = 1.15
 
 -- ---------------------------------------------------------------- state
 
 local gui: ScreenGui
 local barFrame: Frame
 local barFill: Frame
+local barStroke: UIStroke
 local nameLabel: TextLabel
+local statusLabel: TextLabel
 local cardTitle: TextLabel
 local cardSub: TextLabel
 
 local current: Model? = nil
 local connections: { RBXScriptConnection } = {}
 local cardToken = 0
+
+-- The tracked boss's Bosses row, its ward ("entrenched" / "ring" / nil for a
+-- boss you can just hit), the ring's window if it has one, and the seal state
+-- the bar is currently drawn in - the last of those only so the open EDGE can
+-- raise a card without every health tick raising another.
+local currentRow = nil
+local ward: string? = nil
+local ringOpen = false
+local sealDrawn: string? = nil
+local pulses: { Tween } = {}
+
+-- The cards live at the bottom of the file, but a window opening is a card
+-- and that is noticed up here in the bar's refresh.
+local showCard
+
+-- Creature row id -> its Bosses entry. The boss models carry CreatureId, and
+-- BossName is a fallback for anything that somehow spawned without one.
+local bossByCreature: { [string]: any } = {}
+local bossByName: { [string]: any } = {}
+for _, boss in Bosses.items do
+	bossByCreature[boss.creature] = boss
+	bossByName[boss.name] = boss
+end
 
 -- ---------------------------------------------------------------- build
 
@@ -121,10 +191,10 @@ local function build()
 	local trackCorner = Instance.new("UICorner")
 	trackCorner.CornerRadius = UDim.new(0, 4)
 	trackCorner.Parent = track
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = Theme.Color.border
-	stroke.Thickness = 1.5
-	stroke.Parent = track
+	barStroke = Instance.new("UIStroke")
+	barStroke.Color = Theme.Color.border
+	barStroke.Thickness = STROKE_THIN
+	barStroke.Parent = track
 
 	barFill = Instance.new("Frame")
 	barFill.Name = "Fill"
@@ -135,6 +205,19 @@ local function build()
 	local fillCorner = Instance.new("UICorner")
 	fillCorner.CornerRadius = UDim.new(0, 4)
 	fillCorner.Parent = barFill
+
+	-- The seal's line, written across the bar itself rather than beside it:
+	-- nothing moves when it appears, so the three banners stacked above stay
+	-- where they are. Empty (and invisible) on a boss with no seal.
+	statusLabel = label(track, {
+		Name = "Status",
+		Size = UDim2.fromScale(1, 1),
+		ZIndex = 2,
+		TextSize = STATUS_SIZE,
+		TextStrokeTransparency = 0.25,
+		Text = "",
+		TextTransparency = 1,
+	})
 
 	-- The rise / cleared cards.
 	cardTitle = label(gui, {
@@ -165,6 +248,85 @@ end
 
 -- ---------------------------------------------------------------- the bar
 
+-- Which Bosses entry this model is, by row id first and title second.
+local function rowFor(model: Model)
+	local id = model:GetAttribute(ATTR_CREATURE_ID)
+	if type(id) == "string" and bossByCreature[id] then
+		return bossByCreature[id]
+	end
+	local name = model:GetAttribute(ATTR_BOSS_NAME)
+	return if type(name) == "string" then bossByName[name] else nil
+end
+
+-- Both wards come straight out of the shared data the server fights by:
+-- `entrenched` holds a perch and opens only for an earned stagger, `parts` is
+-- a ring of arms standing between you and the head. A row with neither is a
+-- boss you can hit whenever you like.
+local function wardOf(row): string?
+	if row == nil then
+		return nil
+	elseif row.entrenched then
+		return "entrenched"
+	elseif row.parts then
+		return "ring"
+	end
+	return nil
+end
+
+-- "open" (hit it NOW) / "sealed" (nothing gets through) / nil (an ordinary
+-- boss, no seal to draw).
+local function sealOf(model: Model): string?
+	if ward == "entrenched" then
+		return if model:GetAttribute(ATTR_EXPOSED) == true then "open" else "sealed"
+	elseif ward == "ring" then
+		-- The head's window carries no attribute today, so its two events are
+		-- the signal; if one is ever published, it counts as well.
+		local exposed = ringOpen or model:GetAttribute(ATTR_EXPOSED) == true
+		return if exposed then "open" else "sealed"
+	end
+	return nil
+end
+
+local function stopPulse()
+	for _, tween in pulses do
+		tween:Cancel()
+	end
+	table.clear(pulses)
+end
+
+-- Two properties breathing together while the window is open.
+local function startPulse()
+	local info = TweenInfo.new(PULSE_TIME, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
+	table.insert(pulses, TweenService:Create(barStroke, info, { Thickness = STROKE_PULSE }))
+	table.insert(pulses, TweenService:Create(statusLabel, info, { TextTransparency = 0.55 }))
+	for _, tween in pulses do
+		tween:Play()
+	end
+end
+
+-- Paint the seal. Only ever called on a CHANGE, so the pulse isn't restarted
+-- every time a point of health lands.
+local function drawSeal(seal: string?)
+	stopPulse()
+	if seal == "open" then
+		barStroke.Color = BAR_OPEN_COLOR
+		barStroke.Thickness = STROKE_OPEN
+		statusLabel.Text = STATUS_OPEN
+		statusLabel.TextTransparency = 0
+		startPulse()
+	elseif seal == "sealed" then
+		barStroke.Color = BAR_SEALED_STROKE
+		barStroke.Thickness = STROKE_THIN
+		statusLabel.Text = STATUS_SEALED[ward] or "SEALED"
+		statusLabel.TextTransparency = 0
+	else
+		barStroke.Color = Theme.Color.border
+		barStroke.Thickness = STROKE_THIN
+		statusLabel.Text = ""
+		statusLabel.TextTransparency = 1
+	end
+end
+
 local function refresh()
 	local model = current
 	if not model then
@@ -176,8 +338,36 @@ local function refresh()
 		Size = UDim2.fromScale(math.clamp(health / maxHealth, 0, 1), 1),
 	}):Play()
 	local enraged = model:GetAttribute(ATTR_ENRAGED) == true
-	barFill.BackgroundColor3 = if enraged then BAR_RAGE_COLOR else BAR_COLOR
+	-- The seal outranks the rage on the FILL - whether you can hurt it at all
+	-- matters more than how angry it is - but the name keeps carrying the
+	-- rage, so neither piece of news is lost.
+	local seal = sealOf(model)
+	if seal == "open" then
+		barFill.BackgroundColor3 = BAR_OPEN_COLOR
+	elseif seal == "sealed" then
+		barFill.BackgroundColor3 = BAR_SEALED_COLOR
+	else
+		barFill.BackgroundColor3 = if enraged then BAR_RAGE_COLOR else BAR_COLOR
+	end
+	barFill.BackgroundTransparency = if seal == "sealed" then BAR_SEALED_FADE else 0
 	nameLabel.TextColor3 = if enraged then BAR_RAGE_COLOR else Theme.Color.text
+
+	if seal ~= sealDrawn then
+		sealDrawn = seal
+		drawSeal(seal)
+		-- The window opening is the fight's best moment: say so out loud,
+		-- the same way the Kraken's own exposure card does below (that one
+		-- comes off the event, so a ringed boss is announced once, not twice).
+		if seal == "open" and ward == "entrenched" then
+			local short = currentRow and currentRow.shortName or model:GetAttribute(ATTR_BOSS_NAME) or "THE BOSS"
+			showCard(
+				string.upper(tostring(short)) .. " STAGGERS",
+				"its grip fails - strike now",
+				Theme.Color.gold,
+				CARD_HOLD_SHORT
+			)
+		end
+	end
 end
 
 local function untrack()
@@ -186,18 +376,29 @@ local function untrack()
 	end
 	table.clear(connections)
 	current = nil
+	currentRow = nil
+	ward = nil
+	ringOpen = false
+	sealDrawn = nil
+	drawSeal(nil)
 	barFrame.Visible = false
 end
 
 local function track(model: Model)
 	untrack()
 	current = model
+	currentRow = rowFor(model)
+	ward = wardOf(currentRow)
 	nameLabel.Text = string.upper(tostring(model:GetAttribute(ATTR_BOSS_NAME) or "BOSS"))
 	barFill.Size = UDim2.fromScale(1, 1)
 	barFrame.Visible = true
-	for _, attr in { ATTR_HEALTH, ATTR_MAX_HEALTH, ATTR_ENRAGED } do
+	for _, attr in { ATTR_HEALTH, ATTR_MAX_HEALTH, ATTR_ENRAGED, ATTR_EXPOSED } do
 		table.insert(connections, model:GetAttributeChangedSignal(attr):Connect(refresh))
 	end
+	-- Draw whatever state it's already in without carding it: picking the bar
+	-- up mid-window is not the window opening.
+	sealDrawn = sealOf(model)
+	drawSeal(sealDrawn)
 	refresh()
 end
 
@@ -264,7 +465,10 @@ end
 
 -- ---------------------------------------------------------------- the cards
 
-local function showCard(title: string, sub: string?, color: Color3)
+-- Forward-declared above: the bar raises one of these when a window opens.
+-- `hold` overrides how long it sits there - a card that announces a window
+-- has to be gone before the window is, or it starts lying too.
+function showCard(title: string, sub: string?, color: Color3, hold: number?)
 	cardToken += 1
 	local token = cardToken
 	cardTitle.Text = title
@@ -273,7 +477,7 @@ local function showCard(title: string, sub: string?, color: Color3)
 	local tweenIn = TweenInfo.new(CARD_IN, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 	TweenService:Create(cardTitle, tweenIn, { TextTransparency = 0, TextStrokeTransparency = 0.4 }):Play()
 	TweenService:Create(cardSub, tweenIn, { TextTransparency = 0, TextStrokeTransparency = 0.5 }):Play()
-	task.delay(CARD_IN + CARD_HOLD, function()
+	task.delay(CARD_IN + (hold or CARD_HOLD), function()
 		if token ~= cardToken then
 			return
 		end
@@ -281,6 +485,21 @@ local function showCard(title: string, sub: string?, color: Color3)
 		TweenService:Create(cardTitle, tweenOut, { TextTransparency = 1, TextStrokeTransparency = 1 }):Play()
 		TweenService:Create(cardSub, tweenOut, { TextTransparency = 1, TextStrokeTransparency = 1 }):Play()
 	end)
+end
+
+-- A ringed boss's window has no attribute of its own - the head is refused
+-- while any arm stands, and these two events ARE the edges. Only the tracked
+-- boss's own events count: two bosses can be up at once.
+local function noteRing(open: boolean, name: any)
+	if ward ~= "ring" or not current then
+		return
+	end
+	local mine = current:GetAttribute(ATTR_BOSS_NAME)
+	if name ~= nil and mine ~= nil and tostring(name) ~= tostring(mine) then
+		return
+	end
+	ringOpen = open
+	refresh()
 end
 
 local function onCreatureEvent(kind, _position, extra)
@@ -291,8 +510,10 @@ local function onCreatureEvent(kind, _position, extra)
 		showCard(string.upper(tostring(extra.name or "THE BOSS")), "rises from the deep", BAR_COLOR)
 	elseif kind == "exposed" then
 		-- The Kraken: the last tentacle is down and the head can be hurt.
+		noteRing(true, extra.name)
 		showCard("THE MAW IS EXPOSED", "every arm is down - strike now", Theme.Color.gold)
 	elseif kind == "regrow" then
+		noteRing(false, extra.name)
 		showCard("THE ARMS REGROW", "bring them down again", Theme.Color.red)
 	elseif kind == "bossDown" then
 		if extra.finale then

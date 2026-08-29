@@ -41,6 +41,11 @@ local Workspace = game:GetService("Workspace")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Remotes = require(Shared.Net.Remotes)
 local World = require(Shared.Config.World)
+-- Brinejaw's geometry. Its sweep markers are drawn off the SAME sand profile
+-- the server's hit test measures against (BrinejawPath.sandY), so the band you
+-- see on the ground is the band that hits you - the arm itself is drawn from
+-- this file too, by BrinejawBodyController.
+local BrinejawPath = require(Shared.Modules.BrinejawPath)
 
 local Vfx = require(script.Parent.Parent.Modules.Vfx)
 local Sfx = require(script.Parent.Parent.Modules.Sfx)
@@ -191,6 +196,15 @@ local function localDistance(position: Vector3): number
 		return math.huge
 	end
 	return (Vector3.new(root.Position.X, 0, root.Position.Z) - Vector3.new(position.X, 0, position.Z)).Magnitude
+end
+
+-- Is `position` worth drawing at all? The same measure feelBlast already uses
+-- to decide whether a blast is felt - the camera, not the character, so a
+-- player watching from the boat or waiting to respawn still sees the fight.
+-- Brinejaw's arena is 130 studs across and its markers fire constantly, so
+-- every one of them starts with this.
+local function nearCamera(position: Vector3, range: number): boolean
+	return (camera.CFrame.Position - position).Magnitude <= range
 end
 
 -- A blast at `position`: kick the camera if it's near, flash the screen if
@@ -1279,6 +1293,479 @@ EVENTS.regrow = function(position: Vector3, extra)
 	Sfx.play("bossRise", position)
 end
 
+-- ------------------------------------------------- Brinejaw (the cove boss)
+--
+-- The serpent coiled round the Tidebreak Spire fights by RE-POSING itself:
+-- the coils and the sweeping tail are one chain (BrinejawBodyController draws
+-- it from BrinejawPath), so nothing ever spawns and none of these moments is
+-- a projectile - every one is a MARKER, and its only job is to say what the
+-- answer is, from ground level, in time to move.
+--
+--   serpentSweep  the tail scythes round the arena - JUMP it, or STAND under
+--                 it, and which one is the whole fight (see the read below)
+--   serpentSlam   the rattle comes down on a point - be elsewhere, unless you
+--                 baited it onto a reef stone, which is how the fight is won
+--   bossStagger   it lost its grip and the head is on the sand: the window
+--   bossStance    the whole stack slid a turn down the tower
+--   reefShatter   a stone spent
+--   bossCollapse  the death slide
+--
+-- THE LOW/HIGH READ. Both sweeps are the same arm on the same bearing, so
+-- colour alone would not survive a glance across 60 studs of sand. They are
+-- drawn as different SHAPES IN SPACE instead, each one the answer it wants:
+--   LOW  - a solid wall standing on the sand, hot orange. There is no way
+--          through it at ground level, so the only read is "get over this".
+--   HIGH - a slim cyan rail up at the arm's own height with nothing at all
+--          underneath it but its shadow on the sand. The empty air IS the
+--          message, and the shadow is what proves the rail is up there
+--          (depth reads badly from ground level; a cast shadow does not).
+-- A low arm also ploughs the sand it drags through; a high one leaves the
+-- ground untouched. Getting this backwards kills you, so nothing here is
+-- subtle on purpose.
+
+local BRINE = {
+	low = Color3.fromRGB(255, 96, 62), -- a wall on the sand: JUMP IT
+	high = Color3.fromRGB(120, 236, 255), -- a rail overhead: STAND STILL
+	shadow = Color3.fromRGB(26, 32, 40), -- what a high arm casts on the sand
+	bait = Color3.fromRGB(255, 214, 110), -- a slam baited onto a stone: YES
+	slam = Color3.fromRGB(255, 122, 60), -- ...and one about to waste itself
+	window = Color3.fromRGB(255, 214, 110), -- the stagger: hit it, now
+	stone = Color3.fromRGB(150, 146, 136), -- reef rock and tower masonry
+}
+
+-- Draw ranges. The arena is huge and these fire every few seconds, so each
+-- handler is skipped outright past its own reach plus a margin.
+local BRINE_MARGIN = 90 -- how far outside an effect's own footprint it still draws
+local BRINE_CULL = 240 -- the flat range for the whole-arena moments
+
+-- The swept marker: rungs laid along the band from `inner` to `reach`, the
+-- whole ladder swinging round the tower like the hand it is.
+local SWEEP_SLOTS = 2 -- constrict chases a slow high sweep with a fast low one
+local SWEEP_RUNGS = 16
+local SWEEP_LEAD = 0.5 -- seconds the marker runs AHEAD of the arm
+local SWEEP_WIDTH = 6.8 -- the arm's drawn thickness, across the bearing
+local SWEEP_LOW_TOP = 3.2 -- a low wall stands this far above the arm's line
+local SWEEP_HIGH_RAIL = 1.4 -- a high rail is this thin, and that is the point
+local SWEEP_SHADOW_THICK = 0.1
+local SWEEP_FADE = 0.3 -- how long the marker takes to leave once the arm is done
+local SWEEP_DUST_INTERVAL = 0.07 -- sand thrown by a low arm ploughing through it
+local SWEEP_PULSE = 11 -- rad/s of the marker's urgency throb
+
+-- The punish window: a disc of the payoff colour under the slumped head that
+-- closes as the window does, so the time left is readable without any HUD.
+local STAGGER_RADIUS = 13
+local STAGGER_BLOOM_INTERVAL = 0.55
+
+-- Pooled marker parts live down here when idle - the glob pool's pattern:
+-- built in init, moved in Heartbeat, never churned.
+local PARKED = CFrame.new(0, -5000, 0)
+
+-- One sweep in flight: everything the payload said, plus when it started.
+local sweeps: { any } = {}
+local sweepPool: { any } = {}
+
+-- The open stagger window, if one is.
+local stagger: any = nil
+local staggerRing: Part
+
+local function makeMarker(name: string, color: Color3, neon: boolean): Part
+	local part = Instance.new("Part")
+	part.Name = name
+	part.Anchored = true
+	part.CanCollide = false
+	part.CanQuery = false
+	part.CanTouch = false
+	part.CastShadow = false
+	part.Material = if neon then Enum.Material.Neon else Enum.Material.SmoothPlastic
+	part.Color = color
+	part.Transparency = 1
+	part.Size = Vector3.new(1, 1, 1)
+	part.CFrame = PARKED
+	part.Parent = folder
+	return part
+end
+
+local function parkParts(parts: { Part })
+	for _, part in parts do
+		part.Transparency = 1
+		part.CFrame = PARKED
+	end
+end
+
+-- Brinejaw's arena is anchored on the TOWER'S FOOT, not on wherever the head
+-- has got to: the sweep carries it in every payload, and every colossus
+-- publishes it as PoseCenter (the same attribute BrinejawBodyController reads
+-- to know where to stand the body). Falls back to straight down from the boss.
+local function towerFoot(position: Vector3): Vector3
+	local creatures = Workspace:FindFirstChild(CREATURES_FOLDER)
+	if creatures then
+		local best, bestDist = nil, 140
+		for _, model in creatures:GetChildren() do
+			local center = model:GetAttribute("PoseCenter")
+			if typeof(center) == "Vector3" then
+				local d = (model:GetPivot().Position - position).Magnitude
+				if d < bestDist then
+					best, bestDist = center, d
+				end
+			end
+		end
+		if best then
+			return best
+		end
+	end
+	return Vector3.new(position.X, surfaceUnder(position).Y, position.Z)
+end
+
+-- ------------------------------------------------------------ the orbit sweep
+
+-- One frame of one swept marker. The ladder is drawn at the bearing the arm
+-- will be on SWEEP_LEAD seconds from now, so it arrives somewhere before the
+-- tail does and there is time to answer it.
+local function drawSweep(s, pool, now: number): boolean
+	local elapsed = now - s.start
+	-- The arm HOLDS on the start bearing for `windup` and only travels the
+	-- arc during `travel`. Spreading the arc over the sum instead would run
+	-- the marker most of a sweep ahead of the tail, so players would dodge
+	-- the warning and get hit by the thing it warned about.
+	local total = s.windup + s.travel
+	if elapsed > total + SWEEP_FADE then
+		return false
+	end
+	local fade = math.clamp((elapsed - total) / SWEEP_FADE, 0, 1)
+	local u = math.clamp((elapsed - s.windup + SWEEP_LEAD) / s.travel, 0, 1)
+	local theta = s.angle + s.arc * u
+	local cos, sin = math.cos(theta), math.sin(theta)
+	-- The rungs point along the bearing: +X of a CFrame turned -theta about Y
+	-- is (cos, 0, sin), which is the convention the server's hit test uses.
+	local facing = CFrame.Angles(0, -theta, 0)
+	local span = (s.reach - s.inner) / SWEEP_RUNGS
+	local length = span * 0.84
+	local pulse = 0.5 + 0.5 * math.sin(now * SWEEP_PULSE)
+	local base = (if s.high then 0.1 else 0.2) + 0.16 * pulse
+	local alpha = base + (1 - base) * fade
+	local tall = s.height + SWEEP_LOW_TOP
+
+	for i = 1, SWEEP_RUNGS do
+		local r = s.inner + span * (i - 0.5)
+		local ground = s.center.Y + BrinejawPath.sandY(r)
+		local x, z = s.center.X + cos * r, s.center.Z + sin * r
+		local rung = pool.rungs[i]
+		if s.high then
+			-- A rail at the arm's own height, and clear air all the way down.
+			rung.Size = Vector3.new(length, SWEEP_HIGH_RAIL, SWEEP_WIDTH)
+			rung.CFrame = CFrame.new(x, ground + s.height, z) * facing
+			local shade = pool.shadows[i]
+			shade.Size = Vector3.new(length, SWEEP_SHADOW_THICK, SWEEP_WIDTH * 0.9)
+			shade.CFrame = CFrame.new(x, ground + 0.06, z) * facing
+			shade.Transparency = 0.42 + 0.58 * fade
+		else
+			-- A wall planted ON the sand: bottom flush with the ground, top
+			-- just under a jump. Nothing to read here but "get above it".
+			rung.Size = Vector3.new(length, tall, SWEEP_WIDTH)
+			rung.CFrame = CFrame.new(x, ground + tall * 0.5, z) * facing
+		end
+		rung.Transparency = alpha
+	end
+
+	-- ...and a low arm drags the sand it passes through, which is the other
+	-- half of the read: the ground itself reacts, or it does not.
+	if not s.high and fade <= 0 and now >= s.nextDustAt then
+		s.nextDustAt = now + SWEEP_DUST_INTERVAL
+		for _ = 1, 2 do
+			local r = randomBetween(s.inner, s.reach)
+			local at = Vector3.new(s.center.X + cos * r, s.center.Y + BrinejawPath.sandY(r) + 0.2, s.center.Z + sin * r)
+			Vfx.puff(at, Vfx.Color.sand, 1.1)
+		end
+	end
+	return true
+end
+
+local function stepSweeps(now: number)
+	for slot = 1, SWEEP_SLOTS do
+		local s = sweeps[slot]
+		if s and not drawSweep(s, sweepPool[slot], now) then
+			sweeps[slot] = nil
+			parkParts(sweepPool[slot].rungs)
+			parkParts(sweepPool[slot].shadows)
+		end
+	end
+end
+
+-- THE tell. The tail unwinds off the tower and scythes round the arena like a
+-- clock hand: this draws where it is about to be, all the way across the band,
+-- and says which of the two answers it wants.
+EVENTS.serpentSweep = function(position: Vector3, extra)
+	-- Two clocks, not one: `windup` is the hold on the start bearing, and
+	-- `travel` is the arc itself. Only the second is when the arm moves.
+	local windup = math.clamp(tonumber(extra.windup) or 0, 0, 12)
+	local travel = math.clamp(tonumber(extra.duration) or 2.4, 0.2, 12)
+	local inner = math.max(tonumber(extra.inner) or BrinejawPath.SWEEP_INNER, 0)
+	local reach = math.max(tonumber(extra.reach) or BrinejawPath.SWEEP_REACH, inner + 4)
+	if not nearCamera(position, reach + BRINE_MARGIN) then
+		return
+	end
+	local high = extra.high == true
+	local angle = tonumber(extra.angle) or 0
+	local s = {
+		center = position,
+		angle = angle,
+		arc = tonumber(extra.arc) or 0,
+		inner = inner,
+		reach = reach,
+		high = high,
+		height = tonumber(extra.height) or (if high then BrinejawPath.SWEEP_HIGH else BrinejawPath.SWEEP_LOW),
+		windup = windup,
+		travel = travel,
+		start = os.clock(),
+		nextDustAt = 0,
+	}
+
+	-- Take a free slot, or the oldest sweep's - the third coil chases a slow
+	-- high sweep with a fast low one, and dropping either marker is a death.
+	local slot, oldest = 1, math.huge
+	for i = 1, SWEEP_SLOTS do
+		if not sweeps[i] then
+			slot = i
+			break
+		end
+		if sweeps[i].start < oldest then
+			slot, oldest = i, sweeps[i].start
+		end
+	end
+	local pool = sweepPool[slot]
+	for _, rung in pool.rungs do
+		rung.Color = if high then BRINE.high else BRINE.low
+	end
+	if not high then
+		parkParts(pool.shadows) -- a low arm is ON the sand; it casts nothing
+	end
+	sweeps[slot] = s
+
+	-- The cue comes from where the arm STARTS, out on the band, so the ear
+	-- says which side of the tower it is coming round from.
+	local mid = (inner + reach) * 0.5
+	Sfx.play(
+		if high then "serpentSweepHigh" else "serpentSweepLow",
+		Vector3.new(
+			position.X + math.cos(angle) * mid,
+			position.Y + BrinejawPath.sandY(mid) + s.height,
+			position.Z + math.sin(angle) * mid
+		)
+	)
+end
+
+-- ------------------------------------------------------------ the tail slam
+
+-- The rattle is coming down here. Rings contract onto the point on a cadence
+-- that tightens as the clock runs out, so the last one closes exactly as the
+-- tail lands (the impact itself is the ordinary `slam` moment). Baiting this
+-- onto a reef stone is the entire fight, so a baited one is a different
+-- colour and wears a beacon: the party has to be able to see it was right
+-- BEFORE it lands, or the decision never gets learned.
+EVENTS.serpentSlam = function(position: Vector3, extra)
+	local radius = tonumber(extra.radius) or 13
+	if not nearCamera(position, radius + BRINE_MARGIN) then
+		return
+	end
+	local duration = math.clamp(tonumber(extra.duration) or 1.9, 0.2, 8)
+	local baited = extra.stoneNear == true
+	local color = if baited then BRINE.bait else BRINE.slam
+	local point = surfaceUnder(position) + Vector3.new(0, 0.15, 0)
+
+	Sfx.play("serpentSlam", position)
+	-- The footprint, marked for the whole windup: one disc, barely moving.
+	Vfx.shockwave(point, radius * 0.88, radius, duration, color, 0.1)
+	if baited then
+		Vfx.flash(point + Vector3.new(0, 3, 0), color, 5, math.min(duration, 1.1))
+		Vfx.burst(point + Vector3.new(0, 0.6, 0), color, 22)
+	end
+
+	local at, gap = 0, math.min(0.36, duration * 0.3)
+	while at < duration - 0.04 do
+		local when, span, left = at, math.min(gap, duration - at), 1 - at / duration
+		task.delay(when, function()
+			Vfx.ring(point, radius * left, radius * left * 0.3, span, color)
+		end)
+		at += gap
+		gap = math.max(gap * 0.74, 0.11)
+	end
+end
+
+-- ------------------------------------------------------------ the window
+
+local function closeStagger()
+	staggerRing.Transparency = 1
+	staggerRing.CFrame = PARKED
+	stagger = nil
+end
+
+local function stepStagger(now: number)
+	if not stagger then
+		return
+	end
+	local left = stagger.until_ - now
+	if left <= 0 then
+		closeStagger()
+		return
+	end
+	-- The disc closes as the window does: its size IS the clock, and it
+	-- strobes faster the less of it there is left.
+	local u = left / stagger.duration
+	local r = STAGGER_RADIUS * (0.16 + 0.84 * u)
+	staggerRing.Size = Vector3.new(0.14, r * 2, r * 2)
+	staggerRing.CFrame = stagger.frame
+	local rate = 2.4 + 7 * (1 - u)
+	staggerRing.Transparency = 0.5 + 0.28 * (0.5 + 0.5 * math.sin(now * rate * math.pi * 2))
+	if now >= stagger.nextBloomAt then
+		stagger.nextBloomAt = now + STAGGER_BLOOM_INTERVAL
+		Vfx.burst(stagger.head, BRINE.window, 14)
+	end
+end
+
+-- THE payoff. The serpent has lost its grip: the head comes off the tower
+-- onto the sand and can be hurt for `duration`. Weight first - the camera
+-- takes it, the sand goes up - then the window's own clock stays lit under
+-- the head until it shuts.
+EVENTS.bossStagger = function(position: Vector3, extra)
+	if not nearCamera(position, BRINE_CULL) then
+		return
+	end
+	local duration = math.clamp(tonumber(extra.duration) or 6, 0.5, 40)
+	local point = surfaceUnder(position) + Vector3.new(0, 0.12, 0)
+
+	Sfx.play("bossStagger", position)
+	task.delay(0.09, function()
+		Sfx.play("bossRoar", position)
+	end)
+
+	-- It comes down: sand out from under the skull, a shove on the camera.
+	Vfx.puff(point, Vfx.Color.sand, 5)
+	Vfx.burst(point, Vfx.Color.sand, 60)
+	Vfx.shockwave(point + Vector3.new(0, 0.3, 0), 2, 24, 0.6, Vfx.Color.sand, 0.7)
+	Vfx.ring(point, 3, 28, 0.75, Vfx.Color.sand)
+	Vfx.flash(position + Vector3.new(0, 2, 0), BRINE.window, 7, 0.45)
+	feelBlast(position, 28, SHAKE_SLAM, 0.6, Color3.fromRGB(255, 226, 170))
+
+	local now = os.clock()
+	stagger = {
+		frame = CFrame.new(point) * CFrame.Angles(0, 0, math.rad(90)),
+		head = position + Vector3.new(0, 2, 0),
+		duration = duration,
+		until_ = now + duration,
+		nextBloomAt = now + STAGGER_BLOOM_INTERVAL,
+	}
+end
+
+-- ------------------------------------------------------------ the tower
+
+-- The stack has slid one turn down the spire. Nothing about the boss says so
+-- from a distance, so the TOWER says it: masonry dust walking down the drums,
+-- grit landing at the foot, and the ground moving under everyone.
+EVENTS.bossStance = function(position: Vector3, extra)
+	if not nearCamera(position, BRINE_CULL) then
+		return
+	end
+	local stance = tonumber(extra.stance) or BrinejawPath.MAX_COIL
+	-- Each coil it has already lost grinds the next one harder.
+	local weight = 1 + 0.35 * math.max(BrinejawPath.MAX_COIL - stance, 0)
+	local foot = towerFoot(position)
+
+	Sfx.play("bossStance", foot)
+	feelBlast(foot, 46, SHAKE_RISE * weight, 0.9, Color3.fromRGB(214, 204, 188))
+
+	-- Dust walking DOWN the tower: two chunks a step, on opposite faces, so
+	-- it reads as the whole coil grinding rather than one rock falling.
+	local steps = 8
+	for i = 0, steps do
+		task.delay(i * 0.11, function()
+			local y = 46 - i * 5.4
+			local spin = math.random() * math.pi * 2
+			local r = BrinejawPath.spireRadius(y) + 2.5
+			for k = 0, 1 do
+				local theta = spin + k * math.pi
+				local at = foot + Vector3.new(math.cos(theta) * r, y, math.sin(theta) * r)
+				Vfx.puff(at, BRINE.stone, 1.8 * weight)
+				Vfx.burst(at, BRINE.stone, 10)
+			end
+		end)
+	end
+
+	-- ...and it all lands.
+	task.delay(steps * 0.11 + 0.1, function()
+		local base = foot + Vector3.new(0, BrinejawPath.sandY(0) + 0.15, 0)
+		Vfx.puff(base, BRINE.stone, 4 * weight)
+		Vfx.ring(base, 5, 22 * weight, 0.75, BRINE.stone)
+		Sfx.play("bossSlam", foot)
+		feelBlast(foot, 44, SHAKE_SLAM * weight, 0.65, Color3.fromRGB(214, 204, 188))
+	end)
+end
+
+-- A reef stone cracked open by the tail. `extra.index` says which of the
+-- three it was; nothing about the burst depends on that, only on the fact
+-- that one of the party's three answers has just been spent.
+EVENTS.reefShatter = function(position: Vector3)
+	if not nearCamera(position, BRINE_CULL) then
+		return
+	end
+	local point = surfaceUnder(position) + Vector3.new(0, 0.15, 0)
+	Vfx.burst(point + Vector3.new(0, 1.5, 0), BRINE.stone, 46)
+	Vfx.puff(point + Vector3.new(0, 0.8, 0), BRINE.stone, 3)
+	Vfx.shockwave(point + Vector3.new(0, 0.3, 0), 1, 10, 0.35, BRINE.stone, 0.35)
+	Vfx.ring(point, 1.5, 13, 0.5, BRINE.stone)
+	Sfx.play("reefShatter", position)
+	task.delay(0.05, function()
+		Sfx.play("hitCrack", position)
+	end)
+	feelBlast(position, 15, SHAKE_EXPLODE, 0.3, Color3.fromRGB(232, 226, 212))
+	-- The stump goes under, and the sand closes over it.
+	task.delay(0.35, function()
+		Vfx.puff(point, Vfx.Color.sand, 2.4)
+	end)
+end
+
+-- The death slide: it lets go of the spire for the last time and comes down
+-- the whole height of it. (Defensive - the server may or may not send this;
+-- a handler that never fires costs nothing, a silent death costs the fight.)
+EVENTS.bossCollapse = function(position: Vector3, extra)
+	if not nearCamera(position, BRINE_CULL) then
+		return
+	end
+	local duration = math.clamp(tonumber(extra.duration) or 4, 0.5, 20)
+	local foot = towerFoot(position)
+	local ground = foot + Vector3.new(0, BrinejawPath.sandY(0) + 0.15, 0)
+	closeStagger() -- whatever window was open, it is over
+
+	Sfx.play("bossCollapse", position)
+	Sfx.play("bossRoar", position)
+
+	-- The body unspooling off the drums, top to bottom, over the whole slide.
+	local steps = math.max(6, math.floor(duration / 0.22))
+	for i = 0, steps do
+		task.delay(i * (duration / steps), function()
+			local y = 54 * (1 - i / steps)
+			local theta = math.random() * math.pi * 2
+			local r = BrinejawPath.spireRadius(y) + 3.4
+			local at = foot + Vector3.new(math.cos(theta) * r, y, math.sin(theta) * r)
+			Vfx.puff(at, BRINE.stone, 2.6)
+			Vfx.burst(at, COLOR.brine, 16)
+			if i % 3 == 0 then
+				Sfx.play("bossSpineHit", at)
+			end
+		end)
+	end
+
+	-- ...and it hits the sand.
+	task.delay(duration, function()
+		Vfx.flash(ground + Vector3.new(0, 3, 0), COLOR.brine, 10, 0.5)
+		Vfx.puff(ground, Vfx.Color.sand, 7)
+		Vfx.burst(ground, Vfx.Color.sand, 80)
+		Vfx.shockwave(ground + Vector3.new(0, 0.4, 0), 3, 40, 0.9, Vfx.Color.sand, 0.9)
+		Vfx.ring(ground, 4, 46, 1.2, BRINE.stone)
+		Sfx.play("bossSlam", ground)
+		feelBlast(ground, 60, SHAKE_SLAM, 0.8, Color3.fromRGB(240, 226, 200))
+	end)
+end
+
 local warnedKinds = {}
 
 local function onCreatureEvent(kind, position, extra)
@@ -1306,6 +1793,19 @@ function CreatureEventController.init()
 		globs[i] = { part = makeGlob(), active = false }
 	end
 
+	-- Brinejaw's markers: one ladder of rungs (and the shadows a high arm
+	-- casts) per concurrent sweep, plus the stagger window's closing disc.
+	for slot = 1, SWEEP_SLOTS do
+		local pool = { rungs = {}, shadows = {} }
+		for i = 1, SWEEP_RUNGS do
+			pool.rungs[i] = makeMarker("SweepRung", BRINE.low, true)
+			pool.shadows[i] = makeMarker("SweepShadow", BRINE.shadow, false)
+		end
+		sweepPool[slot] = pool
+	end
+	staggerRing = makeMarker("StaggerWindow", BRINE.window, true)
+	staggerRing.Shape = Enum.PartType.Cylinder
+
 	-- The in-the-blast screen flash.
 	local gui = Instance.new("ScreenGui")
 	gui.Name = "CreatureFxGui"
@@ -1331,6 +1831,8 @@ function CreatureEventController.start()
 		stepStates(now)
 		stepPull(now)
 		stepEffects(now)
+		stepSweeps(now)
+		stepStagger(now)
 	end)
 
 	-- A respawn drops any pull/chill/snare/chain with the old character.

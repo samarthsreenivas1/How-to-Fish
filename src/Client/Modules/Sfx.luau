@@ -281,6 +281,86 @@ local CATALOGUE = {
 		range = 240,
 	},
 	bossDown = { id = "rbxasset://sounds/impact_water.mp3", volume = 1.0, pitch = 0.35, pitchVar = 0.03, range = 300 },
+
+	-- Brinejaw, the coil on the spire (CreatureEventController). Same dry
+	-- rule as every other boss - no splat, nothing wet except the fall into
+	-- the shallows at the end, which is the blessed exception the rise and
+	-- fall already use. The fight is fought across a ~140-stud arena and the
+	-- head perches ~60 studs up, so every one of these carries further than
+	-- the ground-level cues: a sweep you can't hear coming is a sweep you
+	-- can't read, and reading it is the whole dodge.
+	--
+	-- The two sweeps are ONE arm at two heights and have to be told apart by
+	-- ear alone (low is jumped, high is stood under), so they're deliberately
+	-- far apart in pitch rather than two shades of the same rush: the low one
+	-- is dragged along the sand, the high one passes over your head.
+	serpentSweepLow = {
+		id = "rbxasset://sounds/action_swim.mp3",
+		volume = 0.85,
+		pitch = 0.45,
+		pitchVar = 0.06,
+		range = 170,
+		maxDuration = 0.55,
+	},
+	serpentSweepHigh = {
+		id = "rbxasset://sounds/action_swim.mp3",
+		volume = 0.6,
+		pitch = 1.05,
+		pitchVar = 0.08,
+		range = 170,
+		maxDuration = 0.45,
+	},
+	-- The tail coming down. bossSlam is the whole body; this is the arm, so
+	-- it's a shade tighter and higher than that one.
+	serpentSlam = {
+		id = "rbxasset://sounds/action_jump_land.mp3",
+		volume = 1.0,
+		pitch = 0.34,
+		pitchVar = 0.04,
+		range = 220,
+	},
+	-- The payoff: it loses its grip and sixty studs of head come down on the
+	-- sand. The heaviest thing in the fight short of the death - deeper than
+	-- the slam and it carries past the arena's edge, because everyone in the
+	-- lair needs to know the window is open.
+	bossStagger = {
+		id = "rbxasset://sounds/action_jump_land.mp3",
+		volume = 1.0,
+		pitch = 0.26,
+		pitchVar = 0.03,
+		range = 260,
+	},
+	-- A stance change: the whole coil stack grinding one turn down the tower.
+	-- Stone on stone, so it's the long low end of the swim stroke (the same
+	-- body shellCreak strains on) rather than an impact - a grind has no
+	-- transient, it just takes its time.
+	bossStance = {
+		id = "rbxasset://sounds/action_swim.mp3",
+		volume = 0.75,
+		pitch = 0.32,
+		pitchVar = 0.05,
+		range = 200,
+		maxDuration = 0.9,
+	},
+	-- A reef stone spent: a dry crack, shellSnap's voice with the arena's
+	-- reach behind it.
+	reefShatter = {
+		id = "rbxasset://sounds/action_jump_land.mp3",
+		volume = 0.85,
+		pitch = 1.65,
+		pitchVar = 0.1,
+		range = 170,
+	},
+	-- The death: it slides off the tower into the shallows. bossDown's body
+	-- pitched lower still and left to ring out whole - the last sound of the
+	-- island, and the one water cue the standing rule keeps.
+	bossCollapse = {
+		id = "rbxasset://sounds/impact_water.mp3",
+		volume = 1.0,
+		pitch = 0.28,
+		pitchVar = 0.03,
+		range = 300,
+	},
 }
 
 -- Hard cap on how long a one-shot's carrier lives, in case TimeLength never

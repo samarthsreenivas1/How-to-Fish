@@ -264,11 +264,26 @@ function BrinejawBodyController.init()
 end
 
 function BrinejawBodyController.start()
+	local warned = false
 	RunService.RenderStepped:Connect(function(dt)
-		local now = os.clock()
+		-- Server time, not os.clock(): the ambient breath is computed from
+		-- this on BOTH sides, and two machines' clocks share no epoch. On a
+		-- local epoch the drawn body breathes on an unrelated phase from the
+		-- head the server is aiming with - which quietly falsifies the one
+		-- promise this whole design rests on, that what you dodge and what
+		-- you see cannot drift apart.
+		local now = Workspace:GetServerTimeNow()
 		for model, body in bodies do
 			if model.Parent then
-				drawBody(model, body, dt, now)
+				-- Guarded: an error here aborts the whole RenderStepped
+				-- callback, so one bad frame in one body would stop every
+				-- other body drawing - and the serpent would simply freeze
+				-- on screen with no clue why. Warn once, keep rendering.
+				local ok, err = pcall(drawBody, model, body, dt, now)
+				if not ok and not warned then
+					warned = true
+					warn("[BrinejawBody] draw failed: " .. tostring(err))
+				end
 			else
 				destroyBody(model)
 			end

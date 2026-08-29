@@ -95,8 +95,28 @@ BrinejawPath.SWEEP_INNER = 13.0
 
 -- Sweep heights: LOW is jumped, HIGH is stood under. Far enough apart that
 -- reading which one is coming is the whole skill.
+-- These are the arm's CENTRE height above the sand, and `sweepHits` catches
+-- anything within the attack's `girth` (3.4-3.8) of that line. So the two
+-- numbers are not decoration - they have to be far enough apart that a
+-- STANDING player is inside one and outside the other, or the fight's whole
+-- read collapses. The arithmetic, against a standing R15 root that sits
+-- ~3.0 studs over the ground (HipHeight 2 + half of a 2-stud root):
+--
+--   LOW  1.6 -> |3.0 - 1.6| = 1.4, inside girth 3.4. Standing is hit, so you
+--               have to leave the ground: JUMP IT.
+--   HIGH 8.5 -> |3.0 - 8.5| = 5.5, outside girth 3.8 with 1.7 studs to
+--               spare. Standing is safe. A jump lifts the root to ~10.3 at
+--               its apex and crosses the band from ~4.7 upward, so panic-
+--               jumping puts you straight into it: STAND STILL.
+--
+-- HIGH was 5.4 and that was a real bug, caught before the first playtest:
+-- |3.0 - 5.4| = 2.4 sat INSIDE girth 3.6, so standing under a high sweep was
+-- hit and half the mechanic did the opposite of what it teaches. Keep at
+-- least a stud of margin on both sides of any change here, and remember the
+-- client draws the marker from these same constants - move one and the
+-- warning moves with it.
 BrinejawPath.SWEEP_LOW = 1.6
-BrinejawPath.SWEEP_HIGH = 5.4
+BrinejawPath.SWEEP_HIGH = 8.5
 
 local function smoothstep(x: number): number
 	x = math.clamp(x, 0, 1)
