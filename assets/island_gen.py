@@ -1217,6 +1217,13 @@ def build_lava(ground):
 # over a spread crown would be an invisible wall).
 
 
+def _volcano_clear_of_hut(x, y, pad=0.0):
+    """Off Brakk's plot - the hold, its yard and the magma rill running down
+    to it. Empty until build_volcano claims the plot, so the tropical/other
+    islands are untouched by it."""
+    return all((x - kx) ** 2 + (y - ky) ** 2 > (kr + pad) ** 2 for kx, ky, kr in _HUT_B_KEEP)
+
+
 def _volcano_clear_of_rivers(x, y, margin):
     """True when (x, y) sits at least `margin` studs LATERALLY off every lava
     river's centreline (approximated as the radial ray at its bearing - the
@@ -1299,6 +1306,8 @@ def build_volcano_trees(ground):
             continue
         if not _clear_of_ponds(x, y, 6.0):
             continue
+        if not _volcano_clear_of_hut(x, y, 12.0):  # step 7: Brakk's plot
+            continue
         if any((x - px) ** 2 + (y - py) ** 2 < 24.0**2 for px, py in placed):
             continue
         base = _drop_to_ground(ground, x, y)
@@ -1374,6 +1383,8 @@ def build_volcano_rocks(ground):
         if not _volcano_clear_of_rivers(x, y, river_margin):
             return None
         if not _clear_of_ponds(x, y, 5.0):
+            return None
+        if not _volcano_clear_of_hut(x, y, 6.0):  # step 7: Brakk's plot
             return None
         return x, y
 
@@ -1598,12 +1609,14 @@ def build_hut_maren():
             0.35,
         )
         for course in range(3):
-            t0 = 0.10 + course * 0.30
+            t0 = 0.02 + course * 0.32
             for seg in range(9):
                 # Ragged, overlapping BLADES rather than tiles: every frond
                 # runs a different distance down the slope and laps its
-                # neighbour sideways, so the eave line comes out torn.
-                t1 = t0 + 0.40 + rng.uniform(-0.07, 0.09)
+                # neighbour sideways, so the eave line comes out torn. The
+                # courses cover ridge to eave - a bald patch on the upper
+                # slope was the first pass's tell.
+                t1 = t0 + 0.44 + rng.uniform(-0.07, 0.12)
                 f0 = RIDGE_BACK + (RIDGE_FRONT - RIDGE_BACK) * (seg / 9.0) + rng.uniform(-0.2, 0.2)
                 f1 = f0 + (RIDGE_FRONT - RIDGE_BACK) / 9.0 + rng.uniform(0.3, 0.7)  # blades overlap sideways too
                 # Lifted less than the frond is thick, so every blade still
@@ -1788,6 +1801,339 @@ def build_tropical():
     return objects
 
 
+# ---------------------------------------------------------------- volcano: Brakk's forge-hold
+#
+# The Cinder-Smith's hold: a SQUAT BASALT-BLOCK BUNKER dug into the ash apron
+# with a magma channel running clean THROUGH it. The rill comes down off the
+# slope, ducks under the back wall through a culvert, runs the length of the
+# floor under an iron grate, and pools in an open hearth on the FRONT face -
+# where the counter you talk to Brakk over IS his anvil. Five layers, one
+# material each:
+#   Volcano_Hut_Walls  block courses, plinth, floor, chimney, hearth, trough
+#   Volcano_Hut_Roof   the slate roof slabs, lintels and the forge hood
+#   Volcano_Hut_Props  anvil counter, anvil, floor grate, tool rail + tongs
+#                      and hammers, blade racks and blades, the bell's gibbet
+#   Volcano_Hut_Trim   the cracked cannon-shell bell, brass ingots, sulfur
+#   Volcano_Hut_Glow   the magma rill, the forge heart, the chimney's lip
+#
+# Sited 9.5 deg off the 270 dock lane (the apron scatter's own keep-clear
+# angle) on the flat-ish band at u 0.84, with the building's long axis ALONG
+# the contour so only its 18-stud depth crosses the apron's ~0.12/stud fall -
+# the plinth takes up the rest. The nearest lava river bearing is 205, some
+# 300 studs away.
+#
+# Walk-in contract: a 5.0 x 7.5 door, a 19 x 15 clear floor, 10 studs to the
+# roof, 1.4-stud walls (PreciseConvexDecomposition on import).
+
+_HUT_B_BEARING = math.radians(279.5)
+_HUT_B_U = 0.84
+_HUT_B_KEEP = []  # (x, y, radius): honoured by the dead-tree and rock scatters
+
+_HUT_B_HX = 11.0  # half-width along the contour (local +x)
+_HUT_B_HY = 9.0  # half-depth up the slope (local +y is INLAND / uphill)
+_HUT_B_WALL = 1.4
+_HUT_B_COURSE = 2.5
+_HUT_B_COURSES = 4  # 10 studs of wall
+_HUT_B_DOOR = (-8.2, -3.2)  # the doorway's x span on the front face
+_HUT_B_DOOR_H = 7.5  # three courses
+_HUT_B_FORGE = (1.6, 8.6)  # the open hearth's x span; sill at one course up
+_HUT_B_HEARTH = 5.1  # x of the hearth, the chimney and the magma channel
+_HUT_B_DOORX = -_HUT_B_HY  # the door plane, for the walk-in check
+
+
+def _hut_b_site():
+    """(centre x, centre y, yaw). Yaw puts the hold's +x along the contour and
+    its +y INLAND, so the front face - door, hearth, anvil counter - looks
+    down the apron at the dock and the spawn."""
+    r = ring_radius(_HUT_B_U, _HUT_B_BEARING)
+    return math.cos(_HUT_B_BEARING) * r, math.sin(_HUT_B_BEARING) * r, _HUT_B_BEARING + math.pi / 2
+
+
+def _hut_b_pt(site, x, y, z):
+    cx, cy, yaw = site
+    ca, sa = math.cos(yaw), math.sin(yaw)
+    return (cx + x * ca - y * sa, cy + x * sa + y * ca, z)
+
+
+def _hut_b_box(bm, site, x, y, z, size, spin=0.0):
+    add_box(bm, _hut_b_pt(site, x, y, z), size, yaw=site[2] + spin)
+
+
+def _hut_b_cone(bm, site, x, y, z, r0, r1, h, sides=6, tilt=(0.0, 0.0), spin=0.0):
+    add_cone(bm, _hut_b_pt(site, x, y, z), r0, r1, h, sides=sides, tilt=tilt, yaw=site[2] + spin)
+
+
+def _hut_b_floor(gz):
+    """Floor level: the HIGHEST ash under the building, so the apron can never
+    heave up through the flags. The plinth below takes the ~2-stud fall to the
+    downhill (front) corner, and two steps carry the sill down to the ash."""
+    return max(gz(x, y) for x in (-10.0, -5.0, 0.0, 5.0, 10.0)
+               for y in (-8.0, -4.0, 0.0, 4.0, 8.0)) + 0.10
+
+
+def _hut_b_course_run(bm, site, rng, z0, along_x, fixed, lo, hi, skip):
+    """One WALL, laid as overlapping basalt blocks in four courses. `skip` is
+    called with (block span, course z range) and returns True where an opening
+    (the door, the hearth mouth, the culvert) eats the block."""
+    span = hi - lo
+    n = max(2, int(round(span / 3.1)))
+    pitch = span / n
+    out = -1.0 if fixed < 0 else 1.0
+    for c in range(_HUT_B_COURSES):
+        z_lo = c * _HUT_B_COURSE
+        z_hi = z_lo + _HUT_B_COURSE
+        for k in range(n):
+            a = lo + pitch * k
+            b = a + pitch
+            if skip((a, b), (z_lo, z_hi)):
+                continue
+            m = (a + b) * 0.5
+            # Blocks overlap their neighbours in both directions, and each one
+            # stands a little proud of the next - without that relief the four
+            # courses render as one flat grey slab.
+            t = pitch + 0.20
+            h = _HUT_B_COURSE + (1.1 if c == 0 else 0.16)
+            zc = z0 + z_lo + h * 0.5 - (1.1 if c == 0 else 0.08)
+            d = _HUT_B_WALL + 0.12 + rng.uniform(0.0, 0.42)
+            off = out * (d - _HUT_B_WALL - 0.12) * 0.5
+            size = (t, d, h) if along_x else (d, t, h)
+            pos = (m, fixed + off) if along_x else (fixed + off, m)
+            _hut_b_box(bm, site, pos[0], pos[1], zc, size, spin=rng.uniform(-0.03, 0.03))
+
+
+def build_volcano_hut(ground):
+    """BRAKK'S FORGE-HOLD. Deterministic on its own Random(9151), so adding it
+    does not move one boulder of the apron's shared random stream."""
+    rng = random.Random(9151)
+    site = _hut_b_site()
+    cx, cy, yaw = site
+    stone, roof, props, trim, glow = (bmesh.new() for _ in range(5))
+
+    def gz(x, y):
+        """The REAL ash height under a local point. Every prop outside the
+        building is seated on this - nothing is offset from a nominal level."""
+        p = _hut_b_pt(site, x, y, 0.0)
+        g = _drop_to_ground(ground, p[0], p[1])
+        return g if g is not None else height_at(p[0], p[1])
+
+    z0 = _hut_b_floor(gz)
+    hx, hy, wall = _HUT_B_HX, _HUT_B_HY, _HUT_B_WALL
+    hearth = _HUT_B_HEARTH
+    top = z0 + _HUT_B_COURSE * _HUT_B_COURSES  # 10 studs: the wall head
+
+    # --- plinth and floor ---------------------------------------------------
+    # One solid pad down to 4 studs under the floor: the uphill half is buried,
+    # the downhill half stands out as the plinth the walls sit on.
+    _hut_b_box(stone, site, 0.0, 0.0, z0 - 2.05, (hx * 2 + 1.6, hy * 2 + 1.6, 4.1))
+    # The flagged floor, in two halves - the gap between them IS the magma
+    # trench, so the rill is a real slot in the floor, not a stripe painted on
+    # it. A slab under the trench closes its bottom.
+    _hut_b_box(stone, site, (-hx + hearth - 1.4) * 0.5, 0.0, z0 - 0.4,
+               (hearth - 1.4 + hx, hy * 2, 0.9))
+    _hut_b_box(stone, site, (hx + hearth + 1.4) * 0.5, 0.0, z0 - 0.4,
+               (hx - hearth - 1.4, hy * 2, 0.9))
+    _hut_b_box(stone, site, hearth, 1.0, z0 - 1.85, (2.9, hy * 2 + 4.0, 1.5))
+
+    # --- the four walls -----------------------------------------------------
+    def no_skip(_x, _z):
+        return False
+
+    def front_skip(xs, zs):
+        a, b = xs
+        z_lo, z_hi = zs
+        if z_lo < _HUT_B_DOOR_H - 0.1 and b > _HUT_B_DOOR[0] and a < _HUT_B_DOOR[1]:
+            return True
+        if (_HUT_B_COURSE - 0.1 <= z_lo < _HUT_B_DOOR_H - 0.1
+                and b > _HUT_B_FORGE[0] and a < _HUT_B_FORGE[1]):
+            return True
+        return False
+
+    def back_skip(xs, zs):  # the culvert the magma rill runs in through
+        a, b = xs
+        return zs[0] < _HUT_B_COURSE - 0.1 and b > hearth - 1.9 and a < hearth + 1.9
+
+    _hut_b_course_run(stone, site, rng, z0, True, -(hy - wall * 0.5), -hx, hx, front_skip)
+    _hut_b_course_run(stone, site, rng, z0, True, hy - wall * 0.5, -hx, hx, back_skip)
+    _hut_b_course_run(stone, site, rng, z0, False, -(hx - wall * 0.5), -hy, hy, no_skip)
+    _hut_b_course_run(stone, site, rng, z0, False, hx - wall * 0.5, -hy, hy, no_skip)
+    # Lintels: over the door, over the hearth mouth, over the culvert. Each
+    # one beds into the block courses either side of its opening.
+    _hut_b_box(roof, site, sum(_HUT_B_DOOR) * 0.5, -(hy - wall * 0.5), z0 + _HUT_B_DOOR_H + 0.35,
+               (_HUT_B_DOOR[1] - _HUT_B_DOOR[0] + 2.4, wall + 0.5, 0.9))
+    _hut_b_box(roof, site, sum(_HUT_B_FORGE) * 0.5, -(hy - wall * 0.5), z0 + _HUT_B_DOOR_H + 0.35,
+               (_HUT_B_FORGE[1] - _HUT_B_FORGE[0] + 2.4, wall + 0.5, 0.9))
+    _hut_b_box(roof, site, hearth, hy - wall * 0.5, z0 + _HUT_B_COURSE + 0.3,
+               (5.4, wall + 0.5, 0.8))
+
+    # --- roof ---------------------------------------------------------------
+    # Five heavy slate slabs laid across the hold on two purlins, overhanging
+    # the walls by a stud and a bit. They rest ON the wall head.
+    for sy in (-1.0, 1.0):
+        _hut_b_box(roof, site, 0.0, sy * (hy - 2.2), top - 0.35, (hx * 2 + 0.8, 1.5, 1.0))
+    for k in range(5):
+        y = -hy + 1.9 + k * 3.55
+        _hut_b_box(roof, site, rng.uniform(-0.2, 0.2), y, top + 0.45 + rng.uniform(-0.08, 0.08),
+                   (hx * 2 + 2.6, 3.9, 0.95), spin=rng.uniform(-0.02, 0.02))
+
+    # --- the hearth, the chimney and the magma channel ----------------------
+    # Hearth masonry: two cheeks and a back, open to the front, standing on
+    # the floor. The molten pool sits between them, set 0.15 under the sill.
+    for sx in (-1.0, 1.0):
+        _hut_b_box(stone, site, hearth + sx * 3.3, -6.4, z0 + 1.3, (1.2, 5.4, 2.6))
+    _hut_b_box(stone, site, hearth, -3.9, z0 + 1.3, (7.8, 1.4, 2.6))
+    _hut_b_box(stone, site, hearth, -6.4, z0 + 0.35, (5.6, 5.4, 0.8))  # the fire bed
+    # The hood over the hearth, and the chimney climbing out through the roof.
+    _hut_b_box(roof, site, hearth, -5.6, z0 + 8.1, (8.2, 5.2, 1.4))
+    _hut_b_box(roof, site, hearth, -4.6, z0 + 9.3, (5.6, 3.4, 1.6))
+    _hut_b_box(stone, site, hearth, -4.4, top + 1.4, (4.4, 4.4, 4.0))
+    _hut_b_box(stone, site, hearth, -4.4, top + 5.0, (3.8, 3.8, 3.6))
+    _hut_b_box(stone, site, hearth, -4.4, top + 8.2, (3.2, 3.2, 3.0))
+    _hut_b_box(stone, site, hearth, -4.4, top + 9.9, (4.0, 4.0, 0.9))  # the cap course
+
+    # The rill: one continuous molten ribbon from a fissure out on the slope,
+    # down under the back wall, along the floor trench and into the hearth.
+    # Every sample takes its height from the ground it is running over, so the
+    # channel never leaves the ash on the way down.
+    rows_l, rows_r = [], []
+    ys = [20.0, 17.0, 14.0, 11.5, 9.6, 7.0, 4.0, 1.0, -2.0, -4.6]
+    for y in ys:
+        if y > 9.6:
+            zt = gz(hearth, y) - 0.25
+        else:
+            zt = z0 - 0.20 + (gz(hearth, 9.6) - 0.25 - (z0 - 0.20)) * max(0.0, (y - 4.0) / 5.6)
+        rows_l.append(Vector(_hut_b_pt(site, hearth - 1.3, y, zt)))
+        rows_r.append(Vector(_hut_b_pt(site, hearth + 1.3, y, zt)))
+    add_strip_slab(glow, rows_l, rows_r, 2.4)
+    _hut_b_cone(glow, site, hearth, -6.4, z0 + 0.9, 3.1, 2.7, 1.5, sides=9)  # the forge heart
+    _hut_b_cone(glow, site, hearth, -4.4, top + 9.6, 1.4, 1.2, 0.7, sides=6)  # ember at the lip
+    # Trench lips, and the rill's banks out on the slope: laid stone kerbs
+    # that sit on their own ground for the whole run.
+    for sx in (-1.0, 1.0):
+        for k in range(4):
+            y = 10.0 + k * 3.4
+            _hut_b_box(stone, site, hearth + sx * 2.35, y, gz(hearth + sx * 2.35, y) + 0.15,
+                       (1.6, 3.7, 1.9), spin=rng.uniform(-0.05, 0.05))
+    _hut_b_cone(glow, site, hearth, 21.4, gz(hearth, 21.4) - 0.9, 4.4, 2.4, 1.5, sides=9)  # the fissure
+    # Ember bleeding out of the joints beside the hearth - the wall itself is
+    # hot. Each sliver is bedded 0.3 into the blocks it shows between.
+    for k, (ex, ez) in enumerate(((0.2, 1.1), (9.9, 3.4), (10.4, 6.0), (-0.4, 5.2))):
+        _hut_b_box(glow, site, ex, -(hy - 0.15), z0 + ez, (1.7, 1.0, 0.32),
+                   spin=rng.uniform(-0.05, 0.05))
+
+    # --- iron: counter, anvil, grate, tools ---------------------------------
+    # THE COUNTER IS THE ANVIL: a hardie block bedded on the hearth sill,
+    # spanning the mouth, with its horn out over the ash.
+    _hut_b_box(props, site, sum(_HUT_B_FORGE) * 0.5, -(hy + 0.3), z0 + _HUT_B_COURSE + 0.45,
+               (_HUT_B_FORGE[1] - _HUT_B_FORGE[0] - 0.4, 3.6, 1.1))
+    _hut_b_box(props, site, sum(_HUT_B_FORGE) * 0.5, -(hy + 0.3), z0 + _HUT_B_COURSE - 0.3,
+               (3.4, 2.4, 1.4))
+    _hut_b_cone(props, site, _HUT_B_FORGE[1] - 0.2, -(hy + 0.3), z0 + _HUT_B_COURSE + 0.45,
+                0.9, 0.35, 2.2, sides=5, tilt=(0.0, math.pi / 2))  # the horn
+    # The floor grate over the trench.
+    for k in range(7):
+        _hut_b_box(props, site, hearth, -1.4 + k * 1.35, z0 - 0.05, (3.4, 0.55, 0.55))
+    # The tool wall: a peg rail down the west side, every tong and hammer
+    # hanging THROUGH it.
+    _hut_b_box(props, site, -(hx - wall - 0.35), 1.0, z0 + 5.6, (0.7, 13.0, 0.5))
+    for k in range(7):
+        y = -4.6 + k * 1.9
+        kind = k % 3
+        if kind == 0:  # a hammer: head across the shaft
+            _hut_b_cone(props, site, -(hx - wall - 0.45), y, z0 + 5.9, 0.22, 0.20,
+                        -2.6, sides=4)
+            _hut_b_box(props, site, -(hx - wall - 0.75), y, z0 + 3.5, (1.5, 0.7, 0.7))
+        elif kind == 1:  # tongs: two legs off one peg
+            for s in (-1.0, 1.0):
+                _hut_b_cone(props, site, -(hx - wall - 0.45), y, z0 + 5.9, 0.20, 0.13,
+                            -3.2, sides=4, tilt=(0.0, 0.14 * s))
+        else:  # a file / punch
+            _hut_b_cone(props, site, -(hx - wall - 0.45), y, z0 + 5.9, 0.26, 0.10,
+                        -2.9, sides=4)
+    # The working anvil on its stump, and the stone slab bed against the back.
+    _hut_b_cone(props, site, -2.6, 3.2, z0, 1.35, 1.25, 1.5, sides=6)
+    _hut_b_box(props, site, -2.6, 3.2, z0 + 1.85, (3.6, 1.5, 0.9))
+    _hut_b_cone(props, site, -0.9, 3.2, z0 + 1.85, 0.75, 0.28, 1.9, sides=5,
+                tilt=(0.0, math.pi / 2))
+    for sx in (-1.0, 1.0):
+        _hut_b_box(stone, site, -6.6 + sx * 2.0, 6.6, z0 + 0.75, (1.6, 3.4, 1.5))
+    _hut_b_box(stone, site, -6.6, 6.6, z0 + 1.85, (6.4, 4.0, 0.8))
+    _hut_b_cone(trim, site, -6.6, 6.6, z0 + 2.55, 1.5, 1.2, 0.7, sides=6)  # the bedroll
+
+    # --- brass and sulfur ---------------------------------------------------
+    for s, (bx, by) in enumerate(((8.6, 4.4), (8.6, 6.6), (6.6, 5.6))):
+        for c in range(3 - (s % 2)):
+            _hut_b_box(trim, site, bx, by, z0 + 0.35 + c * 0.62, (2.6, 1.6, 0.7),
+                       spin=rng.uniform(-0.12, 0.12))
+    for k in range(4):
+        _hut_b_cone(trim, site, -9.0 + k * 1.5, -6.4 + (k % 2) * 1.7, z0,
+                    rng.uniform(0.85, 1.15), rng.uniform(0.45, 0.7),
+                    rng.uniform(1.5, 2.1), sides=6, spin=rng.uniform(0, 1.0))
+
+    # --- the yard -----------------------------------------------------------
+    # Two steps down off the sill to the ash.
+    _hut_b_box(stone, site, sum(_HUT_B_DOOR) * 0.5, -(hy + 1.3), z0 - 0.55, (6.6, 3.0, 1.2))
+    _hut_b_box(stone, site, sum(_HUT_B_DOOR) * 0.5, -(hy + 3.4),
+               (gz(-5.7, -(hy + 3.4)) + z0) * 0.5 - 0.85, (6.0, 2.6, 1.8))
+    # The quench trough: a hollowed basalt block on the ash, with a blade
+    # still lying across it and the water hissing.
+    tx, ty = -12.0, -6.0
+    tg = gz(tx, ty)
+    _hut_b_box(stone, site, tx, ty, tg + 0.7, (3.6, 7.4, 2.2))
+    for sy in (-1.0, 1.0):
+        _hut_b_box(stone, site, tx, ty + sy * 3.1, tg + 1.75, (3.6, 1.2, 1.0))
+    for sx in (-1.0, 1.0):
+        _hut_b_box(stone, site, tx + sx * 1.5, ty, tg + 1.75, (0.7, 5.2, 1.0))
+    _hut_b_box(props, site, tx, ty, tg + 1.70, (2.4, 5.0, 0.5))  # the black water
+    _hut_b_cone(props, site, tx, ty - 3.6, tg + 2.15, 0.42, 0.12, 5.6, sides=4,
+                tilt=(-0.28, 0.0))  # a blade laid across it, still hissing
+    _hut_b_box(glow, site, tx, ty - 1.4, tg + 1.78, (0.9, 2.2, 0.42))  # where it went in
+    # Two racks of half-finished blades either side of the yard. Posts driven
+    # into the ash, rail on the posts, every blade standing through the rail.
+    for side, rx in ((-1.0, -15.6), (1.0, 15.6)):
+        base = min(gz(rx, -2.0), gz(rx, 4.0))
+        for k in (-1.0, 1.0):
+            _hut_b_cone(props, site, rx, 1.0 + k * 3.2, base - 0.8, 0.5, 0.38, 5.4, sides=5)
+        _hut_b_box(props, site, rx, 1.0, base + 4.1, (0.6, 7.4, 0.6))
+        for k in range(6):
+            y = -2.3 + k * 1.15
+            _hut_b_cone(props, site, rx + rng.uniform(-0.1, 0.1), y, gz(rx, y) - 0.35,
+                        rng.uniform(0.45, 0.62), 0.14, rng.uniform(4.9, 5.7), sides=4,
+                        tilt=(rng.uniform(0.08, 0.18) * side, rng.uniform(-0.08, 0.08)),
+                        spin=rng.uniform(-0.2, 0.2))
+    # THE BELL - a cracked cannon shell - hung from an iron gibbet by the door.
+    bx, by = -13.6, -12.2
+    bg = gz(bx, by)
+    _hut_b_cone(props, site, bx, by, bg - 0.8, 0.46, 0.32, 11.0, sides=5)  # the gibbet post
+    _hut_b_box(props, site, bx + 1.7, by, bg + 9.7, (3.9, 0.5, 0.5))  # its arm
+    _hut_b_box(props, site, bx + 3.1, by, bg + 8.85, (0.45, 0.45, 2.1))  # the shackle
+    # The shell hangs mouth-DOWN off that shackle, cracked lip and all.
+    _hut_b_cone(trim, site, bx + 3.1, by, bg + 5.6, 1.35, 0.62, 3.0, sides=8)
+    _hut_b_cone(trim, site, bx + 3.1, by, bg + 8.4, 0.55, 0.34, 0.8, sides=6)  # its crown
+    _hut_b_cone(props, site, bx + 3.1, by, bg + 4.9, 0.18, 0.18, 1.4, sides=4)  # the clapper
+
+    door = _hut_b_pt(site, sum(_HUT_B_DOOR) * 0.5, -(hy + 1.0), 0.0)
+    stand = _hut_b_pt(site, sum(_HUT_B_FORGE) * 0.5, -(hy + 4.2), 0.0)
+    shore = ring_radius(1.0, math.radians(270))
+    spawn_z = shore - 30.0
+    dx, dz = math.cos(_HUT_B_BEARING), -math.sin(_HUT_B_BEARING)  # Roblox X/Z, facing out
+    facing = math.degrees(math.atan2(-dx, -dz)) % 360.0
+    print(
+        f"[island_gen] HANDOFF volcano hut: Brakk's forge-hold, door (Roblox rel) "
+        f"X={door[0]:.0f} Z={-door[1]:.0f}, anvil counter X={stand[0]:.0f} Z={-stand[1]:.0f}, "
+        f"sill Y~{z0:.1f}; suggested brakk spawnOffset Vector3.new({stand[0]:.0f}, 0, "
+        f"{-stand[1] - spawn_z:.0f}) facing {facing:.0f} "
+        f"(island spawn is X=0 Z={spawn_z:.0f}; the hold sits {math.hypot(stand[0], -stand[1] - spawn_z):.0f} studs from it, "
+        f"the nearest legal spot outside the 9-deg dock corridor)"
+    )
+    return (
+        object_from_bmesh("Volcano_Hut_Walls", stone, ["M_ForgeBasalt"]),
+        object_from_bmesh("Volcano_Hut_Roof", roof, ["M_ForgeSlate"]),
+        object_from_bmesh("Volcano_Hut_Props", props, ["M_ForgeIron"]),
+        object_from_bmesh("Volcano_Hut_Trim", trim, ["M_ForgeBrass"]),
+        object_from_bmesh("Volcano_Hut_Glow", glow, ["M_ForgeEmber"]),
+    )
+
+
 def build_volcano():
     """RESTARTED FROM SCRATCH (2026-08-27, user: "completely start from
     scratch... a big base island with nothing on it") - the swamp-restart
@@ -1807,9 +2153,18 @@ def build_volcano():
     deals no damage, both by user order."""
     base = build_island_base("Volcano_Base", ["M_VolRock", "M_VolAsh", "M_VolWet"])
     ground = _ground_bvh(base)
+    # STEP 7 - Brakk's forge-hold. Its plot is claimed BEFORE the scatters run
+    # (the hold itself is built last, off its own RNG, so the shared stream is
+    # unmoved): no dead giant grows through the roof, no boulder lands in the
+    # yard or across the magma rill.
+    _HUT_B_KEEP.clear()
+    _hut_b_c = _hut_b_site()
+    _HUT_B_KEEP.append((*_hut_b_c[:2], 27.0))
+    _HUT_B_KEEP.append((*_hut_b_pt(_hut_b_c, _HUT_B_HEARTH, 20.0, 0.0)[:2], 10.0))
     lava = build_lava(ground)  # step 2: clears + repopulates LAVA_PONDS itself
     trees = build_volcano_trees(ground)  # step 3: after lava - reads LAVA_PONDS to keep clear
     rocks = build_volcano_rocks(ground)  # step 4: same keep-clears
+    hut = build_volcano_hut(ground)  # step 7: in the plot claimed above
     dock = build_dock("Volcano_Dock_Planks", "Volcano_Dock_Posts", "M_VolPlank", "M_VolPost")  # step 5
     foam = build_foam("Volcano_Foam", "M_VolFoam")  # step 6: after the dock - it collars the wet posts
     shore = ring_radius(1.0, math.radians(270))
@@ -1822,7 +2177,7 @@ def build_volcano():
         f"spawn suggestion X=0 Z={shore - 30:.0f} ground Y~{height_at(0, -(shore - 30)):.1f}; "
         f"Pyrelisk arena suggestion: rel Z={dock_end + 40:.0f} (open sea past the dock end)"
     )
-    return [base, lava, trees, rocks, *dock, foam]
+    return [base, lava, trees, rocks, *hut, *dock, foam]
 
 
 # ---------------------------------------------------------------- revamp islands (2026-08-25)
@@ -2658,15 +3013,18 @@ def build_hut_morra():
     LVL_Z = [0.0, 2.3, 4.8, 7.3, 9.4, 11.6]
     LVL_R = [6.6, 7.5, 7.7, 7.0, 5.2, 1.7]
     WALL_T = 1.1
-    LEAN = 3.1  # studs of shear from floor to apex - the hunch
-    # It leans BACK and a little sideways, onto the mangrove propping it up.
-    # Mostly-backward is deliberate: a mostly-sideways lean shears the door
-    # into a parallelogram and squeezes the walk-through width under 4 studs.
-    LEAN_F, LEAN_S = -0.82, 0.57
+    LEAN = 3.8  # studs of shear, floor to apex - the hunch
+    LEAN_F, LEAN_S = -0.45, 0.89  # it leans onto the mangrove propping it up
 
     def lean_at(z_local):
-        t = (z_local / LVL_Z[-1]) ** 1.2
-        return LEAN_F * LEAN * t, LEAN_S * LEAN * t
+        """How far the shell has wandered off plumb at this height. Almost all
+        of the lean is spent ABOVE the door head - the body stands near plumb
+        and the dome hunches hard over it. Shearing the door band as well
+        turns the opening into a parallelogram and squeezes the straight
+        walk-through under 4 studs (measured, not guessed)."""
+        t = z_local / LVL_Z[-1]
+        k = 0.12 * t + 0.88 * smoothstep(LVL_Z[3], LVL_Z[-1], z_local)
+        return LEAN_F * LEAN * k, LEAN_S * LEAN * k
 
     def shell_r(z_local, outer):
         for i in range(len(LVL_Z) - 1):
@@ -2729,7 +3087,7 @@ def build_hut_morra():
 
     # The mangrove the hut is built half-around: the trunk passes THROUGH the
     # wattle on the leaning side, prop roots splayed into the bog.
-    tx, ty, _ = P(-5.6, 4.4, 0)  # on the side the hut leans onto - it holds it up
+    tx, ty, _ = P(-3.2, 6.5, 0)  # on the side the hut leans onto - it holds it up
     t_g = _swamp_height(tx, ty)
     add_cone(walls, (tx, ty, t_g - 1.2), 1.5, 0.75, 24.0, sides=6, tilt=(0.06, -0.10))
     for k in range(4):
@@ -2823,12 +3181,14 @@ def build_hut_morra():
     snout = Vector(lintel) + Vector((fx, fy, -0.1)) * 1.1
     add_cone(props, tuple(snout), 0.75, 0.3, 2.2, sides=4, tilt=_tilt_toward(Vector((fx, fy, -0.06)).normalized()))
     # the chime: a stick under the door head, bones and shells on short cords
-    bar_l = Vector(shell_pt(-0.42, LVL_Z[3] - 0.5, r=shell_r(LVL_Z[3] - 0.5, True) - 0.2))
-    bar_r = Vector(shell_pt(0.42, LVL_Z[3] - 0.5, r=shell_r(LVL_Z[3] - 0.5, True) - 0.2))
+    # the bar runs PAST the door's edges (+-0.45 rad), so both ends are buried
+    # in the jambs rather than floating in the opening
+    bar_l = Vector(shell_pt(-0.56, LVL_Z[3] - 0.45, r=shell_r(LVL_Z[3] - 0.45, True) - 0.35))
+    bar_r = Vector(shell_pt(0.56, LVL_Z[3] - 0.45, r=shell_r(LVL_Z[3] - 0.45, True) - 0.35))
     add_cone(props, tuple(bar_l), 0.14, 0.14, (bar_r - bar_l).length, sides=3, tilt=_tilt_toward((bar_r - bar_l).normalized()))
     for k in range(5):
         p = bar_l + (bar_r - bar_l) * ((k + 0.5) / 5)
-        drop = rng.uniform(0.7, 1.6)
+        drop = rng.uniform(0.4, 0.95)  # hangs high in the head of the doorway
         add_cone(props, (p.x, p.y, p.z - drop), 0.05, 0.05, drop, sides=3)  # the cord
         if k % 2:
             add_cone(props, (p.x, p.y, p.z - drop - 0.7), 0.34, 0.06, 0.75, sides=5)  # a shell
@@ -2875,13 +3235,14 @@ def build_hut_morra():
     _hut_maren_paint(props, first, 0)
 
     # INTERIOR. Rafters first - everything hanging inside hangs off THEM.
-    inner_c = lean_at(7.6)
+    RAFTER_Z = 8.2  # high enough that the lowest bundle clears a walking head
+    inner_c = lean_at(RAFTER_Z)
     rafters = []
     first = len(props.faces)
     for off in (-2.2, 2.2):
-        half = math.sqrt(max(shell_r(7.6, False) ** 2 - off ** 2, 1.0)) + 0.9
-        p0 = Vector(P(inner_c[0] + off, inner_c[1] - half, FLOOR + 7.6))
-        p1 = Vector(P(inner_c[0] + off, inner_c[1] + half, FLOOR + 7.6))
+        half = math.sqrt(max(shell_r(RAFTER_Z, False) ** 2 - off ** 2, 1.0)) + 0.9
+        p0 = Vector(P(inner_c[0] + off, inner_c[1] - half, FLOOR + RAFTER_Z))
+        p1 = Vector(P(inner_c[0] + off, inner_c[1] + half, FLOOR + RAFTER_Z))
         add_cone(props, tuple(p0), 0.3, 0.26, (p1 - p0).length, sides=4, tilt=_tilt_toward((p1 - p0).normalized()))
         rafters.append((p0, p1))
     # the potion shelf, let into the wall, and the stump table + straw cot
@@ -5443,8 +5804,8 @@ def build_gloom_lighthouse(ground):
     #     with the shaft open at its centre (the stair climbs to it).
     add_disc_slab(walls, _hut_lumen_ring(cx, cy, LUMEN_R_OUT[0] - LUMEN_WALL_T + 0.15, LUMEN_SECTORS, phase=0.26),
                   floor + 0.12, 1.1)
-    add_ring_slab(walls, _hut_lumen_ring(cx, cy, 2.4, LUMEN_SECTORS, phase=0.26),
-                  _hut_lumen_ring(cx, cy, LUMEN_R_OUT[1] - LUMEN_WALL_T + 0.4, LUMEN_SECTORS, phase=0.26),
+    add_ring_slab(walls, _hut_lumen_ring(cx, cy, 2.4, 10, phase=0.26),
+                  _hut_lumen_ring(cx, cy, LUMEN_R_OUT[1] - LUMEN_WALL_T + 0.4, 10, phase=0.26),
                   floor + LUMEN_ROOM_H + 0.8, 0.8)
 
     # --- 4. RIBS + BARNACLES. Six buttress ribs run the full height (the
@@ -5460,7 +5821,7 @@ def build_gloom_lighthouse(ground):
                            floor + (LUMEN_BANDS[i] + LUMEN_BANDS[i + 1]) / 2),
                     (1.5, 1.35, LUMEN_BANDS[i + 1] - LUMEN_BANDS[i]), yaw=a)
     made = 0
-    while made < 9:  # barnacles bedded on the OUTER face, never in the doorway
+    while made < 8:  # barnacles bedded on the OUTER face, never in the doorway
         a = rng.uniform(0, math.tau)
         if abs(((a - door + math.pi) % math.tau) - math.pi) < math.radians(34):
             continue
@@ -7419,7 +7780,10 @@ def build_wreck_sterncastle(ground):
 
     door = wpt((-0.4, 0.0, HOLLOW_SOLE))
     stand = (cnt[0] + up_beach[0] * -1.9, cnt[1] + up_beach[1] * -1.9)  # Hollow, behind his counter
-    look = (-up_beach[0], -up_beach[1])
+    # Hollow stands SHIP-SIDE of the counter, so he looks UP the beach at whoever
+    # walks in - not out to sea with his back to the customer. (The first version
+    # negated this and printed a facing 180 degrees wrong.)
+    look = up_beach
     facing = math.degrees(math.atan2(-look[0], look[1])) % 360.0
     a_dock = math.radians(DOCK_ANGLE_DEG)
     spawn_z = -(ring_radius(DOCK_START_U, a_dock) - 18)  # the island's spawn, Blender y
@@ -7999,6 +8363,13 @@ ISLANDS = {
                 "M_VolPlank": (0.690, 0.490, 0.290),  # the tropical dock's wood, verbatim
                 "M_VolPost": (0.455, 0.310, 0.190),
                 "M_VolFoam": (0.851, 0.851, 0.890),  # ash-tinged surf line
+                # Brakk's forge-hold (step 7): dressed basalt, slate roof,
+                # black iron, worked brass, and the magma running through it.
+                "M_ForgeBasalt": (0.208, 0.196, 0.216),
+                "M_ForgeSlate": (0.145, 0.141, 0.157),
+                "M_ForgeIron": (0.267, 0.271, 0.290),
+                "M_ForgeBrass": (0.678, 0.549, 0.278),
+                "M_ForgeEmber": (1.000, 0.451, 0.086),
             },
         },
         "build": build_volcano,

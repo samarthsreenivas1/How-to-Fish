@@ -38,8 +38,8 @@ Npcs.items.old_maren = {
 	name = "Old Maren",
 	title = "Cove Fishwife",
 	island = "tropical",
-	spawnOffset = Vector3.new(11, 0, 7),
-	facing = 225,
+	spawnOffset = Vector3.new(21, 0, -5),
+	facing = 162, -- behind her stall counter, shack at her back
 	-- The Deckhand biped as a stand-in body (recolored warmly by NpcService
 	-- so she reads friendly, not drowned); a bespoke Maren model can slot in
 	-- here later.
@@ -59,8 +59,8 @@ Npcs.items.morra = {
 	name = "Morra",
 	title = "Bog-Witch of the Fen",
 	island = "swamp",
-	spawnOffset = Vector3.new(-12, 0, 6),
-	facing = 140,
+	spawnOffset = Vector3.new(-20, 0, 2),
+	facing = 258, -- in her dooryard where the plank path meets the hut
 	body = { model = "CreaturePack", species = "SunkenTrapper", scale = 1.0 },
 	greeting = {
 		"Mind the roots, wanderer. The fen knows you're here - it told me before you stepped off the sand.",
@@ -75,8 +75,8 @@ Npcs.items.halvard = {
 	name = "Halvard",
 	title = "Frost Hermit",
 	island = "ice",
-	spawnOffset = Vector3.new(13, 0, -4),
-	facing = 250,
+	spawnOffset = Vector3.new(18, 0, -4),
+	facing = 102, -- at the hull's door, out of the wind
 	body = { model = "CreaturePack", species = "FrozenMariner", scale = 1.0 },
 	greeting = {
 		"Shut the wind out and speak quick. The holes freeze over faster than a soft-handed southerner can cast.",
@@ -92,8 +92,8 @@ Npcs.items.brakk = {
 	name = "Brakk",
 	title = "Cinder-Smith",
 	island = "volcano",
-	spawnOffset = Vector3.new(-15, 0, 10),
-	facing = 60,
+	spawnOffset = Vector3.new(87, 0, -20),
+	facing = 190, -- at the anvil counter on the forge's open face
 	body = { model = "CreaturePack", species = "SlagGolem", scale = 0.9 },
 	greeting = {
 		"Stand off the bellows. Everything on this rock wants to cook you, and half of it reports to me.",
@@ -109,8 +109,8 @@ Npcs.items.lumen = {
 	name = "Keeper Lumen",
 	title = "Lightkeeper of the Trench",
 	island = "gloom",
-	spawnOffset = Vector3.new(10, 0, 9),
-	facing = 210,
+	spawnOffset = Vector3.new(-10, 0, 6),
+	facing = 270, -- at the lighthouse door under his own light
 	body = { model = "CreaturePack", species = "Deckhand", scale = 1.05 },
 	greeting = {
 		"You SEE it too, yes? The dark that leans in when the lamp gutters? Good. Then you're not mad. Or we both are.",
@@ -125,8 +125,8 @@ Npcs.items.hollow = {
 	name = "Quartermaster Hollow",
 	title = "Of the Drowned Fleet",
 	island = "wreck",
-	spawnOffset = Vector3.new(-11, 0, -8),
-	facing = 30,
+	spawnOffset = Vector3.new(-39, 0, -1),
+	facing = 316, -- behind the gangplank counter, ship at his back, facing up the beach
 	body = { model = "CreaturePack", species = "DrownedBoatswain", scale = 1.0 },
 	greeting = {
 		"Name and business in the ledger. Everything in this bay is owed to somebody, and I keep the book.",

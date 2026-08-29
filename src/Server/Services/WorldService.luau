@@ -324,6 +324,15 @@ local NON_COLLIDE = {
 	-- The four new islands' fishable water surfaces - like the lava, water
 	-- is a surface you fall into, not a floor (the procedural
 	-- Maelstrom_Water sets its own CanCollide directly).
+	-- NPC-house dressing (2026-08-29). The houses are the rare props players
+	-- walk INTO, so `_Hut_Walls` and `_Hut_Roof` are deliberately absent from
+	-- this list - they must stay solid. Everything else in a house is
+	-- furniture, hanging light or cloth: nothing you should be able to stand
+	-- on, and nothing that should wall a small room in.
+	"_Hut_Props",
+	"_Hut_Glow",
+	"_Hut_Canvas",
+	"_Hut_Trim",
 	"Swamp_Water",
 	"Frostmaw_IceHoles",
 	"Gloomtrench_DarkWater",
@@ -502,6 +511,12 @@ local MESH_COLOR = {
 	Gloomtrench_Dock_Posts = Color3.fromRGB(50, 46, 60),
 	Gloomtrench_Foam = Color3.fromRGB(171, 179, 199),
 
+	-- Keeper Lumen's lighthouse: the trench's one standing light.
+	Gloomtrench_Hut_Walls = Color3.fromRGB(93, 90, 113), -- M_GloomPath (pale flagstone tower)
+	Gloomtrench_Hut_Roof = Color3.fromRGB(20, 21, 30), -- M_GloomShelf (gallery, lamp cage, cap)
+	Gloomtrench_Hut_Props = Color3.fromRGB(59, 62, 76), -- M_GloomStalk
+	Gloomtrench_Hut_Glow = Color3.fromRGB(74, 239, 224), -- M_GlowCyan (Neon below)
+
 	-- Wreckwater (assets/island_wreck_gen.py). The ghost-glow is Neon.
 	Wreckwater_Base = Color3.fromRGB(60, 62, 60), -- M_BayFloor (drowned grey-green silt)
 	Wreckwater_Base2 = Color3.fromRGB(170, 163, 142), -- M_WreckSand (bone-grey sand)
@@ -513,6 +528,15 @@ local MESH_COLOR = {
 	Wreckwater_SeaHulks = Color3.fromRGB(55, 46, 37),
 	Wreckwater_GhostGlow = Color3.fromRGB(173, 241, 196),
 	Wreckwater_Sails = Color3.fromRGB(189, 190, 179), -- M_WreckSail (rotted canvas, bone with a green cast)
+
+	-- Quartermaster Hollow's beached sterncastle (the NPC houses, 2026-08-29).
+	-- Walls take the fleet's own hull colour so the house reads as wreckage
+	-- that was made into a home, not a building dropped on the beach.
+	Wreckwater_Hut_Walls = Color3.fromRGB(55, 46, 37), -- M_HullWood, matches Wreckwater_Hulks
+	Wreckwater_Hut_Roof = Color3.fromRGB(121, 103, 79), -- M_WreckPlank
+	Wreckwater_Hut_Props = Color3.fromRGB(84, 69, 52), -- M_WreckPost
+	Wreckwater_Hut_Canvas = Color3.fromRGB(189, 190, 179), -- M_WreckSail
+	Wreckwater_Hut_Glow = Color3.fromRGB(173, 241, 196), -- M_GhostGlow (Neon below)
 	Wreckwater_Dunes = Color3.fromRGB(165, 154, 131), -- M_WreckDrift (drifted dune ridges)
 	Wreckwater_Rocks = Color3.fromRGB(90, 92, 96),
 	-- Round 1 added a lagoon-side quay ALONGSIDE the standard sea dock (the
@@ -551,6 +575,8 @@ local MESH_MATERIAL = {
 	Gloomtrench_GlowCyan = Enum.Material.Neon,
 	Gloomtrench_GlowViolet = Enum.Material.Neon,
 	Wreckwater_GhostGlow = Enum.Material.Neon,
+	Wreckwater_Hut_Glow = Enum.Material.Neon,
+	Gloomtrench_Hut_Glow = Enum.Material.Neon,
 	Maelstrom_StormGlow = Enum.Material.Neon,
 	-- Frostmaw's big glacial forms glint like real ice; nothing Neon here.
 	Frostmaw_Berg = Enum.Material.Ice,
