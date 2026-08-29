@@ -145,6 +145,16 @@ COLORS = {
     "M_Plank": (0.690, 0.490, 0.290),
     "M_Post": (0.455, 0.310, 0.190),
     "M_Foam": (0.973, 0.996, 1.000),
+    # Old Maren's stilt shack (build_hut_maren): sun-bleached driftwood walls,
+    # and the dressing on her porch and shelves. The roof reuses the palms'
+    # two frond greens and the chimney the island's own M_Rock, so the shack
+    # is built out of the cove's existing palette wherever it can be.
+    "M_Driftwood": (0.647, 0.549, 0.427),
+    "M_HutCloth": (0.878, 0.831, 0.706),  # hammock canvas
+    "M_HutFish": (0.769, 0.784, 0.741),  # drying fish on the line, and the gull
+    "M_HutIron": (0.290, 0.302, 0.325),  # kettle, cleaver
+    "M_HutJar": (0.518, 0.686, 0.478),  # the shelf of pickle jars
+    "M_HutEmber": (1.000, 0.545, 0.184),  # hearth embers + the stall lantern
 }
 
 # ---------------------------------------------------------------- foam knobs
@@ -1398,6 +1408,368 @@ def build_volcano_rocks(ground):
     return object_from_bmesh("Volcano_Rocks", bm, ["M_Obsidian"])
 
 
+# ------------------------------------------- Old Maren's stilt shack (tropical)
+#
+# The cove fishwife's driftwood shack, up on tide-stilts at the beach edge a
+# short walk seaward of the spawn, facing INLAND so a new player walks out of
+# the spawn plaza straight at its porch and market counter. It is a WALK-IN
+# building: 11 x 11 studs of clear floor, a 5 x 7.6 door, a 9.5-stud ceiling,
+# and every wall 0.8 studs thick so PreciseConvexDecomposition gives solid
+# walls instead of a hull over the whole box. The deck, walls, stilts, ramp
+# and chimney live in Island_Hut_Walls and must stay COLLIDABLE (the porch is
+# floor Maren and the player stand on); only Island_Hut_Props is a candidate
+# for NON_COLLIDE.
+
+_HUT_MAREN_ANGLE = math.radians(72.0)  # bearing of the site from the island centre
+_HUT_MAREN_RADIUS = 66.0  # out on the sand, ~22 studs seaward of Maren's old mark
+_HUT_MAREN_YAW = _HUT_MAREN_ANGLE + math.pi  # local +front points back inland
+
+
+def _hut_maren_quad_slab(bm, corners, thickness):
+    """A flat solid from four world-space corner points, extruded `thickness`
+    along the quad's own normal - the tilted plank the axis-aligned add_box
+    helpers cannot make (roof shingles, the porch ramp, a hammock's sag).
+    Shared by both of this pass's huts (Maren's and Morra's)."""
+    pts = [Vector(c) for c in corners]
+    n = (pts[1] - pts[0]).cross(pts[2] - pts[0])
+    if n.length < 1e-9:
+        return
+    if n.z < 0:
+        n = -n  # the solid always hangs BELOW the quad, whatever the winding -
+    n = n.normalized() * thickness  # so the given corners are the walked/lit face
+    top = [bm.verts.new(p) for p in pts]
+    bot = [bm.verts.new(p - n) for p in pts]
+    bm.faces.new(top)
+    bm.faces.new(list(reversed(bot)))
+    for i in range(4):
+        j = (i + 1) % 4
+        bm.faces.new((top[i], bot[i], bot[j], top[j]))
+
+
+def _hut_maren_paint(bm, first, index):
+    """Give every face added since `first` a second/third material slot - how
+    a single hut object carries stone as well as wood (the importer splits it
+    into <Name> / <Name>2, which is what MESH_COLOR keys)."""
+    for f in list(bm.faces)[first:]:
+        f.material_index = index
+
+
+def build_hut_maren():
+    """Old Maren's stilt shack: driftwood walls under an overlapping
+    palm-frond roof, a crooked stone chimney, and a fold-out market counter
+    on the porch she trades from. Four layers - Walls (structure, collidable),
+    Roof, Props (the dressing, inside and out) and Glow (the hearth embers)."""
+    walls, roof, props, glow = bmesh.new(), bmesh.new(), bmesh.new(), bmesh.new()
+    rng = random.Random(8801)
+
+    cx = math.cos(_HUT_MAREN_ANGLE) * _HUT_MAREN_RADIUS
+    cy = math.sin(_HUT_MAREN_ANGLE) * _HUT_MAREN_RADIUS
+    a = _HUT_MAREN_YAW
+    fx, fy = math.cos(a), math.sin(a)  # +front: inland, toward the spawn beach
+    rx, ry = -math.sin(a), math.cos(a)  # +side: Maren's right as she faces out
+
+    def P(fwd, side, z):
+        return (cx + fx * fwd + rx * side, cy + fy * fwd + ry * side, z)
+
+    def B(bm, fwd, side, z, d, w, h):
+        """Box centred at the local (fwd, side, z), `d` deep along front,
+        `w` wide along side, `h` tall - yawed into the shack's frame."""
+        add_box(bm, P(fwd, side, z), (d, w, h), yaw=a)
+
+    def ground(fwd, side):
+        x, y, _ = P(fwd, side, 0)
+        return height_at(x, y)
+
+    # The deck rides above the HIGHEST ground under the footprint, so no
+    # corner of it is ever buried - the stilts take up the slack downhill.
+    g_max = max(ground(f_, s_) for f_ in (-7.0, 0.0, 7.0, 12.0) for s_ in (-7.0, 0.0, 7.0))
+    FLOOR = g_max + 1.35  # top of the deck planks
+
+    T = 0.8  # wall thickness (>= 0.5: the solid-walls import rule)
+    HW = 6.3  # outer half-width; interior half is HW - T = 5.5 -> 11 studs clear
+    BACK, FRONT = -6.3, 6.3  # outer faces on the front axis (11 clear inside)
+    PORCH = 11.5  # the porch deck's outer edge
+    WALL_H = 9.5  # deck top -> wall top (ceiling well over the 8-stud rule)
+    DOOR_LO, DOOR_HI, DOOR_H = -3.5, 1.5, 7.6  # 5.0 x 7.6 opening, left of the counter
+
+    # ---- deck + stilts + walls (all collidable) ----
+    B(walls, (BACK + PORCH) / 2, 0.0, FLOOR - 0.35, PORCH - BACK, 13.4, 0.7)
+    for fwd, side in ((-5.4, -5.4), (-5.4, 5.4), (0.0, -5.9), (0.0, 5.9), (5.4, -5.4), (5.4, 5.4), (10.4, -5.2), (10.4, 5.2)):
+        x, y, _ = P(fwd, side, 0)
+        add_post(walls, x, y, height_at(x, y) - 0.9, FLOOR - 0.7, 0.55)
+        # a knee brace back up under the deck, so it reads as built, not floated
+        add_cone(
+            walls,
+            (x, y, height_at(x, y) + 0.4),
+            0.26,
+            0.14,
+            2.4,
+            sides=4,
+            tilt=_tilt_toward(Vector((-fx * (1 if fwd > 0 else -1), -fy * (1 if fwd > 0 else -1), 2.2)).normalized()),
+        )
+
+    # Every wall foots 0.15 INTO the deck rather than resting coplanar on it -
+    # the "nothing floats, everything overlaps" rule, and no coplanar z-fight.
+    WZ, WM = FLOOR + (WALL_H - 0.15) / 2, WALL_H + 0.15
+    B(walls, BACK + T / 2, 0.0, WZ, T, 2 * HW, WM)  # back wall
+    B(walls, 0.0, -(HW - T / 2), WZ, FRONT - BACK, T, WM)  # left
+    B(walls, 0.0, HW - T / 2, WZ, FRONT - BACK, T, WM)  # right
+    B(walls, FRONT - T / 2, (-HW + DOOR_LO) / 2, WZ, T, DOOR_LO + HW, WM)
+    B(walls, FRONT - T / 2, (DOOR_HI + HW) / 2, WZ, T, HW - DOOR_HI, WM)
+    B(walls, FRONT - T / 2, (DOOR_LO + DOOR_HI) / 2, FLOOR + (DOOR_H + WALL_H) / 2, T, DOOR_HI - DOOR_LO, WALL_H - DOOR_H)
+
+    # The porch ramp up off the sand, in line with the door.
+    ramp_out = PORCH + 4.8
+    gz = min(ground(ramp_out, DOOR_LO), ground(ramp_out, DOOR_HI)) - 0.2
+    _hut_maren_quad_slab(
+        walls,
+        [P(PORCH, DOOR_LO, FLOOR), P(PORCH, DOOR_HI - 1.0, FLOOR), P(ramp_out, DOOR_HI - 1.0, gz), P(ramp_out, DOOR_LO, gz)],
+        0.35,
+    )
+
+    # Porch posts (the drying-fish lines are strung between them) and the
+    # ridgepole the gull stands on - wood, so they live with the walls.
+    RIDGE_Z = FLOOR + WALL_H + 5.4
+    EAVE_Z = FLOOR + WALL_H - 0.5
+    EAVE_S = 7.7  # the roof's half-span; the porch posts run right up into it
+    RIDGE_BACK, RIDGE_FRONT = BACK - 1.2, PORCH + 0.8
+
+    def roof_z(side):
+        return EAVE_Z + (RIDGE_Z - EAVE_Z) * (1.0 - min(abs(side), EAVE_S) / EAVE_S)
+
+    for side in (-5.4, 5.4):
+        x, y, _ = P(PORCH - 0.9, side, 0)
+        add_post(walls, x, y, FLOOR - 0.5, roof_z(side) - 0.05, 0.4)  # deck -> into the roof
+    add_cone(
+        walls,
+        P(RIDGE_BACK, 0.0, RIDGE_Z),
+        0.3,
+        0.24,
+        RIDGE_FRONT - RIDGE_BACK,
+        sides=4,
+        tilt=_tilt_toward(Vector((fx, fy, 0.0))),
+    )
+
+    # ---- the crooked stone chimney + the hearth it serves (material slot 1) ----
+    stone_first = len(walls.faces)
+    stack_z = ground(-1.0, -(HW + 1.0)) - 0.4
+    k = 0
+    while stack_z < FLOOR + WALL_H + 2.6:  # clears the roof on its own side, no stovepipe
+        h = 3.4 if k else (FLOOR - stack_z + 1.4)
+        B(
+            walls,
+            -1.0 + rng.uniform(-0.5, 0.5),
+            -(HW + 1.0) + rng.uniform(-0.35, 0.35),
+            stack_z + h / 2,
+            3.6 - k * 0.16,
+            3.2 - k * 0.14,
+            h,
+        )
+        stack_z += h - 0.3  # courses overlap; a chimney is not a stack of floaters
+        k += 1
+    B(walls, -1.0, -(HW - T - 1.2), FLOOR + 0.9, 2.6, 2.4, 1.8)  # the hearth shelf inside
+    B(walls, -1.0, -(HW - T - 0.3), FLOOR + 2.6, 2.6, 0.7, 3.4)  # its sooty back slab
+    _hut_maren_paint(walls, stone_first, 1)
+
+    # The two GABLE ends, boarded up to the ridge - without them the roof
+    # triangle is an open hole into the room at each end.
+    for fwd, inward in ((BACK, T), (FRONT, -T)):
+        tri = [
+            (P(fwd, -EAVE_S, EAVE_Z), P(fwd, EAVE_S, EAVE_Z), P(fwd, 0.0, RIDGE_Z)),
+            (P(fwd + inward, -EAVE_S, EAVE_Z), P(fwd + inward, EAVE_S, EAVE_Z), P(fwd + inward, 0.0, RIDGE_Z)),
+        ]
+        vs = [[walls.verts.new(Vector(p)) for p in face] for face in tri]
+        walls.faces.new(vs[0])
+        walls.faces.new(list(reversed(vs[1])))
+        for i in range(3):
+            j = (i + 1) % 3
+            walls.faces.new((vs[0][i], vs[1][i], vs[1][j], vs[0][j]))
+
+    # ---- the palm-frond roof: two slopes, overlapping frond courses on top ----
+    for s in (-1.0, 1.0):
+        _hut_maren_quad_slab(
+            roof,
+            [
+                P(RIDGE_BACK, 0.0, RIDGE_Z),
+                P(RIDGE_FRONT, 0.0, RIDGE_Z),
+                P(RIDGE_FRONT, s * EAVE_S, EAVE_Z),
+                P(RIDGE_BACK, s * EAVE_S, EAVE_Z),
+            ],
+            0.35,
+        )
+        for course in range(3):
+            t0 = 0.10 + course * 0.30
+            for seg in range(9):
+                # Ragged, overlapping BLADES rather than tiles: every frond
+                # runs a different distance down the slope and laps its
+                # neighbour sideways, so the eave line comes out torn.
+                t1 = t0 + 0.40 + rng.uniform(-0.07, 0.09)
+                f0 = RIDGE_BACK + (RIDGE_FRONT - RIDGE_BACK) * (seg / 9.0) + rng.uniform(-0.2, 0.2)
+                f1 = f0 + (RIDGE_FRONT - RIDGE_BACK) / 9.0 + rng.uniform(0.3, 0.7)  # blades overlap sideways too
+                # Lifted less than the frond is thick, so every blade still
+                # BITES the roof plane under it - nothing hovers.
+                lift = 0.05 + rng.uniform(0.0, 0.09)
+                first = len(roof.faces)
+                _hut_maren_quad_slab(
+                    roof,
+                    [
+                        P(f0, s * EAVE_S * t0, EAVE_Z + (RIDGE_Z - EAVE_Z) * (1 - t0) + lift),
+                        P(f1, s * EAVE_S * t0, EAVE_Z + (RIDGE_Z - EAVE_Z) * (1 - t0) + lift),
+                        P(f1, s * EAVE_S * t1, EAVE_Z + (RIDGE_Z - EAVE_Z) * (1 - t1) + lift * 0.5),
+                        P(f0, s * EAVE_S * t1, EAVE_Z + (RIDGE_Z - EAVE_Z) * (1 - t1) + lift * 0.5),
+                    ],
+                    0.3,
+                )
+                if rng.random() < 0.45:
+                    _hut_maren_paint(roof, first, 1)  # the darker frond, for depth
+
+    # ---- props: material slots 0 plank / 1 cloth / 2 fish / 3 iron / 4 jar ----
+    # EXTERIOR. The market counter Maren trades over, across the porch front.
+    B(props, 8.9, 2.6, FLOOR + 3.2, 2.8, 7.4, 0.28)  # spans fwd 7.5..10.3
+    first = len(props.faces)
+    B(props, 10.2, 2.6, FLOOR + 2.3, 0.34, 7.4, 1.7)  # the fold-down apron board
+    for side in (-0.7, 5.8):
+        x, y, _ = P(10.1, side, 0)
+        add_post(props, x, y, FLOOR - 0.1, FLOOR + 3.15, 0.22, sides=4)
+        # ...and the fold-out's brace arms, running back INTO the front wall it
+        # hinges off, so the counter is carried by the shack, not by air.
+        arm = Vector(P(FRONT - 0.3, side, FLOOR + 1.5)) - Vector(P(7.6, side, FLOOR + 3.05))
+        add_cone(props, P(7.6, side, FLOOR + 3.05), 0.16, 0.12, arm.length + 0.3, sides=3, tilt=_tilt_toward(arm.normalized()))
+    _hut_maren_paint(props, first, 0)
+
+    # Strings of drying fish: one line across the porch between the posts,
+    # one down the left eave. Flattened blobs hanging off a thin cord.
+    def fish_line(f0, s0, f1, s1, z, count):
+        first = len(props.faces)
+        p0, p1 = Vector(P(f0, s0, z)), Vector(P(f1, s1, z))
+        add_cone(props, tuple(p0), 0.06, 0.06, (p1 - p0).length, sides=3, tilt=_tilt_toward((p1 - p0).normalized()))
+        for i in range(count):
+            t = (i + 0.5) / count
+            p = p0 + (p1 - p0) * t
+            drop = rng.uniform(0.7, 1.3)
+            # cord from the line DOWN to the fish, then the fish on its end -
+            # a hung fish must touch what it hangs from.
+            add_cone(props, (p.x, p.y, p.z - drop), 0.05, 0.05, drop, sides=3)
+            add_blob(props, (p.x, p.y, p.z - drop - 0.5), (0.2, 0.42, 0.85), 0.12, salt=40.0 + i * 3.1, yaw=a)
+        _hut_maren_paint(props, first, 2)
+
+    # Both lines are strung post-to-post / post-to-wall, ends buried in the wood.
+    fish_line(PORCH - 0.9, -5.4, PORCH - 0.9, 5.4, FLOOR + 6.9, 6)
+    fish_line(FRONT - 0.3, -5.9, PORCH - 0.9, -5.4, FLOOR + 5.9, 4)
+
+    # Stacked crab traps by the ramp, and the rain barrel under the eave.
+    first = len(props.faces)
+    for k in range(3):  # traps rest ON the deck and ON each other (no gaps)
+        B(props, 7.9 + k * 0.3, -4.9 + k * 0.25, FLOOR + 0.72 + k * 1.5, 1.9 - k * 0.12, 1.9 - k * 0.12, 1.6)
+        B(props, 7.9 + k * 0.3, -4.9 + k * 0.25, FLOOR + 1.5 + k * 1.5, 2.1 - k * 0.12, 0.22, 0.18)  # slats
+    bx, by, _ = P(-4.4, 5.4, 0)
+    add_post(props, bx, by, FLOOR - 0.1, FLOOR + 2.7, 1.25, sides=8)
+    add_post(props, bx, by, FLOOR + 2.3, FLOOR + 2.6, 1.38, sides=8)  # the iron hoop
+    _hut_maren_paint(props, first, 0)
+
+    # The gull on the ridgepole, watching the counter.
+    first = len(props.faces)
+    add_blob(props, P(8.6, 0.0, RIDGE_Z + 0.75), (0.9, 0.55, 0.5), 0.1, salt=71.0, yaw=a)
+    add_blob(props, P(9.3, 0.0, RIDGE_Z + 1.25), (0.42, 0.38, 0.38), 0.08, salt=77.0, yaw=a)
+    add_cone(props, P(9.6, 0.0, RIDGE_Z + 1.25), 0.16, 0.03, 0.6, sides=3, tilt=_tilt_toward(Vector((fx, fy, 0.0))))
+    _hut_maren_paint(props, first, 2)
+
+    # INTERIOR. The hammock, slung corner to corner and sagging in the middle.
+    first = len(props.faces)
+    h0, h1 = (-5.3, -5.3), (4.9, 5.3)
+    axis = Vector((h1[0] - h0[0], h1[1] - h0[1], 0.0)).normalized()
+    perp = Vector((-axis.y, axis.x, 0.0)) * 1.15
+    prev = None
+    for i in range(7):
+        t = i / 6.0
+        fwd = h0[0] + (h1[0] - h0[0]) * t
+        side = h0[1] + (h1[1] - h0[1]) * t
+        z = FLOOR + 5.6 - 8.0 * t * (1 - t)
+        cur = ((fwd + perp.x, side + perp.y, z), (fwd - perp.x, side - perp.y, z))
+        if prev:
+            _hut_maren_quad_slab(
+                props,
+                [P(*prev[0]), P(*prev[1]), P(*cur[1]), P(*cur[0])],
+                0.12,
+            )
+        prev = cur
+    # Each end rope runs from the hammock's end UP INTO the wall corner it is
+    # tied to - both ends physically meet the shack.
+    for corner, cs in ((h0, (-1.0, -1.0)), (h1, (1.0, 1.0))):
+        end = Vector(P(corner[0], corner[1], FLOOR + 5.6))
+        tie = Vector(P(cs[0] * (HW - T + 0.4), cs[1] * (HW - T + 0.4), FLOOR + 7.9))
+        add_cone(props, tuple(end), 0.1, 0.06, (tie - end).length, sides=3, tilt=_tilt_toward((tie - end).normalized()))
+    _hut_maren_paint(props, first, 1)
+
+    # The fish-gutting table, its cleaver, and the shelf of pickle jars.
+    first = len(props.faces)
+    B(props, 2.2, -3.4, FLOOR + 2.85, 4.6, 2.3, 0.3)
+    for f_ in (0.2, 4.2):
+        for s_ in (-4.3, -2.5):
+            tx, ty, _ = P(f_, s_, 0)
+            add_post(props, tx, ty, FLOOR - 0.1, FLOOR + 2.85, 0.18, sides=4)
+    B(props, -5.1, 2.8, FLOOR + 5.0, 1.0, 5.6, 0.28)  # the jar shelf, let into the back wall
+    for s_ in (0.6, 5.0):  # ...on brackets that reach the wall
+        B(props, -5.15, s_, FLOOR + 4.55, 0.9, 0.22, 0.62)
+    B(props, 2.6, -3.4, FLOOR + 3.14, 1.1, 0.16, 0.28)  # the cleaver's handle
+    _hut_maren_paint(props, first, 0)
+    first = len(props.faces)
+    B(props, 1.7, -3.4, FLOOR + 3.3, 1.3, 0.1, 0.66)  # the cleaver blade
+    add_blob(props, P(-1.0, -(HW - T - 1.2), FLOOR + 2.6), (0.85, 0.85, 0.75), 0.12, salt=91.0)  # the kettle
+    for k in range(3):  # the tripod legs, each leaning IN to carry the kettle
+        ang = k * math.tau / 3
+        add_cone(
+            props,
+            P(-1.0 + math.cos(ang) * 0.9, -(HW - T - 1.2) + math.sin(ang) * 0.9, FLOOR + 1.7),
+            0.08,
+            0.05,
+            1.9,
+            sides=3,
+            tilt=(math.sin(ang) * 0.4, -math.cos(ang) * 0.4),
+        )
+    _hut_maren_paint(props, first, 3)
+    first = len(props.faces)
+    for k in range(5):  # the pickle jars, standing ON the shelf
+        s_ = 0.5 + k * 1.05
+        jx, jy, _ = P(-5.1, s_, 0)
+        add_post(props, jx, jy, FLOOR + 5.06, FLOOR + 6.1 + (k % 3) * 0.12, 0.4, sides=5)
+    _hut_maren_paint(props, first, 4)
+
+    # The framed fish picture, let into the back wall clear of the jar shelf.
+    first = len(props.faces)
+    B(props, BACK + T - 0.05, -2.4, FLOOR + 6.2, 0.3, 3.4, 2.4)
+    _hut_maren_paint(props, first, 0)
+    first = len(props.faces)
+    B(props, BACK + T + 0.16, -2.4, FLOOR + 6.2, 0.2, 2.7, 1.8)
+    _hut_maren_paint(props, first, 2)
+
+    # ---- glow: the hearth embers under the kettle, and the counter lantern ----
+    for k in range(5):
+        add_cone(
+            glow,
+            P(-1.0 + rng.uniform(-0.8, 0.8), -(HW - T - 1.2) + rng.uniform(-0.7, 0.7), FLOOR + 1.82),
+            rng.uniform(0.18, 0.34),
+            0.05,
+            rng.uniform(0.35, 0.7),
+            sides=4,
+        )
+    add_box(glow, P(8.9, 5.5, FLOOR + 3.75), (0.7, 0.7, 0.9), yaw=a)  # the stall lantern, stood on the counter
+
+    door = P(FRONT, (DOOR_LO + DOOR_HI) / 2, 0)
+    stand = P(7.3, 2.6, 0)  # behind the counter, on the porch
+    print(
+        f"[island_gen] HANDOFF tropical hut (Old Maren's stilt shack): floor Y={FLOOR:.1f}, "
+        f"door (Roblox rel) X={door[0]:.1f} Z={-door[1]:.1f}, counter stand X={stand[0]:.1f} Z={-stand[1]:.1f}; "
+        f"Npcs.old_maren spawnOffset suggestion Vector3.new({stand[0]:.0f}, 0, {-stand[1] - (-50.0):.0f}) facing 162"
+    )
+    return [
+        object_from_bmesh("Island_Hut_Walls", walls, ["M_Driftwood", "M_Rock"]),
+        object_from_bmesh("Island_Hut_Roof", roof, ["M_Frond", "M_FrondDark"]),
+        object_from_bmesh("Island_Hut_Props", props, ["M_Plank", "M_HutCloth", "M_HutFish", "M_HutIron", "M_HutJar"]),
+        object_from_bmesh("Island_Hut_Glow", glow, ["M_HutEmber"]),
+    ]
+
+
 # ---------------------------------------------------------------- island builds
 
 
@@ -1408,6 +1780,7 @@ def build_tropical():
         *build_palms(),
         build_bushes(),
         *build_dock(),
+        *build_hut_maren(),  # Old Maren's stilt shack, on the sand by the spawn
         build_foam("Island_Foam", "M_Foam"),
     ]
     validate_placement(PALM_CHECKPOINTS, BUSH_CHECKPOINTS)
@@ -1515,6 +1888,19 @@ SWAMP_RIM_U = 0.82  # by here the ground has climbed back above the water (the r
 SWAMP_SPAWN = (0.0, -117.0)  # keep-clear: the spawn shelf (Roblox rel Z=117; re-keyed when GRASS_U 0.88 pulled the shore to Z=147)
 SWAMP_MERE = (0.0, -74.0, 30.0)
 SWAMP_BASE_CENTER = [0.0, 0.0]  # Swamp_Base bbox centre, filled by build_swamp_base  # the boss mere: forced open water at Old Gnashroot's arena
+# Morra's leaning bog hut (build_hut_morra): (x, y, keep-clear radius). The
+# scatter builders below all steer round it the way they steer round the mere
+# and the spawn shelf, and the circle is ALSO pushed into LAVA_PONDS (this
+# region's shared keep-out registry) when the hut is built.
+SWAMP_HUT = (-31.0, -119.0, 15.0)
+SWAMP_HUT_FLOOR = 5.0  # the hut's deck: 2.8 studs clear of the standing water
+_HUT_MORRA_YAW = math.atan2(-123.0 - SWAMP_HUT[1], -12.0 - SWAMP_HUT[0])  # door -> Morra's mark
+
+
+def _hut_morra_clear(x, y, pad=0.0):
+    """True where the fen's scatter may still plant - i.e. off Morra's hut,
+    its plank path and its dooryard."""
+    return math.hypot(x - SWAMP_HUT[0], y - SWAMP_HUT[1]) >= SWAMP_HUT[2] + pad
 
 
 def _swamp_field(x, y):
@@ -1678,6 +2064,8 @@ def build_swamp_cattails():
         sx, sy = SWAMP_SPAWN
         if math.hypot(cx - sx, cy - sy) < 26:
             continue  # the spawn shelf stays clear
+        if not _hut_morra_clear(cx, cy, 2.0):
+            continue  # ...and so does Morra's dooryard
         clusters += 1
         for _ in range(rng.randint(8, 14)):
             a = rng.uniform(0, math.tau)
@@ -1738,7 +2126,11 @@ def build_swamp_smalls():
     sx, sy = SWAMP_SPAWN
 
     def clear(x, y, pad):
-        return math.hypot(x - mx, y - my) >= mr + pad and math.hypot(x - sx, y - sy) >= 24
+        return (
+            math.hypot(x - mx, y - my) >= mr + pad
+            and math.hypot(x - sx, y - sy) >= 24
+            and _hut_morra_clear(x, y, 1.0)  # Morra's hut + plank path
+        )
 
     def marsh_spot(lo, hi, tries=40):
         """A point in the marsh whose ground height sits in [lo, hi]."""
@@ -2102,6 +2494,8 @@ def build_swamp_trees():
             continue
         if math.hypot(x - mx, y - my) < mr + 9 or math.hypot(x - sx, y - sy) < 24:
             continue
+        if not _hut_morra_clear(x, y, 3.0):
+            continue  # Morra's hut stands in its own clearing (its mangrove is authored)
         if any(math.hypot(x - px, y - py) < 6.5 for px, py in placed):
             continue
         placed.append((x, y))
@@ -2231,6 +2625,345 @@ def build_swamp_trees():
     ]
 
 
+def build_hut_morra():
+    """Morra's leaning bog hut: a hunched egg of wattle that leans off true,
+    built half-around a living mangrove, scale-shingled and dripping moss,
+    up on stilts driven into the marsh bed so its floor stands 2.8 studs
+    clear of the standing water. A WALK-IN building: a 6-stud-wide, 7.3-tall
+    door under the gator skull, 11 studs of clear floor inside, an 11.6-stud
+    apex, and 1.1-stud-thick wattle walls (the solid-walls import rule).
+    Swamp_Hut_Walls carries the shell, floor, stilts, mangrove and plank
+    path and must stay COLLIDABLE - Morra and the player stand on it."""
+    walls, roof, props, glow = bmesh.new(), bmesh.new(), bmesh.new(), bmesh.new()
+    rng = random.Random(6421)
+
+    cx, cy, keep_r = SWAMP_HUT
+    FLOOR = SWAMP_HUT_FLOOR
+    a = _HUT_MORRA_YAW
+    fx, fy = math.cos(a), math.sin(a)  # +front: out of the door, toward Morra
+    rx, ry = -math.sin(a), math.cos(a)
+
+    def P(fwd, side, z):
+        return (cx + fx * fwd + rx * side, cy + fy * fwd + ry * side, z)
+
+    def B(bm, fwd, side, z, d, w, h, turn=0.0):
+        add_box(bm, P(fwd, side, z), (d, w, h), yaw=a + turn)
+
+    def bog(fwd, side):
+        x, y, _ = P(fwd, side, 0)
+        return _swamp_height(x, y)
+
+    # ---- the leaning egg -------------------------------------------------
+    S = 14  # angular segments; a door is two of them
+    LVL_Z = [0.0, 2.3, 4.8, 7.3, 9.4, 11.6]
+    LVL_R = [6.6, 7.5, 7.7, 7.0, 5.2, 1.7]
+    WALL_T = 1.1
+    LEAN = 3.1  # studs of shear from floor to apex - the hunch
+    # It leans BACK and a little sideways, onto the mangrove propping it up.
+    # Mostly-backward is deliberate: a mostly-sideways lean shears the door
+    # into a parallelogram and squeezes the walk-through width under 4 studs.
+    LEAN_F, LEAN_S = -0.82, 0.57
+
+    def lean_at(z_local):
+        t = (z_local / LVL_Z[-1]) ** 1.2
+        return LEAN_F * LEAN * t, LEAN_S * LEAN * t
+
+    def shell_r(z_local, outer):
+        for i in range(len(LVL_Z) - 1):
+            if z_local <= LVL_Z[i + 1] or i == len(LVL_Z) - 2:
+                t = (z_local - LVL_Z[i]) / (LVL_Z[i + 1] - LVL_Z[i])
+                r = LVL_R[i] + (LVL_R[i + 1] - LVL_R[i]) * t
+                return r if outer else max(r - WALL_T, 0.35)
+        return LVL_R[-1]
+
+    def shell_pt(ang, z_local, r=None, outer=True):
+        rr = shell_r(z_local, outer) if r is None else r
+        lf, ls = lean_at(z_local)
+        return P(math.cos(ang) * rr + lf, math.sin(ang) * rr + ls, FLOOR + z_local)
+
+    O = [[walls.verts.new(Vector(shell_pt(s / S * math.tau, z, outer=True))) for s in range(S)] for z in LVL_Z]
+    I = [[walls.verts.new(Vector(shell_pt(s / S * math.tau, z, outer=False))) for s in range(S)] for z in LVL_Z]
+
+    door_segs = {s for s in range(S) if abs((((s + 0.5) / S) * math.tau + math.pi) % math.tau - math.pi) < 0.45}
+    door_bands = (0, 1, 2)  # the opening runs floor -> LVL_Z[3] = 7.3 studs
+    jamb_verts = {v for s in door_segs for v in (s, (s + 1) % S) if not (v in door_segs and (v - 1) % S in door_segs)}
+
+    for i in range(len(LVL_Z) - 1):
+        for s in range(S):
+            if i in door_bands and s in door_segs:
+                continue
+            s2 = (s + 1) % S
+            walls.faces.new((O[i][s], O[i + 1][s], O[i + 1][s2], O[i][s2]))
+            walls.faces.new((I[i][s2], I[i + 1][s2], I[i + 1][s], I[i][s]))
+    for s in range(S):  # the wall's foot ring, and the closed apex
+        s2 = (s + 1) % S
+        walls.faces.new((O[0][s], I[0][s], I[0][s2], O[0][s2]))
+        walls.faces.new((O[-1][s], O[-1][s2], I[-1][s2], I[-1][s]))
+    walls.faces.new([I[-1][s] for s in range(S)])
+    for i in door_bands:  # the door's jambs and its lintel underside
+        for s in jamb_verts:
+            walls.faces.new((O[i][s], I[i][s], I[i + 1][s], O[i + 1][s]))
+    for s in door_segs:
+        s2 = (s + 1) % S
+        walls.faces.new((O[3][s], I[3][s], I[3][s2], O[3][s2]))
+
+    # ---- floor, stilts, the mangrove, the plank path (all M_RootWood) -----
+    wood_first = len(walls.faces)
+    add_disc_slab(
+        walls,
+        [P(math.cos(s / S * math.tau) * 6.1, math.sin(s / S * math.tau) * 6.1, 0)[:2] for s in range(S)],
+        FLOOR,
+        0.6,
+    )
+    for k in range(6):  # stilts: marsh bed -> up INTO the floor slab
+        ang = k * math.tau / 6 + 0.3
+        px, py, _ = P(math.cos(ang) * 5.2, math.sin(ang) * 5.2, 0)
+        add_post(walls, px, py, _swamp_height(px, py) - 0.8, FLOOR - 0.1, 0.5, sides=5)
+    # ...and cross-braces, so the hut reads propped rather than perched.
+    for k in range(3):
+        ang = k * math.tau / 3 + 0.3
+        px, py, _ = P(math.cos(ang) * 5.2, math.sin(ang) * 5.2, 0)
+        g = _swamp_height(px, py)
+        to = Vector(P(0.0, 0.0, FLOOR - 0.4)) - Vector((px, py, g + 0.4))
+        add_cone(walls, (px, py, g + 0.4), 0.22, 0.16, to.length, sides=3, tilt=_tilt_toward(to.normalized()))
+
+    # The mangrove the hut is built half-around: the trunk passes THROUGH the
+    # wattle on the leaning side, prop roots splayed into the bog.
+    tx, ty, _ = P(-5.6, 4.4, 0)  # on the side the hut leans onto - it holds it up
+    t_g = _swamp_height(tx, ty)
+    add_cone(walls, (tx, ty, t_g - 1.2), 1.5, 0.75, 24.0, sides=6, tilt=(0.06, -0.10))
+    for k in range(4):
+        ang = k * math.tau / 4 + 0.6
+        root = Vector((math.cos(ang) * 2.6, math.sin(ang) * 2.6, -3.4)).normalized()
+        add_cone(walls, (tx, ty, t_g + 2.6), 0.55, 0.2, 4.6, sides=3, tilt=_tilt_toward(root))
+    for k, (h, lean_ang) in enumerate(((15.0, 0.8), (18.5, 3.9))):  # two limbs over the roof
+        d = Vector((math.cos(lean_ang) * 0.9, math.sin(lean_ang) * 0.9, 0.42)).normalized()
+        add_cone(walls, (tx, ty, t_g + h), 0.5, 0.16, 9.0 - k * 1.5, sides=3, tilt=_tilt_toward(d))
+
+    # The plank path out to Morra's mark, every plank resting ON the bog (or
+    # on its own pile where the ground has dropped under the water).
+    path_z = []
+    for k in range(4):
+        fwd = 10.0 + k * 3.2
+        g = max(bog(fwd, 0.0), SWAMP_WATER_Z - 0.05)
+        z = g + 0.15
+        path_z.append(z)
+        _hut_maren_quad_slab(
+            walls,
+            [P(fwd - 1.5, -1.9, z), P(fwd - 1.5, 1.9, z), P(fwd + 1.7, 1.9, z), P(fwd + 1.7, -1.9, z)],
+            0.35,
+        )
+        for side in (-1.4, 1.4):  # piles down to the bed
+            px, py, _ = P(fwd, side, 0)
+            add_post(walls, px, py, _swamp_height(px, py) - 0.6, z - 0.05, 0.28, sides=4)
+    # the doorstep ramp: threshold down to the first plank
+    _hut_maren_quad_slab(
+        walls,
+        [P(5.6, -1.9, FLOOR), P(5.6, 1.9, FLOOR), P(9.0, 1.9, path_z[0]), P(9.0, -1.9, path_z[0])],
+        0.4,
+    )
+    _hut_maren_paint(walls, wood_first, 1)
+
+    # ---- roof: overlapping scale shingles + moss dripping off the eave ----
+    def scale(bm, ang0, ang1, z0, z1, out, thick):
+        pts_o = [
+            shell_pt(ang1, z1, r=shell_r(z1, True) + out),
+            shell_pt(ang0, z1, r=shell_r(z1, True) + out),
+            shell_pt(ang0, z0, r=shell_r(z0, True) + out),
+            shell_pt(ang1, z0, r=shell_r(z0, True) + out),
+        ]
+        pts_i = [
+            shell_pt(ang1, z1, r=shell_r(z1, True) + out - thick),
+            shell_pt(ang0, z1, r=shell_r(z1, True) + out - thick),
+            shell_pt(ang0, z0, r=shell_r(z0, True) + out - thick),
+            shell_pt(ang1, z0, r=shell_r(z0, True) + out - thick),
+        ]
+        vo = [bm.verts.new(Vector(p)) for p in pts_o]
+        vi = [bm.verts.new(Vector(p)) for p in pts_i]
+        bm.faces.new(vo)
+        bm.faces.new(list(reversed(vi)))
+        for i in range(4):
+            j = (i + 1) % 4
+            bm.faces.new((vo[i], vi[i], vi[j], vo[j]))
+
+    scales = 0
+    for band, (zlo, zhi) in enumerate(((4.8, 7.3), (7.3, 9.4), (9.4, 11.5))):
+        stagger = (band % 2) * 0.5  # courses break joint like real scales
+        for s in range(S):
+            ang0 = ((s + stagger) / S) * math.tau - 0.06
+            ang1 = ((s + 1 + stagger) / S) * math.tau + 0.06
+            z0 = zlo + (zhi - zlo) * rng.uniform(-0.04, 0.06)
+            z1 = zhi + (zhi - zlo) * rng.uniform(0.10, 0.26)  # every scale laps the course above
+            # The lowest course crosses the DOOR - it starts above the head
+            # there, or the shingles would board up the top of the opening.
+            if band == 0 and s in door_segs:
+                z0 = LVL_Z[3] + 0.06
+                z1 = max(z1, z0 + 0.6)
+            elif band == 1:
+                z0 = max(z0, LVL_Z[3] + 0.06)
+            scale(roof, ang0, ang1, z0, min(z1, LVL_Z[-1] - 0.2), 0.16, 0.34)
+            scales += 1
+    moss_first = len(roof.faces)
+    for k in range(20):  # moss ribbons hanging off the shingle courses
+        ang = rng.uniform(0, math.tau)
+        z_top = rng.choice((4.9, 7.4, 9.5))
+        if z_top < 8.0 and abs((ang + math.pi) % math.tau - math.pi) < 0.55:
+            continue  # never curtain the doorway
+        ml = rng.uniform(1.6, 4.4)
+        mx_, my_, mz_ = shell_pt(ang, z_top, r=shell_r(z_top, True) - 0.1)
+        add_cone(roof, (mx_, my_, mz_ - ml), 0.16, 0.05, ml, sides=3)
+    _hut_maren_paint(roof, moss_first, 1)
+
+    # ---- props: 0 wood / 1 herb+straw / 2 bone / 3 jar / 4 iron / 5 stone --
+    # EXTERIOR. The gator skull over the door, and the bone-and-shell chime.
+    # ...mounted ON the shell right over the door head, not up on the dome.
+    lintel = shell_pt(0.0, LVL_Z[3] + 0.55, r=shell_r(LVL_Z[3] + 0.55, True) + 0.45)
+    first = len(props.faces)
+    add_blob(props, lintel, (1.6, 1.0, 0.85), 0.14, salt=12.0, yaw=a)
+    snout = Vector(lintel) + Vector((fx, fy, -0.1)) * 1.1
+    add_cone(props, tuple(snout), 0.75, 0.3, 2.2, sides=4, tilt=_tilt_toward(Vector((fx, fy, -0.06)).normalized()))
+    # the chime: a stick under the door head, bones and shells on short cords
+    bar_l = Vector(shell_pt(-0.42, LVL_Z[3] - 0.5, r=shell_r(LVL_Z[3] - 0.5, True) - 0.2))
+    bar_r = Vector(shell_pt(0.42, LVL_Z[3] - 0.5, r=shell_r(LVL_Z[3] - 0.5, True) - 0.2))
+    add_cone(props, tuple(bar_l), 0.14, 0.14, (bar_r - bar_l).length, sides=3, tilt=_tilt_toward((bar_r - bar_l).normalized()))
+    for k in range(5):
+        p = bar_l + (bar_r - bar_l) * ((k + 0.5) / 5)
+        drop = rng.uniform(0.7, 1.6)
+        add_cone(props, (p.x, p.y, p.z - drop), 0.05, 0.05, drop, sides=3)  # the cord
+        if k % 2:
+            add_cone(props, (p.x, p.y, p.z - drop - 0.7), 0.34, 0.06, 0.75, sides=5)  # a shell
+        else:
+            add_cone(props, (p.x, p.y, p.z - drop - 0.9), 0.14, 0.1, 0.95, sides=4)  # a bone
+    _hut_maren_paint(props, first, 2)
+
+    # The cauldron pit beside the door: a stone ring, a pot squatting in it.
+    pit_f, pit_s = 8.6, -4.4
+    pit_g = bog(pit_f, pit_s)
+    first = len(props.faces)
+    for k in range(7):
+        ang = k * math.tau / 7
+        add_blob(
+            props,
+            P(pit_f + math.cos(ang) * 2.3, pit_s + math.sin(ang) * 2.3, pit_g + 0.15),
+            (0.7, 0.6, 0.45),
+            0.2,
+            salt=30.0 + k * 2.3,
+            yaw=ang,
+        )
+    _hut_maren_paint(props, first, 5)
+    first = len(props.faces)
+    add_blob(props, P(pit_f, pit_s, pit_g + 1.35), (1.7, 1.7, 1.25), 0.1, salt=51.0, yaw=a)
+    for k in range(3):  # its legs, standing in the ring
+        ang = k * math.tau / 3 + 0.4
+        add_cone(props, P(pit_f + math.cos(ang) * 0.9, pit_s + math.sin(ang) * 0.9, pit_g), 0.18, 0.12, 1.0, sides=3)
+    _hut_maren_paint(props, first, 4)
+
+    # The crooked wisp-lantern posts flanking the path (posts here, light below).
+    lamps = []
+    first = len(props.faces)
+    for k, (fwd, side) in enumerate(((10.6, 3.4), (14.2, -3.4), (17.8, 3.2))):
+        g = bog(fwd, side)
+        h = 4.6 + 0.5 * (k % 2)
+        tilt_ang = rng.uniform(0, math.tau)
+        tilt = (math.cos(tilt_ang) * 0.18, math.sin(tilt_ang) * 0.18)
+        add_cone(props, P(fwd, side, g - 0.7), 0.34, 0.22, h, sides=4, tilt=tilt)
+        axis = cone_axis(tilt, 0.0)
+        top = Vector(P(fwd, side, g - 0.7)) + axis * (h - 0.2)
+        add_cone(props, tuple(top), 0.16, 0.1, 0.9, sides=3, tilt=_tilt_toward(Vector((-fx, -fy, 1.6)).normalized()))
+        hook = top + Vector((-fx, -fy, 1.6)).normalized() * 0.85
+        lamps.append(hook)
+    _hut_maren_paint(props, first, 0)
+
+    # INTERIOR. Rafters first - everything hanging inside hangs off THEM.
+    inner_c = lean_at(7.6)
+    rafters = []
+    first = len(props.faces)
+    for off in (-2.2, 2.2):
+        half = math.sqrt(max(shell_r(7.6, False) ** 2 - off ** 2, 1.0)) + 0.9
+        p0 = Vector(P(inner_c[0] + off, inner_c[1] - half, FLOOR + 7.6))
+        p1 = Vector(P(inner_c[0] + off, inner_c[1] + half, FLOOR + 7.6))
+        add_cone(props, tuple(p0), 0.3, 0.26, (p1 - p0).length, sides=4, tilt=_tilt_toward((p1 - p0).normalized()))
+        rafters.append((p0, p1))
+    # the potion shelf, let into the wall, and the stump table + straw cot
+    shelf_ang = math.radians(205)
+    shelf_r = shell_r(4.2, False) - 0.35
+    lf, ls = lean_at(4.2)
+    shelf_f, shelf_s = math.cos(shelf_ang) * shelf_r + lf, math.sin(shelf_ang) * shelf_r + ls
+    B(props, shelf_f, shelf_s, FLOOR + 4.2, 1.5, 5.2, 0.3, turn=shelf_ang + math.pi / 2)
+    for br in (-1.9, 1.9):  # brackets down to the wall
+        B(
+            props,
+            shelf_f + math.cos(shelf_ang + math.pi / 2) * br,
+            shelf_s + math.sin(shelf_ang + math.pi / 2) * br,
+            FLOOR + 3.75,
+            1.2,
+            0.24,
+            0.7,
+            turn=shelf_ang + math.pi / 2,
+        )
+    stump_f, stump_s = inner_c[0] + 1.6, inner_c[1] - 2.4
+    add_cone(props, P(stump_f, stump_s, FLOOR - 0.2), 1.25, 1.0, 2.8, sides=6)
+    cot_ang = math.radians(285)
+    cot_r = shell_r(1.0, False) - 2.0
+    cot_f, cot_s = math.cos(cot_ang) * cot_r, math.sin(cot_ang) * cot_r
+    B(props, cot_f, cot_s, FLOOR + 0.45, 3.0, 6.4, 0.9, turn=cot_ang)
+    _hut_maren_paint(props, first, 0)
+
+    first = len(props.faces)
+    add_blob(props, P(stump_f, stump_s, FLOOR + 2.95), (1.15, 1.15, 0.5), 0.08, salt=77.0, yaw=a)  # scrying bowl
+    _hut_maren_paint(props, first, 4)
+    first = len(props.faces)
+    B(props, cot_f, cot_s, FLOOR + 1.15, 2.8, 6.0, 0.6, turn=cot_ang)  # the straw on the cot
+    for k in range(7):  # herb bundles, corded to the rafters
+        p0, p1 = rafters[k % 2]
+        p = p0 + (p1 - p0) * ((k + 0.6) / 7.4)
+        drop = rng.uniform(0.5, 1.1)
+        add_cone(props, (p.x, p.y, p.z - drop), 0.05, 0.05, drop, sides=3)
+        add_cone(props, (p.x, p.y, p.z - drop - 1.5), 0.1, 0.55, 1.6, sides=4)
+    _hut_maren_paint(props, first, 1)
+    first = len(props.faces)
+    for k in range(4):  # leech jars, hung off the same rafters
+        p0, p1 = rafters[(k + 1) % 2]
+        p = p0 + (p1 - p0) * ((k + 0.3) / 4.6)
+        drop = rng.uniform(0.6, 1.2)
+        add_cone(props, (p.x, p.y, p.z - drop), 0.05, 0.05, drop, sides=3)
+        add_post(props, p.x, p.y, p.z - drop - 1.5, p.z - drop + 0.05, 0.45, sides=5)
+    _hut_maren_paint(props, first, 3)
+
+    # ---- glow: wisp lanterns, the potion bottles, bowl and cauldron fire ---
+    for hook in lamps:
+        add_blob(glow, tuple(hook), (0.52, 0.52, 0.62), 0.1, salt=61.0)
+    for k in range(5):  # the mismatched bottles standing ON the shelf
+        off = -1.9 + k * 0.95
+        bx = shelf_f + math.cos(shelf_ang + math.pi / 2) * off
+        by = shelf_s + math.sin(shelf_ang + math.pi / 2) * off
+        px, py, _ = P(bx, by, 0)
+        add_post(glow, px, py, FLOOR + 4.3, FLOOR + 5.05 + (k % 3) * 0.18, 0.34, sides=5)
+    add_blob(glow, P(stump_f, stump_s, FLOOR + 3.32), (0.9, 0.9, 0.16), 0.06, salt=88.0, yaw=a)  # the scryed water
+    for k in range(4):  # the fire under the cauldron
+        ang = k * math.tau / 4
+        add_cone(glow, P(pit_f + math.cos(ang) * 0.55, pit_s + math.sin(ang) * 0.55, pit_g + 0.1), 0.3, 0.05, 1.1, sides=4)
+
+    LAVA_PONDS.append((cx, cy, keep_r))  # the region's shared keep-out registry
+    door = P(shell_r(3.0, True), 0.0, 0)
+    stand = P(10.5, 2.5, 0)  # at the cauldron, on the head of the plank path
+    print(
+        f"[island_gen] HANDOFF swamp hut (Morra's leaning bog hut): floor Y={FLOOR:.1f} on stilts over bed Y~{bog(0, 0):.1f}, "
+        f"door (Roblox rel) X={door[0]:.1f} Z={-door[1]:.1f}, dooryard stand X={stand[0]:.1f} Z={-stand[1]:.1f}, "
+        f"plank path runs out to X={P(19.6, 0, 0)[0]:.1f} Z={-P(19.6, 0, 0)[1]:.1f} (Morra's current mark); "
+        f"Npcs.morra spawnOffset suggestion Vector3.new({stand[0]:.0f}, 0, {-stand[1] - 117.0:.0f}) facing 258"
+    )
+    print(f"[island_gen] swamp hut: {scales} roof scales, {len(lamps)} wisp posts, keep-clear r={keep_r:.0f} registered")
+    return [
+        object_from_bmesh("Swamp_Hut_Walls", walls, ["M_BogWattle", "M_RootWood"]),
+        object_from_bmesh("Swamp_Hut_Roof", roof, ["M_BogShingle", "M_HangMoss"]),
+        object_from_bmesh(
+            "Swamp_Hut_Props", props, ["M_RootWood", "M_BogHerb", "M_BogBone", "M_BogJar", "M_BogIron", "M_BogStone"]
+        ),
+        object_from_bmesh("Swamp_Hut_Glow", glow, ["M_Wisp"]),
+    ]
+
+
 def build_swamp_foam():
     """The scummy pale rim where the fen meets the sea - the shared
     shoreline-foam builder on the standard coast ring. The swamp has NO
@@ -2247,6 +2980,9 @@ def build_swamp():
     objects = [
         build_swamp_base(),
         build_swamp_water(),
+        # Morra's hut BEFORE the scatter: it registers its keep-clear circle
+        # (LAVA_PONDS + _hut_morra_clear) that the trees/reeds/smalls respect.
+        *build_hut_morra(),
         *build_swamp_trees(),
         *build_swamp_cattails(),
         *build_swamp_smalls(),
@@ -2678,11 +3414,16 @@ def _ice_spawn_xy():
 
 def _ice_open(x, z, pad=0.0, spawn_clear=14.0, hollow_ok=False):
     """Is (x, z) free to build on? Keeps the walk off the planks open, keeps a
-    clear standing bubble at the spawn, stays out of every cut hole, and
-    (unless `hollow_ok`) stays out of the ice overhang and the standable
-    hollow beneath its cornice."""
+    clear standing bubble at the spawn, stays out of every cut hole, keeps
+    Halvard's yard swept, and (unless `hollow_ok`) stays out of the ice
+    overhang and the standable hollow beneath its cornice."""
     if not hollow_ok and _in_overhang(x, z, pad):
         return False
+    # Halvard's hull and its yard: the scatters (holes, drifts, litter, pines)
+    # must not grow through his roof or bury his door.
+    for kx, ky, kr in _HUT_H_KEEP:
+        if (x - kx) ** 2 + (z - ky) ** 2 < (kr + pad) ** 2:
+            return False
     theta = math.atan2(z, x)
     a = math.radians(DOCK_ANGLE_DEG)
     da = abs(((theta - a + math.pi) % math.tau) - math.pi)
@@ -3393,10 +4134,422 @@ def build_ice_mounds(ground):
     return object_from_bmesh("Frostmaw_SnowMounds", bm, ["M_SnowMound"])
 
 
+# ---- Halvard's upturned hull (the Reach's one dwelling) -------------------
+#
+# Halvard's old fishing boat, hauled up the beach, flipped KEEL-UP and half
+# buried in a drift: the hull IS the roof. You walk in through the square-cut
+# transom at the stern; the bow noses down into the snow at the far end and a
+# stovepipe climbs out through a split in the keel. Everything else on the
+# island is a blunt mass of ice, so the ONE piece of curved carpentry on
+# Frostmaw is legible from a long way off - which is the point of siting it in
+# the open bay 12 deg off the dock lane, in full view of the planks.
+#
+# Five layers, one material each (the one-material-per-object rule):
+#   Frostmaw_Hut_Roof   hull shell, keel, rubbing strakes, transom planking
+#   Frostmaw_Hut_Walls  snow-block knee walls, floor pad, windbreak, drifts
+#   Frostmaw_Hut_Props  stove, stovepipe, bunk, shelf, fish rack, snowshoes,
+#                       harpoons, crates
+#   Frostmaw_Hut_Trim   frozen fish, whale bone, the rime pelt rug and bedroll
+#   Frostmaw_Hut_Glow   the pot-bellied stove's firebox and ember pool (Neon)
+#
+# Walk-in contract: a 5.4 x 7.6 doorway in the transom, a clear floor ~15 x 19
+# under a vault 9.7-11.3 studs high over the whole middle of the boat, and a
+# 1.05-stud plank shell (PreciseConvexDecomposition on import).
+
+_HUT_H_BEARING = math.radians(282.0)  # 12 deg off the dock lane, in the open bay
+# The hull's CENTRE. The boat lies ALONG the contour, not down it: the flat
+# band the PROFILE holds between the third terrace riser (u 0.685, r 151) and
+# the shore ramp (u 0.86, r 180) is only 29 studs wide, and a 28-stud boat
+# pointed inland spans the whole of it plus the 4-stud riser at one end (the
+# first draft did exactly that and stood the stern 1.6 studs off the ground).
+# Broadside on, only the 17-stud beam crosses the fall - under a stud of it.
+_HUT_H_U = 0.795
+_HUT_H_KEEP = []  # (x, y, radius) - the swept yard, honoured by _ice_open
+
+# The boat in its own frame: +x runs stern -> bow, +y to port, z off the floor.
+_HUT_H_BEAM = 17.4
+_HUT_H_SHELL = 1.05  # plank thickness of the shell
+_HUT_H_DOOR_W = 5.4
+_HUT_H_DOOR_H = 7.6
+_HUT_H_STATIONS = (-13.0, -11.0, -8.0, -4.5, -1.0, 2.0, 5.0, 7.5, 9.5, 11.5, 13.2, 15.0)
+# Half-beam (x BEAM/2), keel-ridge height and gunwale (now eaves) height along
+# the boat. Three boat lines do the reading here: the beam CARRIES aft and
+# then draws in hard over the last third to a fine bow; the keel has ROCKER
+# (highest amidships, falling away at both ends); and the gunwale has SHEER
+# (lowest amidships, sweeping up at stern and bow). Take any one of them out
+# and the silhouette collapses into a Nissen hut.
+_HUT_H_HALFBEAM = ((-13.0, 0.84), (-11.0, 0.97), (-4.0, 1.00), (2.0, 0.97),
+                   (6.0, 0.88), (9.5, 0.72), (12.5, 0.46), (15.0, 0.13))
+_HUT_H_KEELLINE = ((-13.0, 10.8), (-11.0, 11.9), (-2.0, 12.4), (5.0, 12.0),
+                   (9.0, 10.2), (12.5, 6.8), (15.0, 4.4))
+_HUT_H_GUNLINE = ((-13.0, 5.7), (-10.0, 5.0), (-2.0, 4.6), (4.0, 4.8),
+                  (8.0, 5.2), (11.5, 5.0), (15.0, 3.8))
+_HUT_H_SPLIT = (4.6, 7.2)  # the gap in the keel the stovepipe comes through
+
+
+def _hut_lerp(x, table):
+    """Piecewise-linear read of an (x, value) table, clamped at both ends."""
+    if x <= table[0][0]:
+        return table[0][1]
+    for i in range(len(table) - 1):
+        x0, v0 = table[i]
+        x1, v1 = table[i + 1]
+        if x <= x1:
+            return v0 + (v1 - v0) * ((x - x0) / (x1 - x0))
+    return table[-1][1]
+
+
+def _hut_h_site():
+    """(centre x, centre y, yaw) of the hull. Yaw lays the boat's +x axis
+    along the CONTOUR (see _HUT_H_U), pointing away from the dock lane - so
+    the transom, and therefore the door, looks back along the beach at the
+    spawn and the planks, and the boat's +y is inland."""
+    r = ring_radius(_HUT_H_U, _HUT_H_BEARING)
+    return math.cos(_HUT_H_BEARING) * r, math.sin(_HUT_H_BEARING) * r, _HUT_H_BEARING + math.pi / 2
+
+
+def _hut_h_pt(site, x, y, z):
+    cx, cy, yaw = site
+    ca, sa = math.cos(yaw), math.sin(yaw)
+    return (cx + x * ca - y * sa, cy + x * sa + y * ca, z)
+
+
+def _hut_h_box(bm, site, x, y, z, size, spin=0.0):
+    add_box(bm, _hut_h_pt(site, x, y, z), size, yaw=site[2] + spin)
+
+
+def _hut_h_cone(bm, site, x, y, z, r0, r1, h, sides=6, tilt=(0.0, 0.0), spin=0.0):
+    add_cone(bm, _hut_h_pt(site, x, y, z), r0, r1, h, sides=sides, tilt=tilt, yaw=site[2] + spin)
+
+
+def _hut_h_section(x, s, inner=False):
+    """One point of the boat's cross-section at local `x`, `s` in [-1, 1]
+    across the beam. The section is the hull's own: full and round amidships,
+    the bilge rolling up to the gunwale. Flipped, `s=0` is the ridge."""
+    hb = _hut_lerp(x, _HUT_H_HALFBEAM) * (_HUT_H_BEAM * 0.5)
+    keel = _hut_lerp(x, _HUT_H_KEELLINE)
+    gun = _hut_lerp(x, _HUT_H_GUNLINE)
+    if inner:
+        hb = max(hb - _HUT_H_SHELL, 0.06)
+        keel = max(keel - _HUT_H_SHELL, gun + 0.12)
+    return s * hb, gun + (keel - gun) * (1.0 - abs(s) ** 1.8)
+
+
+def _hut_h_hull(bm, site, z0, lat=9):
+    """The upturned boat as ONE closed shell: an outer skin, an inner skin
+    (so the inside of the roof is real planking, not a backface), the two
+    gunwale edges closed across the plank thickness, and a cap ring at the
+    transom and at the buried bow. Solid, so the import can decompose it."""
+    outer, inner = [], []
+    for x in _HUT_H_STATIONS:
+        o, i = [], []
+        for j in range(lat):
+            s = -1.0 + 2.0 * j / (lat - 1)
+            oy, oz = _hut_h_section(x, s, inner=False)
+            iy, iz = _hut_h_section(x, s, inner=True)
+            o.append(bm.verts.new(Vector(_hut_h_pt(site, x, oy, z0 + oz))))
+            i.append(bm.verts.new(Vector(_hut_h_pt(site, x, iy, z0 + iz))))
+        outer.append(o)
+        inner.append(i)
+    n = len(_HUT_H_STATIONS)
+    for k in range(n - 1):
+        for j in range(lat - 1):
+            bm.faces.new((outer[k][j], outer[k][j + 1], outer[k + 1][j + 1], outer[k + 1][j]))
+            bm.faces.new((inner[k + 1][j], inner[k + 1][j + 1], inner[k][j + 1], inner[k][j]))
+        # The two gunwale edges: the plank thickness, showing as the eaves.
+        bm.faces.new((outer[k][0], outer[k + 1][0], inner[k + 1][0], inner[k][0]))
+        bm.faces.new((inner[k][lat - 1], inner[k + 1][lat - 1], outer[k + 1][lat - 1], outer[k][lat - 1]))
+    for j in range(lat - 1):  # transom ring and bow ring
+        bm.faces.new((outer[0][j], inner[0][j], inner[0][j + 1], outer[0][j + 1]))
+        bm.faces.new((outer[n - 1][j + 1], inner[n - 1][j + 1], inner[n - 1][j], outer[n - 1][j]))
+
+
+def _hut_h_transom(bm, site, z0):
+    """The square-cut stern, planked vertically, with the DOORWAY cut through
+    it: 5.4 wide, 7.6 to the lintel, and the planking carried on over the top
+    so the opening reads as a door and not a missing wall."""
+    x = _HUT_H_STATIONS[0] + 0.55
+    hb = _hut_lerp(x, _HUT_H_HALFBEAM) * (_HUT_H_BEAM * 0.5) - 0.25
+    half = _HUT_H_DOOR_W * 0.5
+    w = 1.12
+    n = int((hb * 2.0) / w)
+    for k in range(n):
+        y = -hb + w * (k + 0.5)
+        top = _hut_h_section(x, max(-1.0, min(1.0, y / hb)))[1]
+        lo = z0 + (_HUT_H_DOOR_H if abs(y) < half + 0.35 else 0.0)
+        hi = z0 + top - 0.40  # kept inside the skin's curve, so no plank corner pokes out
+        if hi - lo < 0.4:
+            continue
+        # Planks OVERLAP their neighbours (1.06 x the pitch): the strip over
+        # the door has to hang off the full-height planks either side of it,
+        # not float in the opening.
+        _hut_h_box(bm, site, x, y, (lo + hi) * 0.5, (1.05, w * 1.06, hi - lo))
+    # Door frame: two jambs and a lintel, in heavier stock.
+    for side in (-1.0, 1.0):
+        _hut_h_box(bm, site, x - 0.4, side * (half + 0.45), z0 + _HUT_H_DOOR_H * 0.5,
+                   (0.7, 0.9, _HUT_H_DOOR_H))
+    _hut_h_box(bm, site, x - 0.4, 0.0, z0 + _HUT_H_DOOR_H + 0.45,
+               (0.7, _HUT_H_DOOR_W + 1.8, 0.9))
+
+
+def _hut_h_strake(bm, site, z0, s_a, s_b, x0, x1, n, lift, thick):
+    """One plank line swept along the hull between two points of the section
+    (`s_a` outboard of `s_b`), riding `lift` proud of the skin and extruded
+    `thick` down INTO it - continuous from stern to bow, and welded to the
+    planking for its whole run."""
+    left, right = [], []
+    for k in range(n):
+        x = x0 + (x1 - x0) * k / (n - 1)
+        ya, za = _hut_h_section(x, s_a)
+        yb, zb = _hut_h_section(x, s_b)
+        left.append(Vector(_hut_h_pt(site, x, ya, z0 + za + lift)))
+        right.append(Vector(_hut_h_pt(site, x, yb, z0 + zb + lift)))
+    add_strip_slab(bm, left, right, thick)
+
+
+def _hut_h_timbers(bm, site, z0):
+    """The keel beam along the ridge (broken open at the split the stovepipe
+    uses) and the rubbing strakes running the length of both flanks - the two
+    details that make a grey hump read as a BOAT."""
+    # The keel, and the strakes, are SWEPT RIBBONS, not runs of boxes: a box
+    # laid on a curved ridge lifts off it at one end, and a row of them reads
+    # as a staircase. Each ribbon's underside is buried in the planking it
+    # rides on, so keel and strakes are welded to the hull along their whole
+    # length.
+    for x0, x1 in ((-12.4, _HUT_H_SPLIT[0]), (_HUT_H_SPLIT[1], 13.4)):
+        left, right = [], []
+        n = max(3, int((x1 - x0) / 1.9))
+        for k in range(n):
+            x = x0 + (x1 - x0) * k / (n - 1)
+            z = z0 + _hut_lerp(x, _HUT_H_KEELLINE) + 0.45
+            left.append(Vector(_hut_h_pt(site, x, -0.9, z)))
+            right.append(Vector(_hut_h_pt(site, x, 0.9, z)))
+        add_strip_slab(bm, left, right, 1.6)
+    for s in (-1.0, 1.0):
+        _hut_h_strake(bm, site, z0, s * 1.10, s * 0.86, -12.6, 13.0, 9, 0.15, 1.1)
+        _hut_h_strake(bm, site, z0, s * 0.70, s * 0.48, -12.4, 12.0, 8, 0.16, 0.9)
+    # The STEM: the boat's prow, raking up out of the drift that swallows the
+    # bow. Its foot is 2 studs inside the bank, so it is planted, not perched.
+    add_cone(bm, _hut_h_pt(site, 12.0, 0.0, z0 + 2.4), 0.90, 0.34, 10.4, sides=5,
+             tilt=(0.0, 0.62), yaw=site[2])
+
+
+def _hut_h_bank(bm, site, x, y, gz, rr, hgt, salt):
+    """A wind-piled SNOW BANK against the hut, in Frostmaw's own drift
+    language (overlapping ragged lobes wedging to a thin lip). `gz` is a
+    callable giving the real ground under a hull-local point: every lobe is
+    drawn from 0.7 studs BELOW ITS OWN ground upward, so no lobe can hang in
+    the air the way a height-anchored drift can."""
+    for k in range(3):
+        f = 1.0 if k == 0 else 0.78 - 0.22 * k
+        a = salt * 0.7 + k * 2.1
+        d = 0.0 if k == 0 else rr * (0.35 + 0.16 * k)
+        lx, ly = x + math.cos(a) * d, y + math.sin(a) * d
+        ring = _ragged_ring(7 + k, 0.24, salt + k * 3.7)
+        kk = math.sqrt(1.5 + 0.4 * k)
+        _ice_slab(bm, ring, *_hut_h_pt(site, lx, ly, 0.0)[:2],
+                  gz(lx, ly) - 0.7, hgt * f + 0.7, rr * f * kk, rr * f / kk,
+                  yaw=site[2] + a, top_scale=0.46 + 0.1 * k)
+
+
+def build_ice_hut(ground):
+    """HALVARD'S UPTURNED HULL. Deterministic on its own Random(4271) so the
+    rest of Frostmaw's shared stream is untouched."""
+    rng = random.Random(4271)
+    # _ice_drift draws on the SHARED stream; hand it back exactly as found so
+    # the hut can be added without moving one plate of anyone else's litter.
+    shared_state = random.getstate()
+    site = _hut_h_site()
+    cx, cy, yaw = site
+    timber, snow, props, trim, glow = (bmesh.new() for _ in range(5))
+
+    def gz(x, y):
+        """The REAL sheet height under a hull-local point - what every yard
+        prop is seated on. Nothing in this builder is placed at an offset from
+        a nominal height; the ground is asked, every time."""
+        p = _hut_h_pt(site, x, y, 0.0)
+        g = _drop_to_ground(ground, p[0], p[1])
+        return g if g is not None else height_at(p[0], p[1])
+
+    # The cabin floor is LEVEL, and level at the HIGHEST ground under the
+    # hull, so the sheet can never heave up through the boards; the pad's
+    # 3.2-stud skirt swallows the fall to the low corner, and a two-step
+    # threshold outside carries the ~0.6-stud sill down to the snow.
+    z0 = max(gz(x, y) for x in (-13.0, -6.0, 0.0, 7.0, 14.0)
+             for y in (-8.5, -4.0, 0.0, 4.0, 8.5)) + 0.08
+
+    # --- the boat -----------------------------------------------------------
+    _hut_h_hull(timber, site, z0)
+    _hut_h_transom(timber, site, z0)
+    _hut_h_timbers(timber, site, z0)
+
+    # --- floor pad + snow-block knee walls ----------------------------------
+    pad = []
+    for k in range(14):
+        a = (k / 14) * math.tau
+        pad.append(_hut_h_pt(site, 1.0 + math.cos(a) * 17.5, math.sin(a) * 10.5, 0.0)[:2])
+    add_disc_slab(snow, pad, z0 + 0.06, 3.2)
+    # Knee walls: every course starts 1.6 studs UNDER the pad and the top one
+    # runs 0.35 past the gunwale, so the hull is seated on the blocks and the
+    # blocks are seated in the ground - no hairline joints anywhere in the
+    # load path.
+    for s in (-1.0, 1.0):
+        for k in range(9):
+            m = -12.4 + k * 3.25
+            y, _z = _hut_h_section(m, s)
+            gun = _hut_lerp(m, _HUT_H_GUNLINE)
+            h = (gun + 1.95) * 0.5
+            for c in range(2):
+                _hut_h_box(snow, site, m + rng.uniform(-0.2, 0.2), y - s * 0.10,
+                           z0 - 1.6 + h * (c + 0.5), (3.6, 2.1, h * 1.06),
+                           spin=rng.uniform(-0.05, 0.05))
+    # The bow half-buried: wind drifts banked over the nose of the boat. Every
+    # lobe is drawn from BELOW the ground up, never hung at a height (the
+    # levitating-prop rule) - which is also why _ice_drift isn't used here.
+    # Banked OUTSIDE the enclosed volume (a slab is full height right out to
+    # its plan edge, so a drift centred over the cabin would fill the room
+    # with a white boulder) - they bury the bow's last five studs and pile
+    # against the knee walls, which is what "half-buried" has to mean here.
+    _hut_h_bank(snow, site, 17.0, 0.0, gz, 5.8, 7.0, 71.0)
+    _hut_h_bank(snow, site, 5.0, -14.0, gz, 5.2, 4.6, 88.0)
+    _hut_h_bank(snow, site, 4.0, 14.2, gz, 5.0, 4.2, 96.0)
+    # The ice-block WINDBREAK: an L thrown up across the wind, off the door's
+    # port bow so the walk in stays open. Blocks overlap their neighbours in
+    # both directions and every bottom course is sunk into ITS OWN ground.
+    for k in range(5):
+        wx, wy = -17.6 + rng.uniform(-0.2, 0.2), 3.6 + k * 2.55
+        for c in range(3):
+            _hut_h_box(snow, site, wx, wy, gz(wx, wy) - 0.5 + 1.55 * (c + 0.5),
+                       (2.4, 2.75, 1.7), spin=rng.uniform(-0.06, 0.06))
+    for k in range(3):
+        wx, wy = -15.7 + k * 2.6, 15.0
+        for c in range(2):
+            _hut_h_box(snow, site, wx, wy, gz(wx, wy) - 0.5 + 1.55 * (c + 0.5),
+                       (2.8, 2.4, 1.7), spin=rng.uniform(-0.06, 0.06))
+    # Two threshold steps down off the sill, each seated on the sheet.
+    _hut_h_box(snow, site, -14.6, 0.0, z0 - 0.45, (2.6, 7.4, 1.0))
+    _hut_h_box(snow, site, -16.6, 0.0, (gz(-16.6, 0.0) + z0) * 0.5 - 0.75, (2.4, 6.6, 1.6))
+
+    # --- interior -----------------------------------------------------------
+    # The pot-bellied stove, off to starboard under the keel's split.
+    _hut_h_cone(props, site, 5.4, -4.0, z0, 1.5, 1.9, 1.2, sides=8)
+    _hut_h_cone(props, site, 5.4, -4.0, z0 + 1.2, 2.1, 1.5, 2.8, sides=8)
+    _hut_h_cone(props, site, 5.4, -4.0, z0 + 4.0, 1.4, 1.2, 0.5, sides=8)
+    # The flue: stove collar -> a leaning elbow whose head lands INSIDE the
+    # riser -> the riser, which passes bodily through the split in the keel
+    # (base well below the planking, cap well above it). Every joint overlaps.
+    _hut_h_cone(props, site, 5.4, -4.0, z0 + 4.4, 0.62, 0.58, 1.4, sides=6)
+    _hut_h_cone(props, site, 5.4, -3.9, z0 + 5.2, 0.56, 0.52, 4.6, sides=6,
+                tilt=(-0.72, 0.0))  # the elbow, leaning in under the split
+    _keel_z = _hut_lerp(5.7, _HUT_H_KEELLINE)
+    _hut_h_cone(props, site, 5.7, -0.6, z0 + 8.3, 0.54, 0.48, _keel_z + 5.0 - 8.3, sides=6)
+    _hut_h_cone(props, site, 5.7, -0.6, z0 + _keel_z + 4.6, 1.0, 0.7, 0.7, sides=6)  # rain cap
+    # Firebox, the hot cooktop, and the light both throw on the deck boards
+    # and out through the open door onto the snow. Each glow piece is sunk
+    # into the iron or the boards it belongs to.
+    _hut_h_cone(glow, site, 3.25, -4.0, z0 + 1.85, 0.92, 0.92, 0.5, sides=8,
+                tilt=(0.0, math.pi / 2))  # the open firebox, facing the door
+    _hut_h_cone(glow, site, 5.4, -4.0, z0 + 0.02, 1.25, 1.05, 0.35, sides=8)  # the ash pan
+    _hut_h_cone(glow, site, 5.4, -4.0, z0 + 3.85, 1.45, 1.30, 0.35, sides=8)  # the cooktop
+    # Firelight pooling on the deck boards, and out through the door onto the
+    # snow. Low DOMES, not pancakes: a flat disc on the floor disappears at
+    # eye height, which is exactly the angle the hut is read from.
+    _hut_h_cone(glow, site, 2.6, -3.4, z0 + 0.02, 2.7, 1.5, 0.38, sides=9)
+    _hut_h_cone(glow, site, -4.6, -1.4, z0 + 0.02, 2.9, 1.6, 0.34, sides=9)
+    _hut_h_cone(glow, site, -15.0, 0.0, z0 - 0.85, 2.4, 1.4, 0.40, sides=8)  # on the top step
+    _hut_h_cone(glow, site, 5.7, -0.6, z0 + _keel_z + 4.9, 0.42, 0.42, 0.35, sides=6)  # lit throat
+
+    # The bunk, built into the curve of the hull along the starboard side.
+    for k in range(3):
+        _hut_h_box(props, site, -9.4 + k * 3.0, -5.6, z0 + 0.9, (0.8, 0.8, 1.8))
+    _hut_h_box(props, site, -6.6, -6.0, z0 + 1.9, (7.6, 3.4, 0.45))
+    _hut_h_box(props, site, -10.6, -6.0, z0 + 2.6, (0.7, 3.4, 1.8))
+    _hut_h_cone(trim, site, -8.8, -6.0, z0 + 2.15, 1.30, 1.05, 3.4, sides=6,
+                tilt=(0.0, math.pi / 2))  # the bedroll, lying fore-and-aft
+    # The rime-pelt rug on the boards.
+    _ice_slab(trim, _ragged_ring(9, 0.22, 17.0), *_hut_h_pt(site, -6.0, 0.6, 0.0)[:2],
+              z0 + 0.07, 0.16, 4.6, 3.4, yaw=yaw)
+    # The whale-bone trinket shelf on the port side: two rib knees wedged
+    # between the snow-block wall (which starts at y 7.6) and the underside of
+    # the plank, the plank itself buried 0.15 into that wall, and the small
+    # bones and scrimshaw standing ON it.
+    _hut_h_box(props, site, -6.0, 6.9, z0 + 4.5, (6.4, 1.7, 0.35))
+    for k in (-1.0, 1.0):
+        _hut_h_box(trim, site, -6.0 + k * 2.4, 7.05, z0 + 3.95, (0.5, 1.4, 1.2))
+    for k in range(4):
+        _hut_h_cone(trim, site, -8.4 + k * 1.7, 6.8, z0 + 4.6,
+                    rng.uniform(0.24, 0.42), rng.uniform(0.10, 0.26),
+                    rng.uniform(0.8, 1.7), sides=5, spin=rng.uniform(0, 1.0))
+    # Crates and a sack of bait forward of the door - the top crate sits
+    # squarely on the bottom one, not hovering over its corner.
+    _hut_h_box(props, site, 0.5, 6.2, z0 + 0.9, (2.4, 2.2, 1.8))
+    _hut_h_box(props, site, 0.9, 4.0, z0 + 0.7, (1.9, 1.8, 1.4), spin=0.4)
+    _hut_h_box(props, site, 0.7, 6.4, z0 + 2.5, (1.8, 1.7, 1.4), spin=-0.3)
+    _hut_h_cone(props, site, 3.0, -6.5, z0, 0.9, 0.7, 1.5, sides=6)  # the stool
+
+    # --- the yard -----------------------------------------------------------
+    # A rack of fish frozen stiff, standing on end like planks: the two posts
+    # are driven 0.7 into the sheet, the rail is threaded onto both posts, and
+    # every fish stands ON the ground with its body passing THROUGH the rail.
+    rack_z = min(gz(-16.4, -13.5), gz(-16.4, -7.1))
+    for k in (-1.0, 1.0):
+        _hut_h_cone(props, site, -16.4, -10.3 + k * 3.2, rack_z - 0.7, 0.45, 0.34, 5.7, sides=5)
+    _hut_h_box(props, site, -16.4, -10.3, rack_z + 4.5, (0.55, 7.4, 0.6))
+    for k in range(8):
+        y = -13.55 + k * 0.93
+        _hut_h_cone(trim, site, -16.35 + rng.uniform(-0.10, 0.10), y, gz(-16.35, y) - 0.45,
+                    rng.uniform(0.55, 0.78), 0.20, rng.uniform(5.4, 6.1), sides=4,
+                    tilt=(rng.uniform(0.10, 0.20), rng.uniform(-0.08, 0.08)),
+                    spin=rng.uniform(-0.2, 0.2))
+    # Snowshoes nailed to the transom: the disc's inboard face is buried in
+    # the planking and the peg runs right through both.
+    for k in (-1.0, 1.0):
+        _hut_h_cone(trim, site, -13.35, k * 4.4, z0 + 5.0, 1.45, 1.00, 0.5, sides=7,
+                    tilt=(0.0, math.pi / 2), spin=0.18 * k)  # the rawhide webbing
+        _hut_h_cone(props, site, -13.6, k * 4.4, z0 + 5.0, 0.16, 0.16, 1.2, sides=4,
+                    tilt=(0.0, math.pi / 2), spin=0.18 * k)  # the peg it hangs on
+    # Harpoons PLANTED in the drift beside the door - butts 1.6 studs below
+    # the sheet, every shaft inside the bank's footprint.
+    _hut_h_bank(snow, site, -19.4, -6.2, gz, 4.4, 2.4, 131.0)
+    for hx, hy in ((-19.8, -5.0), (-18.6, -6.8), (-20.6, -7.2), (-18.1, -4.7)):
+        _hut_h_cone(props, site, hx, hy, gz(hx, hy) - 1.6, 0.24, 0.08, rng.uniform(7.6, 9.4),
+                    sides=5, tilt=(rng.uniform(0.18, 0.32), rng.uniform(-0.20, 0.20)),
+                    spin=rng.uniform(0, math.tau))
+    random.setstate(shared_state)
+
+    door = _hut_h_pt(site, _HUT_H_STATIONS[0] - 1.2, 0.0, 0.0)
+    stand = _hut_h_pt(site, _HUT_H_STATIONS[0] - 4.6, 0.0, 0.0)
+    sx, sy = _ice_spawn_xy()
+    # He stands off the threshold looking straight OUT of his door (-x in the
+    # hull frame). Roblox reads `facing` as CFrame.Angles(0, rad, 0), whose
+    # look vector is (-sin, -cos), hence the atan2 form.
+    dx, dz = -math.cos(site[2]), math.sin(site[2])  # Roblox X/Z of the door's outward normal
+    facing = math.degrees(math.atan2(-dx, -dz)) % 360.0
+    print(
+        f"[island_gen] HANDOFF frostmaw hut: Halvard's upturned hull, door (Roblox rel) "
+        f"X={door[0]:.0f} Z={-door[1]:.0f} sill Y~{z0:.1f}; suggested halvard spawnOffset "
+        f"Vector3.new({stand[0] - sx:.0f}, 0, {-stand[1] + sy:.0f}) "
+        f"facing {facing:.0f} (island spawn is X=0 Z={-sy:.0f}, hull centre "
+        f"X={cx:.0f} Z={-cy:.0f})"
+    )
+    return (
+        object_from_bmesh("Frostmaw_Hut_Roof", timber, ["M_HutHull"]),
+        object_from_bmesh("Frostmaw_Hut_Walls", snow, ["M_HutSnowBlock"]),
+        object_from_bmesh("Frostmaw_Hut_Props", props, ["M_HutIron"]),
+        object_from_bmesh("Frostmaw_Hut_Trim", trim, ["M_HutBone"]),
+        object_from_bmesh("Frostmaw_Hut_Glow", glow, ["M_HutEmber"]),
+    )
+
+
 def build_frostmaw():
     base = build_island_base("Frostmaw_Base", ["M_Snow", "M_IceSheet", "M_IceWet"])
     ground = _ground_bvh(base)
     _ICE_SNOW["bm"] = None
+    # Halvard's yard is claimed BEFORE any scatter runs (the hut itself is
+    # built last, off its own RNG, so the shared stream is unmoved) - holes,
+    # drifts, pines and litter all read this through _ice_open.
+    _HUT_H_KEEP.clear()
+    _HUT_H_KEEP.append((*_hut_h_site()[:2], 25.0))
     objects = [
         base,
         build_ice_holes(ground),  # first: records the keep-clear circles
@@ -3408,6 +4561,7 @@ def build_frostmaw():
         *build_ice_trees(ground),
         build_ice_mounds(ground),
         build_ice_litter(ground),  # last: fills in around everything placed
+        *build_ice_hut(ground),  # Halvard's upturned hull, in its swept yard
         *build_dock("Frostmaw_Dock_Planks", "Frostmaw_Dock_Posts", "M_FrostPlank", "M_FrostPost"),
         build_foam("Frostmaw_Foam", "M_FrostFoam"),
     ]
@@ -4152,6 +5306,323 @@ def build_gloom_glow(ground, stalk_bm=None, cyan_bm=None, violet_bm=None):
     )
 
 
+# ---- Gloomtrench: Keeper Lumen's lighthouse -------------------------------
+#
+# The island lives in permanent dark, so its ONE standing light has to be the
+# landmark: a short, barnacled stone tower on the apron between the spawn and
+# the dock head, a caged wisp-glow beacon in the lamp room at the top of it,
+# and a spiral of small lanterns climbing the ribs so the tower reads as LIT
+# from the water long before you can see the rock it stands on. Pale flagstone
+# walls (the same stone as the lit route) against near-black basalt: in a
+# near-black scene the tower is the only thing with a value above the murk.
+#
+# You can walk in: the ground room is Lumen's office - light-logs and lens
+# tools on the desk, a spare-lantern wall, a stair hugging the wall up to the
+# shaft (decorative - the beacon is not a play space), the cot tucked under it
+# and a cup of tea that went cold three watches ago.
+#
+# Everything here is prefixed _hut_lumen / LUMEN_ and pours into four bmeshes,
+# so it cannot disturb the island's other props. It runs LAST in the island
+# build off its own RNG stream, so the shared scatter is bit-identical.
+
+LUMEN_SITE = (-22.0, -160.0)  # Blender (x, y) - Roblox rel X=-22 Z=160, off the lit route
+LUMEN_DOOR_DEG = 0.0  # the door looks +X, back up the apron toward the spawn
+LUMEN_SECTORS = 12
+LUMEN_BANDS = (0.0, 5.2, 10.8, 16.6, 22.6)  # band tops above the floor
+LUMEN_R_OUT = (8.6, 8.1, 7.2, 6.4)  # outer radius per band - the taper. The
+# bottom two bands are stout on purpose: they carry the ROOM, and the contract
+# wants 8x8 of clear floor left over once the desk, cot, shelves and stair are
+# pushed back against the stone.
+LUMEN_WALL_T = 1.15  # wall thickness (contract: >= 0.5)
+LUMEN_ROOM_H = 9.9  # floor -> deckhead: the walk-in room
+LUMEN_DOOR_H = 7.9  # door head height (contract: >= 7)
+LUMEN_KEEP_R = 16.0  # keep-clear radius for anything scattered later
+
+
+def _hut_lumen_ring(cx, cy, r, n, phase=0.0, wobble=0.0, salt=0.0):
+    """A closed n-gon of (x, y), optionally made slightly ragged - the tower's
+    stonework is cut, its foundation is not."""
+    pts = []
+    for k in range(n):
+        a = phase + k * math.tau / n
+        rr = r * (1.0 + wobble * math.sin(a * 3.0 + salt) + wobble * 0.5 * math.sin(a * 5.0 - salt))
+        pts.append((cx + math.cos(a) * rr, cy + math.sin(a) * rr))
+    return pts
+
+
+def _hut_lumen_radius(z_rel):
+    """Outer wall radius at a height above the floor - lanterns and ribs ride
+    the taper instead of hanging off it."""
+    for i in range(len(LUMEN_R_OUT)):
+        if z_rel <= LUMEN_BANDS[i + 1]:
+            return LUMEN_R_OUT[i]
+    return LUMEN_R_OUT[-1]
+
+
+def _hut_lumen_lantern(props_bm, glow_bm, x, y, z, yaw, size=1.0):
+    """One caged lantern: a bracket, a boxed cage and the wisp inside it. The
+    wisp sits INSIDE the cage and the cage overlaps the bracket - nothing here
+    hangs in the air."""
+    dx, dy = math.cos(yaw), math.sin(yaw)
+    add_box(props_bm, (x - dx * 0.75 * size, y - dy * 0.75 * size, z + 0.75 * size),
+            (1.7 * size, 0.35 * size, 0.35 * size), yaw=yaw)  # bracket, into the wall
+    add_box(props_bm, (x, y, z + 0.82 * size), (1.05 * size, 1.05 * size, 0.28 * size), yaw=yaw)  # cage cap
+    for sy in (-1, 1):  # two corner bars: the cage reads without eight of them
+        add_box(props_bm, (x - dy * sy * 0.42 * size, y + dx * sy * 0.42 * size, z + 0.38 * size),
+                (0.9 * size, 0.16 * size, 1.1 * size), yaw=yaw)
+    # The wisp fills the cage (and overlaps its cap and bars) - it has to be
+    # big enough to read from the water, not a speck behind bars.
+    add_blob(glow_bm, (x, y, z + 0.38 * size), (0.58 * size, 0.58 * size, 0.62 * size), 0.10, 91.0 + x + y)
+
+
+def build_gloom_lighthouse(ground):
+    """Keeper Lumen's lighthouse: the island's only standing light, and the
+    landmark the shore reads by. Four objects, Gloomtrench_Hut_Walls / _Roof /
+    _Props / _Glow."""
+    rng = random.Random(4801)  # own stream: the island's shared scatter is untouched
+    walls = bmesh.new()  # tower stonework, plinth, floor, deckhead
+    roof = bmesh.new()  # gallery, lamp-room cage, cap, ribs, buttresses
+    props = bmesh.new()  # lantern cages, bell, desk, stair, cot, shelves
+    glow = bmesh.new()  # the beacon, the lantern wisps, the moth-fish
+
+    cx, cy = LUMEN_SITE
+    door = math.radians(LUMEN_DOOR_DEG)
+    step = math.tau / LUMEN_SECTORS
+
+    # --- SEATING. Probe a ring at the wall line and stand the floor on the
+    #     HIGHEST ground under the footprint, with the plinth carried down past
+    #     the lowest: the apron falls ~3 studs across the tower, and a
+    #     lighthouse on a cut plinth is the honest answer to that.
+    probes = [_drop_to_ground(ground, cx, cy)]
+    for k in range(20):
+        a = k * math.tau / 20
+        for r in (5.0, 8.4):
+            probes.append(_drop_to_ground(ground, cx + math.cos(a) * r, cy + math.sin(a) * r))
+    probes = [p for p in probes if p is not None] or [height_at(cx, cy)]
+    floor = max(probes) + 0.2
+    plinth_bottom = min(probes) - 3.4
+
+    # --- 1. FOUNDATION: a ragged stone apron cut into the slope, and three
+    #     steps down off its low, seaward-facing lip to the sand.
+    add_disc_slab(walls, _hut_lumen_ring(cx, cy, 10.4, 14, phase=0.11, wobble=0.055, salt=1.7),
+                  floor + 0.02, floor + 0.02 - plinth_bottom)  # top flush under the wall foot
+    for k in range(3):
+        r = 10.7 + k * 1.7
+        sz = floor + 0.2 - (k + 1) * 0.62
+        add_box(walls, (cx + math.cos(door) * r, cy + math.sin(door) * r, sz - 0.6),
+                (1.9, 5.6 - k * 0.5, 1.6), yaw=door)
+
+    # --- 2. THE TOWER. Four tapering bands of cut sector blocks; two sectors
+    #     left out of the bottom band and cut down to a lintel in the second
+    #     make the doorway (8.2 clear x 7.9 to the head, jambs narrowing it to
+    #     ~5.2 - the contract wants >= 4 x 7).
+    for i in range(4):
+        r_out, r_in = LUMEN_R_OUT[i], LUMEN_R_OUT[i] - LUMEN_WALL_T
+        r_mid = (r_out + r_in) / 2
+        chord = 2 * r_mid * math.tan(step / 2) + 0.3
+        for k in range(LUMEN_SECTORS):
+            a = door + (k + 0.5) * step
+            is_door = k in (0, LUMEN_SECTORS - 1)
+            z0, z1 = floor + LUMEN_BANDS[i], floor + LUMEN_BANDS[i + 1]
+            if is_door:
+                if i == 0:
+                    continue
+                if i == 1:
+                    z0 = floor + LUMEN_DOOR_H
+            add_box(walls, (cx + math.cos(a) * r_mid, cy + math.sin(a) * r_mid, (z0 + z1) / 2),
+                    (LUMEN_WALL_T, chord, z1 - z0), yaw=a)
+    for sgn in (-1, 1):  # door jambs and the sill, so the tear-out reads as a door
+        a = door + sgn * step
+        r_mid = LUMEN_R_OUT[0] - LUMEN_WALL_T / 2
+        add_box(walls, (cx + math.cos(a) * r_mid, cy + math.sin(a) * r_mid, floor + LUMEN_DOOR_H / 2),
+                (LUMEN_WALL_T + 0.5, 1.3, LUMEN_DOOR_H), yaw=a)
+    add_box(walls, (cx + math.cos(door) * (LUMEN_R_OUT[0] - 0.4), cy + math.sin(door) * (LUMEN_R_OUT[0] - 0.4),
+                    floor + 0.1), (2.6, 6.4, 0.7), yaw=door)  # threshold
+
+    # --- 3. THE ROOM: a flagstone floor on the plinth, and a deckhead ring
+    #     with the shaft open at its centre (the stair climbs to it).
+    add_disc_slab(walls, _hut_lumen_ring(cx, cy, LUMEN_R_OUT[0] - LUMEN_WALL_T + 0.15, LUMEN_SECTORS, phase=0.26),
+                  floor + 0.12, 1.1)
+    add_ring_slab(walls, _hut_lumen_ring(cx, cy, 2.4, LUMEN_SECTORS, phase=0.26),
+                  _hut_lumen_ring(cx, cy, LUMEN_R_OUT[1] - LUMEN_WALL_T + 0.4, LUMEN_SECTORS, phase=0.26),
+                  floor + LUMEN_ROOM_H + 0.8, 0.8)
+
+    # --- 4. RIBS + BARNACLES. Six buttress ribs run the full height (the
+    #     lanterns hang off them), and the sea has been at the bottom two
+    #     bands: barnacle crusts bedded into the stone.
+    for j in range(6):
+        a = door + 0.32 + j * math.tau / 6
+        if abs(((a - door + math.pi) % math.tau) - math.pi) < math.radians(38):
+            continue  # never across the doorway
+        for i in range(4):
+            r = LUMEN_R_OUT[i] - 0.25
+            add_box(roof, (cx + math.cos(a) * r, cy + math.sin(a) * r,
+                           floor + (LUMEN_BANDS[i] + LUMEN_BANDS[i + 1]) / 2),
+                    (1.5, 1.35, LUMEN_BANDS[i + 1] - LUMEN_BANDS[i]), yaw=a)
+    made = 0
+    while made < 9:  # barnacles bedded on the OUTER face, never in the doorway
+        a = rng.uniform(0, math.tau)
+        if abs(((a - door + math.pi) % math.tau) - math.pi) < math.radians(34):
+            continue
+        z = floor + rng.uniform(0.4, 9.5)
+        s = rng.uniform(0.55, 1.3)
+        r = _hut_lumen_radius(z - floor) + s * 0.15
+        add_blob(walls, (cx + math.cos(a) * r, cy + math.sin(a) * r, z), (s, s * 0.85, s * 0.7),
+                 0.42, 500 + made * 6.7, yaw=a)
+        made += 1
+
+    # --- 5. THE GALLERY + LAMP ROOM. A corbelled deck, a rail, an eight-sided
+    #     cage of mullions, and a cap cone with the keeper's fish vane on it.
+    zg = floor + LUMEN_BANDS[-1]
+    for j in range(6):  # corbels, under the deck they carry
+        a = door + j * math.tau / 6
+        add_box(roof, (cx + math.cos(a) * (LUMEN_R_OUT[-1] + 0.7), cy + math.sin(a) * (LUMEN_R_OUT[-1] + 0.7), zg - 0.5),
+                (3.0, 1.1, 1.3), yaw=a)
+    add_disc_slab(roof, _hut_lumen_ring(cx, cy, 9.0, 14, phase=0.08), zg + 1.0, 1.0)
+    for j in range(8):  # rail stanchions, standing on the deck
+        a = door + (j + 0.5) * math.tau / 8
+        add_box(roof, (cx + math.cos(a) * 8.4, cy + math.sin(a) * 8.4, zg + 2.1), (0.42, 0.42, 2.2), yaw=a)
+    add_ring_slab(roof, _hut_lumen_ring(cx, cy, 8.05, 14, phase=0.08), _hut_lumen_ring(cx, cy, 8.85, 14, phase=0.08),
+                  zg + 3.3, 0.45)
+    for j in range(8):  # the lamp-room cage: mullions between deck and cap
+        a = door + (j + 0.5) * math.tau / 8
+        add_box(roof, (cx + math.cos(a) * 4.5, cy + math.sin(a) * 4.5, zg + 4.6), (0.52, 0.72, 7.2), yaw=a)
+    for zz in (zg + 4.7, zg + 8.05):  # the cage bands
+        add_ring_slab(roof, _hut_lumen_ring(cx, cy, 4.05, 8, phase=0.39), _hut_lumen_ring(cx, cy, 5.0, 8, phase=0.39),
+                      zz, 0.4)
+    add_cone(roof, (cx, cy, zg + 8.2), 5.7, 0.85, 3.5, sides=8, yaw=door)  # the cap
+    add_post(roof, cx, cy, zg + 11.5, zg + 13.4, 0.28, sides=4)  # finial
+    add_box(roof, (cx + math.cos(door) * 0.9, cy + math.sin(door) * 0.9, zg + 13.2), (2.4, 0.24, 1.0), yaw=door)
+    add_box(roof, (cx - math.cos(door) * 1.5, cy - math.sin(door) * 1.5, zg + 13.2), (1.0, 0.22, 1.5), yaw=door)
+
+    # --- 6. THE BEACON. A wisp caged in the lamp room: the light body, the
+    #     lens band around it, and the pool of light it throws on the gallery
+    #     deck (a thin slab lying ON the deck - it is the deck lit, not a lamp
+    #     floating over it).
+    add_post(roof, cx, cy, zg + 1.0, zg + 3.1, 0.95, sides=6)  # the lamp pedestal, off the deck
+    add_box(roof, (cx, cy, zg + 3.1), (2.6, 2.6, 0.5), yaw=door)  # its table, under the light
+    add_blob(glow, (cx, cy, zg + 5.3), (3.3, 3.3, 3.05), 0.07, 12.5, subdiv=2)
+    add_ring_slab(glow, _hut_lumen_ring(cx, cy, 3.0, 10, phase=0.31), _hut_lumen_ring(cx, cy, 3.7, 10, phase=0.31),
+                  zg + 5.9, 0.55)
+    add_disc_slab(glow, _hut_lumen_ring(cx, cy, 5.4, 12, phase=0.16), zg + 1.12, 0.12)
+    add_ring_slab(glow, _hut_lumen_ring(cx, cy, 4.3, 10, phase=0.31), _hut_lumen_ring(cx, cy, 5.6, 10, phase=0.31),
+                  zg + 1.32, 0.32)  # spill lying ON the gallery deck: the light reads from the water
+
+    # --- 7. THE LANTERN SPIRAL: eight small wisp-lanterns winding up the ribs,
+    #     each bracketed into the stone. From the sea this is what turns a dark
+    #     silhouette into a lighthouse.
+    for k in range(7):
+        a = door + 0.62 + k * 0.86
+        z = floor + 3.1 + k * 2.7
+        r = _hut_lumen_radius(z - floor) + 0.55
+        _hut_lumen_lantern(props, glow, cx + math.cos(a) * r, cy + math.sin(a) * r, z, a, size=1.0)
+
+    # --- 8. THE FOG BELL, on its frame beside the door.
+    ab = door + 0.62
+    bx_, by_ = cx + math.cos(ab) * 10.2, cy + math.sin(ab) * 10.2
+    bell_g = _drop_to_ground(ground, bx_, by_)
+    bell_g = height_at(bx_, by_) if bell_g is None else bell_g
+    for sgn in (-1, 1):
+        px = bx_ - math.sin(ab) * sgn * 2.1
+        py = by_ + math.cos(ab) * sgn * 2.1
+        pg = _drop_to_ground(ground, px, py)
+        add_post(props, px, py, (pg if pg is not None else bell_g) - 0.5, bell_g + 5.4, 0.45, sides=4)
+    add_box(props, (bx_, by_, bell_g + 5.2), (0.6, 5.0, 0.6), yaw=ab)  # the headstock
+    add_cone(props, (bx_, by_, bell_g + 2.9), 0.55, 1.7, 2.3, sides=8, yaw=ab)  # the bell, hung under it
+    add_post(props, bx_, by_, bell_g + 2.5, bell_g + 3.4, 0.22, sides=4)  # clapper
+    add_box(props, (bx_ + math.cos(ab) * 1.4, by_ + math.sin(ab) * 1.4, bell_g + 3.1), (2.0, 0.3, 0.3), yaw=ab)  # rope arm
+
+    # --- 9. THE MOTH-FISH: three glowfish circling the lamp. The ONE thing
+    #     here that is meant to hang in the air (registered with the coordinator).
+    for k in range(3):
+        a = door + 1.1 + k * 2.2
+        r = 7.4 + 1.5 * math.sin(k * 2.0)
+        z = zg + 4.4 + (1.9, -1.6, 3.4)[k]
+        fx, fy = cx + math.cos(a) * r, cy + math.sin(a) * r
+        add_blob(glow, (fx, fy, z), (1.55, 0.62, 0.8), 0.12, 700 + k * 11.0, yaw=a + math.pi / 2)
+        add_box(glow, (fx - math.cos(a + math.pi / 2) * 1.55, fy - math.sin(a + math.pi / 2) * 1.55, z),
+                (1.3, 0.22, 1.1), yaw=a + math.pi / 2)  # the tail, on the body
+        add_box(glow, (fx, fy, z + 0.5), (0.5, 1.9, 0.5), yaw=a + math.pi / 2)  # wing-fins
+
+    # --- 10. THE OFFICE. Desk of light-logs and lens tools, the spare-lantern
+    #     wall, the stair hugging the stone, the cot under it, the cold tea.
+    a_desk = door + math.radians(150)
+    dx_, dy_ = cx + math.cos(a_desk) * 5.7, cy + math.sin(a_desk) * 5.7
+    add_box(props, (dx_, dy_, floor + 2.55), (2.3, 5.2, 0.35), yaw=a_desk)  # desk top
+    for sx in (-0.85, 0.85):
+        for sy in (-2.2, 2.2):
+            px = dx_ + math.cos(a_desk) * sx - math.sin(a_desk) * sy
+            py = dy_ + math.sin(a_desk) * sx + math.cos(a_desk) * sy
+            add_box(props, (px, py, floor + 1.25), (0.35, 0.35, 2.5), yaw=a_desk)
+    for k in range(3):  # the light-logs, stacked and one lying open
+        add_box(props, (dx_ - math.sin(a_desk) * (1.2 - k * 0.12), dy_ + math.cos(a_desk) * (1.2 - k * 0.12),
+                        floor + 2.85 + k * 0.26), (1.5, 2.0, 0.26), yaw=a_desk + rng.uniform(-0.12, 0.12))
+    add_box(props, (dx_ - math.sin(a_desk) * -1.4, dy_ + math.cos(a_desk) * -1.4, floor + 2.82),
+            (1.6, 2.2, 0.16), yaw=a_desk + 0.2)
+    for k in range(2):  # lens tools: two ground blanks on their stands
+        px = dx_ + math.cos(a_desk) * 0.5 - math.sin(a_desk) * (-0.2 + k * 0.9)
+        py = dy_ + math.sin(a_desk) * 0.5 + math.cos(a_desk) * (-0.2 + k * 0.9)
+        add_post(props, px, py, floor + 2.7, floor + 3.5, 0.18, sides=6)
+    lx_ = dx_ + math.cos(a_desk) * 0.5 - math.sin(a_desk) * 0.25
+    ly_ = dy_ + math.sin(a_desk) * 0.5 + math.cos(a_desk) * 0.25
+    add_disc_slab(glow, _hut_lumen_ring(lx_, ly_, 0.85, 8), floor + 3.62, 0.16)  # the lens, catching the light
+    add_post(props, dx_ - math.sin(a_desk) * 1.9, dy_ + math.cos(a_desk) * 1.9, floor + 2.72, floor + 3.28, 0.3, sides=6)
+    add_disc_slab(props, _hut_lumen_ring(dx_ - math.sin(a_desk) * 1.9, dy_ + math.cos(a_desk) * 1.9, 0.55, 8),
+                  floor + 2.78, 0.1)  # the saucer under the cold cup
+    a_shelf = door + math.radians(88)
+    for k in range(2):  # the spare-lantern wall: two shelves of dark lanterns
+        sz_ = floor + 3.3 + k * 2.4
+        sx_ = cx + math.cos(a_shelf) * 6.9
+        sy_ = cy + math.sin(a_shelf) * 6.9
+        add_box(props, (sx_, sy_, sz_), (1.25, 5.6, 0.32), yaw=a_shelf)  # deep enough to bite the stone
+        for j in range(3):
+            off = -1.7 + j * 1.7
+            px = sx_ - math.sin(a_shelf) * off
+            py = sy_ + math.cos(a_shelf) * off
+            add_box(props, (px, py, sz_ + 0.75), (0.95, 0.95, 1.2), yaw=a_shelf)
+            if (k + j) % 2 == 0:  # a couple of them still have a wisp in
+                add_blob(glow, (px, py, sz_ + 0.75), (0.3, 0.3, 0.34), 0.1, 800 + k * 3 + j)
+    n_tread = 14  # the stair, hugging the wall (decorative: the shaft is not a play space)
+    for k in range(n_tread):
+        a = door + math.radians(205) + k * math.radians(23.0)
+        z = floor + 0.9 + k * (LUMEN_ROOM_H - 1.4) / (n_tread - 1)
+        r = LUMEN_R_OUT[0] - LUMEN_WALL_T - 1.35
+        add_box(props, (cx + math.cos(a) * r, cy + math.sin(a) * r, z), (2.9, 1.7, 0.34), yaw=a)
+    a_cot = door + math.radians(243)
+    ctx = cx + math.cos(a_cot) * 5.6
+    cty = cy + math.sin(a_cot) * 5.6
+    add_box(props, (ctx, cty, floor + 1.05), (2.6, 5.4, 0.45), yaw=a_cot)  # cot frame
+    for sx in (-0.95, 0.95):
+        for sy in (-2.3, 2.3):
+            px = ctx + math.cos(a_cot) * sx - math.sin(a_cot) * sy
+            py = cty + math.sin(a_cot) * sx + math.cos(a_cot) * sy
+            add_box(props, (px, py, floor + 0.5), (0.32, 0.32, 1.0), yaw=a_cot)
+    add_box(props, (ctx, cty, floor + 1.5), (2.3, 5.0, 0.45), yaw=a_cot)  # bedding
+    add_box(props, (ctx, cty - 0.0, floor + 1.85), (2.1, 2.4, 0.35), yaw=a_cot + 0.1)  # the blanket, thrown back
+    add_box(props, (ctx - math.sin(a_cot) * -2.0, cty + math.cos(a_cot) * -2.0, floor + 1.95), (1.5, 1.4, 0.5), yaw=a_cot)
+
+    stand_r = LUMEN_R_OUT[0] + 3.4
+    sx_, sy_ = cx + math.cos(door) * stand_r, cy + math.sin(door) * stand_r
+    look = (math.cos(door), math.sin(door))  # Lumen stands at his door, looking out over the apron
+    facing = math.degrees(math.atan2(-look[0], look[1])) % 360.0
+    print(
+        f"[island_gen] HANDOFF gloomtrench hut (Keeper Lumen's lighthouse): door (Roblox rel) "
+        f"X={cx + math.cos(door) * LUMEN_R_OUT[0]:.0f} Z={-(cy + math.sin(door) * LUMEN_R_OUT[0]):.0f} "
+        f"sill Y~{floor:.1f}, beacon Y~{zg + 5.3:.1f}; suggested lumen spawnOffset "
+        f"Vector3.new({sx_:.0f}, 0, {-sy_ - 154.0:.0f}) facing {facing:.0f} (island spawn X=0 Z=154)"
+    )
+    print(
+        f"[island_gen] HANDOFF gloomtrench hut KEEP-CLEAR: centre (Roblox rel) X={cx:.0f} Z={-cy:.0f} "
+        f"r={LUMEN_KEEP_R:.0f}; floor seated on the probe at Y={floor:.2f}, plinth cut to Y={plinth_bottom:.2f}"
+    )
+    return (
+        object_from_bmesh("Gloomtrench_Hut_Walls", walls, ["M_GloomPath"]),
+        object_from_bmesh("Gloomtrench_Hut_Roof", roof, ["M_GloomShelf"]),
+        object_from_bmesh("Gloomtrench_Hut_Props", props, ["M_GloomStalk"]),
+        object_from_bmesh("Gloomtrench_Hut_Glow", glow, ["M_GlowCyan"]),
+    )
+
+
 def build_gloomtrench():
     GLOOM_PATH[:] = _gloom_path_points()
     GLOOM_VINE_ANCHORS.clear()
@@ -4177,6 +5648,9 @@ def build_gloomtrench():
         *build_gloom_glow(ground, stalk_bm, cyan_bm, violet_bm),
         *build_dock("Gloomtrench_Dock_Planks", "Gloomtrench_Dock_Posts", "M_GloomPlank", "M_GloomPost"),
         build_foam("Gloomtrench_Foam", "M_GloomFoam"),
+        # Lumen's lighthouse runs LAST and off its own RNG stream, so every
+        # scatter above it keeps the exact placement it had before the hut.
+        *build_gloom_lighthouse(ground),
     ]
     a = math.radians(DOCK_ANGLE_DEG)
     start_r = ring_radius(DOCK_START_U, a)
@@ -5606,6 +7080,368 @@ def build_wreck_gibbets(wood_bm, glow_bm, ground):
     print(f"[island_gen] HANDOFF wreckwater: {made} harbour gibbets")
 
 
+# ---- Wreckwater: Quartermaster Hollow's beached sterncastle ---------------
+#
+# The intact STERN of a galleon, snapped off her waist and driven upright onto
+# the beach west of the harbour cut: transom in the wash with the ship's name
+# still half-legible on it and a ghost-green lantern over the taffrail, the
+# torn break facing back up the beach so the captain's cabin behind it can be
+# walked straight into. Hollow keeps the fleet's books at a gangplank counter
+# beside that breach, crated and netted wares stacked around him.
+#
+# She is built from the island's own ship carpentry (_wr_frame/_wr_beam/
+# _wr_spar/_wr_panel/_wr_hull_shell/_wr_ribs/_wr_gunwale_glow) so she reads as
+# one of the fleet; the _hut_hollow_* pieces below are only the things a hulk
+# never needed - an inner cabin lining (the shared hull shell is a SINGLE SKIN,
+# so from inside you would see straight through it), a sole, a deckhead, and
+# the office furniture.
+#
+# TWO RULES this builder holds itself to:
+#   1. SEATED, NEVER HARDCODED. Every world height comes from the region's
+#      ground probe (_drop_to_ground, with the analytic height_at as the
+#      fallback), so a terrain reshape re-seats the whole ship automatically.
+#   2. NOTHING FLOATS. Every piece is buried in the sand, rests on probed
+#      ground, or overlaps the piece it hangs from - lantern to bracket, flag
+#      to staff, cabin lamp to deckhead, crates and net to the beach,
+#      gangplank to both hull and ground.
+
+HOLLOW_BREACH = (-46.0, -166.0)  # Blender (x, y) of the torn end - Roblox rel X=-46 Z=166
+HOLLOW_YAW_DEG = -133.5  # ship-local +X runs breach -> transom, i.e. down the beach
+HOLLOW_LENGTH = 26.0
+HOLLOW_PITCH_DEG = -2.5  # settled transom-down, into the wash
+HOLLOW_ROLL_DEG = 4.0  # a little heel, so she is not a museum piece
+HOLLOW_SOLE = 0.0  # cabin sole, ship-local z
+HOLLOW_DECK = 9.0  # deckhead underside over the cabin (9 studs of headroom)
+HOLLOW_DOOR_HALF = 4.2  # the breach opening is 8.4 wide x 8.2 tall
+HOLLOW_KEEP_R = 26.0  # keep-clear radius other builders should respect
+
+
+def _hut_hollow_stations(length=HOLLOW_LENGTH, n=7):
+    """Cross-sections of the stern section, x=0 at the torn break and x=length
+    at the transom. Unlike the shared _wr_stations (which tapers to a bow
+    POINT) the run aft only tucks - a galleon's stern is full-bodied and ends
+    in a flat transom, which is what gives the cabin its floor."""
+    out = []
+    for i in range(n):
+        t = i / (n - 1)
+        hb = 8.6 - 2.1 * t * t  # half beam: full amidships, tucking aft
+        keel = -6.0 + 2.8 * t * t  # the run sweeping up under the counter
+        sheer = 9.0 + 3.2 * t ** 1.6  # the sheer climbing to the quarterdeck
+        out.append((t * length, hb, keel, sheer))
+    return out
+
+
+def _hut_hollow_box(bm, frame, center, size, yaw=0.0):
+    """A squared box in SHIP-LOCAL space - lining planks, sole, shelves,
+    crates, furniture. (add_box is world-space and axis-aligned; everything in
+    this cabin is pitched and heeled with the hull.)"""
+    temp = bmesh.new()
+    bmesh.ops.create_cube(temp, size=1.0)
+    local = Matrix.Translation(Vector(center)) @ Matrix.Rotation(yaw, 4, "Z") @ Matrix.Diagonal(Vector(size)).to_4x4()
+    bmesh.ops.transform(temp, matrix=frame @ local, verts=temp.verts[:])
+    _wr_emit(bm, temp)
+
+
+def _hut_hollow_hb(stations, x):
+    """Half beam at any x down the section (linear between stations)."""
+    for a, b in zip(stations, stations[1:]):
+        if a[0] <= x <= b[0]:
+            f = (x - a[0]) / max(1e-5, b[0] - a[0])
+            return a[1] + (b[1] - a[1]) * f
+    return stations[-1][1] if x > stations[-1][0] else stations[0][1]
+
+
+def _hut_hollow_ground(ground, x, y):
+    """Probed ground height, falling back on the analytic terrain (the two
+    agree to ~0.05 on the rim). NEVER a literal: a terrain reshape moves the
+    ship with it."""
+    z = _drop_to_ground(ground, x, y)
+    return height_at(x, y) if z is None else z
+
+
+def build_wreck_sterncastle(ground):
+    """Quartermaster Hollow's office: a galleon's stern beached upright, walked
+    into through the hull breach. Five objects, Wreckwater_Hut_Walls / _Roof /
+    _Props / _Canvas / _Glow."""
+    rng = random.Random(7719)  # own stream: the island's shared scatter is untouched
+    walls = bmesh.new()  # hull shell, lining, breach framing, transom
+    roof = bmesh.new()  # sole, deckhead, quarterdeck, gangplank, counter
+    props = bmesh.new()  # furniture, crates, lantern cages, bell-and-tackle
+    canvas = bmesh.new()  # flag, charts, window panes, cargo net
+    glow = bmesh.new()  # sea-fire: gunwales, ribs, sternpost lantern, cabin lamp
+
+    bx, by = HOLLOW_BREACH
+    yaw = math.radians(HOLLOW_YAW_DEG)
+    pitch = math.radians(HOLLOW_PITCH_DEG)
+    fwd = (math.cos(yaw), math.sin(yaw))  # breach -> transom, down the beach
+    up_beach = (-fwd[0], -fwd[1])
+    port = (-math.sin(yaw), math.cos(yaw))
+    st = _hut_hollow_stations()
+    L = HOLLOW_LENGTH
+
+    # --- SEATING. The sole sits a stride above the sand at the break; the
+    #     keel is then checked against probed ground the whole length so no
+    #     part of her can end up hanging in the air over the falling beach.
+    ground_breach = _hut_hollow_ground(ground, bx, by)
+    pos_z = ground_breach + 0.9 - HOLLOW_SOLE
+    for i in range(9):
+        t = i / 8
+        gx, gy = bx + fwd[0] * L * t, by + fwd[1] * L * t
+        keel = -6.0 + 2.8 * t * t - L * t * math.sin(-pitch)
+        cap = _hut_hollow_ground(ground, gx, gy) - 0.6 - keel
+        pos_z = min(pos_z, cap)  # bury the keel everywhere, never float it
+    frame = _wr_frame((bx, by, pos_z), yaw=yaw, pitch=pitch, roll=math.radians(HOLLOW_ROLL_DEG))
+    world = _wr_frame((0.0, 0.0, 0.0))  # identity: for the pieces that sit on sand
+
+    def wpt(p):
+        return frame @ Vector(p)
+
+    # --- 1. THE HULL. Single-skin shell, break end left OPEN (cap_break=False)
+    #     - that hole IS the door - then the fleet's rib/wale/sea-fire dress.
+    _wr_hull_shell(walls, frame, st, cap_break=False)
+    _wr_ribs(walls, frame, st, (0.0, 0.34), rise=5.0, thick=0.62, glow_bm=glow, glow_every=1)
+    for wf in (0.32, 0.66):  # the wales: heavy strakes breaking up the hull side
+        for side in (1, -1):
+            prev = None
+            for x, hb, kz, sz in st:
+                p = Vector((x, side * hb * 1.02, kz + (sz - kz) * wf))
+                if prev is not None:
+                    _wr_beam(walls, frame, prev, p, 0.85, 0.7)
+                prev = p
+    _wr_gunwale_glow(glow, frame, st, lo=0.15, hi=1.0, lift=0.0)  # lift 0: the line sits ON the sheer
+
+    # --- 2. THE BREACH. Torn planking around a clear 8.4 x 8.2 doorway: broken
+    #     stubs raking out of the tear, side panels closing the quarters, a
+    #     deck beam as the lintel.
+    hb0, kz0, sz0 = st[0][1], st[0][2], st[0][3]
+    for k in range(9):
+        f = -1.0 + 2.0 * (k / 8)
+        if abs(f * hb0) < HOLLOW_DOOR_HALF + 0.6:
+            continue  # the doorway itself stays clear
+        _wr_beam(
+            walls, frame,
+            (0.3, f * hb0 * 0.99, sz0 - rng.uniform(0.6, 2.4)),
+            (-rng.uniform(0.6, 2.6), f * hb0 * 0.95, sz0 + rng.uniform(1.2, 4.6)),
+            1.0, 0.75,
+        )
+    for side in (1, -1):  # the quarters either side of the door, planked in
+        y_mid = side * (HOLLOW_DOOR_HALF + (hb0 - HOLLOW_DOOR_HALF) / 2)
+        _hut_hollow_box(walls, frame, (0.55, y_mid, (HOLLOW_SOLE + sz0) / 2),
+                        (1.1, hb0 - HOLLOW_DOOR_HALF, sz0 - HOLLOW_SOLE))
+    _wr_beam(walls, frame, (0.55, -HOLLOW_DOOR_HALF - 0.4, 8.55), (0.55, HOLLOW_DOOR_HALF + 0.4, 8.55), 1.2, 0.8)
+    for side in (1, -1):  # door posts, so the tear reads as a framed way in
+        _wr_beam(walls, frame, (0.4, side * (HOLLOW_DOOR_HALF + 0.35), HOLLOW_SOLE),
+                 (0.4, side * (HOLLOW_DOOR_HALF + 0.35), 8.6), 0.8, 0.7)
+
+    # --- 3. THE CABIN SHELL: ceiling planking down both sides (the hull is one
+    #     skin - without this the cabin has no inside), a plank sole, deck
+    #     beams and the deckhead over them.
+    n_lin = 9
+    for i in range(n_lin):
+        x = 1.4 + (L - 3.2) * (i / (n_lin - 1))
+        hb = _hut_hollow_hb(st, x)
+        for side in (1, -1):
+            _hut_hollow_box(walls, frame, (x, side * (hb - 0.55), (HOLLOW_SOLE + HOLLOW_DECK) / 2 + 0.2),
+                            ((L - 3.2) / (n_lin - 1) + 0.35, 0.6, HOLLOW_DECK - HOLLOW_SOLE + 0.4))
+    for i in range(7):  # the sole, laid athwartships in broad planks
+        x = 0.6 + (L - 1.6) * (i / 6)
+        hb = _hut_hollow_hb(st, x)
+        _hut_hollow_box(roof, frame, (x, 0.0, HOLLOW_SOLE - 0.35), ((L - 1.6) / 6 + 0.25, hb * 1.94, 0.7))
+    for i in range(6):  # deck beams, then the deckhead planking on top of them
+        x = 2.0 + (L - 4.5) * (i / 5)
+        hb = _hut_hollow_hb(st, x)
+        _wr_beam(roof, frame, (x, -hb * 0.92, HOLLOW_DECK - 0.25), (x, hb * 0.92, HOLLOW_DECK - 0.25), 0.9, 0.5)
+    _hut_hollow_box(roof, frame, (L * 0.5 + 0.4, 0.0, HOLLOW_DECK + 0.25), (L - 1.4, 15.6, 0.5))
+
+    # --- 4. THE TRANSOM: name board with its few surviving plank letters,
+    #     the stern-window band, quarter brackets, taffrail, sternpost lantern
+    #     and the flag. Everything here hangs off something solid.
+    xt, hbt, kzt, szt = st[-1]
+    _hut_hollow_box(walls, frame, (xt + 0.45, 0.0, szt - 3.1), (0.9, hbt * 1.9, 2.2))  # name board
+    letters = (-4.4, -3.0, -1.6, 0.4, 1.8, 3.4, 4.8)
+    for i, ly in enumerate(letters):
+        if i in (2, 5):
+            continue  # two letters long gone - the name is barely legible
+        h = rng.uniform(1.0, 1.35)
+        _hut_hollow_box(props, frame, (xt + 0.95, ly, szt - 3.1 + rng.uniform(-0.15, 0.15)),
+                        (0.35, 0.75, h), yaw=rng.uniform(-0.10, 0.10))
+        if i % 2 == 0:  # a crossbar, so each mark reads as a letter not a peg
+            _hut_hollow_box(props, frame, (xt + 0.95, ly, szt - 3.1 + h * 0.22), (0.3, 1.0, 0.3))
+    for i in range(4):  # the stern-window band over the board
+        wy = -4.5 + 3.0 * i
+        _hut_hollow_box(walls, frame, (xt + 0.5, wy, szt - 0.9), (0.8, 0.5, 3.0))  # mullion
+        if i < 3 and i != 1:  # one light cracked clean out - Hollow's spyglass window
+            _wr_panel(canvas, frame, (
+                (xt + 0.72, wy + 0.3, szt - 2.3), (xt + 0.72, wy + 2.7, szt - 2.3),
+                (xt + 0.72, wy + 2.7, szt + 0.5), (xt + 0.72, wy + 0.3, szt + 0.5),
+            ), 0.22)
+    _hut_hollow_box(walls, frame, (xt + 0.5, 0.0, szt + 0.75), (0.9, hbt * 1.9, 0.9))  # window head
+    for side in (1, -1):  # quarter brackets, stepped like a carved gallery
+        for k in range(3):
+            _hut_hollow_box(walls, frame, (xt + 0.2 - k * 0.35, side * (hbt - 0.5 - k * 0.35), szt - 4.6 + k * 1.5),
+                            (1.2, 1.1 - k * 0.2, 1.2))
+    rail_z = szt + 2.4
+    for side in (1, -1):  # taffrail: posts standing ON the sheer, rail across them
+        for k in range(3):
+            py = side * hbt * (0.30 + 0.32 * k)
+            _wr_beam(props, frame, (xt - 0.3, py, szt + 0.2), (xt - 0.3, py, rail_z), 0.55, 0.55)
+    _wr_beam(props, frame, (xt - 0.3, -hbt * 0.94, rail_z), (xt - 0.3, hbt * 0.94, rail_z), 0.7, 0.6)
+    # Sternpost lantern: bracket off the rail, cage hung UNDER it (the cage top
+    # overlaps the bracket), the sea-fire inside the cage.
+    lan_y = -hbt * 0.72
+    _wr_beam(props, frame, (xt - 0.3, lan_y, rail_z + 0.2), (xt + 1.9, lan_y, rail_z + 0.9), 0.5, 0.45)
+    _hut_hollow_box(props, frame, (xt + 1.75, lan_y, rail_z + 0.55), (1.5, 1.5, 0.5))  # cage cap, under the bracket
+    for cy_ in (-0.55, 0.55):
+        for cx_ in (-0.55, 0.55):
+            _wr_beam(props, frame, (xt + 1.75 + cx_, lan_y + cy_, rail_z + 0.55),
+                     (xt + 1.75 + cx_, lan_y + cy_, rail_z - 1.35), 0.22, 0.22)
+    _hut_hollow_box(props, frame, (xt + 1.75, lan_y, rail_z - 1.45), (1.5, 1.5, 0.4))  # cage floor
+    _wr_orb(glow, frame, (xt + 1.75, lan_y, rail_z - 0.45), 0.85)
+    # The flag: a staff footed on the taffrail, canvas bent to it all the way
+    # down, one width torn away.
+    staff_x, staff_y = xt - 0.3, hbt * 0.62
+    _wr_spar(props, frame, (staff_x, staff_y, rail_z - 0.4), (staff_x, staff_y, rail_z + 7.6), 0.36, 0.20)
+    for k in range(4):
+        if k == 2:
+            continue
+        z0 = rail_z + 1.5 + k * 1.5
+        reach = 3.4 - k * 0.35
+        _wr_panel(canvas, frame, (
+            (staff_x, staff_y, z0), (staff_x - reach, staff_y - 0.5 * (k + 1), z0 - rng.uniform(0.2, 0.7)),
+            (staff_x - reach, staff_y - 0.5 * (k + 1), z0 - 1.5 - rng.uniform(0.0, 0.5)), (staff_x, staff_y, z0 - 1.5),
+        ), 0.26)
+    # The quarterdeck: a short deck aft over the cabin, and the mizzen stump
+    # snapped off at the partners (no floating topmast - it ends where it broke).
+    _hut_hollow_box(roof, frame, (xt - 3.2, 0.0, szt - 0.2), (6.4, hbt * 1.7, 0.55))
+    _wr_spar(props, frame, (L * 0.44, 0.0, HOLLOW_DECK - 0.2), (L * 0.44 + 0.5, 0.6, HOLLOW_DECK + 5.4), 1.05, 0.75)
+    _wr_beam(props, frame, (L * 0.44 + 0.5, 0.6, HOLLOW_DECK + 5.2), (L * 0.44 + 0.9, 0.9, HOLLOW_DECK + 6.4), 0.7, 0.55)
+
+    # --- 5. THE CABIN. Ledger desk with quill, inkpot and coin scales;
+    #     numbered crate shelves down the port lining; a lamp hung from a deck
+    #     beam; charts pinned to the curved starboard wall; the spyglass at the
+    #     cracked stern window. Everything stands on the sole.
+    dx = L - 6.4
+    _hut_hollow_box(props, frame, (dx, -1.0, HOLLOW_SOLE + 2.5), (3.4, 6.4, 0.4))  # desk top
+    for lx, ly in ((-1.3, -3.6), (-1.3, 1.6), (1.3, -3.6), (1.3, 1.6)):
+        _hut_hollow_box(props, frame, (dx + lx, -1.0 + ly, HOLLOW_SOLE + 1.25), (0.45, 0.45, 2.5))
+    _hut_hollow_box(props, frame, (dx - 0.4, -2.6, HOLLOW_SOLE + 2.85), (2.0, 2.6, 0.3))  # the ledger, open
+    _hut_hollow_box(props, frame, (dx - 0.4, -2.6, HOLLOW_SOLE + 3.02), (1.7, 1.1, 0.06), yaw=0.12)
+    _hut_hollow_box(props, frame, (dx + 0.9, 0.4, HOLLOW_SOLE + 2.95), (0.7, 0.7, 0.6))  # inkpot
+    _wr_spar(props, frame, (dx + 0.9, 0.4, HOLLOW_SOLE + 3.1), (dx + 1.5, 1.2, HOLLOW_SOLE + 4.4), 0.10, 0.05)  # quill
+    scale_x, scale_y = dx - 1.2, 1.6
+    _wr_spar(props, frame, (scale_x, scale_y, HOLLOW_SOLE + 2.7), (scale_x, scale_y, HOLLOW_SOLE + 4.6), 0.22, 0.16)
+    _wr_beam(props, frame, (scale_x, scale_y - 1.5, HOLLOW_SOLE + 4.5), (scale_x, scale_y + 1.5, HOLLOW_SOLE + 4.6), 0.16, 0.16)
+    for s_ in (-1, 1):  # the pans, hung on their strings from the beam ends
+        _wr_spar(props, frame, (scale_x, scale_y + s_ * 1.45, HOLLOW_SOLE + 4.55), (scale_x, scale_y + s_ * 1.45, HOLLOW_SOLE + 3.75), 0.05, 0.05)
+        _hut_hollow_box(props, frame, (scale_x, scale_y + s_ * 1.45, HOLLOW_SOLE + 3.65), (1.1, 1.1, 0.22))
+    _hut_hollow_box(props, frame, (dx - 3.6, 2.2, HOLLOW_SOLE + 0.9), (2.0, 2.0, 1.8))  # sea chest / stool
+    for k in range(3):  # the crate shelves down the port side, numbered
+        sz_z = HOLLOW_SOLE + 1.4 + k * 2.5
+        _hut_hollow_box(props, frame, (L * 0.45, 6.1, sz_z), (9.0, 1.9, 0.35))
+        for j in range(3):
+            cxx = L * 0.45 - 3.0 + j * 3.0
+            _hut_hollow_box(props, frame, (cxx, 6.0, sz_z + 1.1), (2.2, 1.7, 1.8), yaw=rng.uniform(-0.06, 0.06))
+            _hut_hollow_box(canvas, frame, (cxx, 5.12, sz_z + 1.35), (1.0, 0.1, 0.7))  # the number plate
+    for k in range(2):  # shelf uprights, sole to deckhead
+        _hut_hollow_box(props, frame, (L * 0.45 - 4.4 + k * 8.8, 6.4, HOLLOW_SOLE + 4.5), (0.5, 1.3, 9.0))
+    lamp_x = L * 0.62
+    _wr_spar(props, frame, (lamp_x, -1.6, HOLLOW_DECK - 0.2), (lamp_x, -1.6, HOLLOW_DECK - 2.1), 0.10, 0.10)  # chain to the deckhead
+    _hut_hollow_box(props, frame, (lamp_x, -1.6, HOLLOW_DECK - 2.5), (1.5, 1.5, 1.1))  # the lamp housing
+    _wr_orb(glow, frame, (lamp_x, -1.6, HOLLOW_DECK - 2.9), 0.75)
+    for k in range(3):  # charts pinned flat to the starboard ceiling planking
+        cxx = L * 0.30 + k * 4.2
+        hb = _hut_hollow_hb(st, cxx)
+        _wr_panel(canvas, frame, (
+            (cxx - 1.7, -(hb - 1.05), HOLLOW_SOLE + 3.4 + k * 0.35), (cxx + 1.7, -(hb - 1.05), HOLLOW_SOLE + 3.1 + k * 0.35),
+            (cxx + 1.7, -(hb - 1.05), HOLLOW_SOLE + 6.1 + k * 0.35), (cxx - 1.7, -(hb - 1.05), HOLLOW_SOLE + 6.4 + k * 0.35),
+        ), 0.16)
+    sp_x = xt - 2.2  # the spyglass, stood at the cracked light on its tripod
+    for a_ in (0.0, 2.1, 4.2):
+        _wr_spar(props, frame, (sp_x + math.cos(a_) * 0.7, -3.0 + math.sin(a_) * 0.7, HOLLOW_SOLE),
+                 (sp_x, -3.0, HOLLOW_SOLE + 3.2), 0.13, 0.10)
+    _wr_spar(props, frame, (sp_x - 1.1, -3.0, HOLLOW_SOLE + 2.9), (sp_x + 1.9, -3.0, HOLLOW_SOLE + 3.9), 0.45, 0.28)
+
+    # --- 6. THE SHORE SIDE: gangplank down out of the breach, Hollow's counter
+    #     at its foot, crates and a cargo net beside it, and a lamp stake so the
+    #     counter is lit. All of it seated on probed sand.
+    sill = wpt((0.2, 0.0, HOLLOW_SOLE + 0.15))
+    foot = (sill.x + up_beach[0] * 7.0, sill.y + up_beach[1] * 7.0)
+    foot_z = _hut_hollow_ground(ground, *foot)
+    _wr_beam(roof, world, (foot[0], foot[1], foot_z - 0.15), (sill.x, sill.y, sill.z), 4.6, 0.55)
+    for k in range(3):  # cleats across the plank, laid on it
+        f = 0.25 + 0.25 * k
+        cx_ = foot[0] + (sill.x - foot[0]) * f
+        cy_ = foot[1] + (sill.y - foot[1]) * f
+        cz_ = foot_z - 0.15 + (sill.z - foot_z + 0.15) * f
+        _wr_beam(roof, world, (cx_ - port[0] * 2.2, cy_ - port[1] * 2.2, cz_ + 0.35),
+                 (cx_ + port[0] * 2.2, cy_ + port[1] * 2.2, cz_ + 0.35), 0.5, 0.3)
+    cnt = (sill.x + up_beach[0] * 7.6 + port[0] * 4.6, sill.y + up_beach[1] * 7.6 + port[1] * 4.6)
+    cnt_z = _hut_hollow_ground(ground, *cnt)
+    top_z = cnt_z + 3.1
+    for s_ in (-1, 1):  # two barrels carrying the counter plank
+        bxx, byy = cnt[0] + port[0] * s_ * 2.9, cnt[1] + port[1] * s_ * 2.9
+        bz = _hut_hollow_ground(ground, bxx, byy)
+        _wr_spar(props, world, (bxx, byy, bz - 0.4), (bxx, byy, top_z - 0.15), 1.55, 1.35, sides=8)
+    add_box(roof, (cnt[0], cnt[1], top_z - 0.2), (2.8, 9.0, 0.55), yaw=yaw + math.pi)  # the counter plank
+    add_box(props, (cnt[0] - up_beach[0] * 0.6, cnt[1] - up_beach[1] * 0.6, top_z + 0.25), (1.6, 2.4, 0.3), yaw=yaw)  # the open ledger
+    lam = (cnt[0] + port[0] * 3.2, cnt[1] + port[1] * 3.2)  # the counter lantern, stood ON the plank
+    add_box(props, (lam[0], lam[1], top_z + 0.85), (1.4, 1.4, 1.5), yaw=yaw)
+    _wr_orb(glow, world, (lam[0], lam[1], top_z + 0.85), 0.7)
+    crates = ((2.6, 7.4, 0), (5.4, 8.2, 0), (3.2, 10.4, 0), (3.0, 8.0, 1))
+    stack_top = {}
+    for cx_, cy_, tier in crates:  # wares, resting on the sand (or on the crate below)
+        wx = sill.x + up_beach[0] * cx_ + port[0] * cy_
+        wy = sill.y + up_beach[1] * cx_ + port[1] * cy_
+        gz = _hut_hollow_ground(ground, wx, wy)
+        base_z = stack_top.get(tier - 1, gz) if tier else gz
+        h = 2.6 if tier == 0 else 2.1
+        add_box(props, (wx, wy, base_z + h / 2 - 0.15), (2.9, 2.9, h), yaw=yaw + rng.uniform(-0.3, 0.3))
+        add_box(props, (wx, wy, base_z + h - 0.25), (3.1, 3.1, 0.3), yaw=yaw + rng.uniform(-0.3, 0.3))
+        stack_top[tier] = base_z + h - 0.3
+    net_x = sill.x + up_beach[0] * 4.4 + port[0] * -5.0
+    net_y = sill.y + up_beach[1] * 4.4 + port[1] * -5.0
+    net_z = stack_top.get(1, _hut_hollow_ground(ground, net_x, net_y) + 2.4)
+    for k in range(5):  # the net, draped over the stack and pegged to the sand
+        f = -2.6 + 1.3 * k
+        a0 = (net_x + port[0] * f - up_beach[0] * 2.6, net_y + port[1] * f - up_beach[1] * 2.6)
+        a1 = (net_x + port[0] * f + up_beach[0] * 2.6, net_y + port[1] * f + up_beach[1] * 2.6)
+        _wr_beam(canvas, world, (a0[0], a0[1], _hut_hollow_ground(ground, *a0) + 0.1),
+                 (a1[0], a1[1], net_z + 0.15), 0.22, 0.14)
+        b0 = (net_x + port[0] * -2.6 + up_beach[0] * f, net_y + port[1] * -2.6 + up_beach[1] * f)
+        b1 = (net_x + port[0] * 2.6 + up_beach[0] * f, net_y + port[1] * 2.6 + up_beach[1] * f)
+        _wr_beam(canvas, world, (b0[0], b0[1], net_z + 0.05), (b1[0], b1[1], net_z + 0.2), 0.22, 0.14)
+    for k in range(5):  # sand drifted up against the buried side of the hull
+        t = 0.16 + 0.17 * k
+        sxx = bx + fwd[0] * L * t - port[0] * (_hut_hollow_hb(st, L * t) + 0.4)
+        syy = by + fwd[1] * L * t - port[1] * (_hut_hollow_hb(st, L * t) + 0.4)
+        gz = _hut_hollow_ground(ground, sxx, syy)
+        _wr_mound(walls, (sxx, syy, gz - 1.7), (6.5, 3.4, 2.9), 3300 + k * 7.3, yaw=yaw)
+
+    door = wpt((-0.4, 0.0, HOLLOW_SOLE))
+    stand = (cnt[0] + up_beach[0] * -1.9, cnt[1] + up_beach[1] * -1.9)  # Hollow, behind his counter
+    look = (-up_beach[0], -up_beach[1])
+    facing = math.degrees(math.atan2(-look[0], look[1])) % 360.0
+    a_dock = math.radians(DOCK_ANGLE_DEG)
+    spawn_z = -(ring_radius(DOCK_START_U, a_dock) - 18)  # the island's spawn, Blender y
+    mid = (bx + fwd[0] * L * 0.5, by + fwd[1] * L * 0.5)
+    print(
+        f"[island_gen] HANDOFF wreckwater hut (Hollow's beached sterncastle): breach sill "
+        f"(Roblox rel) X={door.x:.0f} Z={-door.y:.0f} Y~{door.z:.1f}, counter X={cnt[0]:.0f} Z={-cnt[1]:.0f} "
+        f"top Y~{top_z:.1f}; suggested hollow spawnOffset Vector3.new({stand[0]:.0f}, 0, {-stand[1] + spawn_z:.0f}) "
+        f"facing {facing:.0f} (island spawn X=0 Z={-spawn_z:.0f})"
+    )
+    print(
+        f"[island_gen] HANDOFF wreckwater hut KEEP-CLEAR: centre (Roblox rel) X={mid[0]:.0f} Z={-mid[1]:.0f} "
+        f"r={HOLLOW_KEEP_R:.0f}; hull seated on the probe (sole Y~{pos_z:.1f} at the break, transom in the wash)"
+    )
+    return (
+        object_from_bmesh("Wreckwater_Hut_Walls", walls, ["M_HullWood"]),
+        object_from_bmesh("Wreckwater_Hut_Roof", roof, ["M_WreckPlank"]),
+        object_from_bmesh("Wreckwater_Hut_Props", props, ["M_WreckPost"]),
+        object_from_bmesh("Wreckwater_Hut_Canvas", canvas, ["M_WreckSail"]),
+        object_from_bmesh("Wreckwater_Hut_Glow", glow, ["M_GhostGlow"]),
+    )
+
 def build_wreckwater():
     base = build_island_base("Wreckwater_Base", ["M_BayFloor", "M_WreckSand", "M_WreckWet"])
     ground = _ground_bvh(base)
@@ -5621,6 +7457,9 @@ def build_wreckwater():
         *build_wrecks(ground),
         build_wreck_rocks(ground),
         build_wreck_ironwork(ground),
+        # Hollow's house: after the fleet so it reads as the shore's one
+        # deliberate structure, before the dock/foam.
+        *build_wreck_sterncastle(ground),
         *build_dock("Wreckwater_Dock_Planks", "Wreckwater_Dock_Posts", "M_WreckPlank", "M_WreckPost"),
         build_foam("Wreckwater_Foam", "M_WreckFoam"),
     ]
@@ -6249,6 +8088,16 @@ ISLANDS = {
                 "M_WillowLeaf": (0.20, 0.26, 0.17),  # the canopy masses
                 "M_HangMoss": (0.451, 0.514, 0.365),  # pale spanish-moss ribbons
                 "M_Vine": (0.20, 0.27, 0.17),  # long dark vines reaching down
+                # Morra's leaning bog hut (build_hut_morra). Bogwood and wattle
+                # for the shell, a dark mossy shingle for its scaled roof, and
+                # the witch-dressing: herbs, bone, jars, iron, wisp-light.
+                "M_BogWattle": (0.322, 0.278, 0.212),  # the woven wattle shell
+                "M_BogShingle": (0.239, 0.290, 0.216),  # scale shingles, moss-dark
+                "M_BogHerb": (0.482, 0.510, 0.302),  # hanging herb bundles + cot straw
+                "M_BogBone": (0.827, 0.812, 0.706),  # gator skull, chime bones and shells
+                "M_BogJar": (0.400, 0.549, 0.451),  # the leech jars
+                "M_BogIron": (0.169, 0.176, 0.196),  # the cauldron
+                "M_Wisp": (0.545, 0.949, 0.729),  # wisp-lanterns, potions, scrying water
             },
         },
         "build": build_swamp,
@@ -6344,6 +8193,13 @@ ISLANDS = {
                 "M_FrostPlank": (0.557, 0.478, 0.376),
                 "M_FrostPost": (0.404, 0.337, 0.263),
                 "M_FrostFoam": (0.949, 0.969, 0.984),
+                # Halvard's upturned hull: tarred boat timber, cut snow block,
+                # black iron, sea-bleached bone, and the stove's ember.
+                "M_HutHull": (0.325, 0.243, 0.196),
+                "M_HutSnowBlock": (0.882, 0.918, 0.949),
+                "M_HutIron": (0.204, 0.200, 0.212),
+                "M_HutBone": (0.855, 0.839, 0.788),
+                "M_HutEmber": (1.000, 0.510, 0.157),
             },
         },
         "build": build_frostmaw,
