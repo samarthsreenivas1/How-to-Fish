@@ -2020,7 +2020,43 @@ Creatures.items.ghostlight_oarfish = {
 	},
 }
 
--- The boss. Her lure is the only light in the arena; enrage douses it.
+-- ONE OF THE SEVEN. The Lantern Choir is Noctyss's fingers through the
+-- Choirfloor's ceiling, and each stalk is an ordinary creature row planted on
+-- the arena's socket ring (Bosses.noctyss `parts`) - so it has its own health
+-- bar, takes ordinary damage, and dies like anything else.
+--
+-- `rangedOnly` is the design, not a limitation: the lantern hangs 35 studs up
+-- at the end of a crooked stalk, and nothing in the melee arsenal reaches it.
+-- Guns break the lure, and then melee burns the gullet inside her mouth - the
+-- two halves of the kit matter in different beats of the same fight.
+--
+-- The client draws these as chains from NoctyssPack (NoctyssBodyController);
+-- the model the server keeps is authority only and stands at the BULB, which
+-- is why shooting the light is what registers.
+Creatures.items.choir_stalk = {
+	id = "choir_stalk",
+	name = "Lantern Stalk",
+	rarity = "Boss",
+	archetype = "choirstalk",
+	health = 2600,
+	waters = "gloom",
+	rangedOnly = true,
+	rewards = { coins = { 70, 120 }, xp = 200 },
+	body = {
+		model = "CreaturePack",
+		species = "Noctyss",
+		shape = "leviathan",
+		stance = "upright",
+		scale = 0.55,
+		color = Color3.fromRGB(44, 38, 58),
+		finColor = Color3.fromRGB(70, 58, 92),
+		markColor = Color3.fromRGB(255, 226, 130), -- the lantern
+	},
+}
+
+-- The boss. She is UNDER the shelf for most of the fight: `vulnerableWhen`
+-- keeps her untouchable until the true lure is broken and the maw comes up
+-- through the pit, which is the only window anything can hurt her in.
 Creatures.items.noctyss = {
 	id = "noctyss",
 	name = "Noctyss, the Trench Mother",
@@ -2029,6 +2065,7 @@ Creatures.items.noctyss = {
 	boss = "noctyss",
 	health = 60000,
 	waters = "gloom",
+	vulnerableWhen = "markedDown",
 	rewards = { coins = { 18000, 26000 }, xp = 16000 },
 	drops = { materials = { abyss_ichor = { 3, 4 }, lantern_gland = { 4, 6 }, trench_chitin = { 6, 8 } } },
 	body = {
@@ -2036,7 +2073,12 @@ Creatures.items.noctyss = {
 		species = "Noctyss",
 		shape = "leviathan",
 		stance = "upright",
-		scale = 1.8,
+		-- 2.4, not 1.8: at 1.8 the maw was a crocodile in a hole. Here the
+		-- skull is 28.8 studs across against the arena pit's 30-stud mouth -
+		-- she FILLS it, jaws overhanging the lip, without clipping the rim
+		-- (measured in assets/boss_noctyss_staged.png). hitRadius 6 then
+		-- reads as 14.4 studs of hide, which is what the eye sees.
+		scale = 2.4,
 		color = Color3.fromRGB(44, 38, 58),
 		finColor = Color3.fromRGB(70, 58, 92),
 		markColor = Color3.fromRGB(255, 226, 130), -- the lure
@@ -2610,14 +2652,18 @@ Creatures.items.kraken_tentacle = {
 	health = 6000,
 	waters = "maelstrom",
 	rewards = { coins = { 150, 250 }, xp = 400 },
+	-- Also authority only: KrakenBodyController hides each tentacle and draws
+	-- an ARM to it from the head's crown, so what you swing at is the arm.
+	-- The colours are the fallback for a client that has not adopted the boss
+	-- yet, and match the hide.
 	body = {
 		model = "CreaturePack",
 		species = "KrakenTentacle",
 		shape = "gulletcod",
 		stance = "upright",
 		scale = 1.8,
-		color = Color3.fromRGB(70, 50, 90),
-		finColor = Color3.fromRGB(100, 70, 130),
+		color = Color3.fromRGB(33, 20, 51),
+		finColor = Color3.fromRGB(51, 33, 77),
 		markColor = Color3.fromRGB(150, 120, 255),
 	},
 }
@@ -2639,14 +2685,19 @@ Creatures.items.kraken = {
 	vulnerableWhen = "partsDown",
 	rewards = { coins = { 90000, 120000 }, xp = 80000 },
 	drops = { materials = { maelstrom_core = { 4, 6 }, thunder_pearl = { 6, 8 }, storm_glass = { 8, 12 } } },
+	-- Authority only: this model is hidden the moment it rises
+	-- (CreatureService.hideColossusModel) and KrakenBodyController draws the
+	-- octopus instead. `scale` still matters - it is what hitRadius is
+	-- multiplied by - so it tracks KrakenPath.SCALE exactly, or the hide you
+	-- can hit stops matching the hide you can see.
 	body = {
 		model = "CreaturePack",
 		species = "Kraken",
 		shape = "leviathan",
 		stance = "upright",
-		scale = 2.6,
-		color = Color3.fromRGB(60, 44, 84),
-		finColor = Color3.fromRGB(92, 66, 128),
+		scale = 1.4, -- = KrakenPath.SCALE
+		color = Color3.fromRGB(33, 20, 51), -- deep dark purple, the octopus hide
+		finColor = Color3.fromRGB(51, 33, 77), -- the lighter underside and arm crown
 		markColor = Color3.fromRGB(150, 120, 255), -- storm-lit eyes and suckers
 	},
 }

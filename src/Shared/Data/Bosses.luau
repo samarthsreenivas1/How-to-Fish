@@ -666,13 +666,26 @@ Bosses.items.rimefang = {
 }
 
 -- ============================================================ Gloomtrench
--- Noctyss, the Trench Mother: an abyssal angler-queen whose lure is the only
--- light in the arena. Her fight is LIGHT ITSELF: the lure that drags you in
--- is also the only thing you can see by; she plants FALSE lures that
--- detonate on approach, her ink blots your sight where it bursts, and her
--- phantom hunts start by dousing every light in the water. Enrage is the
--- dark's answer: the client douses her lure between attacks so every tell
--- starts from nothing.
+-- Noctyss, the Trench Mother - and the one fight in the saga where you never
+-- see the animal. What stands in the arena is her CHOIR: seven angler-lure
+-- stalks up through the Choirfloor's sockets, her fingers through a torn
+-- ceiling. She is underneath, and surfaces only to be punished.
+--
+-- THE LOOP, and every number below serves it:
+--   1. READ. The choir runs light patterns in near-blackness. A swept beam
+--      IS the damage - being lit is being hit - so the answer is the dark
+--      behind a shadow fin, which also takes the arena away from you.
+--   2. EARN. Exactly one stalk is the TRUE lure, and it breathes half a cycle
+--      out of step with the rest (NoctyssPath.pulse). Break its lantern and
+--      she flinches; break a false one and it flares white and something
+--      comes out of the dark for whoever shot it.
+--   3. PUNISH. The maw rises through the pit and hangs open. You climb into
+--      her mouth and hit the lure-root at the back of her throat until the
+--      jaw closes. Then the choir grows back, with a different true lure.
+--
+-- Ranged breaks the lure (the lantern is 35 studs up - `choir_stalk` is
+-- rangedOnly); melee burns the gullet. Both halves of the kit, different
+-- beats, which is the boss-redesign standard this fight was built to.
 Bosses.items.noctyss = {
 	id = "noctyss",
 	name = "Noctyss, the Trench Mother",
@@ -680,74 +693,141 @@ Bosses.items.noctyss = {
 	creature = "noctyss",
 	islandId = "gloom",
 	gate = { level = 35 },
-	-- Open water off the end of the dock (planks end at Z=216) - the stable
-	-- spot; the dark pools inland shift with every mesh regen.
-	arena = { offset = Vector3.new(0, 0, 246), radius = 28 },
-	aggro = 90,
-	standoff = 14,
-	hitRadius = 6, -- x1.8 scale = 10.8
-	submerge = 2.6,
-	riseDepth = 20,
-	riseTime = 4.0,
-	speed = 8,
-	turnRate = math.rad(80),
-	attackGapMin = 0.6,
-	attackGapMax = 1.2,
+	-- She is a set-piece, not a prowler: the pose driver owns her body and
+	-- the choir, and `speed = 0` means the arena's geometry can be trusted -
+	-- the sockets, the pit and the shadow fins stay where the fight expects
+	-- them. Drawn client-side by NoctyssBodyController off this pose.
+	pose = "noctyss",
+	-- Open water off the end of the dock, for the in-place fallback; the real
+	-- fight is at the Choirfloor (BossArenas.gloom), whose socket ring the
+	-- choir grows from.
+	arena = { offset = Vector3.new(0, 0, 246), radius = 36 },
+	-- THE CHOIR. Seven stalks on the arena's authored collars (`at` takes the
+	-- offsets from the arena row's `sockets`, so they land in their sockets
+	-- rather than on a guessed circle), one of them MARKED as the true lure.
+	-- `window` is how long the maw stays open once the true lure breaks;
+	-- `regrow` is the beat of dark before the choir comes back.
+	parts = {
+		row = "choir_stalk",
+		count = 7,
+		ring = 34,
+		at = "sockets",
+		mark = true,
+		window = 12,
+		regrow = 5,
+	},
+	aggro = 130,
+	standoff = 0,
+	hitRadius = 6, -- x2.4 scale = 14.4: the maw, when it is up
+	submerge = 0,
+	riseDepth = 24,
+	riseTime = 4.5,
+	speed = 0,
+	turnRate = math.rad(50),
+	attackGapMin = 1.1,
+	attackGapMax = 2.0,
 	enrageBelow = 0.3,
 	enrageCooldownMult = 0.55,
 	enrageDamageMult = 1.4,
-	-- THE FIGHT: trust the right light. The real lure drags you in (then the
-	-- jaws follow); the false lights blow up when approached; the ink blots
-	-- your screen exactly where you'd want to watch her from; and when every
-	-- light goes out at once, she's already under you.
+	-- The choir escalates by what it is allowed to do, not by growing: seven
+	-- collars, seven stalks, always. Stance 3 is the dark answering - the
+	-- lanterns start going out between attacks.
 	phases = {
-		{ below = 1.0, attacks = { "lurepull", "needlefangs", "inkveil" } },
-		{ below = 0.6, attacks = { "lurepull", "needlefangs", "inkveil", "falselight", "phantom" } },
+		{ below = 1.0, attacks = { "lightsweep", "lightsweep", "strobewave", "lurepull", "feelerstrike" } },
+		{
+			below = 0.65,
+			attacks = { "lightsweep", "strobewave", "lurepull", "feelerstrike", "falselight", "inkveil", "abysscall" },
+		},
 		{
 			below = 0.3,
-			attacks = { "lurepull", "needlefangs", "phantom", "phantom", "falselight", "abysscall", "abysscall" },
+			attacks = {
+				"lightsweep",
+				"lightsweep",
+				"strobewave",
+				"lurepull",
+				"falselight",
+				"abysscall",
+				"dousehunt",
+				"dousehunt",
+			},
 		},
 	},
 	attacks = {
-		-- The signature, and her OPENER: the lure flares - the one light in
-		-- the water - and drags you toward the maw, then the jaws follow.
+		-- THE SIGNATURE. One stalk leans onto a bearing and scythes its light
+		-- across the shelf. The lit wedge is the hitbox, it ticks rather than
+		-- landing once, and it comes FROM a stalk you can see leaning - so
+		-- the tell, the attack and the thing you shoot are all one object.
+		lightsweep = {
+			handler = "lightsweep",
+			skin = "lure",
+			windup = 1.1,
+			duration = 2.6,
+			recover = 0.8,
+			cooldown = 5.5,
+			arc = math.rad(155),
+			girth = 3.0,
+			tick = 0.45,
+			damage = { 32, 44 },
+		},
+		-- The whole choir flashes as one and each flash throws a ring
+		-- outward. It is also the only time the arena is fully lit: the
+		-- strobe is how you learn where anything is, and it is trying to
+		-- kill you while it shows you.
+		strobewave = {
+			handler = "barrage",
+			skin = "lure",
+			windup = 0.95,
+			duration = 2.0,
+			recover = 0.6,
+			cooldown = 10.0,
+			pattern = "rings",
+			rings = { 14, 26, 38 },
+			ringWidth = 5,
+			interval = 0.5,
+			arm = 0.5,
+			damage = { 38, 52 },
+		},
+		-- The true lure flares and hauls the arena toward the pit - toward
+		-- the hole she is under. Chased by a feeler, so being dragged into
+		-- the open is not survivable on its own.
 		lurepull = {
 			handler = "pull",
 			tell = "pull",
 			skin = "lure",
-			windup = 0.5,
-			duration = 2.4,
-			recover = 0.2,
-			cooldown = 5.5,
-			radius = 65,
-			strength = 40,
-			follow = "needlefangs",
+			windup = 0.7,
+			duration = 2.2,
+			recover = 0.4,
+			cooldown = 11.0,
+			radius = 70,
+			strength = 42,
+			follow = "feelerstrike",
 		},
-		-- The palisade of needles: fast, short-tell - the punish waiting at
-		-- the end of every pull.
-		needlefangs = {
-			handler = "snap",
-			tell = "snap",
+		-- Something comes out of the dark under everyone at once. Short arm:
+		-- the punish for standing still after a pull.
+		feelerstrike = {
+			handler = "barrage",
 			skin = "ink",
-			windup = 0.55,
-			duration = 0.35,
-			recover = 0.55,
-			cooldown = 1.6,
-			lunge = 14,
-			radius = 17,
-			cone = math.rad(65),
-			damage = { 62, 88 },
+			windup = 0.6,
+			duration = 1.2,
+			recover = 0.5,
+			cooldown = 2.2,
+			pattern = "everyone",
+			extra = 1,
+			spread = 9,
+			arm = 0.75,
+			radius = 8,
+			damage = { 46, 62 },
+			hitEvent = "emerge",
 		},
-		-- Ink shells burst around you: damage, a lingering blot of freezing
-		-- dark on the water, and a BLINDING splash of black across the screen
-		-- of anyone caught inside.
+		-- Ink bursts blot the water AND the screen of anyone caught in one:
+		-- the dark is her weapon even where there is light.
 		inkveil = {
 			handler = "barrage",
 			skin = "ink",
 			windup = 0.8,
 			duration = 1.4,
 			recover = 0.5,
-			cooldown = 7.0,
+			cooldown = 9.0,
 			pattern = "scatter",
 			count = 4,
 			spread = 12,
@@ -757,47 +837,33 @@ Bosses.items.noctyss = {
 			hitEvent = "inkBlast",
 			pool = { radius = 8, duration = 5, min = 7, max = 11, skin = "ink" },
 		},
-		-- HER gimmick: three false lures light up and drift the arena. They
-		-- look like hers. Anything that comes close learns the difference.
+		-- HER OLDEST TRICK, and it survives the redesign intact: false lures
+		-- drift the shelf looking exactly like the thing you are hunting.
+		-- Now they have a second job - in an arena where you are trying to
+		-- read one light's rhythm, three more lights is the attack.
 		falselight = {
 			handler = "decoys",
 			skin = "lure",
 			windup = 0.9,
 			duration = 0.6,
 			recover = 0.5,
-			cooldown = 12.0,
+			cooldown = 14.0,
 			count = 3,
-			spread = 20,
+			spread = 22,
 			trigger = 7,
 			blast = 10,
 			lifetime = 12,
 			drift = 3.5,
 			damage = { 45, 62 },
 		},
-		-- Every light in the water dies at once - hers too - and she is
-		-- simply GONE. The splash you hear next is her surfacing at your
-		-- flank, jaws first.
-		phantom = {
-			handler = "phantom",
-			skin = "ink",
-			windup = 0.8,
-			duration = 1.6,
-			recover = 0.6,
-			cooldown = 8.0,
-			emergeAt = 9,
-			radius = 15,
-			cone = 75,
-			damage = { 62, 88 },
-		},
-		-- The trench answers her call: three fans of grasping abyssal arms
-		-- erupt and march at you from her body.
+		-- The trench answers: fans of grasping arms march out of the pit.
 		abysscall = {
 			handler = "barrage",
 			skin = "ink",
 			windup = 0.9,
 			duration = 1.6,
 			recover = 0.6,
-			cooldown = 7.5,
+			cooldown = 8.5,
 			pattern = "line",
 			fan = { -28, 0, 28 },
 			count = 5,
@@ -807,6 +873,25 @@ Bosses.items.noctyss = {
 			arm = 0.5,
 			radius = 5,
 			damage = { 34, 46 },
+		},
+		-- EVERY LANTERN GOES OUT AT ONCE. Real darkness, for `dark` seconds,
+		-- and then a strike where you were standing when the lights died.
+		-- The fight's best scare and its cheapest attack: it spawns nothing,
+		-- it just stops being able to be seen by.
+		dousehunt = {
+			handler = "dousehunt",
+			skin = "ink",
+			windup = 0.5,
+			dark = 1.6,
+			duration = 2.4,
+			recover = 0.7,
+			cooldown = 13.0,
+			pattern = "everyone",
+			spread = 7,
+			arm = 0.55,
+			radius = 9,
+			damage = { 54, 74 },
+			hitEvent = "emerge",
 		},
 	},
 }
@@ -978,19 +1063,30 @@ Bosses.items.kraken = {
 	-- The centre of the whirlpool at the site's heart; the rock platforms
 	-- ring it at ~34-55 studs, inside tentacle reach by design.
 	arena = { offset = Vector3.new(0, 0, 0), radius = 34 },
+	-- Drawn by KrakenBodyController off Shared/Modules/KrakenPath: one domed
+	-- head filling the middle of the whirlpool, eight arms off its crown. A
+	-- posed boss holds its ground - updateBoss stops walking it at you, since
+	-- its head IS the centre of the arena.
+	pose = "kraken",
 	-- The tentacle ring: `count` kraken_tentacle rows planted evenly on
 	-- `ring` studs around the arena centre. While any lives, the head is
 	-- untouchable; `regrow` seconds after the last one dies, they respawn
 	-- (if the boss still lives). CreatureService.updateBoss owns this.
+	--
+	-- EIGHT, because it is an octopus and the renderer welds one arm into one
+	-- crown socket per tentacle - `count` and KrakenPath.ARM_COUNT are the
+	-- same number seen from two sides. `ring` sits outside the 28-stud head
+	-- and out where the platforms are, so the arms have real length and you
+	-- fight them from the rocks rather than off the hide.
 	parts = {
 		row = "kraken_tentacle",
-		count = 6,
-		ring = 26,
+		count = 8,
+		ring = 46,
 		regrow = 24,
 	},
 	aggro = 120,
 	standoff = 18,
-	hitRadius = 8, -- x2.6 = ~21: the mantle is a fortress
+	hitRadius = 20, -- the authored dome's half-width; x1.4 = 28, the whole middle of the arena
 	submerge = 3.0,
 	riseDepth = 26,
 	riseTime = 5.0,

@@ -276,9 +276,34 @@ function Rig:setVisible(visible: boolean)
 	end
 end
 
+-- Hide EVERY viewmodel at once. A viewmodel rig is parented to the camera,
+-- so in third person it would hang in front of the lens with the real
+-- character visible behind it. CameraController flips this when the boss
+-- arena takes the camera out to third (2026-08-29); the rigs come straight
+-- back when it hands the camera back.
+local hidden = false
+
+function Viewmodel.setHidden(value: boolean)
+	hidden = value
+end
+
+function Viewmodel.isHidden(): boolean
+	return hidden
+end
+
 -- Places every part at pin * extras[group] * offset (identity extra when a
 -- group has none).
 function Rig:pin(pin: CFrame, extras: { [string]: CFrame }?)
+	-- One choke point for the third-person hide: every viewmodel is posed
+	-- through here every frame, so this catches the rod, the fists and the
+	-- crafted weapons without each controller needing to know.
+	if hidden ~= self.hiddenApplied then
+		self.hiddenApplied = hidden
+		self:setVisible(not hidden)
+	end
+	if hidden then
+		return
+	end
 	for part, entry in self.parts do
 		local extra = extras and extras[entry.group]
 		part.CFrame = if extra then pin * extra * entry.offset else pin * entry.offset

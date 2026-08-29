@@ -48,6 +48,32 @@
 #     second colour is a second object: the bone, eye, and frill pieces ride
 #     with the head.
 #
+# ------------------------------------------------- editing this file safely
+#
+# Several lanes author bosses in here at once. Three splice failures happened
+# on this file in one evening, all variants of the same mistake - POSITIONAL
+# EXTRACTION WITHOUT AN IDENTITY CHECK - so before you reach for a slice:
+#
+#   1. Never anchor on a comment, or on any string another lane's section
+#      could contain. `# Where the client hinges the jaw` appears in three
+#      sections; a slice anchored on it matched a DIFFERENT boss's copy 1100
+#      lines earlier, ran backwards, and silently deleted this file's header,
+#      imports and every shared primitive.
+#   2. Anchor BOTH ends inside your own section and assert `count == 1` on
+#      both - and `assert old` too. `str.replace(old, new, 1)` with an empty
+#      `old` matches at position 0 and PREPENDS, with no exception and a
+#      successful exit code. An inverted slice produces exactly that.
+#   3. Matching your own anchors is necessary but NOT sufficient: the span
+#      between them stops being yours the moment someone inserts next to you.
+#      Assert on the text you extracted - no peer's `build_*` identifier may
+#      appear in it - not merely on the anchors you matched. Two extractors
+#      swallowed a neighbouring lane's builders exactly this way.
+#
+# And one that is invisible until a multi-boss run: `make_material` reuses a
+# Blender datablock BY NAME and `finish()` keys it on the object name, so
+# per-boss `<Boss>_*` object names are what keep palettes from repainting
+# each other.
+#
 # Colours here are preview-only; the client tints each part as it builds it.
 # Deterministic: seeded random only, so re-exports are byte-stable.
 
@@ -108,8 +134,11 @@ def box(bm, center, size, rot=None):
     bmesh.ops.create_cube(bm, size=2.0, matrix=mat)
 
 
-def ellipsoid(bm, center, radii, subdiv=1):
-    mat = Matrix.Translation(Vector(center)) @ Matrix.Diagonal(Vector(radii)).to_4x4()
+def ellipsoid(bm, center, radii, subdiv=1, rot=None):
+    mat = Matrix.Translation(Vector(center))
+    if rot is not None:
+        mat = mat @ rot.to_4x4()
+    mat = mat @ Matrix.Diagonal(Vector(radii)).to_4x4()
     bmesh.ops.create_icosphere(bm, subdivisions=subdiv, radius=1.0, matrix=mat)
 
 
@@ -397,210 +426,266 @@ def build_brinejaw():
 
 # ================================================================ the kraken
 #
-# THE MAW OF THE MAELSTROM. A squid the size of a harbour: a pointed mantle
-# behind, a bulbous head with two lamp-eyes, and under the brow a hooked bone
-# beak - the only clean thing on it. The eight fighting arms are NOT modelled
-# here as body parts: they are the six `kraken_tentacle` entities the boss
-# engine already plants on a ring (spawnBossParts), so an arm is ONE authored
-# segment instanced down a ChainPose curve, exactly like Brinejaw's body.
+# THE MAW OF THE MAELSTROM - a colossal deep-purple OCTOPUS whose head fills
+# the middle of the whirlpool and whose eight arms do all the fighting (user,
+# 2026-08-29: "the middle of the arena should just be his head and then the 8
+# appendages attack... a big octopus... tall and big head").
 #
-# Scale contract: the row spawns it at 2.6 and declares hitRadius 8 (so ~21
-# studs of hide in game). Everything below is authored at scale 1 against
-# that 8: the mantle's widest half-width is 7.2 and the beak tip sits at
-# x=+10.4, which is what makes the melee reach and the visible body agree.
+# TWO RULES THIS FILE EXISTS TO OBEY:
+#  1. AN ARM MUST READ AS ONE LIMB, never a string of blocks. Every segment is
+#     a CAPSULE - a barrel with rounded ends - authored LONGER than the pitch
+#     it is placed at (KR_SEG_LENGTH 5.4 vs KR_ARM_SPACING 3.0), so consecutive
+#     segments always interpenetrate by ~2.4 studs no matter how hard the arm
+#     bends. Rounded ends are what keeps a bend filled: flat-capped cylinders
+#     open a wedge of daylight on the outside of every curve.
+#  2. THE HEAD IS THE ARENA'S CENTREPIECE. Authored ~11.5 half-width and 15
+#     tall so that at the row's scale it stands ~30 studs across and ~39 tall -
+#     the middle of the whirlpool, with the fight stacks ringed outside it.
 #
-# It has been down there a long time: the mantle carries the same barnacle
-# crust the wreck island wears, a snapped spar grown into its back and a
-# length of anchor chain it never shook off - it is the thing that sank the
-# fleet rotting on the spiral outside.
+# The eight arms are NOT body parts: they are the `kraken_tentacle` entities
+# the boss engine already plants on a ring, so an arm is ONE authored capsule
+# instanced down a ChainPose curve.
 
-KR_HIDE = (0.24, 0.17, 0.33)   # deep ink-violet (the creature row's body colour)
-KR_CRUST = (0.36, 0.29, 0.22)  # barnacle plate + drowned timber
-KR_BEAK = (0.78, 0.71, 0.54)   # bone, matte, deliberately unlit
-KR_EYE = (0.59, 0.47, 1.00)    # storm-lit: the fight's only violet light
+KR_HIDE = (0.13, 0.08, 0.20)    # deep dark purple - the body
+KR_HIDE2 = (0.20, 0.13, 0.30)   # the lighter underside / arm crown
+KR_CRUST = (0.30, 0.24, 0.19)   # barnacle plate and drowned timber
+KR_BEAK = (0.74, 0.68, 0.52)    # bone
+KR_EYE = (0.40, 0.27, 0.72)
+KR_PUPIL = (0.05, 0.03, 0.09)  # the slit: near-black, so the lens reads as an eye     # storm-lit: the only violet light in the fight
 
-# Mantle cross-sections: (x, centre z, half-width, half-height). +X is the
-# front (the brow, over the beak); the mantle tapers to a point behind.
-KR_MANTLE = [
-    (-15.0, 0.0, 0.35, 0.30),
-    (-12.2, 0.2, 2.4, 2.0),
-    (-8.5, 0.3, 4.8, 4.1),
-    (-4.5, 0.4, 6.6, 5.6),
-    (-1.0, 0.3, 7.2, 6.0),   # the shoulder - the widest of it
-    (2.5, 0.0, 6.4, 5.4),
-    (5.5, -0.4, 4.6, 4.2),
-    (7.6, -1.0, 2.6, 2.6),   # the brow front, over the beak
-]
-
-KR_BEAK_HINGE = (4.6, 0.0, -2.9)  # both mandibles rotate about this
-KR_ARM_SPACING = 3.4              # authored segment pitch, scale 1
-KR_ARM_SEGMENTS = 9               # + the tip: ~32 studs of arm at scale 1
+KR_ARM_SPACING = 2.6   # placement pitch down the curve
+KR_SEG_LENGTH = 5.4    # authored segment length - LONGER than the pitch
+KR_ARM_SEGMENTS = 13
+KR_BEAK_HINGE = (0.0, 0.0, -1.2)
 
 
-def build_kr_mantle(rng):
+def _capsule(bm, length, r_mid, r_end, sides=12):
+    """A barrel with rounded ends, along +X. Overlapping capsules read as one
+    continuous limb through any bend - the whole point."""
+    half = length / 2
+    # Full radius across the middle 80%, rounding off only at the very ends.
+    # THE RULE: that parallel section must stay LONGER than the pitch the
+    # segments are planted at (KR_ARM_SPACING), or neighbouring barrels only
+    # meet on their shoulders, the surface dips at every joint, and the arm
+    # ribs up like a caterpillar. It is the same trap as tapering the length.
+    loft(bm, [
+        ring_pts(-half, 0.0, r_end * 0.34, r_end * 0.34, sides=sides),
+        ring_pts(-half * 0.94, 0.0, r_end * 0.86, r_end * 0.86, sides=sides),
+        ring_pts(-half * 0.80, 0.0, r_mid, r_mid, sides=sides),
+        ring_pts(half * 0.80, 0.0, r_mid, r_mid, sides=sides),
+        ring_pts(half * 0.94, 0.0, r_end * 0.86, r_end * 0.86, sides=sides),
+        ring_pts(half, 0.0, r_end * 0.34, r_end * 0.34, sides=sides),
+    ])
+
+
+def build_kr_head(rng):
     bm = bmesh.new()
-    loft(bm, [ring_pts(x, cz, hw, hh, sides=10) for x, cz, hw, hh in KR_MANTLE])
-    # Dorsal ridges: three low keels down the mantle so a huge smooth sack
-    # reads as muscle instead of a balloon.
-    for i in range(3):
-        x = -10.5 + i * 4.2
-        box(bm, (x, 0, 5.1 - i * 0.35), (3.0, 1.1, 1.0), Matrix.Rotation(math.radians(45), 3, "X"))
-    # Mantle collar: the thickened rim where the head meets the body.
-    disc(bm, 1.6, 2.6, 6.6, 6.5, sides=10)
-    return finish("Kraken_Mantle", bm, KR_HIDE)
+    # The great domed head: a tall bulb, widest below the middle, drawn as
+    # stacked rings up +Z so it reads as a heavy sack of muscle.
+    rings = []
+    profile = [
+        (0.0, 14.6), (4.0, 17.6), (8.4, 19.6), (13.0, 20.0),
+        (17.8, 18.8), (22.2, 16.4), (26.2, 13.0), (29.6, 8.6),
+        (32.0, 4.4), (33.2, 1.2),
+    ]
+    for z, r in profile:
+        pts = []
+        for i in range(14):
+            a = (i / 14) * TAU
+            pts.append((math.cos(a) * r, math.sin(a) * r, z))
+        rings.append(pts)
+    verts = [[bm.verts.new(pt) for pt in ring] for ring in rings]
+    for lower, upper in zip(verts, verts[1:]):
+        for i in range(14):
+            j = (i + 1) % 14
+            bm.faces.new((lower[i], lower[j], upper[j], upper[i]))
+    bm.faces.new(list(reversed(verts[0])))
+    bm.faces.new(verts[-1])
+    # Brow ridges over each eye - the shelf that DROPS before a bite.
+    for side in (-1, 1):
+        blade(bm, (9.2, side * 14.2, 17.0), (-7.0, side * 16.2, 18.4), 8.8, 5.0, 2.4)
+    # The slit pupil, in the head's own dark hide so the glowing eye reads as
+    # an eye rather than a lamp: a bar laid across each eyeball.
+    for side in (-1, 1):
+        box(bm, (6.4, side * 17.2, 12.6), (8.2, 1.8, 1.9))
+        # A lid fold above and below, so the eye sits in a socket.
+        box(bm, (6.4, side * 16.2, 15.9), (9.0, 2.6, 1.6), Matrix.Rotation(math.radians(side * -8), 3, "X"))
+        box(bm, (6.4, side * 16.2, 9.2), (8.2, 2.4, 1.4), Matrix.Rotation(math.radians(side * 10), 3, "X"))
+    # A heavy mantle fold where the head meets the arm crown.
+    for i in range(12):
+        a = (i / 12) * TAU
+        ellipsoid(bm, (math.cos(a) * 16.0, math.sin(a) * 16.0, 2.0), (3.8, 3.8, 2.6), subdiv=1)
+    # A heavy brow over each eye. Part of the HEAD, not the eye, so it is
+    # hide-coloured and the lens sits under an overhang instead of on a bald
+    # curve - the difference between a face and a balloon.
+    for side in (-1, 1):
+        rot, out = _kr_eye_frame(side, tilt=0.34)
+        ellipsoid(bm, (out[0] * 17.2, out[1] * 17.2, KR_EYE_Z + 5.0), (3.6, 8.8, 2.7), subdiv=1, rot=rot)
+    return finish("Kraken_Head", bm, KR_HIDE)
+
+
+def build_kr_crown(rng):
+    bm = bmesh.new()
+    # The arm crown: the thick web the eight arms grow out of, slung under the
+    # head. Lighter than the dome, the way an octopus is pale underneath.
+    rings = []
+    for z, r in ((-6.4, 7.4), (-4.0, 14.4), (-1.4, 18.6), (1.0, 19.6)):
+        pts = []
+        for i in range(12):
+            a = (i / 12) * TAU
+            pts.append((math.cos(a) * r, math.sin(a) * r, z))
+        rings.append(pts)
+    verts = [[bm.verts.new(pt) for pt in ring] for ring in rings]
+    for lower, upper in zip(verts, verts[1:]):
+        for i in range(12):
+            j = (i + 1) % 12
+            bm.faces.new((lower[i], lower[j], upper[j], upper[i]))
+    bm.faces.new(list(reversed(verts[0])))
+    bm.faces.new(verts[-1])
+    # Eight arm sockets: a swollen shoulder where each limb leaves the crown.
+    for k in range(8):
+        a = (k / 8) * TAU
+        ellipsoid(bm, (math.cos(a) * 18.2, math.sin(a) * 18.2, -2.0), (5.8, 5.8, 4.4), subdiv=1)
+    return finish("Kraken_Crown", bm, KR_HIDE2)
 
 
 def build_kr_crust(rng):
     bm = bmesh.new()
-    # Barnacle plate over the crown and one shoulder.
+    # It has been down there long enough to become terrain. Kept LOW on the
+    # dome, around the waterline where a hull actually fouls - scattered over
+    # the crown it just read as rubble dropped on its head - and built from
+    # flat plates rather than pebbles, so it looks grown on rather than
+    # sprinkled.
     for _ in range(26):
-        x = rng.uniform(-11.0, 5.0)
-        angle = rng.uniform(-0.9, 0.9)
-        r = rng.uniform(4.2, 6.9)
-        ellipsoid(
-            bm,
-            (x, math.sin(angle) * r, 0.6 + math.cos(angle) * r * 0.86),
-            (rng.uniform(0.35, 0.85),) * 3,
-            subdiv=0,
-        )
-    # A snapped spar driven into its back and never worked loose.
-    box(bm, (-6.4, 1.2, 5.6), (9.0, 0.9, 0.9), Matrix.Rotation(math.radians(-18), 3, "Y") @ Matrix.Rotation(math.radians(12), 3, "Z"))
-    box(bm, (-1.6, 1.9, 6.1), (3.4, 0.7, 0.7), Matrix.Rotation(math.radians(28), 3, "Y"))
-    # Anchor chain grown into the hide, links alternating flat and edge-on.
-    for i in range(6):
-        x = -9.0 + i * 1.9
-        z = 4.9 + math.sin(i * 0.7) * 0.5
-        flat = i % 2 == 0
-        box(bm, (x, -3.4, z), (1.5, 1.1, 0.45) if flat else (1.5, 0.45, 1.1))
+        a = rng.uniform(-1.9, 1.1)  # clustered on one shoulder, not sprinkled
+        z = rng.uniform(1.5, 13.5)
+        r = 19.6 * math.sin(math.pi * ((z + 6.0) / 42.0)) ** 0.40
+        rot = Matrix.Rotation(a, 3, "Z")
+        ellipsoid(bm, (math.cos(a) * r, math.sin(a) * r, z),
+                  (rng.uniform(0.5, 1.0), rng.uniform(1.3, 2.7), rng.uniform(1.1, 2.4)),
+                  subdiv=0, rot=rot)
+    # A snapped spar driven into the shoulder, and anchor chain grown into it.
+    box(bm, (2.2, 12.8, 15.0), (18.0, 1.7, 1.7), Matrix.Rotation(math.radians(-24), 3, "Y"))
+    for i in range(7):
+        t = i / 6
+        box(bm, (-13.6 + t * 3.2, -10.2 - t * 3.4, 13.4 - t * 7.2),
+            (1.7, 1.2, 0.5) if i % 2 == 0 else (1.7, 0.5, 1.2))
     return finish("Kraken_Crust", bm, KR_CRUST)
 
 
-def build_kr_brow(rng):
-    bm = bmesh.new()
-    # The armour shelf the eyes sit under - it DROPS before a bite, which is
-    # the tell that reads from the platforms.
-    for side in (-1, 1):
-        blade(bm, (6.4, side * 1.6, 1.4), (1.2, side * 6.4, 2.2), 3.2, 4.4, 0.9)
-        # A horn off each corner of the shelf.
-        spike(bm, (2.2, side * 5.8, 2.0), (-1.4, side * 7.6, 4.6), 0.75, sides=5)
-    box(bm, (4.4, 0, 2.0), (4.0, 3.2, 0.9))
-    return finish("Kraken_Brow", bm, KR_HIDE)
+# Where the eyes sit: bearing off +X, and the height of the dome's widest
+# ring. Everything eye-shaped is built on this one frame so the lens, the
+# pupil and the brow over them cannot drift apart.
+KR_EYE_BEARING = math.radians(58.0)
+KR_EYE_Z = 13.0
+KR_EYE_SEAT = 18.6  # centre radius; the dome's own surface here is 20.0
 
 
-def build_kr_beak_upper():
-    bm = bmesh.new()
-    # A hooked wedge: wide at the hinge, narrowing to a down-turned point.
-    loft(bm, [
-        ring_pts(4.4, -2.6, 2.5, 1.5, sides=7),
-        ring_pts(6.6, -3.0, 2.2, 1.4, sides=7),
-        ring_pts(8.6, -3.8, 1.5, 1.0, sides=7),
-        ring_pts(9.8, -4.8, 0.7, 0.5, sides=7),
-    ], cap_end=False)
-    spike(bm, (9.8, 0, -4.8), (10.4, 0, -6.4), 0.55, sides=5)
-    return finish("Kraken_BeakUpper", bm, KR_BEAK)
-
-
-def build_kr_beak_lower():
-    bm = bmesh.new()
-    # The lower mandible hooks the other way - the two cross like shears.
-    loft(bm, [
-        ring_pts(4.4, -4.4, 2.2, 1.2, sides=7),
-        ring_pts(6.6, -4.8, 1.9, 1.1, sides=7),
-        ring_pts(8.4, -4.9, 1.3, 0.8, sides=7),
-        ring_pts(9.4, -4.2, 0.6, 0.45, sides=7),
-    ], cap_end=False)
-    spike(bm, (9.4, 0, -4.2), (10.0, 0, -2.9), 0.5, sides=5)
-    return finish("Kraken_BeakLower", bm, KR_BEAK)
+def _kr_eye_frame(side, tilt=0.0):
+    """(rotation, outward unit) for one eye - local +X points out of the head,
+    local +Y runs back along the flank, local +Z is up. `tilt` rolls about the
+    outward axis, which is how the brow gets its angle: positive drops the
+    FORWARD end of the ridge on either side, mirrored, so the two of them read
+    as a scowl rather than as two level shelves."""
+    angle = side * KR_EYE_BEARING
+    rot = Matrix.Rotation(angle, 3, "Z")
+    if tilt:
+        rot = rot @ Matrix.Rotation(side * tilt, 3, "X")
+    return rot, (math.cos(angle), math.sin(angle))
 
 
 def build_kr_eyes():
     bm = bmesh.new()
-    # Enormous, and the only warm light in the arena.
+    # Enormous and BULGING, the way an octopus's are. The previous pass sat
+    # them at radius 16.9 inside a dome whose surface is at 20.0 - they were
+    # buried, and the head read as a blank potato. They are seated proud now:
+    # centre at 18.6, 4.6 deep, so 3.2 studs of lens stand out of the hide.
     for side in (-1, 1):
-        ellipsoid(bm, (3.2, side * 5.4, 0.9), (1.9, 1.5, 1.9), subdiv=1)
+        rot, out = _kr_eye_frame(side)
+        ellipsoid(bm, (out[0] * KR_EYE_SEAT, out[1] * KR_EYE_SEAT, KR_EYE_Z),
+                  (4.4, 7.4, 4.2), subdiv=2, rot=rot)
     return finish("Kraken_Eyes", bm, KR_EYE)
 
 
-def build_kr_fin():
+def build_kr_pupil():
     bm = bmesh.new()
-    # The mantle fins: broad triangular flaps down the back half, the things
-    # that sweep when it turns.
+    # The horizontal slit, laid on the lens's outer face. Its own object so it
+    # can be its own colour - an eye is not one flat disc of purple, and this
+    # is the piece that makes the head look back at you.
     for side in (-1, 1):
-        blade(bm, (-6.0, side * 4.4, 1.2), (-14.2, side * 9.6, 2.6), 7.6, 1.2, 0.5)
-        blade(bm, (-9.0, side * 3.6, 0.2), (-13.6, side * 7.2, -2.2), 3.4, 0.8, 0.4)
-    return finish("Kraken_Fin", bm, KR_HIDE)
+        rot, out = _kr_eye_frame(side)
+        seat = KR_EYE_SEAT + 3.0
+        ellipsoid(bm, (out[0] * seat, out[1] * seat, KR_EYE_Z), (1.7, 6.0, 0.92), subdiv=1, rot=rot)
+    return finish("Kraken_Pupil", bm, KR_PUPIL)
+
+
+def build_kr_beak():
+    bm = bmesh.new()
+    # The beak, at the centre of the arm crown on the underside: two hooked
+    # mandibles crossing like shears. Both halves ride one object and the
+    # server rotates them about KR_BEAK_HINGE.
+    for sign in (1, -1):
+        loft(bm, [
+            ring_pts(0.0, sign * 0.6, 2.6, 1.4, sides=7),
+            ring_pts(1.8, sign * 0.9, 2.0, 1.1, sides=7),
+            ring_pts(3.2, sign * 1.5, 1.2, 0.7, sides=7),
+        ], cap_end=False)
+        spike(bm, (3.2, 0, sign * 1.5), (4.0, 0, -sign * 0.3), 0.5, sides=5)
+    return finish("Kraken_Beak", bm, KR_BEAK)
 
 
 def build_kr_arm_seg():
     bm = bmesh.new()
-    # ONE arm segment, centred on its vertebra, +X pointing UP-ARM toward the
-    # body (the pack convention). The client instances this down a ChainPose
-    # curve at KR_ARM_SPACING and scales by u to taper toward the tip.
-    half = KR_ARM_SPACING / 2
-    loft(bm, [
-        ring_pts(-half, 0.0, 1.62, 1.48, sides=7),
-        ring_pts(0.0, 0.05, 1.80, 1.66, sides=7),
-        ring_pts(half, 0.0, 1.70, 1.56, sides=7),
-    ])
-    # The aboral keel - an arm reads as an arm, not a sausage, from its edge.
-    box(bm, (0, 0, 1.62), (KR_ARM_SPACING * 0.9, 0.7, 0.8), Matrix.Rotation(math.radians(45), 3, "X"))
+    # ONE arm segment: a capsule, authored LONGER than the pitch it is placed
+    # at so consecutive segments always overlap into one limb.
+    _capsule(bm, KR_SEG_LENGTH, 3.05, 3.05, sides=9)
     return finish("Kraken_ArmSeg", bm, KR_HIDE)
 
 
 def build_kr_arm_tip():
     bm = bmesh.new()
-    # The club: squid arms widen into a hooked paddle before the point. Joins
-    # at +X, tapers away along -X.
+    # The last stretch of arm: still a capsule so it welds to the segment
+    # before it, but drawn out to a long curling point.
     loft(bm, [
-        ring_pts(1.7, 0.0, 1.60, 1.46, sides=7),
-        ring_pts(-0.4, 0.1, 2.05, 1.80, sides=7),
-        ring_pts(-2.6, 0.0, 1.30, 1.15, sides=7),
-        ring_pts(-4.2, -0.1, 0.40, 0.40, sides=7),
+        ring_pts(2.8, 0.0, 1.4, 1.4, sides=9),
+        ring_pts(1.6, 0.0, 2.75, 2.75, sides=9),
+        ring_pts(-1.6, 0.0, 1.95, 1.95, sides=9),
+        ring_pts(-5.0, 0.0, 1.05, 1.05, sides=9),
+        ring_pts(-8.0, 0.0, 0.28, 0.28, sides=9),
     ])
-    # Hooks around the club - what the slam actually lands with.
-    for i in range(5):
-        angle = (i / 5) * TAU
-        spike(
-            bm,
-            (-0.4, math.cos(angle) * 1.7, 0.1 + math.sin(angle) * 1.6),
-            (-1.5, math.cos(angle) * 2.9, 0.1 + math.sin(angle) * 2.7),
-            0.3,
-            sides=4,
-        )
     return finish("Kraken_ArmTip", bm, KR_HIDE)
 
 
 def build_kr_sucker():
     bm = bmesh.new()
-    # One sucker, centred at the origin. Instanced in rows along every arm and
-    # lit base-to-tip through a wind-up: the telegraph is anatomy, not a ring
-    # painted on the floor.
-    disc(bm, -0.18, 0.18, 0.55, 0.38, sides=7)
+    # One sucker. Instanced in two rows down the underside of every arm and
+    # lit base-to-tip through a wind-up: the telegraph is anatomy.
+    disc(bm, -0.22, 0.22, 0.78, 0.52, sides=8)
     return finish("Kraken_Sucker", bm, KR_EYE)
 
 
 def build_kraken():
     rng = random.Random(4471)
     objects = [
-        build_kr_mantle(rng),
+        build_kr_head(rng),
+        build_kr_crown(rng),
         build_kr_crust(rng),
-        build_kr_brow(rng),
-        build_kr_beak_upper(),
-        build_kr_beak_lower(),
         build_kr_eyes(),
-        build_kr_fin(),
+        build_kr_pupil(),
+        build_kr_beak(),
         build_kr_arm_seg(),
         build_kr_arm_tip(),
         build_kr_sucker(),
     ]
-    print("HANDOFF kraken: body faces +X; mantle centre at the origin, brow front x=+7.6, beak tip x=+10.4")
-    print("HANDOFF kraken: hide half-width 7.2 at the shoulder -> matches the row's hitRadius 8 at scale 1")
-    print("HANDOFF kraken: beak hinge pivot (%.1f, %.1f, %.1f) - the server rotates BOTH mandibles about it" % KR_BEAK_HINGE)
-    print("HANDOFF kraken: eyes at (3.2, +/-5.4, 0.9) r1.9 - Neon swap for the wind-up flare, no light source")
-    print("HANDOFF kraken: arm segment pitch %.1f, %d segments + tip = ~%.0f studs of arm at scale 1"
-          % (KR_ARM_SPACING, KR_ARM_SEGMENTS, KR_ARM_SPACING * KR_ARM_SEGMENTS + 4.2))
-    print("HANDOFF kraken: arm half-width 1.80 at the base -> slam hit girth ~3.6 studs; taper by u toward the tip")
-    print("HANDOFF kraken: suckers 2 per segment, alternating rows, indexed base->tip for the wind-up sweep")
+    print("HANDOFF kraken: head is a dome on +Z - half-width 20.0, 33.2 TALL; arm crown under it to z=-4.2")
+    print("HANDOFF kraken: EIGHT arm sockets on the crown at r=18.2, evenly spaced - the ring the entities plant on")
+    print("HANDOFF kraken: beak at the crown's centre, hinge %s - the server rotates both mandibles about it" % (KR_BEAK_HINGE,))
+    print("HANDOFF kraken: eyes at (5.8, +/-16.4, 13.2) r6.0 with a slit pupil - Neon swap for the wind-up flare")
+    print("HANDOFF kraken: arm segment is a CAPSULE %.1f long placed every %.1f - %.1f studs of overlap, so an arm is one limb"
+          % (KR_SEG_LENGTH, KR_ARM_SPACING, KR_SEG_LENGTH - KR_ARM_SPACING))
+    print("HANDOFF kraken: %d segments + tip = ~%.0f studs of arm at scale 1; base half-width 2.55" % (KR_ARM_SEGMENTS, KR_ARM_SPACING * KR_ARM_SEGMENTS + 8.0))
+
+
     return objects
 
 
@@ -974,10 +1059,691 @@ def build_gnashroot():
     print("HANDOFF gnashroot: four limbs, ChainPose each; ArmKnot every 3rd segment, Claw at the tip")
     return objects
 
+# ================================================================ noctyss
+#
+# "Noctyss, the Trench Mother" - the gloom boss, and the one fight in the
+# saga where you never see the animal. What stands in the arena is her
+# CHOIR: seven colossal angler-lure stalks pushed up through the Choirfloor's
+# sockets, her fingers through a torn ceiling. She herself is under the
+# shelf, and the only part of her that ever surfaces is the MAW, which comes
+# up through the pit in the punish window - brow, jaws, and the lure-root
+# glowing at the back of the throat. There is no body below the jaw, because
+# there is never a camera angle that could see one.
+#
+# That splits this pack in two, and both halves are chains-and-CFrames, no
+# rig:
+#
+#   THE STALK is a ChainPose chain like Brinejaw's body, stood on end. One
+#   authored vertebra instanced up a path, a hood on top carrying the light.
+#   t = 0 at the ROOT (in the socket) and t = 1 at the HOOD - the inverse of
+#   Brinejaw's head-first ordering, because a stalk grows from its socket;
+#   +X still runs along the chain toward the far end, so ChainPose's
+#   convention is untouched. Sway, lean, the beam's aim and the death-fall
+#   are all one shape function away from each other.
+#
+#   THE MAW is placed, not chained: one eased translation up through the pit
+#   with the jaw hinging open at the top of it. Two CFrames a frame.
+#
+# Scale contract: the row spawns her at 1.8 with hitRadius 6, so the skull's
+# widest half-width is authored at 6.0 - 10.8 studs of hide in game, which is
+# what makes the melee reach agree with what the eye sees. The lower jaw is
+# authored wide enough INSIDE to stand in: the punish window is players in
+# her mouth (the design's third beat), and a scoop you cannot fit a party
+# into would have killed the fight on contact with the geometry.
+
+NC_HIDE = (0.17, 0.15, 0.23)  # the creature row's body colour: trench-black
+NC_FIN = (0.27, 0.23, 0.36)  # membrane, a shade up from the hide
+NC_BONE = (0.80, 0.78, 0.70)  # needle teeth and the lantern cage
+NC_LURE = (1.00, 0.89, 0.51)  # the row's markColor - every light in the fight
+NC_EYE = (1.00, 0.72, 0.26)  # small, dim, and set far back: a deep-water eye
+
+# ---- the choir stalk ------------------------------------------------------
+
+# One vertebra, authored mid-stalk. The client scales it by u to taper the
+# stalk from a thick root to a thin neck under the hood.
+NC_SEG = [
+    (-1.50, 0.0, 1.15, 1.15),
+    (-0.55, 0.0, 1.50, 1.50),
+    (0.55, 0.0, 1.50, 1.50),
+    (1.50, 0.0, 1.15, 1.15),
+]
+NC_SEG_SPACING = 3.0  # studs between segment centres along the path
+NC_STALK_SEGMENTS = 11  # ~33 studs of stalk at scale 1
+
+# The hood: neck joint at the origin, crown reaching +X, the lantern slung
+# under its front lip. Cross-sections are (x, centre z, half width, half height).
+NC_HOOD = [
+    (0.0, 0.0, 1.05, 1.05),
+    (1.2, 0.25, 2.20, 1.95),
+    (2.6, 0.45, 3.25, 2.75),
+    (4.0, 0.50, 3.55, 2.85),  # the crown, widest
+    (5.2, 0.20, 2.75, 2.15),
+    (6.1, -0.25, 1.30, 1.00),
+]
+
+# Where the light hangs, in the hood's own space - the client parents the
+# bulb's PointLight here, and the fight's "shoot the lure" hitbox is this
+# sphere. Printed in the HANDOFF because three systems need the same number.
+NC_BULB = (6.6, 0.0, -3.2)
+NC_BULB_R = 2.0
+
+
+def build_nc_stalk_seg():
+    bm = bmesh.new()
+    loft(bm, [ring_pts(x, cz, hw, hh, sides=7) for x, cz, hw, hh in NC_SEG])
+    # A knuckle ring at the joint: a long run of plain drums reads as pipe,
+    # and this stalk has to read as grown.
+    disc(bm, -0.25, 0.25, 1.72, 1.72, sides=7)
+    # Two vestigial barbs, alternating sides down the stalk once instanced.
+    for side in (-1, 1):
+        spike(bm, (0.2, side * 1.35, 0.2), (0.9, side * 2.5, 0.9), 0.24, sides=4)
+    return finish("Noctyss_StalkSeg", bm, NC_HIDE)
+
+
+def build_nc_stalk_fin():
+    bm = bmesh.new()
+    loft(bm, [ring_pts(x, cz, hw, hh, sides=7) for x, cz, hw, hh in NC_SEG])
+    disc(bm, -0.25, 0.25, 1.72, 1.72, sides=7)
+    # Every few vertebrae carries membranes instead of barbs, so the stalk
+    # has a silhouette when it is unlit and there is nothing else to see.
+    for side in (-1, 1):
+        blade(bm, (0.4, side * 1.2, 0.3), (-1.6, side * 3.6, -1.4), 2.2, 0.5, 0.16)
+    blade(bm, (0.3, 0, 1.4), (-1.8, 0, 3.6), 2.0, 0.4, 0.16, roll=math.radians(90))
+    return finish("Noctyss_StalkFin", bm, NC_HIDE)
+
+
+def build_nc_stalk_hood(rng):
+    bm = bmesh.new()
+    loft(bm, [ring_pts(x, cz, hw, hh, sides=8) for x, cz, hw, hh in NC_HOOD])
+    # The overhang: ribs curling forward and DOWN off the crown, so the light
+    # underneath is shaded from above. That shadow is why a lit stalk reads
+    # as a lantern on a pole rather than a glowing ball - and why a player
+    # can tell which way a stalk is facing before it does anything.
+    for i in range(5):
+        spread = (i - 2) / 2.0
+        base = Vector((4.6, spread * 2.6, 0.9 - abs(spread) * 0.5))
+        tip = Vector((7.4, spread * 2.1, -2.2 - abs(spread) * 0.4))
+        blade(bm, base, tip, 1.5, 0.7, 0.3, roll=math.radians(70))
+    # Shoulder flanges, raked back: the hood's own frill.
+    for side in (-1, 1):
+        blade(bm, (2.4, side * 2.8, 0.4), (-0.6, side * 5.2, -0.8), 2.6, 0.6, 0.2)
+    # Crusted growths on the crown - it has been standing here a long time.
+    for _ in range(7):
+        ellipsoid(
+            bm,
+            (rng.uniform(1.4, 4.6), rng.uniform(-2.4, 2.4), rng.uniform(1.4, 2.9)),
+            (rng.uniform(0.25, 0.5),) * 3,
+            subdiv=0,
+        )
+    return finish("Noctyss_StalkHood", bm, NC_HIDE)
+
+
+def build_nc_stalk_cage():
+    bm = bmesh.new()
+    # The lantern cage, in the HOOD's space (it rides the hood's CFrame, the
+    # way Brinejaw's eyes ride its head). Ribs from the hood's lip curling
+    # around the bulb and meeting under it.
+    bulb = Vector(NC_BULB)
+    for i in range(5):
+        angle = (i / 5) * TAU + 0.3
+        side = Vector((0.0, math.cos(angle), math.sin(angle)))
+        top = Vector((5.3, 0, -0.3)) + side * 1.0
+        belly = bulb + side * (NC_BULB_R + 0.55)
+        spike(bm, tuple(top), tuple(belly), 0.24, sides=4)
+        spike(bm, tuple(belly), tuple(bulb + Vector((1.5, 0, 0)) + side * 0.35), 0.2, sides=4)
+    # The stem the whole lantern hangs from.
+    spike(bm, (5.0, 0, 0.2), (6.2, 0, -1.6), 0.4, sides=5)
+    return finish("Noctyss_StalkCage", bm, NC_BONE)
+
+
+def build_nc_stalk_bulb():
+    bm = bmesh.new()
+    # THE LIGHT. Its own object because the client does three things to it
+    # that nothing else in the pack needs: Neon while lit, plastic when
+    # doused, and a PointLight parented at its centre. The true lure is this
+    # same mesh pulsing off the choir's rhythm - the tell is timing, not
+    # shape, so nothing here distinguishes it.
+    ellipsoid(bm, NC_BULB, (NC_BULB_R, NC_BULB_R * 0.92, NC_BULB_R * 1.06), subdiv=2)
+    # Filament tips trailing off the bottom of the bulb, where the light
+    # frays into the water.
+    for i in range(4):
+        angle = (i / 4) * TAU + 0.4
+        base = Vector(NC_BULB) + Vector((0.2, math.cos(angle) * 0.7, -NC_BULB_R * 0.8 + math.sin(angle) * 0.3))
+        spike(bm, tuple(base), tuple(base + Vector((0.5, math.cos(angle) * 0.5, -1.6))), 0.16, sides=4)
+    return finish("Noctyss_StalkBulb", bm, NC_LURE)
+
+
+def build_nc_stalk_barbs(rng):
+    bm = bmesh.new()
+    # Filaments trailing off the hood - the drift that says this thing is
+    # underwater even when the water is invisible.
+    for i in range(6):
+        side = -1 if i % 2 else 1
+        base = Vector((rng.uniform(0.4, 3.2), side * rng.uniform(1.8, 3.0), rng.uniform(-1.2, 0.6)))
+        direction = Vector((-1.0, side * rng.uniform(0.3, 0.9), rng.uniform(-0.6, 0.3))).normalized()
+        blade(bm, tuple(base), tuple(base + direction * rng.uniform(4.0, 7.0)), 0.9, 0.15, 0.1)
+    return finish("Noctyss_StalkBarbs", bm, NC_FIN)
+
+
+def build_nc_stalk_root(rng):
+    bm = bmesh.new()
+    # The flare that sits in the arena's socket collar (inner radius ~3.1),
+    # and the piece that STAYS when a stalk dies: the client leaves the root
+    # and clears everything above it, so a killed socket reads as a stump
+    # rather than an empty hole.
+    loft(
+        bm,
+        [
+            ring_pts(-2.6, 0.0, 3.35, 3.35, sides=9),
+            ring_pts(-0.8, 0.0, 2.95, 2.95, sides=9),
+            ring_pts(1.2, 0.0, 2.05, 2.05, sides=9),
+            ring_pts(2.6, 0.0, 1.55, 1.55, sides=9),
+        ],
+    )
+    # Root plates gripping the stone.
+    for i in range(6):
+        angle = (i / 6) * TAU + rng.uniform(-0.15, 0.15)
+        side = Vector((0.0, math.cos(angle), math.sin(angle)))
+        base = Vector((-2.2, 0, 0)) + side * 2.6
+        blade(bm, tuple(base), tuple(base + Vector((-2.2, 0, 0)) + side * 1.9), 1.9, 0.7, 0.4)
+    return finish("Noctyss_StalkRoot", bm, NC_HIDE)
+
+
+# ---- the maw --------------------------------------------------------------
+
+NC_JAW_LINE = -1.0  # roof of the mouth: the skull's underside is clamped flat here
+NC_SKULL = [
+    (-9.0, 1.0, 3.0, 2.6),
+    (-6.0, 1.2, 5.2, 4.2),
+    (-2.5, 1.0, 6.0, 4.6),  # the brow, widest - the hitRadius contract
+    (1.5, 0.4, 5.4, 3.8),
+    (5.5, -0.2, 4.0, 2.6),
+    (9.0, -0.6, 2.4, 1.5),
+    (11.5, -0.8, 1.1, 0.7),  # snout tip
+]
+
+NC_JAW_TOP = -1.35
+NC_JAW = [
+    (-8.6, -3.1, 2.8, 2.1),
+    (-5.2, -3.7, 5.0, 3.0),
+    (-1.2, -3.9, 5.6, 3.2),  # the widest of the scoop - you stand in here
+    (2.8, -3.7, 4.9, 2.9),
+    (6.6, -3.3, 3.4, 2.1),
+    (10.2, -2.8, 1.6, 1.1),
+]
+
+NC_JAW_HINGE = (-8.0, 0.0, -2.2)  # the client rotates the jaw about this to gape
+NC_GULLET = (-5.4, 0.0, -1.8)  # the lure-root at the back of the throat: THE weak point
+NC_GULLET_R = 3.0
+
+
+def build_nc_skull(rng):
+    bm = bmesh.new()
+    loft(bm, [ring_pts(x, cz, hw, hh, sides=9, floor_z=NC_JAW_LINE) for x, cz, hw, hh in NC_SKULL])
+    # The brow shelf: an overhung ledge above the eyes, so the face reads as
+    # shadow with lights in it from below - the only angle anyone ever gets.
+    for side in (-1, 1):
+        box(
+            bm,
+            (-2.4, side * 4.3, 3.6),
+            (9.0, 2.2, 1.4),
+            Matrix.Rotation(math.radians(side * -10), 3, "X") @ Matrix.Rotation(math.radians(7), 3, "Y"),
+        )
+    # A ledge across the front of the brow, tying the two ridges together: it
+    # is what turns the face from a wedge into a hood with a shadow under it.
+    box(bm, (1.2, 0, 2.6), (5.4, 8.2, 1.2), Matrix.Rotation(math.radians(9), 3, "Y"))
+    # Crusted plates along the crown and cheeks.
+    for _ in range(11):
+        x = rng.uniform(-7.0, 6.0)
+        side = rng.choice((-1, 1))
+        ellipsoid(
+            bm,
+            (x, side * rng.uniform(2.4, 5.0), rng.uniform(0.2, 3.6)),
+            (rng.uniform(0.35, 0.75),) * 3,
+            subdiv=0,
+        )
+    return finish("Noctyss_Skull", bm, NC_HIDE)
+
+
+def build_nc_skull_bone():
+    bm = bmesh.new()
+    # THE PALISADE. Long, splayed, uneven needles hanging the length of the
+    # upper jaw - her one unmistakable feature, and the thing a player is
+    # looking at while standing inside her mouth. Splay grows toward the
+    # front so the tips frame the opening instead of closing it.
+    for i in range(9):
+        t = i / 8
+        x = 10.6 - t * 18.4
+        hw = 0.9 + t * 4.6
+        length = 1.1 + t * 2.6
+        splay = 0.16 + t * 0.42
+        for side in (-1, 1):
+            spike(
+                bm,
+                (x, side * hw, NC_JAW_LINE + 0.2),
+                (x + 0.4, side * (hw + splay * 2.2), NC_JAW_LINE - length),
+                0.30 + t * 0.12,
+                sides=4,
+            )
+    # Brow horns, swept back off the skull.
+    for side in (-1, 1):
+        spike(bm, (-4.8, side * 3.8, 3.2), (-11.5, side * 5.6, 6.4), 1.0, sides=5)
+        spike(bm, (-6.0, side * 4.4, 1.2), (-11.0, side * 6.8, 2.4), 0.6, sides=5)
+    return finish("Noctyss_SkullBone", bm, NC_BONE)
+
+
+def build_nc_jaw():
+    bm = bmesh.new()
+    loft(bm, [ring_pts(x, cz, hw, hh, sides=8, ceil_z=NC_JAW_TOP) for x, cz, hw, hh in NC_JAW])
+    # A tongue ridge down the middle of the scoop. In game the floor players
+    # stand on is anchored server parts pinned inside this shape - the mesh
+    # itself is collision-free like every other creature part - so this ridge
+    # is what tells them where the floor is.
+    box(bm, (-1.0, 0, -5.6), (13.0, 3.2, 0.8))
+    return finish("Noctyss_Jaw", bm, NC_HIDE)
+
+
+def build_nc_jaw_bone():
+    bm = bmesh.new()
+    # The lower half of the palisade, standing up to interlock with the
+    # upper. When the jaw closes these two sets mesh - that is the cage the
+    # punish window shuts you inside.
+    for i in range(8):
+        t = i / 7
+        x = 9.6 - t * 16.8
+        hw = 0.8 + t * 4.2
+        length = 1.0 + t * 2.3
+        splay = 0.14 + t * 0.38
+        for side in (-1, 1):
+            spike(
+                bm,
+                (x, side * hw, NC_JAW_TOP - 0.2),
+                (x + 0.3, side * (hw + splay * 2.0), NC_JAW_TOP + length),
+                0.27 + t * 0.1,
+                sides=4,
+            )
+    return finish("Noctyss_JawBone", bm, NC_BONE)
+
+
+def build_nc_gullet():
+    bm = bmesh.new()
+    # THE WEAK POINT: her own lure-root, grown back into her throat where
+    # nothing was ever supposed to reach it. Authored in the SKULL's space so
+    # it rides the head and does not swing with the jaw. A knot of light with
+    # roots running back up into the palate - the thing you are in there for.
+    ellipsoid(bm, NC_GULLET, (NC_GULLET_R * 1.15, NC_GULLET_R, NC_GULLET_R * 0.9), subdiv=2)
+    root = Vector(NC_GULLET)
+    for i in range(6):
+        angle = (i / 6) * TAU + 0.25
+        side = Vector((0.0, math.cos(angle), math.sin(angle)))
+        spike(bm, tuple(root + side * NC_GULLET_R * 0.7), tuple(root + side * 3.1 + Vector((-2.2, 0, 0.6))), 0.34, sides=4)
+    return finish("Noctyss_Gullet", bm, NC_LURE)
+
+
+def build_nc_eyes():
+    bm = bmesh.new()
+    # Small and set far back under the brow: a thing that hunts by its own
+    # light does not need much, and two big lamps would compete with the
+    # lures for the player's attention.
+    for side in (-1, 1):
+        ellipsoid(bm, (-3.0, side * 5.1, 1.7), (0.95, 0.95, 0.95), subdiv=1)
+    return finish("Noctyss_Eyes", bm, NC_EYE)
+
+
+def build_nc_barbels(rng):
+    bm = bmesh.new()
+    # Chin filaments, in the JAW's space so they swing with the gape.
+    for i in range(6):
+        side = -1 if i % 2 else 1
+        base = Vector((rng.uniform(1.0, 6.5), side * rng.uniform(1.6, 3.4), -5.6))
+        direction = Vector((rng.uniform(0.2, 0.7), side * rng.uniform(0.2, 0.6), -1.0)).normalized()
+        blade(bm, tuple(base), tuple(base + direction * rng.uniform(4.5, 8.0)), 0.8, 0.14, 0.1)
+    return finish("Noctyss_Barbels", bm, NC_FIN)
+
+
+def build_noctyss():
+    rng = random.Random(6421)
+    objects = [
+        build_nc_stalk_seg(),
+        build_nc_stalk_fin(),
+        build_nc_stalk_hood(rng),
+        build_nc_stalk_cage(),
+        build_nc_stalk_bulb(),
+        build_nc_stalk_barbs(rng),
+        build_nc_stalk_root(rng),
+        build_nc_skull(rng),
+        build_nc_skull_bone(),
+        build_nc_jaw(),
+        build_nc_jaw_bone(),
+        build_nc_gullet(),
+        build_nc_eyes(),
+        build_nc_barbels(rng),
+    ]
+    print("HANDOFF noctyss: TWO assemblies in one pack - the choir stalk (chain) and the maw (placed).")
+    print("HANDOFF noctyss: stalk +X runs UP-stalk toward the hood; t=0 at the root, t=1 at the hood")
+    print(
+        "HANDOFF noctyss: segment spacing %.1f, %d segments = ~%.0f studs of stalk at scale 1; taper by u"
+        % (NC_SEG_SPACING, NC_STALK_SEGMENTS, NC_SEG_SPACING * NC_STALK_SEGMENTS)
+    )
+    print("HANDOFF noctyss: StalkRoot sits in the arena socket (collar inner r ~3.1) and REMAINS as the stump on death")
+    print(
+        "HANDOFF noctyss: hood neck joint at the origin, crown to x=+6.1; bulb centre (%.1f, %.1f, %.1f) r %.1f"
+        " - the light source, the 'shoot the lure' hitbox, and the pulse the true lure breaks rhythm on"
+        % (NC_BULB[0], NC_BULB[1], NC_BULB[2], NC_BULB_R)
+    )
+    print("HANDOFF noctyss: Cage/Bulb/Barbs are authored in the HOOD's space - one CFrame places all four")
+    print("HANDOFF noctyss: maw faces +X; skull half-width 6.0 at scale 1 -> 10.8 at the row's 1.8 = hitRadius 6")
+    print("HANDOFF noctyss: snout tip x=+11.5, brow horns back to x=-11.5; jaw hinge (%.1f, %.1f, %.1f)" % NC_JAW_HINGE)
+    print(
+        "HANDOFF noctyss: jaw scoop interior ~11.2 wide x 13 long at scale 1 (20 x 23 at 1.8) - the punish"
+        " platform's footprint; the walkable floor is anchored parts pinned inside it, not this mesh"
+    )
+    print(
+        "HANDOFF noctyss: gullet centre (%.1f, %.1f, %.1f) r %.1f in the SKULL's space - the punish-window weak point"
+        % (NC_GULLET[0], NC_GULLET[1], NC_GULLET[2], NC_GULLET_R)
+    )
+    return objects
+
+
+# ================================================================ rimefang
+#
+# "Rimefang, the Floe-Breaker" - the ice island's boss. A KILLER WHALE the
+# size of a ship, hunting the way orcas really hunt seals on pack ice: it
+# spy-hops to find you, wave-washes you off your footing, and beaches itself
+# on the floe to take you, then works its way back to the water.
+#
+# WHY A WHALE IS A CHAIN AT ALL. Brinejaw is 60 vertebrae because a serpent
+# IS its spine. A whale is not: it is a rigid forebody with a flexing tail.
+# So this is a SHORT chain - ~15 segments - and almost all of the shape lives
+# in the head piece and in the girth curve (_rf_girth), not in the vertebrae.
+# The head-history trick still drives it, which is what makes the breach arc
+# and the beached thrash free: only the head is ever animated.
+#
+# WHAT MAKES IT READ AS AN ORCA, in order of importance:
+#   1. THE EYE PATCH. One white slab on each flank, raked up and back. It is
+#      the single marking that says "orca" at 60 studs, and it is why _Rime
+#      is its own object (one material per object).
+#   2. HORIZONTAL FLUKES. A whale's tail is a pair of lobes spread across the
+#      body, not a fish's vertical fin. Get this wrong and it reads as a fish
+#      no matter what else is right.
+#   3. The dorsal - here a raked sail of clear glacial ice, the thing you see
+#      cutting a wake under the sheet.
+#   4. Countershading: _Belly rides every vertebra, so the white underside
+#      runs the length of the body without a second material on _Body.
+#
+# THE WEAK POINT IS A STORY, NOT AN ORB: an old whaling harpoon still buried
+# behind the fin, trailing a snapped chain. Somebody tried this before - and
+# the wreck frozen into the arena is their boat. It is what you go for while
+# the thing is beached.
+
+RF_SLATE = (0.10, 0.12, 0.15)  # the hide - near-black, cold
+RF_RIME = (0.90, 0.93, 0.95)  # rime-crust markings, not pigment
+RF_ICE = (0.62, 0.80, 0.88)  # the dorsal sail: clear glacial ice
+RF_TOOTH = (0.86, 0.83, 0.72)
+RF_EYE = (0.72, 0.88, 1.00)
+RF_IRON = (0.20, 0.19, 0.18)
+
+# Skull cross-sections: (x, centre z, half width, half height). Snout at +X,
+# neck joint at the origin end - the pack's convention. The underside is
+# clamped flat at RF_MOUTH_LINE so the lower jaw closes on a real palate.
+RF_MOUTH_LINE = -0.55
+RF_SKULL = [
+    (-6.5, 0.0, 3.7, 4.2),  # neck joint
+    (-3.6, 0.3, 4.3, 4.8),  # widest: the melon's shoulder
+    (-0.6, 0.5, 4.2, 4.6),  # the melon crown
+    (2.4, 0.3, 3.8, 4.0),
+    (5.0, 0.0, 3.0, 3.0),
+    (7.0, -0.2, 2.1, 2.0),
+    (8.2, -0.3, 1.4, 1.3),  # blunt snout - NOT a point
+]
+
+RF_JAW_TOP = -1.1
+RF_JAW = [
+    (-6.0, -2.7, 3.2, 2.1),
+    (-3.0, -2.9, 3.7, 2.3),
+    (0.5, -2.9, 3.3, 2.2),
+    (3.6, -2.7, 2.6, 1.8),
+    (6.0, -2.4, 1.8, 1.2),
+    (7.8, -2.2, 1.0, 0.7),
+]
+
+# Where the client hinges the jaw (the spy-hop gape, the bite, the death).
+RF_JAW_HINGE = (-5.4, 0.0, -1.8)
+
+# Mid-body vertebra - the client scales this by u down the girth curve.
+RF_SEG = [
+    (-2.7, 0.0, 3.35, 3.85),
+    (-1.3, 0.0, 3.5, 4.0),
+    (1.3, 0.0, 3.5, 4.0),
+    (2.7, 0.0, 3.35, 3.85),
+]
+RF_SEG_SPACING = 3.6
+
+
+def _rf_girth(u):
+    """Girth down the body, head end (0) to peduncle (1).
+
+    A whale is not a cone. It holds its full girth from just behind the head
+    to past mid-body, then the peduncle pinches hard into the flukes - and
+    that pinch is most of what separates a whale silhouette from a fish's.
+    """
+    if u < 0.16:
+        return 0.88 + 0.12 * (u / 0.16)
+    if u < 0.46:
+        return 1.0
+    return 1.0 - 0.78 * ((u - 0.46) / 0.54) ** 1.45
+
+
+def build_rf_head(rng):
+    bm = bmesh.new()
+    loft(bm, [ring_pts(x, cz, hw, hh, sides=10, floor_z=RF_MOUTH_LINE) for (x, cz, hw, hh) in RF_SKULL])
+    # The blowhole, set back on the crown where a whale's actually is.
+    ellipsoid(bm, (-2.6, 0.0, 4.6), (0.9, 0.7, 0.35))
+    # Rime crust caked along the rostrum - it has been in the cold a long time.
+    for _ in range(9):
+        x = rng.uniform(3.0, 9.5)
+        side = rng.choice((-1, 1))
+        ellipsoid(bm, (x, side * rng.uniform(0.6, 1.9), rng.uniform(-0.4, 1.2)), (rng.uniform(0.4, 0.8),) * 3)
+    return finish("Rimefang_Head", bm, RF_SLATE)
+
+
+def build_rf_jaw(rng):
+    bm = bmesh.new()
+    loft(bm, [ring_pts(x, cz, hw, hh, sides=8, ceil_z=RF_JAW_TOP) for (x, cz, hw, hh) in RF_JAW])
+    return finish("Rimefang_Jaw", bm, RF_SLATE)
+
+
+def _rf_at(table, x):
+    """Interpolate a cross-section table at x - used to seat teeth on the
+    real jaw line instead of a guessed straight one."""
+    for (x0, cz0, hw0, hh0), (x1, cz1, hw1, hh1) in zip(table, table[1:]):
+        if x <= x1:
+            t = 0.0 if x1 == x0 else (x - x0) / (x1 - x0)
+            return (cz0 + (cz1 - cz0) * t, hw0 + (hw1 - hw0) * t, hh0 + (hh1 - hh0) * t)
+    return table[-1][1:]
+
+
+def build_rf_teeth():
+    bm = bmesh.new()
+    # Big interlocking cones, both jaws. Orca teeth already ARE cones, so
+    # low-poly costs nothing here - but EIGHT a row, not eleven: the denser
+    # first pass read as a saw blade rather than a mouth full of pegs.
+    for i in range(8):
+        t = i / 7.0
+        x = -4.0 + t * 11.0
+        size = 0.8 * (1.0 - 0.5 * t)
+        _, upper_w, _ = _rf_at(RF_SKULL, x)
+        _, lower_w, _ = _rf_at(RF_JAW, x)
+        for side in (-1, 1):
+            uy = side * (upper_w - 0.85)
+            spike(bm, (x, uy, RF_MOUTH_LINE + 0.25), (x - 0.2, uy, RF_MOUTH_LINE - 2.1 * size / 0.8), size)
+            ly = side * (lower_w - 0.75)
+            spike(bm, (x, ly, RF_JAW_TOP - 0.25), (x - 0.2, ly, RF_JAW_TOP + 2.1 * size / 0.8), size)
+    return finish("Rimefang_Teeth", bm, RF_TOOTH)
+
+
+def build_rf_eyes():
+    bm = bmesh.new()
+    for side in (-1, 1):
+        ellipsoid(bm, (-2.9, side * 3.75, -0.5), (0.5, 0.3, 0.42))
+    return finish("Rimefang_Eyes", bm, RF_EYE)
+
+
+def _rf_flank_y(x, z):
+    """Where the skull's surface is at (x, z) - so a marking can be laid ON
+    the flank instead of floating off it or sinking into it."""
+    cz, hw, hh = _rf_at(RF_SKULL, x)
+    return hw * math.sqrt(max(0.0, 1.0 - ((z - cz) / hh) ** 2))
+
+
+def _rf_flank_y(x, z):
+    """Where the skull's surface is at (x, z) - so a marking can be laid ON
+    the flank instead of floating off it or sinking into it."""
+    cz, hw, hh = _rf_at(RF_SKULL, x)
+    return hw * math.sqrt(max(0.0, 1.0 - ((z - cz) / hh) ** 2))
+
+
+def _rf_patch(bm, x, z, length, height, tilt, side, thick=0.55):
+    """A flat marking laid on the flank at (x, z), raked by `tilt`.
+
+    Deliberately NOT blade(): blade aligns its own +X to the axis you give
+    it, and on a near-horizontal axis its roll comes out as a twist - two
+    passes produced a white hook hanging off the cheek instead of a patch.
+    A box with an explicit rotation is unambiguous.
+    """
+    mat = (
+        Matrix.Translation(Vector((x, side * (_rf_flank_y(x, z) + 0.04), z)))
+        @ Matrix.Rotation(tilt, 4, "Y")
+        @ Matrix.Diagonal(Vector((length / 2, thick / 2, height / 2))).to_4x4()
+    )
+    bmesh.ops.create_icosphere(bm, subdivisions=1, radius=1.0, matrix=mat)
+
+
+def build_rf_rime(rng):
+    bm = bmesh.new()
+    # THE EYE PATCH - the marking that carries the whole read. Big, raked up
+    # and back off the eye, and seated on the real flank.
+    for side in (-1, 1):
+        _rf_patch(bm, -3.7, 2.2, 7.2, 3.1, math.radians(19), side)
+    # The throat panel: countershading running back off the chin. _Belly
+    # carries it on down the body.
+    loft(
+        bm,
+        [
+            ring_pts(-6.2, -3.4, 2.5, 0.45, sides=6),
+            ring_pts(-1.0, -3.5, 2.8, 0.5, sides=6),
+            ring_pts(3.8, -3.2, 2.1, 0.42, sides=6),
+            ring_pts(7.0, -2.7, 1.1, 0.3, sides=6),
+        ],
+    )
+    return finish("Rimefang_Rime", bm, RF_RIME)
+
+
+def build_rf_body():
+    bm = bmesh.new()
+    loft(bm, [ring_pts(x, cz, hw, hh, sides=10) for (x, cz, hw, hh) in RF_SEG])
+    return finish("Rimefang_Body", bm, RF_SLATE)
+
+
+def build_rf_belly():
+    bm = bmesh.new()
+    # Rides every vertebra, so the white underside runs the whole body
+    # without needing a second material on _Body.
+    ellipsoid(bm, (0.0, 0.0, -3.15), (2.6, 2.2, 0.85))
+    return finish("Rimefang_Belly", bm, RF_RIME)
+
+
+def build_rf_fin():
+    bm = bmesh.new()
+    # The dorsal: a raked sail of clear ice, and the thing you see cutting a
+    # wake under the sheet. Rolled 90 so the blade is thin side-to-side and
+    # broad fore-and-aft - unrolled, a blade lofted onto +Z comes out facing
+    # the wrong way entirely.
+    blade(bm, (0, 0, 0), (-3.4, 0, 10.6), 8.2, 1.2, 1.2, roll=math.radians(90))
+    # Fracture lines through the ice.
+    for i in range(3):
+        blade(
+            bm,
+            (-0.6 - i * 0.9, 0, 1.4 + i * 2.4),
+            (-2.2 - i * 0.7, 0, 4.2 + i * 2.2),
+            0.5,
+            0.3,
+            1.25,
+            roll=math.radians(90),
+        )
+    return finish("Rimefang_Fin", bm, RF_ICE)
+
+
+def build_rf_pec():
+    bm = bmesh.new()
+    # The paddle: broad at the shoulder, swept back, drooping slightly.
+    # Authored pointing +Y so the client (and the preview) makes the other
+    # side by a half turn about the body axis - no mirrored normals.
+    blade(bm, (0, 0, 0), (-3.8, 6.9, -1.0), 4.4, 1.9, 0.9)
+    return finish("Rimefang_Pec", bm, RF_SLATE)
+
+
+def build_rf_fluke():
+    bm = bmesh.new()
+    # HORIZONTAL lobes - the single most important thing about a whale's
+    # tail. Swept back off a central boss, thin in Z.
+    for side in (-1, 1):
+        blade(bm, (0, 0, 0), (-3.4, side * 8.2, 0), 5.0, 1.3, 0.85)
+    ellipsoid(bm, (0, 0, 0), (1.7, 1.4, 1.0))
+    return finish("Rimefang_Fluke", bm, RF_SLATE)
+
+
+def build_rf_harpoon(rng):
+    bm = bmesh.new()
+    # The iron somebody left in it - the twin of the gun on the arena's
+    # wreck, and the weak point you go for while it is beached. Sized to be
+    # spotted from across the arena, not from arm's reach.
+    shaft = Matrix.Rotation(math.radians(30), 3, "Y")
+    box(bm, (1.5, 0.0, 3.4), (0.78, 0.78, 8.6), shaft)
+    for side in (-1, 1):
+        spike(bm, (0.2, 0.0, 0.7), (-2.2, side * 1.6, -1.0), 0.45, sides=4)
+    # The eye at the head of the shaft, and the snapped chain still on it.
+    ellipsoid(bm, (3.4, 0.0, 7.1), (0.85, 0.45, 0.85))
+    for i in range(4):
+        box(
+            bm,
+            (4.3 + i * 1.5, 0.0, 7.4 + i * 0.5),
+            (1.35, 0.72, 0.55),
+            Matrix.Rotation(0 if i % 2 else math.pi / 2, 3, "X"),
+        )
+    return finish("Rimefang_Harpoon", bm, RF_IRON)
+
+
+def build_rimefang():
+    rng = random.Random(5521)
+    objects = [
+        build_rf_head(rng),
+        build_rf_jaw(rng),
+        build_rf_teeth(),
+        build_rf_eyes(),
+        build_rf_rime(rng),
+        build_rf_body(),
+        build_rf_belly(),
+        build_rf_fin(),
+        build_rf_pec(),
+        build_rf_fluke(),
+        build_rf_harpoon(rng),
+    ]
+    print("HANDOFF rimefang: head faces +X; neck joint at the origin, snout tip x=+11.0")
+    print("HANDOFF rimefang: jaw hinge pivot (%.1f, %.1f, %.1f) - client rotates the jaw about it" % RF_JAW_HINGE)
+    print("HANDOFF rimefang: vertebra spacing %.1f studs at scale 1; scale by _rf_girth(u), NOT a linear taper" % RF_SEG_SPACING)
+    print("HANDOFF rimefang: Belly rides every vertebra (countershading); Pec is authored +Y, mirror by a half turn about the body axis")
+    print("HANDOFF rimefang: Fin base is the dorsal mount, ~3.4 studs above the spine at full girth; Fluke mounts on the tail tip, lobes HORIZONTAL")
+    print("HANDOFF rimefang: Harpoon mounts on the back behind the fin - the weak point, exposed while beached")
+    return objects
+
+
 BOSSES = {
     "brinejaw": build_brinejaw,
     "kraken": build_kraken,
     "gnashroot": build_gnashroot,
+    "noctyss": build_noctyss,
+    "rimefang": build_rimefang,
 }
 
 
@@ -1231,25 +1997,23 @@ def _swim_path(t):
 
 
 def _kraken_arm_path(angle, t):
-    """One arm at its REST POSE: out of the water beside the mantle, arcing
-    up over the fight stacks, tip curling back down into the sea. t=0 at the
-    base. This is the shape ChainPose blends away from for a lash and back
-    to afterwards - the rest pose is the spec."""
-    r = 9.0 + 27.0 * t
-    # Low and long: up out of the water, over the stacks, tip back down into
-    # the sea - a draped arm, not an arched leg.
-    z = math.sin(t * math.pi * 0.92) * 6.4 - 2.5
-    a = angle + math.sin(t * 2.3 + angle * 1.7) * 0.16
+    """One arm at REST: out of its socket on the crown, sprawling outward over
+    the water, tip curling back down. t=0 at the socket. This is the shape
+    ChainPose blends away from for a lash and back to afterwards."""
+    r = 18.2 + 46.0 * t
+    z = -2.0 + math.sin(t * math.pi * 0.72) * 13.0 - t * 7.0
+    a = angle + math.sin(t * 2.1 + angle * 1.9) * 0.20
     return Vector((math.cos(a) * r, math.sin(a) * r, z))
 
 
-def _place_kraken(objects, arms=6):
-    """The body at the origin with its arms laid out in the rest pose, so the
-    silhouette can be judged as one animal rather than a parts sheet."""
+def _place_kraken(objects, arms=8):
+    """The head at the centre with eight arms sprawling off the crown - the
+    silhouette judged as one animal, which is the only way to tell whether an
+    arm reads as a limb or as a string of blocks."""
     by_name = {obj.name.split("_", 1)[1]: obj for obj in objects}
     made = []
 
-    def place(source, position, tangent=None, scale=1.0):
+    def place(source, position, tangent=None, scale=1.0, length=None):
         copy = source.copy()
         copy.data = source.data
         copy.hide_render = False
@@ -1257,30 +2021,33 @@ def _place_kraken(objects, arms=6):
         copy.location = position
         if tangent is not None:
             copy.rotation_euler = Vector((1, 0, 0)).rotation_difference(tangent).to_euler()
-        copy.scale = (scale, scale, scale)
+        # Length (+X) and girth scale SEPARATELY. Scaling a segment uniformly
+        # shortens it too, and once it is shorter than KR_ARM_SPACING the
+        # barrels stop overlapping and the arm ribs up - worst at the tip,
+        # where the taper is deepest. So the arm thins hard and shortens
+        # barely, and every joint keeps its overlap.
+        copy.scale = (length if length is not None else scale, scale, scale)
         made.append(copy)
         return copy
 
-    # The body sits where it was authored - one CFrame, no offsets.
-    for part in ("Mantle", "Crust", "Brow", "BeakUpper", "BeakLower", "Eyes", "Fin"):
+    for part in ("Head", "Crown", "Crust", "Eyes", "Pupil", "Beak"):
         place(by_name[part], Vector((0, 0, 0)))
 
     seg, tip, sucker = by_name["ArmSeg"], by_name["ArmTip"], by_name["Sucker"]
     for k in range(arms):
-        angle = (k / arms) * TAU + 0.22
+        angle = (k / arms) * TAU + 0.20
         at_length, tangent_at, total = _arc_walker(lambda t, a=angle: _kraken_arm_path(a, t))
-        step = KR_ARM_SPACING * 0.88  # slight overlap so the arm reads continuous
-        count = max(int(total / step), 3)
+        count = max(int(total / KR_ARM_SPACING), 3)
         for i in range(count):
-            distance = i * step
+            distance = i * KR_ARM_SPACING
             u = distance / total
-            scale = 1.0 - 0.45 * u ** 1.2  # taper toward the tip
+            scale = 1.0 - 0.62 * u ** 1.15  # heavy at the shoulder, fine at the tip
+            length = 1.0 - 0.16 * u  # barely: see place()
             position = at_length(distance)
             tangent = tangent_at(distance)
-            place(seg, position, tangent, scale)
-            # Two sucker rows along the UNDERSIDE. Build the frame from the
-            # tangent with a guarded up-vector: an arm mid-whip really does
-            # point straight up, where a naive cross degenerates.
+            place(seg, position, tangent, scale, length)
+            # Two sucker rows along the UNDERSIDE, on a guarded frame (an arm
+            # mid-whip points straight up, where a naive cross degenerates).
             up = Vector((0, 0, 1))
             if abs(tangent.dot(up)) > 0.98:
                 up = Vector((0, 1, 0))
@@ -1288,10 +2055,11 @@ def _place_kraken(objects, arms=6):
             down = lateral.cross(tangent).normalized()
             if down.z > 0:
                 down = -down
-            for side in (-1, 1):
-                seat = position + down * (1.05 * scale) + lateral * (side * 0.72 * scale)
-                place(sucker, seat, tangent, scale)
-        place(tip, at_length(total), tangent_at(total), 1.0 - 0.45)
+            if i % 2 == 0:
+                for side in (-1, 1):
+                    seat = position + down * (2.2 * scale) + lateral * (side * 1.2 * scale)
+                    place(sucker, seat, tangent, scale)
+        place(tip, at_length(total - 2.0), tangent_at(total - 2.0), 1.0 - 0.62)
     return made
 
 
@@ -1359,9 +2127,469 @@ def _place_gnashroot(objects, scale=1.0):
     return made
 
 
+# ---------------------------------------------------------------- noctyss rest pose
+#
+# WHERE THE CHOIR STANDS WHEN NOTHING IS HAPPENING: seven stalks up out of
+# the Choirfloor's sockets, leaning in over the pit, breathing their light in
+# unison - and one of them, every cycle, breathing OFF that rhythm. This is
+# the SPEC the client's ChainPose shape reproduces; the staged render is how
+# we check it against the real arena.
+#
+# Every attack is a blend away from this shape and back: a lightsweep leans
+# one stalk into its bearing, a strobe is the bulbs alone, a dead stalk drops
+# `height` to nothing over a second and leaves the root behind. The maw is
+# not a chain at all - it is this pose's opposite number, a single eased
+# translation up through the pit with the jaw hinging open at the top of it.
+
+NC_SOCKET_R = 34.0  # MIRRORS arena_gen.GL_SOCKETS - the staged render asserts they agree
+NC_SOCKETS = [(NC_SOCKET_R, 12.0 + i * (360.0 / 7.0)) for i in range(7)]
+
+NC_REST = {
+    "height": 33.0,  # root to the top of the rise
+    "crook": 11.0,  # studs the top arcs INWARD over the pit - the angler's illicium
+    "bow": 2.6,  # a lazy S, alternating around the ring
+    "root_z": 2.2,  # the root sits down in the socket collar
+}
+
+# The punish window: where the maw ends up when it has finished rising.
+NC_MAW = {
+    "pitch": 26.0,  # nose-up out of the pit; shallow enough that the scoop is standable
+    # 284 degrees: she surfaces facing one of the SIX GAPS between the arena's
+    # shadow fins, not into a fin. A colossus that rose facing a rock would be
+    # the arena fighting its own boss, and the party arrives down these lanes.
+    "yaw": 284.0,
+    "gape": 44.0,  # degrees the jaw hinges open
+    "origin_z": 4.2,  # the skull's authored origin, relative to the waterline
+    # 2.4, not the row's current 1.8: at 1.8 she is a crocodile in a hole, and
+    # the whole design rests on her being the thing the shelf was built over.
+    # At 2.4 the skull is 28.8 studs across against a 30-stud pit mouth - she
+    # FILLS it, jaws overhanging the lip, without clipping the rim slabs. The
+    # data slice moves Creatures.noctyss body.scale to match (hitRadius 6 then
+    # reads as 14.4 studs of hide, which is what the eye sees).
+    "scale": 2.4,
+}
+NC_STALK_SCALE = 1.0
+
+
+def _nc_stalk_path(index, t, state=None):
+    """One stalk, root (t=0) to hood neck (t=1), in arena-local space."""
+    state = state or {}
+    radius, degrees = NC_SOCKETS[index]
+    angle = math.radians(degrees)
+    inward = Vector((-math.cos(angle), -math.sin(angle), 0.0))
+    lateral = Vector((-inward.y, inward.x, 0.0))
+    root = Vector((math.cos(angle) * radius, math.sin(angle) * radius, NC_REST["root_z"]))
+    height = state.get("height", NC_REST["height"])
+    crook = state.get("crook", NC_REST["crook"])
+    sway = state.get("sway", 0.0) + (1 if index % 2 else -1) * NC_REST["bow"]
+    # A quadratic Bezier: straight up, then arcing INWARD over the pit so the
+    # chain's last tangent is near-horizontal. That crook is the whole point -
+    # it is what makes the hood overhang and the lantern hang FREE beneath it,
+    # the way an angler's illicium does. A stalk that just stood up straight
+    # would carry its light like a lamppost, and the light has to be out over
+    # the floor where the players are.
+    p0 = root
+    p1 = root + Vector((0, 0, height)) + lateral * sway
+    p2 = root + Vector((0, 0, height * 0.93)) + inward * crook + lateral * (sway * 0.6)
+    return p0 * (1 - t) ** 2 + p1 * (2 * (1 - t) * t) + p2 * (t ** 2)
+
+
+def _place_pieces(sources, matrix):
+    """Copy each source object and drop it on one world matrix."""
+    made = []
+    for source in sources:
+        copy = source.copy()
+        copy.data = source.data
+        copy.hide_render = False
+        bpy.context.collection.objects.link(copy)
+        copy.matrix_world = matrix
+        made.append(copy)
+    return made
+
+
+def _place_stalk(by_name, path_fn, scale=NC_STALK_SCALE):
+    """Instance one stalk up its path - the job ChainPose does every frame."""
+    made = []
+    at_length, backward_at, total = _arc_walker(path_fn)
+
+    # _arc_walker's tangent points HEAD-ward - back along the path - because
+    # Brinejaw's chain is ordered head-first and its segments' +X must point
+    # up-body toward the skull. A stalk is ordered the other way (t=0 at the
+    # root), so the same convention needs the opposite sign: +X up-stalk
+    # toward the hood. Without this the hood faces back down its own stalk
+    # and the lantern hangs above the crown instead of under it.
+    def tangent_at(distance):
+        return -backward_at(distance)
+
+    step = NC_SEG_SPACING * 0.86 * scale
+    count = max(int(total / step), 2)
+    for i in range(count):
+        distance = i * step
+        u = distance / total
+        # Thick at the root, thin under the hood.
+        seg_scale = scale * (1.0 - 0.34 * u ** 1.1)
+        source = by_name["StalkFin"] if i % 3 == 1 else by_name["StalkSeg"]
+        made += _place_pieces(
+            [source],
+            Matrix.Translation(at_length(distance))
+            @ Vector((1, 0, 0)).rotation_difference(tangent_at(distance)).to_matrix().to_4x4()
+            @ Matrix.Diagonal((seg_scale,) * 3).to_4x4(),
+        )
+    # The root, sunk in its socket, and the hood with everything that rides it.
+    made += _place_pieces(
+        [by_name["StalkRoot"]],
+        Matrix.Translation(at_length(0.0))
+        @ Vector((1, 0, 0)).rotation_difference(tangent_at(0.0)).to_matrix().to_4x4()
+        @ Matrix.Diagonal((scale,) * 3).to_4x4(),
+    )
+    hood_scale = scale * 0.86
+    hood_matrix = (
+        Matrix.Translation(at_length(total))
+        @ Vector((1, 0, 0)).rotation_difference(tangent_at(total)).to_matrix().to_4x4()
+        @ Matrix.Diagonal((hood_scale,) * 3).to_4x4()
+    )
+    made += _place_pieces([by_name[name] for name in ("StalkHood", "StalkCage", "StalkBulb", "StalkBarbs")], hood_matrix)
+    # The hood's matrix is what the lantern hangs off: bulb world position is
+    # hood_matrix @ NC_BULB, which is where the client parents the light too.
+    return made, hood_matrix
+
+
+def _place_maw(by_name, at, pitch_deg, yaw_deg, gape_deg, scale):
+    """The maw, risen and gaping. Skull and jaw are two CFrames, and the jaw's
+    is the skull's turned about the authored hinge - exactly what the client
+    does, so the render cannot flatter a pose the game cannot hold."""
+    pitch, yaw = math.radians(pitch_deg), math.radians(yaw_deg)
+    forward = Vector((math.cos(pitch) * math.cos(yaw), math.cos(pitch) * math.sin(yaw), math.sin(pitch)))
+    base = (
+        Matrix.Translation(Vector(at))
+        @ Vector((1, 0, 0)).rotation_difference(forward).to_matrix().to_4x4()
+        @ Matrix.Diagonal((scale,) * 3).to_4x4()
+    )
+    hinge = Vector(NC_JAW_HINGE)
+    gape = (
+        Matrix.Translation(hinge)
+        @ Matrix.Rotation(math.radians(gape_deg), 4, "Y")
+        @ Matrix.Translation(-hinge)
+    )
+    made = _place_pieces([by_name[n] for n in ("Skull", "SkullBone", "Eyes", "Gullet")], base)
+    made += _place_pieces([by_name[n] for n in ("Jaw", "JawBone", "Barbels")], base @ gape)
+    return made
+
+
+def _place_noctyss(objects):
+    """The parts-sheet replacement: one stalk stood up beside the maw, so both
+    halves of the pack read as creatures rather than components."""
+    by_name = {obj.name.split("_", 1)[1]: obj for obj in objects}
+    def one_stalk(t):
+        p0 = Vector((0, 0, 0))
+        p1 = Vector((0, 0, NC_REST["height"]))
+        p2 = Vector((NC_REST["crook"], 0, NC_REST["height"] * 0.93))
+        return p0 * (1 - t) ** 2 + p1 * (2 * (1 - t) * t) + p2 * (t ** 2)
+
+    made, _ = _place_stalk(by_name, one_stalk)
+    made += _place_maw(by_name, (-34.0, 0.0, 12.0), 12.0, 20.0, 40.0, 1.0)
+    return made
+
+
+def _lantern(at, energy, colour, radius=1.6):
+    """A point light where a lure hangs. The choir IS the arena's lighting -
+    a render lit only by the sun would show a shape the player never sees."""
+    data = bpy.data.lights.new("Lantern", "POINT")
+    data.energy = energy
+    data.color = colour
+    data.shadow_soft_size = radius
+    light = bpy.data.objects.new("Lantern", data)
+    light.location = at
+    bpy.context.collection.objects.link(light)
+
+
+def _emissive(objects, pieces, colour, strength):
+    """Make the lures actually EMIT for the render.
+
+    Only the staged shot needs this (it runs after the export, so the glb is
+    untouched): in game these two meshes are Neon with a PointLight parented
+    to them, and a render that showed them as flat pale plastic would be
+    judging a different arena than the one that ships.
+    """
+    for obj in objects:
+        if obj.name.split("_", 1)[1] not in pieces:
+            continue
+        for mat in obj.data.materials:
+            bsdf = mat.node_tree.nodes.get("Principled BSDF") if mat.node_tree else None
+            if not bsdf:
+                continue
+            for key in ("Emission Color", "Emission"):
+                if key in bsdf.inputs:
+                    bsdf.inputs[key].default_value = (*colour, 1.0)
+                    break
+            if "Emission Strength" in bsdf.inputs:
+                bsdf.inputs["Emission Strength"].default_value = strength
+
+
+def _stage_noctyss(path_out, objects):
+    """The money shot: the Choirfloor built, the choir standing in its own
+    sockets, the maw up through the pit.
+
+    Imports arena_gen so the sockets under the stalks are the REAL ones - if
+    the arena's ring ever moves, this render shows stalks growing out of bare
+    stone instead of out of their collars.
+    """
+    import os
+
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import arena_gen  # noqa: E402  (guarded: importing it builds nothing)
+
+    # The one number both files own. Diverge and the choir floats off its
+    # sockets, which is exactly the failure a staged render exists to catch.
+    if [(round(r, 2), round(d, 2)) for r, d in arena_gen.GL_SOCKETS] != [
+        (round(r, 2), round(d, 2)) for r, d in NC_SOCKETS
+    ]:
+        raise SystemExit(
+            "STAGED ABORT: boss_gen NC_SOCKETS disagrees with arena_gen GL_SOCKETS - "
+            "the choir would not stand in its collars. Fix one to match the other."
+        )
+
+    arena_gen.build_noctyss()
+    _emissive(objects, {"StalkBulb"}, (1.0, 0.80, 0.42), 3.2)
+    _emissive(objects, {"Gullet"}, (1.0, 0.84, 0.46), 2.6)
+    for obj in objects:
+        obj.hide_render = True
+    by_name = {obj.name.split("_", 1)[1]: obj for obj in objects}
+
+    for index in range(len(NC_SOCKETS)):
+        _, hood_matrix = _place_stalk(by_name, lambda t, i=index: _nc_stalk_path(i, t))
+        _lantern(hood_matrix @ Vector(NC_BULB), 6000.0, (1.0, 0.80, 0.42), radius=2.4)
+
+    maw_scale = NC_MAW["scale"]
+    pitch, yaw = math.radians(NC_MAW["pitch"]), math.radians(NC_MAW["yaw"])
+    forward = Vector((math.cos(pitch) * math.cos(yaw), math.cos(pitch) * math.sin(yaw), math.sin(pitch)))
+    maw_base = (
+        Matrix.Translation(Vector((0.0, 0.0, NC_MAW["origin_z"])))
+        @ Vector((1, 0, 0)).rotation_difference(forward).to_matrix().to_4x4()
+        @ Matrix.Diagonal((maw_scale,) * 3).to_4x4()
+    )
+    _place_maw(by_name, (0.0, 0.0, NC_MAW["origin_z"]), NC_MAW["pitch"], NC_MAW["yaw"], NC_MAW["gape"], maw_scale)
+    _lantern(maw_base @ Vector(NC_GULLET), 11000.0, (1.0, 0.84, 0.46), radius=4.0)
+
+    print(
+        "STAGED noctyss: %d stalks at scale %.1f on the r%.0f ring, maw at scale %.1f "
+        "(pitch %.0f, gape %.0f) up through the pit"
+        % (len(NC_SOCKETS), NC_STALK_SCALE, NC_SOCKET_R, maw_scale, NC_MAW["pitch"], NC_MAW["gape"])
+    )
+
+    sun = bpy.data.objects.new("Sun", bpy.data.lights.new("Sun", "SUN"))
+    sun.rotation_euler = (math.radians(54), 0, math.radians(-36))
+    # Seven lanterns 35 studs up add up: at the wattage that made ONE read,
+    # the choir collectively lit the near-black shelf to beach sand. They are
+    # local pools now, and the sun does the geometry-reading work a review
+    # render needs - the mood is Studio's job, with the gloom fog on top.
+    sun.data.energy = 1.5
+    bpy.context.collection.objects.link(sun)
+    fill = bpy.data.objects.new("Fill", bpy.data.lights.new("Fill", "SUN"))
+    fill.rotation_euler = (math.radians(68), 0, math.radians(132))
+    fill.data.energy = 0.5
+    bpy.context.collection.objects.link(fill)
+
+    scene = bpy.context.scene
+    scene.render.engine = "BLENDER_EEVEE"
+    scene.render.resolution_x = 1500
+    scene.render.resolution_y = 1000
+    # Standard, not the default filmic transform: this arena's whole palette
+    # is near-black basalt, and a tone curve that lifts the darks renders it
+    # as beach sand - a flattering lie about the one thing the fight depends
+    # on. Lights are allowed to clip; the stone must stay the stone.
+    scene.view_settings.view_transform = "Standard"
+    scene.world = bpy.data.worlds.new("World")
+    scene.world.use_nodes = True
+    bg = scene.world.node_tree.nodes.get("Background")
+    if bg:
+        bg.inputs[0].default_value = (0.045, 0.052, 0.078, 1.0)
+
+    shots = (
+        ("", (0, -150, 62), (0, 0, 20), 34),
+        # From the shelf, between two sockets: the fight's own eyeline, and
+        # the only view that answers "how big is this thing where I stand".
+        ("_ground", (14.5, -58, 6.2), (0, 0, 12), 26),
+    )
+    for suffix, location, target, lens in shots:
+        cam_data = bpy.data.cameras.new("Cam" + suffix)
+        cam_data.lens = lens
+        cam = bpy.data.objects.new("Cam" + suffix, cam_data)
+        cam.location = Vector(location)
+        cam.rotation_euler = (Vector(target) - cam.location).to_track_quat("-Z", "Y").to_euler()
+        bpy.context.collection.objects.link(cam)
+        scene.camera = cam
+        out = path_out if not suffix else path_out.replace("_staged.png", "_staged%s.png" % suffix)
+        scene.render.filepath = out
+        bpy.ops.render.render(write_still=True)
+        print("BOSS STAGED:", out)
+
+
+def _rf_swim_path(t):
+    """Rimefang's preview line.
+
+    Whales do NOT serpentine: a sine down the whole body reads as an eel and
+    would throw away the one thing the silhouette is for. The forebody runs
+    almost straight and the flex grows toward the peduncle, which is how a
+    whale actually swims - and how the fight's breach arc is shaped too.
+    """
+    return Vector((-t * 54.0, math.sin(t * 1.15 * math.pi) * (1.6 + 7.4 * t * t), 4.2 * (1 - t) ** 2))
+
+
+def _place_rimefang(objects):
+    by_name = {obj.name.split("_", 1)[1]: obj for obj in objects}
+    made = []
+
+    def place(source, position, tangent, scale, extra=None, lift=0.0, side=0.0):
+        copy = source.copy()
+        copy.data = source.data
+        copy.hide_render = False
+        bpy.context.collection.objects.link(copy)
+        basis = Vector((1, 0, 0)).rotation_difference(tangent).to_matrix().to_4x4()
+        # Offsets are in the BODY's frame, not the world's, so a fin sits on
+        # the back and a flipper on the flank wherever the body has turned.
+        copy.location = Vector(position) + (basis @ Vector((0.0, side, lift)))
+        copy.rotation_euler = (basis @ extra).to_euler() if extra is not None else basis.to_euler()
+        copy.scale = (scale, scale, scale)
+        made.append(copy)
+        return copy
+
+    at_length, tangent_at, total = _arc_walker(_rf_swim_path)
+    # STEP WITH THE GIRTH. A fixed pitch works for a serpent, whose segments
+    # are all one size; here the peduncle's vertebrae are a third the size of
+    # the chest's, so a fixed pitch marched them apart and the tail arrived as
+    # three loose blocks floating ahead of the flukes.
+    distance, count = 0.0, 0
+    while distance < total:
+        scale = _rf_girth(distance / total)
+        for name in ("Body", "Belly"):
+            place(by_name[name], at_length(distance), tangent_at(distance), scale)
+        count += 1
+        distance += RF_SEG_SPACING * 0.62 * max(scale, 0.42)
+
+    head_at = at_length(0) + tangent_at(0) * 5.0
+    for name in ("Head", "Jaw", "Teeth", "Eyes", "Rime"):
+        place(by_name[name], head_at, tangent_at(0), 1.0)
+
+    fin_d = total * 0.33
+    place(by_name["Fin"], at_length(fin_d), tangent_at(fin_d), 1.0, lift=3.4 * _rf_girth(fin_d / total))
+
+    harpoon_d = total * 0.52
+    place(
+        by_name["Harpoon"],
+        at_length(harpoon_d),
+        tangent_at(harpoon_d),
+        1.0,
+        extra=Matrix.Rotation(math.radians(18), 4, "X"),
+        lift=3.1 * _rf_girth(harpoon_d / total),
+    )
+
+    pec_d = total * 0.26
+    girth = _rf_girth(pec_d / total)
+    for side in (1, -1):
+        place(
+            by_name["Pec"],
+            at_length(pec_d),
+            tangent_at(pec_d),
+            1.0,
+            extra=Matrix.Rotation(0 if side > 0 else math.pi, 4, "X"),
+            lift=-2.1 * girth,
+            side=side * 2.4 * girth,
+        )
+
+    place(by_name["Fluke"], at_length(total), tangent_at(total), 0.95)
+    print("WHALE: %.0f studs nose to fluke, %d vertebrae (girth-stepped)" % (total, count))
+    return made
+
+
 PLACERS = {
     "kraken": _place_kraken,
     "gnashroot": _place_gnashroot,
+    "noctyss": _place_noctyss,
+    "rimefang": _place_rimefang,
+}
+
+def _stage_gnashroot(path_out, objects):
+    """The Rootmere built, and Old Gnashroot lying in it at the creature
+    row's real scale (1.5).
+
+    Imports arena_gen so the mere under the body is the REAL one - if the
+    arena's bowl or bank ever moves, this render shows the colossus floating
+    or buried instead of half-sunk. It is also the only honest check on the
+    design's central claim: from the bank it should read as an islet with a
+    dead tree growing out of it, until it opens an eye.
+    """
+    import os
+
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import arena_gen  # noqa: E402  (guarded: importing it builds nothing)
+
+    arena_gen.build_gnashroot()
+    for obj in objects:
+        obj.hide_render = True
+    _place_gnashroot(objects, scale=1.5)
+
+    # The fen's own light: a low hard key and a soft fill against an overcast
+    # sky - the mood island_gen's swamp previews are judged in. The bright
+    # neutral sun the parts-sheet preview uses washes peat-green to sage.
+    sun = bpy.data.objects.new("Sun", bpy.data.lights.new("Sun", "SUN"))
+    sun.rotation_euler = (math.radians(44), 0, math.radians(-52))
+    sun.data.energy = 1.9
+    bpy.context.collection.objects.link(sun)
+    fill = bpy.data.objects.new("Fill", bpy.data.lights.new("Fill", "SUN"))
+    fill.rotation_euler = (math.radians(68), 0, math.radians(120))
+    fill.data.energy = 0.45
+    bpy.context.collection.objects.link(fill)
+
+    scene = bpy.context.scene
+    scene.render.engine = "BLENDER_EEVEE"
+    scene.render.resolution_x = 1500
+    scene.render.resolution_y = 1000
+    scene.world = bpy.data.worlds.new("World")
+    scene.world.use_nodes = True
+    bg = scene.world.node_tree.nodes.get("Background")
+    if bg:
+        bg.inputs[0].default_value = (0.17, 0.19, 0.20, 1.0)
+
+    # Two shots: the approach across the bank (how a player actually meets
+    # it) and a three-quarter showing the whole limb spread in the arena.
+    for suffix, location, target, lens in (
+        # THE APPROACH: head-on, from the bank off its snout (the body
+        # faces +X), at eye height. This is the angle a player actually
+        # arrives at, and the one the whole silhouette is designed for.
+        # Kept clear of the limbs, which rest on bearings +/-52 and +/-133.
+        # r 62 on a bearing of 35 deg: ON THE BANK (which ends at r 70 - at
+        # r 74 the lens sat inside the grove and a trunk filled the frame),
+        # three-quarters onto the snout, clear of the limbs at +/-52.
+        # r 52 puts the lens INSIDE the bank (grove starts at 67, and its
+        # crowns lean outward, so nothing overhangs here), on the one bearing
+        # with no stump (they sit at 45/135/225/315), and 34 up clears the
+        # limb crests. Three attempts at eye level all ended inside a leaf
+        # mass or behind a trunk - in a walled arena the honest hero angle is
+        # from above the fight, not in it.
+        ("", (52, 0, 34), (-2, 0, 4), 22),
+        # THE WIDE: steep enough to clear the near canopy, which swallowed
+        # the bottom half of the first attempt.
+        ("_wide", (75, -100, 150), (0, 0, 4), 26),
+    ):
+        cam_data = bpy.data.cameras.new("Cam" + suffix)
+        cam_data.lens = lens
+        cam = bpy.data.objects.new("Cam" + suffix, cam_data)
+        cam.location = Vector(location)
+        cam.rotation_euler = (Vector(target) - cam.location).to_track_quat("-Z", "Y").to_euler()
+        bpy.context.collection.objects.link(cam)
+        scene.camera = cam
+        out = path_out if not suffix else path_out.replace("_staged.png", "_staged%s.png" % suffix)
+        scene.render.filepath = out
+        bpy.ops.render.render(write_still=True)
+        print("BOSS STAGED:", out)
+
+
+# Per-boss staged renderers (the arena-and-boss shot). A boss with no entry
+# falls through to the brinejaw body below, which is what shipped first.
+STAGERS = {
+    "noctyss": _stage_noctyss,
+    "gnashroot": _stage_gnashroot,
 }
 
 
@@ -1495,14 +2723,18 @@ def _light_and_shoot(path_out, camera, target, lens=42):
     print("BOSS POSE:", path_out)
 
 
-def render_staged(path_out, objects):
-    """The money shot: the arena built, the serpent coiled on its lighthouse.
+def render_staged(path_out, objects, boss="brinejaw"):
+    """The money shot: the arena built, the boss posed on it.
 
     Imports arena_gen so the tower under the coils is the REAL one - if the
     arena's profile ever changes, this render shows the coils floating or
     biting into masonry instead of hugging it.
     """
     import os
+
+    stager = STAGERS.get(boss)
+    if stager:
+        return stager(path_out, objects)
 
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import arena_gen  # noqa: E402  (guarded: importing it builds nothing)
@@ -1543,89 +2775,6 @@ def render_staged(path_out, objects):
     print("BOSS STAGED:", path_out)
 
 
-def _stage_gnashroot(path_out, objects):
-    """The Rootmere built, and Old Gnashroot lying in it at the creature
-    row's real scale (1.5).
-
-    Imports arena_gen so the mere under the body is the REAL one - if the
-    arena's bowl or bank ever moves, this render shows the colossus floating
-    or buried instead of half-sunk. It is also the only honest check on the
-    design's central claim: from the bank it should read as an islet with a
-    dead tree growing out of it, until it opens an eye.
-    """
-    import os
-
-    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    import arena_gen  # noqa: E402  (guarded: importing it builds nothing)
-
-    arena_gen.build_gnashroot()
-    for obj in objects:
-        obj.hide_render = True
-    _place_gnashroot(objects, scale=1.5)
-
-    # The fen's own light: a low hard key and a soft fill against an overcast
-    # sky - the mood island_gen's swamp previews are judged in. The bright
-    # neutral sun the parts-sheet preview uses washes peat-green to sage.
-    sun = bpy.data.objects.new("Sun", bpy.data.lights.new("Sun", "SUN"))
-    sun.rotation_euler = (math.radians(44), 0, math.radians(-52))
-    sun.data.energy = 1.9
-    bpy.context.collection.objects.link(sun)
-    fill = bpy.data.objects.new("Fill", bpy.data.lights.new("Fill", "SUN"))
-    fill.rotation_euler = (math.radians(68), 0, math.radians(120))
-    fill.data.energy = 0.45
-    bpy.context.collection.objects.link(fill)
-
-    scene = bpy.context.scene
-    scene.render.engine = "BLENDER_EEVEE"
-    scene.render.resolution_x = 1500
-    scene.render.resolution_y = 1000
-    scene.world = bpy.data.worlds.new("World")
-    scene.world.use_nodes = True
-    bg = scene.world.node_tree.nodes.get("Background")
-    if bg:
-        bg.inputs[0].default_value = (0.17, 0.19, 0.20, 1.0)
-
-    # Two shots: the approach across the bank (how a player actually meets
-    # it) and a three-quarter showing the whole limb spread in the arena.
-    for suffix, location, target, lens in (
-        # THE APPROACH: head-on, from the bank off its snout (the body
-        # faces +X), at eye height. This is the angle a player actually
-        # arrives at, and the one the whole silhouette is designed for.
-        # Kept clear of the limbs, which rest on bearings +/-52 and +/-133.
-        # r 62 on a bearing of 35 deg: ON THE BANK (which ends at r 70 - at
-        # r 74 the lens sat inside the grove and a trunk filled the frame),
-        # three-quarters onto the snout, clear of the limbs at +/-52.
-        # r 52 puts the lens INSIDE the bank (grove starts at 67, and its
-        # crowns lean outward, so nothing overhangs here), on the one bearing
-        # with no stump (they sit at 45/135/225/315), and 34 up clears the
-        # limb crests. Three attempts at eye level all ended inside a leaf
-        # mass or behind a trunk - in a walled arena the honest hero angle is
-        # from above the fight, not in it.
-        ("", (52, 0, 34), (-2, 0, 4), 22),
-        # THE WIDE: steep enough to clear the near canopy, which swallowed
-        # the bottom half of the first attempt.
-        ("_wide", (75, -100, 150), (0, 0, 4), 26),
-    ):
-        cam_data = bpy.data.cameras.new("Cam" + suffix)
-        cam_data.lens = lens
-        cam = bpy.data.objects.new("Cam" + suffix, cam_data)
-        cam.location = Vector(location)
-        cam.rotation_euler = (Vector(target) - cam.location).to_track_quat("-Z", "Y").to_euler()
-        bpy.context.collection.objects.link(cam)
-        scene.camera = cam
-        out = path_out if not suffix else path_out.replace("_staged.png", "_staged%s.png" % suffix)
-        scene.render.filepath = out
-        bpy.ops.render.render(write_still=True)
-        print("BOSS STAGED:", out)
-
-
-# Per-boss staged renderers (the arena-and-boss shot). A boss with no entry
-# falls through to render_staged's brinejaw body, which is what shipped first.
-STAGERS = {
-    "gnashroot": _stage_gnashroot,
-}
-
-
 def export(path_out, objects):
     bpy.ops.object.select_all(action="DESELECT")
     for obj in objects:
@@ -1659,8 +2808,7 @@ def main():
     if "preview" in argv[2:]:
         render_preview(argv[0].replace(".glb", "_preview.png"), objects, argv[1])
     if "staged" in argv[2:]:
-        stager = STAGERS.get(argv[1], render_staged)
-        stager(argv[0].replace(".glb", "_staged.png"), objects)
+        render_staged(argv[0].replace(".glb", "_staged.png"), objects, argv[1])
     if "poses" in argv[2:]:
         for name, (label, state, camera, target) in BJ_POSES.items():
             print("POSE", name, "-", label)

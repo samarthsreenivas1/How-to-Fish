@@ -41,6 +41,8 @@ local Bosses = require(Shared.Data.Bosses)
 local Creatures = require(Shared.Data.Creatures)
 local BossArenas = require(Shared.Config.BossArenas)
 local BrinejawPath = require(Shared.Modules.BrinejawPath)
+local NoctyssPath = require(Shared.Modules.NoctyssPath)
+local KrakenPath = require(Shared.Modules.KrakenPath)
 local CreatureModel = require(Shared.Modules.CreatureModel)
 local Tuning = require(Shared.Config.Tuning)
 local World = require(Shared.Config.World)
@@ -666,7 +668,23 @@ local function kill(creature, killer: Player?)
 	local owner = creature.partOf
 	if owner and not owner.dead and owner.partsAlive then
 		owner.partsAlive = math.max(0, owner.partsAlive - 1)
-		if owner.partsAlive == 0 then
+		-- THE LANTERN CHOIR: WHICH stalk died is the fight. Breaking the
+		-- MARKED one - the true lure, the one whose light breathes out of
+		-- step - brings the maw up; breaking any other one flares white and
+		-- the trench takes a swing at whoever shot it. Recorded here rather
+		-- than acted on, so kill() stays free of the fight's machinery;
+		-- updateBoss answers both on the next frame.
+		if owner.choir then
+			if creature.marked then
+				owner.mawDueAt = os.clock()
+			else
+				owner.flareAt = creature.pos
+			end
+		end
+		-- The Kraken's exposure window. A markedDown boss has no such thing -
+		-- clearing the whole choir is not what opens her, so an "exposed"
+		-- banner there would be a promise the fight does not keep.
+		if owner.partsAlive == 0 and owner.row.vulnerableWhen ~= "markedDown" then
 			owner.partsDownAt = os.clock()
 			fireCreatureEvent("exposed", owner.pos, {
 				name = owner.model:GetAttribute(ATTR_BOSS_NAME),
@@ -741,6 +759,9 @@ end
 -- Archetype hooks defined further down (they need the health API and the
 -- health API needs them): the urchin's swell-and-pop on every hit.
 local onBloaterHit
+-- Same trick for the colossus death (defined with the colossus section): a
+-- boss that is holding onto something takes a fall before it takes its death.
+local beginBossCollapse
 
 -- Applies `amount` damage (server only). Returns the health left, or nil if
 -- the creature was already dead / isn't a creature / can't be hurt right now
@@ -765,6 +786,17 @@ function CreatureService.damage(creature, amount: number, attacker: Player?, opt
 	if
 		creature.row.vulnerableWhen == "partsDown"
 		and (creature.partsAlive or 0) > 0
+		and not (opts and opts.ignoreUntargetable)
+	then
+		return nil
+	end
+	-- Noctyss: she is under the shelf, and the only thing that brings her up
+	-- is the true lure breaking (row.vulnerableWhen = "markedDown"). Outside
+	-- the maw window there is nothing to hit, which is what makes this fight
+	-- about finding the right light instead of out-damaging a health bar.
+	if
+		creature.row.vulnerableWhen == "markedDown"
+		and not creature.mawOpen
 		and not (opts and opts.ignoreUntargetable)
 	then
 		return nil
@@ -826,6 +858,16 @@ function CreatureService.damage(creature, amount: number, attacker: Player?, opt
 		creature.downUntil = os.clock() + C.REBORN_DOWN
 		creature.model:SetAttribute(ATTR_DOWNED, true)
 		fireCreatureEvent("rebornDown", creature.pos, {})
+		return creature.health
+	end
+
+	-- A colossus does not blink out where it stands. An entrenched, POSED boss
+	-- takes its collapse first - it comes off its perch over a couple of
+	-- seconds - and the ordinary death runs untouched at the end of the fall,
+	-- with this same killer and this same participant list. Checked in exactly
+	-- the place the phoenix's first death is, and for the same reason: nothing
+	-- downstream may see a death that hasn't finished happening.
+	if creature.health <= 0 and beginBossCollapse(creature, attacker) then
 		return creature.health
 	end
 
@@ -3314,6 +3356,24 @@ local ATTR_SWEEP_ANGLE = "SweepAngle"
 local ATTR_SWEEP_HEIGHT = "SweepHeight"
 local ATTR_SLUMP = "Slump"
 local ATTR_FACE_ANGLE = "FaceAngle"
+-- Noctyss's replicated pose. The BOSS model publishes only the maw's three
+-- numbers, because the choir publishes itself: each stalk is its own entity
+-- with its own health bar, so it carries its own pose on its own model
+-- (SocketIndex / TrueLure / Lean / BeamAngle / Douse, set by updateChoir).
+-- This list is the contract with NoctyssBodyController.
+local ATTR_MAW_RISE = "MawRise"
+local ATTR_MAW_GAPE = "MawGape"
+local ATTR_MAW_YAW = "MawYaw"
+local ATTR_SOCKET_INDEX = "SocketIndex"
+local ATTR_TRUE_LURE = "TrueLure"
+local ATTR_LEAN = "Lean"
+local ATTR_BEAM_ANGLE = "BeamAngle"
+local ATTR_DOUSE = "Douse"
+-- The Kraken's. It needs far less than Brinejaw: its head does not travel,
+-- so all the client has to know is how far out of the water it is. Where the
+-- eight arms are is not published at all - each one is drawn to the tentacle
+-- creature it holds, and those replicate already.
+local ATTR_RISE = "Rise"
 
 -- Which phase the health fraction puts it in (1-based), the stance's source.
 local function bossPhaseIndex(def, hpFraction: number): number
@@ -3333,6 +3393,10 @@ local function colossusState(creature, def)
 		creature.poseKind = def.pose
 		if def.pose == "brinejaw" then
 			state = BrinejawPath.newState(creature.anchor or creature.pos)
+		elseif def.pose == "noctyss" then
+			state = NoctyssPath.newState(creature.anchor or creature.pos)
+		elseif def.pose == "kraken" then
+			state = KrakenPath.newState(creature.anchor or creature.pos)
 		else
 			state = { center = creature.anchor or creature.pos, time = 0 }
 		end
@@ -3360,6 +3424,13 @@ local function publishPose(creature, state)
 		model:SetAttribute(ATTR_SWEEP_HEIGHT, state.sweepHeight)
 		model:SetAttribute(ATTR_SLUMP, state.slump)
 		model:SetAttribute(ATTR_FACE_ANGLE, state.faceAngle)
+	elseif creature.poseKind == "kraken" then
+		model:SetAttribute(ATTR_RISE, state.rise)
+		model:SetAttribute(ATTR_FACE_ANGLE, state.faceAngle)
+	elseif creature.poseKind == "noctyss" then
+		model:SetAttribute(ATTR_MAW_RISE, state.mawRise)
+		model:SetAttribute(ATTR_MAW_GAPE, state.mawGape)
+		model:SetAttribute(ATTR_MAW_YAW, state.mawYaw)
 	end
 end
 
@@ -3381,6 +3452,125 @@ local function hideColossusModel(creature)
 	end
 end
 
+-- ------------------------------------------------------------- the choir
+--
+-- Everything below is Noctyss's, and it is deliberately small: seven stalks
+-- that are ordinary creatures, one number saying which of them is real, and
+-- a mouth that comes up when that one breaks.
+
+-- Pin every living stalk to its lantern and hand it its pose.
+--
+-- A stalk's hitbox IS its light: the server stands the model at the BULB, 35
+-- studs up at the end of the crook, so shooting the lantern is what
+-- registers and the trunk the design says is out of reach really is. The
+-- model itself is hidden - the client draws the chain - exactly like the
+-- colossus it belongs to.
+local function updateChoir(creature, state, dt: number)
+	for _, stalk in state.stalks do
+		stalk.standing = false
+	end
+	for _, part in creatures do
+		if part.partOf == creature and not part.dead and part.socketIndex then
+			local index = part.socketIndex
+			local stalk = state.stalks[index]
+			if stalk then
+				stalk.standing = true
+				stalk.alive = true
+				hideColossusModel(part)
+				part.pos = NoctyssPath.bulbPosition(state, index)
+				part.model:PivotTo(CFrame.new(part.pos))
+				local model = part.model
+				model:SetAttribute(ATTR_LEAN, stalk.lean)
+				model:SetAttribute(ATTR_BEAM_ANGLE, stalk.beamAngle)
+				model:SetAttribute(ATTR_DOUSE, stalk.douse)
+			end
+		end
+	end
+	-- A socket whose stalk is gone: the light goes out the instant it dies,
+	-- and the shape keeps falling for a second so the client has a collapse
+	-- to draw rather than a stalk vanishing mid-air.
+	for _, stalk in state.stalks do
+		if not stalk.standing then
+			stalk.alive = false
+			stalk.fall = math.min((stalk.fall or 0) + dt * 1.4, 1)
+			stalk.douse = 1
+			stalk.lean = 0
+		end
+	end
+end
+
+-- Pick the stalk that runs the next light attack: a LIVING, LIT one,
+-- preferring whichever has the target at a workable distance. A beam out of
+-- a dead socket would be the fight lying about where its attacks come from.
+local function pickChoirStalk(state, root: BasePart?): number?
+	local best, bestScore = nil, -math.huge
+	for index, stalk in state.stalks do
+		if stalk.alive and (stalk.douse or 0) < 0.5 then
+			local score = math.random() * 10
+			if root then
+				local socket = state.center + NoctyssPath.socketPoint(index)
+				-- Close enough to matter, far enough that the sweep has room
+				-- to travel before it arrives.
+				score = 90 - math.abs((root.Position - socket).Magnitude - 40) + math.random() * 12
+			end
+			if score > bestScore then
+				best, bestScore = index, score
+			end
+		end
+	end
+	return best
+end
+
+-- THE PUNISH WINDOW'S FLOOR. Creature meshes are collision-free (the client
+-- draws them; the server model is authority only), so standing INSIDE her
+-- mouth needs real geometry: an invisible tongue to fight on and a lip to
+-- step over, pinned to the jaw and moving with it, because the jaw hinges the
+-- whole time it is open. Same idea as the swamp's invisible trunk colliders -
+-- what you see is a mesh, what you stand on is a part.
+local function mawFloor(creature)
+	if creature.mawFloorParts then
+		return creature.mawFloorParts
+	end
+	local scale = NoctyssPath.MAW.SCALE
+	local folder = Instance.new("Folder")
+	folder.Name = "NoctyssMaw"
+	local function slab(name: string, size: Vector3): BasePart
+		local part = Instance.new("Part")
+		part.Name = name
+		part.Size = size
+		part.Anchored = true
+		part.CanCollide = true
+		part.CanQuery = false
+		part.Transparency = 1
+		part.Parent = folder
+		return part
+	end
+	local parts = {
+		folder = folder,
+		tongue = slab("Tongue", Vector3.new(11.0 * scale, 1.2, 9.0 * scale)),
+		lip = slab("Lip", Vector3.new(5.0 * scale, 1.0, 9.0 * scale)),
+	}
+	folder.Parent = Workspace
+	creature.mawFloorParts = parts
+	return parts
+end
+
+local function placeMawFloor(creature, state)
+	local parts = mawFloor(creature)
+	local mouth = NoctyssPath.mawMouth(state)
+	parts.tongue.CFrame = mouth
+	-- The way in: a ledge off the mouth's front, bridging the pit's rim.
+	parts.lip.CFrame = mouth * CFrame.new(8.0 * NoctyssPath.MAW.SCALE, -1.4, 0)
+end
+
+local function clearMawFloor(creature)
+	local parts = creature.mawFloorParts
+	if parts then
+		parts.folder:Destroy()
+		creature.mawFloorParts = nil
+	end
+end
+
 -- Stand the model where its pose says its head is, aimed up-body.
 local function placeColossus(creature, def, now: number, root: BasePart?)
 	local state = colossusState(creature, def)
@@ -3390,6 +3580,21 @@ local function placeColossus(creature, def, now: number, root: BasePart?)
 		if to.Magnitude > 0.01 then
 			state.faceAngle = math.atan2(to.Z, to.X)
 		end
+	end
+	-- Where the tracked player is, remembered on the pose. A handler's WINDUP
+	-- is handed no `root` (only fire/strike are), and windup is the ONLY place
+	-- a telegraph can still be a telegraph - `fire` runs when the strike
+	-- starts, which is the blow, not the warning. So an attack aims from here.
+	state.targetPos = root and root.Position or nil
+	if def.pose == "noctyss" then
+		-- Her authority position is the MOUTH when it is up and the pit's
+		-- centre when it is not: hits, the HUD's range checks and every
+		-- damage test read this one point. She never prowls, so nothing else
+		-- ever moves her.
+		creature.pos = NoctyssPath.mawMouth(state).Position
+		creature.model:PivotTo(NoctyssPath.mawCFrame(state))
+		publishPose(creature, state)
+		return
 	end
 	if def.pose == "brinejaw" then
 		creature.pos = BrinejawPath.headPosition(state)
@@ -3460,6 +3665,22 @@ local function restoreStones(creature, def)
 	end
 end
 
+-- Is there a stone still standing within `reach` of `at`? The same test
+-- spendStone will make when the blow lands, asked at TELEGRAPH time so the
+-- marker can already say "this one is on rock" - which is the whole reason
+-- to aim a slam at a stone in the first place.
+local function stoneNear(creature, def, at: Vector3, reach: number): boolean
+	for _, stone in colossusStones(creature, def) do
+		if stone.standing then
+			local d = Vector3.new(stone.position.X - at.X, 0, stone.position.Z - at.Z).Magnitude
+			if d <= reach then
+				return true
+			end
+		end
+	end
+	return false
+end
+
 -- Take the stone nearest `at` if one is close enough and still standing.
 local function spendStone(creature, def, at: Vector3, reach: number)
 	local best, bestDist = nil, reach
@@ -3491,30 +3712,70 @@ end
 -- like a clock hand. LOW is jumped, HIGH is stood under - reading which is
 -- coming is the whole dodge, and panic-jumping a high sweep is how you die.
 -- Nothing spawns: the arm IS the coils, re-posed (BrinejawPath).
+--
+-- WHERE THE SWEEP IS CHOSEN. On the FIRST WINDUP FRAME, not in `fire`.
+-- `fire` runs when the strike starts (updateBossAttack: windup ends -> phase
+-- becomes "strike" -> fire), so anything decided there is decided at the
+-- moment of the blow and can telegraph nothing. Picking the arc up front
+-- costs the attack its mid-windup tracking, which is the point: a sweep you
+-- can see the shape of is a sweep you can walk out of.
+local function aimSweep(creature, def, p)
+	local a = creature.attack
+	if a.aimed then
+		return -- windup already chose; `fire` only ever spends what it picked
+	end
+	a.aimed = true
+	local state = colossusState(creature, def)
+	local arc = p.arc or math.rad(320)
+	local dir = if math.random() < 0.5 then 1 else -1
+	local target = state.faceAngle or 0
+	local at = state.targetPos
+	if at then
+		local to = at - state.center
+		if to.Magnitude > 0.01 then
+			target = math.atan2(to.Z, to.X)
+		end
+	end
+	-- Start behind the target so the arm sweeps THROUGH them, not at them.
+	a.dir = dir
+	a.arc = arc
+	a.startAngle = target - dir * arc * 0.5
+	a.high = p.high == true
+	-- The precise telegraph. `center` is the tower's FOOT, not the model's
+	-- pivot (the head rides 60 studs up it), and `duration` is the whole lead
+	-- time from here to the arm finishing, so the client can draw the band
+	-- ahead of the body instead of chasing it.
+	fireEvent("serpentSweep", state.center, {
+		angle = a.startAngle,
+		arc = dir * arc,
+		inner = BrinejawPath.SWEEP_INNER,
+		reach = BrinejawPath.SWEEP_REACH,
+		height = if a.high then BrinejawPath.SWEEP_HIGH else BrinejawPath.SWEEP_LOW,
+		high = a.high,
+		duration = p.windup + p.duration,
+	})
+end
+
 ATTACK_HANDLERS.orbitsweep = {
 	windup = function(creature, def, p, u, _sub)
+		aimSweep(creature, def, p)
 		local state = colossusState(creature, def)
 		-- The tail peels off the tower during the windup - the telegraph is
 		-- the body itself, so a player who reads the serpent reads the attack.
+		-- It swings to the START bearing as it peels, which is now known.
 		state.unwind = u
 		state.sweepHeight = if p.high then BrinejawPath.SWEEP_HIGH else BrinejawPath.SWEEP_LOW
 		state.sweepAngle = creature.attack.startAngle or state.sweepAngle
 	end,
-	fire = function(creature, def, p, _now, root)
+	fire = function(creature, def, p, _now, _root)
 		local a = creature.attack
 		local state = colossusState(creature, def)
+		-- Reuse, never re-pick: a telegraph that shows one arc while the arm
+		-- swings another is worse than no telegraph at all. (The call is a
+		-- no-op after windup - it is here only so a zero-windup row can never
+		-- reach the strike unaimed.)
+		aimSweep(creature, def, p)
 		state.unwind = 1
-		local arc = p.arc or math.rad(320)
-		local dir = if math.random() < 0.5 then 1 else -1
-		local target = state.faceAngle or 0
-		if root then
-			local to = root.Position - state.center
-			target = math.atan2(to.Z, to.X)
-		end
-		-- Start behind the target so the arm sweeps THROUGH them, not at them.
-		a.dir = dir
-		a.arc = arc
-		a.startAngle = target - dir * arc * 0.5
 		a.hit = {}
 		state.sweepAngle = a.startAngle
 	end,
@@ -3546,20 +3807,51 @@ ATTACK_HANDLERS.orbitsweep = {
 -- TAIL SLAM: the opening. It hammers the tail down where a player stands.
 -- Sand absorbs it. A REEF STONE does not - bait it onto one and the rattle
 -- cracks against the rock, the serpent loses its grip, and it comes down.
+--
+-- WHERE THE SLAM IS AIMED. Same rule as the sweep, and it matters more here:
+-- the whole move is a BAIT, and a bait you cannot see the landing point of is
+-- just a coin toss. The impact is locked on the first windup frame and the
+-- marker is fired at it, so "be standing at a stone when it lands" is a
+-- decision the arena actually shows you.
+local function aimSlam(creature, def, p)
+	local a = creature.attack
+	if a.aimed then
+		return
+	end
+	a.aimed = true
+	local state = colossusState(creature, def)
+	local at = state.targetPos or state.center
+	local to = at - state.center
+	if to.Magnitude > 0.01 then
+		a.aimAngle = math.atan2(to.Z, to.X)
+	else
+		a.aimAngle = state.faceAngle or 0
+	end
+	-- The point the rattle will hit, at the beach's height there (sandY is
+	-- measured from the perch anchor, the same frame sweepHits works in).
+	local r = Vector3.new(at.X - state.center.X, 0, at.Z - state.center.Z).Magnitude
+	a.impact = Vector3.new(at.X, state.center.Y + BrinejawPath.sandY(r), at.Z)
+	fireEvent("serpentSlam", a.impact, {
+		radius = p.radius or 13,
+		duration = p.windup,
+		-- Whether this landing is ON rock: the client tints the marker, so a
+		-- correct bait is legible before the tail comes down, not after.
+		stoneNear = stoneNear(creature, def, a.impact, p.stoneReach or 11),
+	})
+end
+
 ATTACK_HANDLERS.tailslam = {
 	windup = function(creature, def, p, u, _sub)
+		aimSlam(creature, def, p)
 		local state = colossusState(creature, def)
 		state.unwind = math.min(u * 1.2, 1)
 		state.sweepHeight = BrinejawPath.SWEEP_HIGH + (p.lift or 9) * u
 		state.sweepAngle = creature.attack.aimAngle or state.sweepAngle
 	end,
-	fire = function(creature, def, _p, _now, root)
+	fire = function(creature, def, p, _now, _root)
 		local a = creature.attack
 		local state = colossusState(creature, def)
-		local at = if root then root.Position else state.center
-		local to = at - state.center
-		a.aimAngle = math.atan2(to.Z, to.X)
-		a.impact = Vector3.new(at.X, state.center.Y, at.Z)
+		aimSlam(creature, def, p) -- no-op after windup: the marker IS the blow
 		state.sweepAngle = a.aimAngle
 	end,
 	strike = function(creature, def, p, now, _dt, u, _root, _sub)
@@ -3666,7 +3958,16 @@ local function updateBoss(creature, now: number, dt: number)
 			return
 		end
 		local e = 1 - (1 - u) ^ 3
-		model:PivotTo(poseCFrame(creature, -def.riseDepth + (def.riseDepth + sub) * e, 0, math.rad(-20) * (1 - e)))
+		if def.pose then
+			-- A posed boss is drawn entirely by the client, so "rising" is a
+			-- number it publishes rather than a pivot it performs: the head
+			-- climbs out of the whirlpool on the client's side of the wire.
+			hideColossusModel(creature)
+			colossusState(creature, def).rise = e
+			placeColossus(creature, def, now, root)
+		else
+			model:PivotTo(poseCFrame(creature, -def.riseDepth + (def.riseDepth + sub) * e, 0, math.rad(-20) * (1 - e)))
+		end
 		if u >= 1 then
 			creature.untargetable = false
 			setMode(creature, "prowl", 0, now)
@@ -3738,6 +4039,25 @@ local function updateBoss(creature, now: number, dt: number)
 
 	if creature.mode == "attack" then
 		updateBossAttack(creature, def, now, dt, root, player, dist, sub)
+		if def.pose then
+			placeColossus(creature, def, now, root)
+		end
+		return
+	end
+
+	-- A POSED boss that is not entrenched (the Kraken): it holds the middle
+	-- of its arena instead of swimming at you. Its head IS the arena centre -
+	-- 28 studs of it - so closing to `standoff` would shove the thing you are
+	-- standing on. It turns to face, and its arms do the travelling.
+	if def.pose then
+		hideColossusModel(creature)
+		local state = colossusState(creature, def)
+		state.rise = math.min((state.rise or 0) + dt * 0.5, 1)
+		creature.pos = creature.anchor or creature.pos
+		placeColossus(creature, def, now, root)
+		if root and now >= creature.nextAttackAt and dist <= def.aggro then
+			beginBossAttack(creature, def, pickBossAttack(creature, def, now), now)
+		end
 		return
 	end
 
