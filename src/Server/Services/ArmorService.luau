@@ -49,6 +49,19 @@ local R6_OFFSET = {
 	legs = CFrame.new(0, -0.95, 0),
 }
 
+-- Half a turn, because the pack's front and the character's front are
+-- opposite axes. armor_gen.py authors every piece FACING BLENDER -Y (its
+-- header's stated contract: the helm's face opening, the chest's crossed
+-- straps). The glTF Y-up export maps Blender -Y to Roblox +Z - the same
+-- transform that sends the creature pack's Blender +X to Roblox +X - while a
+-- character faces its own -Z (LookVector). Without this yaw a helm's horns
+-- sit behind the head and its neck flare covers the face.
+--
+-- Applied here rather than by re-authoring 30 meshes so the pack's contract
+-- stays exactly as written and as built. If a future pack ever authors to
+-- +Y instead, drop this and say so in armor_gen.py's header.
+local PACK_FACING = CFrame.Angles(0, math.pi, 0)
+
 -- Fallback shell sizes when a slot has no authored mesh: a box just proud of
 -- the target part (legs read as a hip band, not a full wrap).
 local function fallbackSize(slot: string, target: BasePart): Vector3
@@ -127,9 +140,12 @@ local function attachPiece(character: Model, slot: string, piece)
 	worn.Massless = true
 
 	-- Meshes are authored centred on the target part's frame; R6's single
-	-- Torso needs the slot nudged into place.
+	-- Torso needs the slot nudged into place. The yaw turns the pack's front
+	-- to the character's (see PACK_FACING); it commutes with the offset,
+	-- which is a pure lift along the same axis. The fallback box is
+	-- symmetric, so the yaw is harmless there.
 	local offset = if target.Name == "Torso" then (R6_OFFSET[slot] or CFrame.identity) else CFrame.identity
-	worn.CFrame = target.CFrame * offset
+	worn.CFrame = target.CFrame * offset * PACK_FACING
 
 	local weld = Instance.new("WeldConstraint")
 	weld.Part0 = target
