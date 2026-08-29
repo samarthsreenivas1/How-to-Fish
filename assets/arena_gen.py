@@ -365,8 +365,8 @@ def build_bj_foam(rng):
     inner, outer = [], []
     for i in range(angles):
         angle = (i / angles) * TAU
-        r0 = 82.0 + rng.uniform(-1.2, 1.2)
-        r1 = 87.5 + rng.uniform(-1.6, 1.6)
+        r0 = 80.0 + rng.uniform(-1.2, 1.2)
+        r1 = 86.0 + rng.uniform(-1.8, 1.8)
         inner.append(bm.verts.new((math.cos(angle) * r0, math.sin(angle) * r0, 0.28)))
         outer.append(bm.verts.new((math.cos(angle) * r1, math.sin(angle) * r1, 0.22)))
     for i in range(angles):
@@ -919,8 +919,8 @@ def build_gn_foam(rng):
     inner, outer = [], []
     for i in range(angles):
         angle = (i / angles) * TAU
-        r0 = 80.0 + rng.uniform(-1.2, 1.2)
-        r1 = 86.0 + rng.uniform(-1.8, 1.8)
+        r0 = 82.0 + rng.uniform(-1.2, 1.2)
+        r1 = 87.5 + rng.uniform(-1.6, 1.6)
         inner.append(bm.verts.new((math.cos(angle) * r0, math.sin(angle) * r0, 0.28)))
         outer.append(bm.verts.new((math.cos(angle) * r1, math.sin(angle) * r1, 0.22)))
     for i in range(angles):
