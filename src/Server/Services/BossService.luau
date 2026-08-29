@@ -419,7 +419,12 @@ function BossService.start()
 				elseif now - emptySince[islandId] >= ABANDON_SECONDS then
 					emptySince[islandId] = nil
 					fights[islandId] = nil
-					model:Destroy() -- AncestryChanged clears active[islandId]
+					-- Through CreatureService, not model:Destroy(): destroying
+					-- the Model alone leaves the creature struct running
+					-- forever - still attacking, still damaging anyone who
+					-- comes back - while this island happily summons a second
+					-- boss on top of the invisible one.
+					CreatureService.despawn(model) -- AncestryChanged clears active[islandId]
 				end
 			end
 		end
