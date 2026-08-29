@@ -44,7 +44,7 @@ import sys
 
 import bmesh
 import bpy
-from mathutils import Matrix, Vector
+from mathutils import Matrix, Vector, noise
 
 TAU = math.tau
 
@@ -116,6 +116,25 @@ def cone(bm, base, tip, r, sides=6):
     bmesh.ops.create_cone(
         bm, cap_ends=True, segments=sides, radius1=r, radius2=0.05, depth=axis.length, matrix=mat
     )
+
+
+def add_blob(bm, center, scale, roughness, salt, yaw=0.0, subdiv=1):
+    """One noise-lumped mass: a low icosphere pushed along its normals, then
+    squashed and rotated into place. This is the island's own leaf/boulder
+    primitive (island_gen.add_blob) - canopies built any other way read as
+    flat parasols rather than foliage."""
+    temp = bmesh.new()
+    bmesh.ops.create_icosphere(temp, subdivisions=subdiv, radius=1.0)
+    for vert in temp.verts:
+        bump = noise.noise(vert.co * 1.9 + Vector((salt, salt * 0.7, salt * 1.3)))
+        vert.co += vert.co.normalized() * bump * roughness
+    matrix = Matrix.Translation(Vector(center)) @ Matrix.Rotation(yaw, 4, "Z") @ Matrix.Diagonal(Vector(scale)).to_4x4()
+    bmesh.ops.transform(temp, matrix=matrix, verts=temp.verts[:])
+    mesh = bpy.data.meshes.new("_blob")
+    temp.to_mesh(mesh)
+    temp.free()
+    bm.from_mesh(mesh)
+    bpy.data.meshes.remove(mesh)
 
 
 def taper_between(bm, base, tip, r0, r1, sides=7):
@@ -481,10 +500,11 @@ def build_brinejaw():
 #     Gnashroot lies half-buried. You wade it (the water is DecoMere - the
 #     real floor is the carved bowl in _Base), and the bank is where the
 #     fight is meant to be fought from.
-#   - the bank is kept CLEAN on purpose (the Tidebreak lesson - the fight's
-#     telegraphs need an uncluttered canvas): every prop sits past r~52, in
-#     the mere, or at the grove's foot. What is on the open peat is FLAT
-#     (algae patches) or half-buried (root runs).
+#   - the bank is BARE (user, 2026-08-29, the same call the Tidebreak Spire
+#     got): no patches, stones, logs, bones or root runs. Open peat, so the
+#     fight's telegraphs - sweep lines, slam shadows, pool edges - paint on
+#     an uncluttered canvas. Dressing lives in the mere or at the grove's
+#     foot, never on the ground you fight on.
 #   - FOUR STUMP PLATFORMS at r 44 (<Model>_Stump1..4): the boss's own severed
 #     limbs from the last time someone fought it, 5 studs proud of the peat
 #     with one broad buttress root as a walk-up ramp on the mere-facing side.
@@ -492,15 +512,13 @@ def build_brinejaw():
 #     deathroll sludge cover the bank, so the fight becomes a rotation between
 #     them. Separate objects so the fight logic can find (and later shatter)
 #     each; positions in the HANDOFF.
-#   - the boundary is a DROWNED CYPRESS GROVE in two ranks at r 71-85, built
-#     to the fen's own tree language (island_gen build_swamp_trees): tan
-#     segmented trunks on flared feet, forking near the crown, dark layered
-#     canopy masses, pale moss hanging off them. The canopy is pushed OUTWARD
-#     - the sky over the fight stays open, because every telegraph in this
-#     book paints on the ground.
-#   - root runs crawl out of the mere across the bank, half-buried: the visual
-#     language for where the boss's limbs travel underground before a rootwave
-#     cracks them out.
+#   - the boundary is a DROWNED CYPRESS GROVE in two ranks at r 67-80, and it
+#     is a straight port of island_gen.build_swamp_trees: curved segmented
+#     trunks on flared feet, 3-5 limbs that FORK twice into a real skeleton,
+#     and noise-lumped canopy masses sitting ON the branch tips (never
+#     floating over them), with moss and vines off the same tips. Limbs are
+#     biased outward so the crowns lean off the ring - the sky over the fight
+#     stays open, because every telegraph in this book paints on the ground.
 #   - scum foam ring outside (named *_Foam: OceanController rides it on the
 #     tide for free), underwater skirt flaring to r~88.
 
@@ -626,52 +644,6 @@ def build_gn_shallows(rng):
     return finish("GnashrootArena_DecoShallows", bm, WETMUD)
 
 
-def build_gn_patches(rng):
-    bm = bmesh.new()
-    # Flat algae skins on the open peat: tonal variation with NO height, so
-    # the bank reads lived-in without giving the fight anything to trip on.
-    for _ in range(26):
-        angle = rng.uniform(0, TAU)
-        radius = rng.uniform(31.0, 68.0)
-        cx, cy = math.cos(angle) * radius, math.sin(angle) * radius
-        sides = rng.randint(5, 7)
-        spread = rng.uniform(3.0, 9.0)
-        ring = []
-        for i in range(sides):
-            a = (i / sides) * TAU
-            r = spread * rng.uniform(0.6, 1.25)
-            x, y = cx + math.cos(a) * r, cy + math.sin(a) * r
-            ring.append(bm.verts.new((x, y, _gn_ground(x, y) + 0.07)))
-        bm.faces.new(ring)
-    return finish("GnashrootArena_DecoPatches", bm, WETMUD)
-
-
-def _gn_root_run(bm, angle, r_start, r_end, rng):
-    """One half-buried root ridge crawling outward from the mere."""
-    r = r_start
-    while r < r_end:
-        t = (r - r_start) / max(r_end - r_start, 1e-6)
-        thick = 1.5 * (1.0 - t) + 0.4
-        x, y = math.cos(angle) * r, math.sin(angle) * r
-        # Sunk to two thirds of its own girth: a knuckled ridge, never a step.
-        # Nothing out here may catch a running player.
-        rock(bm, (x, y, _gn_height(r) - thick * 0.62), (thick * 1.9, thick * 1.5, thick), rng, jitter=0.16)
-        r += thick * 1.6
-        angle += rng.uniform(-0.05, 0.05)
-
-
-def build_gn_roots(rng):
-    bm = bmesh.new()
-    for i in range(8):
-        angle = (i / 8) * TAU + rng.uniform(-0.18, 0.18)
-        _gn_root_run(bm, angle, 28.0, rng.uniform(44.0, 66.0), rng)
-    # A knot of them breaking the mere's own bank, where the limbs go under.
-    for i in range(6):
-        angle = (i / 6) * TAU + 0.7
-        _gn_root_run(bm, angle, 26.0, rng.uniform(32.0, 38.0), rng)
-    return finish("GnashrootArena_DecoRoots", bm, ROOTWOOD)
-
-
 def build_gn_stumps(rng):
     """The four severed limbs: the fight's high, clean ground.
 
@@ -733,132 +705,148 @@ def build_gn_stumps(rng):
     return objects
 
 
-def _gn_trees(rng):
-    """The grove, generated once and shared by the trunk / canopy / moss /
-    vine builders so every hanging thing agrees with the tree it hangs from."""
-    trees = []
-    count = 44
-    for i in range(count):
-        angle = (i / count) * TAU + rng.uniform(-0.06, 0.06)
+def build_gn_grove(rng):
+    """The drowned cypress ring, built the fen's OWN way (the reference is
+    island_gen.build_swamp_trees, and this is a straight port of it):
+
+      - a curved three-segment trunk, each segment leaning further off true,
+        standing on a flared foot;
+      - 3-5 main limbs off the upper trunk, each one FORKING twice into a
+        spreading skeleton, terminal tips collected as it goes;
+      - the canopy sitting ON those tips - one fat lumpy mass over the
+        crown's heart plus a puff at every other tip - so leaves grow out of
+        branches instead of hovering over them;
+      - moss and vines hung off the same tips.
+
+    The one arena-specific rule: limb azimuths are biased OUTWARD from the
+    arena centre, so crowns lean off the ring and the fight keeps its sky.
+
+    Wood, canopy, moss and vines all come out of this one pass because every
+    one of them is generated from the same branch tips.
+    """
+    wood = bmesh.new()
+    leaves = bmesh.new()
+    moss = bmesh.new()
+    vines = bmesh.new()
+
+    def dir_of(az, elev):
+        c = math.cos(elev)
+        return Vector((math.cos(az) * c, math.sin(az) * c, math.sin(elev)))
+
+    def limb(base, direction, length, radius, depth, tips):
+        """One branch segment, then fork. The segment's base is sunk back
+        along its own axis so the joint is buried in the wood it grows from
+        and can never gap (the fen's floating-branch fix)."""
+        r_top = radius * (0.62 if depth > 0 else 0.22)
+        sink = radius * 1.1 + 0.1
+        tip = base + direction * length
+        taper_between(wood, base - direction * sink, tip, radius, max(r_top, 0.05), sides=3)
+        if depth == 0:
+            tips.append(tip)
+            return
+        kids = 3 if rng.random() < 0.2 else 2
+        for _ in range(kids):
+            rand = Vector((rng.uniform(-1, 1), rng.uniform(-1, 1), rng.uniform(-1, 1)))
+            perp = rand - direction * rand.dot(direction)
+            if perp.length < 1e-3:
+                continue
+            perp.normalize()
+            ang = rng.uniform(0.35, 0.7)
+            child = (direction * math.cos(ang) + perp * math.sin(ang) + Vector((0, 0, 0.18))).normalized()
+            limb(tip, child, length * rng.uniform(0.6, 0.78), r_top, depth - 1, tips)
+
+    count = 40
+    for index in range(count):
+        angle = (index / count) * TAU + rng.uniform(-0.06, 0.06)
         # Two ranks: the inner one is the wall you see, the outer one gives it
-        # depth so you can't read straight out of the arena between trunks.
-        radius = rng.uniform(67.0, 72.0) if i % 2 == 0 else rng.uniform(75.0, 80.0)
+        # depth so you cannot read straight out of the arena between trunks.
+        radius = rng.uniform(67.0, 72.0) if index % 2 == 0 else rng.uniform(75.0, 80.0)
         x, y = math.cos(angle) * radius, math.sin(angle) * radius
-        trees.append(
-            {
-                "x": x,
-                "y": y,
-                "z": _gn_height(radius),
-                "h": rng.uniform(30.0, 52.0),
-                "r": rng.uniform(2.2, 3.4),
-                "lean": (rng.uniform(-0.1, 0.1), rng.uniform(-0.1, 0.1)),
-                "out": (math.cos(angle), math.sin(angle)),
-            }
-        )
-    return trees
+        ground = _gn_height(radius)
 
-
-def _gn_tree_at(tree, frac):
-    """A point up the trunk, following its lean."""
-    return (
-        tree["x"] + tree["lean"][0] * tree["h"] * frac,
-        tree["y"] + tree["lean"][1] * tree["h"] * frac,
-        tree["z"] + tree["h"] * frac,
-    )
-
-
-def build_gn_grove(trees, rng):
-    bm = bmesh.new()
-    for tree in trees:
-        x, y, g, h, base_r = tree["x"], tree["y"], tree["z"], tree["h"], tree["r"]
+        total_h = rng.uniform(20.0, 32.0)
+        r0 = rng.uniform(1.6, 2.6)
         # The flared, buttressed foot of a tree that stands in water.
-        tapered_cylinder(bm, g - 4.0, g + 3.0, base_r * 2.0, base_r * 1.2, sides=8, center=(x, y))
-        # The shaft, in three segments with a slight kink between them - what
-        # gives the fen's trunks their banded, grown look rather than a cone.
-        lower = _gn_tree_at(tree, 0.34)
-        mid = _gn_tree_at(tree, 0.66)
-        top = _gn_tree_at(tree, 1.0)
-        taper_between(bm, (x, y, g + 2.8), lower, base_r * 1.2, base_r * 0.95, sides=8)
-        taper_between(bm, lower, mid, base_r * 0.95, base_r * 0.78, sides=8)
-        taper_between(bm, mid, top, base_r * 0.78, base_r * 0.55, sides=8)
-        # Forks near the crown - the tree carries its canopy on real limbs.
-        for _ in range(rng.randint(2, 4)):
-            frac = rng.uniform(0.72, 0.96)
-            base = _gn_tree_at(tree, frac)
-            a = rng.uniform(0, TAU)
-            reach = rng.uniform(7.0, 14.0)
-            taper_between(
-                bm,
-                base,
-                (base[0] + math.cos(a) * reach, base[1] + math.sin(a) * reach, base[2] + rng.uniform(2.0, 7.0)),
-                base_r * 0.5,
-                base_r * 0.16,
-                sides=5,
+        tapered_cylinder(wood, ground - 4.0, ground + 2.0, r0 * 2.0, r0 * 1.15, sides=8, center=(x, y))
+        bend = rng.uniform(0, TAU)
+        leans = [rng.uniform(0.03, 0.09), rng.uniform(0.10, 0.22), rng.uniform(0.16, 0.3)]
+        radii = [r0, r0 * 0.7, r0 * 0.48, r0 * 0.3]
+        seg = total_h / 3
+        pos = Vector((x, y, ground - 0.4))
+        joints = [Vector(pos)]
+        for step, lean in enumerate(leans):
+            direction = dir_of(bend, math.pi * 0.5 - lean)
+            taper_between(wood, pos, pos + direction * seg, radii[step], radii[step + 1], sides=5)
+            pos = pos + direction * seg
+            joints.append(Vector(pos))
+
+        tips = []
+        outward = math.atan2(y, x)
+        for _ in range(rng.randint(3, 5)):
+            # Walk the real joint polyline, not the chord: a curved trunk bows
+            # away from its own chord and the limb bases hang off the wood.
+            along = rng.uniform(0.55, 0.95) * 3.0
+            joint = min(int(along), 2)
+            at = joints[joint].lerp(joints[joint + 1], along - joint)
+            limb(
+                at,
+                dir_of(outward + rng.uniform(-1.2, 1.2), rng.uniform(0.45, 0.95)),
+                rng.uniform(5.5, 9.0) * (total_h / 22.0),
+                r0 * 0.3,
+                2,
+                tips,
             )
-        # Knees breaking the water round its foot.
-        for _ in range(rng.randint(2, 4)):
-            ka, kr = rng.uniform(0, TAU), rng.uniform(3.5, 7.0)
-            kx, ky = x + math.cos(ka) * kr, y + math.sin(ka) * kr
-            kg = _gn_ground(kx, ky)
-            cone(bm, (kx, ky, kg - 0.5), (kx, ky, kg + rng.uniform(1.2, 3.0)), rng.uniform(0.45, 0.9), sides=5)
-    return finish("GnashrootArena_Grove", bm, CYPRESS)
-
-
-def build_gn_canopy(trees, rng):
-    bm = bmesh.new()
-    for tree in trees:
-        top_x, top_y, top_z = _gn_tree_at(tree, 1.0)
-        out_x, out_y = tree["out"]
-        # Layered masses, overlapping, pushed outward off the ring so the
-        # fight keeps its sky. Big and dark, the way the fen's crowns read.
-        for _ in range(rng.randint(2, 4)):
-            push = rng.uniform(3.0, 11.0)
-            cx = top_x + out_x * push + rng.uniform(-2.5, 2.5)
-            cy = top_y + out_y * push + rng.uniform(-2.5, 2.5)
-            cz = top_z - rng.uniform(-1.0, 6.0)
-            spread = rng.uniform(4.5, 8.5)
-            rock(bm, (cx, cy, cz), (spread, spread * rng.uniform(0.8, 1.1), spread * rng.uniform(0.42, 0.62)), rng, jitter=0.34)
-    return finish("GnashrootArena_DecoCanopy", bm, LEAF)
-
-
-def build_gn_moss(trees, rng):
-    bm = bmesh.new()
-    for tree in trees:
-        for _ in range(rng.randint(4, 9)):
-            frac = rng.uniform(0.62, 0.98)
-            anchor = _gn_tree_at(tree, frac)
-            # Hung on the INNER face, where the fight can see them.
-            mx = anchor[0] - tree["out"][0] * rng.uniform(0.5, 6.0) + rng.uniform(-3.0, 3.0)
-            my = anchor[1] - tree["out"][1] * rng.uniform(0.5, 6.0) + rng.uniform(-3.0, 3.0)
-            mz = anchor[2] + rng.uniform(-2.0, 1.0)
-            cone(
-                bm,
-                (mx, my, mz),
-                (mx + rng.uniform(-0.4, 0.4), my + rng.uniform(-0.4, 0.4), mz - rng.uniform(5.0, 14.0)),
-                0.3,
-                sides=4,
-            )
-    return finish("GnashrootArena_DecoMoss", bm, HANGMOSS)
-
-
-def build_gn_vines(trees, rng):
-    bm = bmesh.new()
-    for tree in trees:
-        if rng.random() > 0.45:
+        if not tips:
             continue
-        anchor = _gn_tree_at(tree, rng.uniform(0.7, 0.95))
-        vx = anchor[0] - tree["out"][0] * rng.uniform(0.5, 4.0)
-        vy = anchor[1] - tree["out"][1] * rng.uniform(0.5, 4.0)
-        drop = rng.uniform(0.5, 0.9) * (anchor[2] - tree["z"])
-        taper_between(
-            bm,
-            (vx, vy, anchor[2]),
-            (vx + rng.uniform(-2.5, 2.5), vy + rng.uniform(-2.5, 2.5), anchor[2] - drop),
-            0.26,
-            0.11,
-            sides=4,
+
+        centroid = Vector((0, 0, 0))
+        for tip in tips:
+            centroid += tip
+        centroid /= len(tips)
+        spread = max((max(abs(t.x - centroid.x), abs(t.y - centroid.y)) for t in tips), default=6.0)
+        # Wide in XY, squashed in Z - the fen's horizontal leaf pads.
+        big = max(9.0, min(14.0, spread * 1.35))
+        add_blob(
+            leaves,
+            (centroid.x, centroid.y, centroid.z + 0.6),
+            (big, big * rng.uniform(0.85, 1.0), big * 0.4),
+            0.2,
+            salt=index * 2.9,
+            yaw=rng.uniform(0, TAU),
         )
-    return finish("GnashrootArena_DecoVines", bm, VINE)
+        for k, tip in enumerate(tips):
+            if k % 2 == 0:
+                puff = rng.uniform(5.5, 8.0)
+                add_blob(
+                    leaves,
+                    (tip.x, tip.y, tip.z + 0.4),
+                    (puff, puff * rng.uniform(0.8, 1.0), puff * 0.42),
+                    0.22,
+                    salt=index * 7.1 + k,
+                    yaw=rng.uniform(0, TAU),
+                )
+            # The hanging garden, off the same tips.
+            if rng.random() < 0.5:
+                length = rng.uniform(3.0, 7.0)
+                taper_between(moss, (tip.x, tip.y, tip.z), (tip.x, tip.y, tip.z - length), 0.1, 0.04, sides=3)
+            if rng.random() < 0.22:
+                length = rng.uniform(7.0, 14.0)
+                sway = rng.uniform(0, TAU)
+                taper_between(
+                    vines,
+                    (tip.x, tip.y, tip.z),
+                    (tip.x + math.cos(sway) * length * 0.1, tip.y + math.sin(sway) * length * 0.1, tip.z - length),
+                    0.08,
+                    0.05,
+                    sides=3,
+                )
+
+    return (
+        finish("GnashrootArena_Grove", wood, CYPRESS),
+        finish("GnashrootArena_DecoCanopy", leaves, LEAF),
+        finish("GnashrootArena_DecoMoss", moss, HANGMOSS),
+        finish("GnashrootArena_DecoVines", vines, VINE),
+    )
 
 
 def build_gn_reeds(rng):
@@ -903,82 +891,6 @@ def build_gn_lily(rng):
     return finish("GnashrootArena_DecoLily", bm, LILYPAD)
 
 
-def build_gn_stones(rng):
-    bm = bmesh.new()
-    for _ in range(20):
-        angle = rng.uniform(0, TAU)
-        radius = rng.uniform(54.0, 70.0)
-        x, y = math.cos(angle) * radius, math.sin(angle) * radius
-        size = rng.uniform(0.9, 2.4)
-        rock(bm, (x, y, _gn_ground(x, y) + size * 0.25), (size, size * rng.uniform(0.8, 1.2), size * 0.75), rng)
-    # A few breaking the mere's surface, for the boss to shoulder aside.
-    for _ in range(7):
-        angle = rng.uniform(0, TAU)
-        radius = rng.uniform(16.0, 26.0)
-        x, y = math.cos(angle) * radius, math.sin(angle) * radius
-        rock(bm, (x, y, GN_MERE_Z - 0.35), (1.7, 1.5, 1.4), rng)
-    return finish("GnashrootArena_DecoStones", bm, BOGSTONE)
-
-
-def build_gn_logs(rng):
-    bm = bmesh.new()
-    for _ in range(7):
-        angle = rng.uniform(0, TAU)
-        radius = rng.uniform(52.0, 64.0)
-        x, y = math.cos(angle) * radius, math.sin(angle) * radius
-        # Laid along the bank, not down it: both ends stay on walkable peat.
-        heading = angle + math.pi / 2 + rng.uniform(-0.5, 0.5)
-        length = rng.uniform(9.0, 16.0)
-        ex, ey = x + math.cos(heading) * length, y + math.sin(heading) * length
-        r0 = rng.uniform(0.9, 1.5)
-        taper_between(bm, (x, y, _gn_ground(x, y) + r0 * 0.5), (ex, ey, _gn_ground(ex, ey) + r0 * 0.35), r0, r0 * 0.7, sides=6)
-        # A snapped-off branch stub or two, so it isn't a pipe.
-        for _ in range(rng.randint(1, 2)):
-            t = rng.uniform(0.2, 0.8)
-            bx, by = x + (ex - x) * t, y + (ey - y) * t
-            ba = heading + rng.choice((-1, 1)) * rng.uniform(0.7, 1.4)
-            stub = rng.uniform(1.6, 3.4)
-            cone(
-                bm,
-                (bx, by, _gn_ground(bx, by) + r0 * 0.5),
-                (bx + math.cos(ba) * stub, by + math.sin(ba) * stub, _gn_ground(bx, by) + rng.uniform(0.8, 2.2)),
-                0.4,
-                sides=4,
-            )
-    return finish("GnashrootArena_DecoLogs", bm, ROOTWOOD)
-
-
-def build_gn_bones(rng):
-    bm = bmesh.new()
-    # What it ate last: a long skull sunk in the peat, and behind it the ribs
-    # of something much bigger arcing up out of the ground.
-    bearing = math.radians(200)
-    at = Vector((math.cos(bearing) * 56.0, math.sin(bearing) * 56.0, 0.0))
-    ground = _gn_ground(at.x, at.y)
-    skull = (
-        Matrix.Translation(Vector((at.x, at.y, ground + 0.4)))
-        @ Matrix.Rotation(bearing, 4, "Z")
-        @ Matrix.Rotation(math.radians(90), 4, "Y")
-    )
-    bmesh.ops.create_cone(bm, cap_ends=True, segments=6, radius1=1.5, radius2=0.5, depth=7.0, matrix=skull)
-    # Ribs: three short segments each, so they curve instead of leaning.
-    for i in range(5):
-        offset = 6.0 + i * 2.9
-        rx, ry = at.x - math.cos(bearing) * offset, at.y - math.sin(bearing) * offset
-        rg = _gn_ground(rx, ry)
-        span = 3.6 - i * 0.3
-        for side in (-1, 1):
-            across = (-math.sin(bearing) * side, math.cos(bearing) * side)
-            p0 = (rx + across[0] * span * 0.28, ry + across[1] * span * 0.28, rg - 0.5)
-            p1 = (rx + across[0] * span * 0.85, ry + across[1] * span * 0.85, rg + span * 0.75)
-            p2 = (rx + across[0] * span * 1.0, ry + across[1] * span * 1.0, rg + span * 1.0)
-            p3 = (rx + across[0] * span * 0.7, ry + across[1] * span * 0.7, rg + span * 1.25)
-            taper_between(bm, p0, p1, 0.34, 0.28, sides=4)
-            taper_between(bm, p1, p2, 0.28, 0.24, sides=4)
-            taper_between(bm, p2, p3, 0.24, 0.14, sides=4)
-    return finish("GnashrootArena_DecoBones", bm, FENBONE)
-
-
 def build_gn_wisps(rng):
     bm = bmesh.new()
     # The fen's own light, and the boss's: Morra's lantern green, drifting.
@@ -1020,23 +932,14 @@ def build_gn_foam(rng):
 
 def build_gnashroot():
     rng = random.Random(6203)
-    trees = _gn_trees(rng)
     objects = [
         build_gn_base(rng),
         build_gn_mere(rng),
         build_gn_shallows(rng),
-        build_gn_patches(rng),
-        build_gn_roots(rng),
         *build_gn_stumps(rng),
-        build_gn_grove(trees, rng),
-        build_gn_canopy(trees, rng),
-        build_gn_moss(trees, rng),
-        build_gn_vines(trees, rng),
+        *build_gn_grove(rng),
         *build_gn_reeds(rng),
         build_gn_lily(rng),
-        build_gn_stones(rng),
-        build_gn_logs(rng),
-        build_gn_bones(rng),
         build_gn_wisps(rng),
         build_gn_foam(rng),
     ]
