@@ -2446,6 +2446,90 @@ power-up does." Every menu and HUD is now built from one kit:
   `rbxassetid://` when real audio exists. If a built-in path is gone from the
   client it plays silence with a warning. New cues go in that one table.
 
+### Colossus bosses: the shared machinery (2026-08-29, Brinejaw first)
+
+The boss redesign (user: bosses should be huge set-pieces you outthink,
+"not just running at the boss aimlessly and attacking and brute forcing").
+A colossus holds a perch, its appendages do the attacking, and it cannot be
+hurt at all until the players EARN a window. Brinejaw is the reference
+implementation; Wrack and the Kraken build on the same parts. **This section
+is the contract — it was agreed across sessions in chat, so it lives here
+now rather than in anyone's transcript.**
+
+**The loop every colossus runs.** Survive a pattern → earn the opening by a
+specific interaction (not a timer) → spend it in a punish window → the boss
+re-entrenches and escalates. Ranged and melee both matter, in different
+beats.
+
+**`ChainPose` (`src/Shared/Modules/ChainPose.luau`) — the shared driver.**
+Poses a chain of parts along any curve, by arc length. Pure math: no
+Instances, no module singleton, so every chain is its own object (the
+Kraken's six arms coexist; Wrack's two anchor chains are just two objects).
+Because it is pure, the SERVER calls it for authority and the CLIENT for
+drawing off the same inputs, so what you dodge and what you see cannot
+drift apart.
+
+```
+-- a SHAPE is: function(state, t) -> Vector3   (t = 0 root/head, 1 = tip)
+local chain = ChainPose.new(shape, { samples = 160 })
+chain:update(state)            -- resample after the state moves
+chain.length                   -- studs
+chain:pointAt(d) / :tangentAt(d)   -- tangent points UP-BODY (toward t=0)
+chain:cframeAt(d)              -- +X along the tangent (the mesh packs' forward)
+chain:each(spacing, fn)        -- fn(index, cframe, u, distance); u for taper
+chain:count(spacing)           -- size a part pool up front
+ChainPose.blend(a, b, alpha)   -- -> shape; alpha is a number OR
+                               --    function(state, t) -> number
+```
+
+`blend`'s per-`t` alpha is what makes "every attack is a blend away from the
+rest pose and back" a first-class idea: Brinejaw's tail peels off the tower
+while its neck stays put, because the blend only reaches part of the body.
+
+**Per-boss geometry is per-boss.** `BrinejawPath.luau` sits beside the
+driver; Wrack's is `WrackPath.luau`, and so on — own file, no shared
+editing. What a path module exposes: `newState(center)`, `pointAt(state, t)`,
+`tangentAt(state, t)`, a position helper for the server's model, and — the
+trick worth copying — an ANALYTIC hit test in the mould of Brinejaw's
+`sweepHits`: bearing + radius + height band, never a part. A sweep that
+crosses the whole arena costs the server no geometry at all.
+
+**Engine hookup is two branches.** In `CreatureService`'s colossus section,
+adding a boss means a branch in `colossusState` (make your state) and one in
+`placeColossus` (stand the model on your pose), both keyed on `def.pose`,
+plus the Bosses row. Three row features are generic:
+
+- `entrenched = true` — holds its perch, never chases; no prowl, no arena
+  clamp, and `endBossAttack` returns it there instead of to prowling.
+- `stances = N` — how many times its stance shifts. The engine derives the
+  current one from the health phase and publishes it; what a stance MEANS is
+  the boss's fiction (Brinejaw's stack slides a coil down the tower, Wrack
+  hauls the flagship forward and closes the arena).
+- `openStagger(creature, def, now, seconds)` — the earned punish window:
+  targetable + `Exposed`, then back up. A handler calls it when the players
+  have baited the boss into a mistake.
+
+**Attributes.** Universal: `Pose` (which path module draws this body),
+`PoseCenter` (the perch's ANCHOR), `Stance`. Everything past those is the
+boss's own vocabulary, published inside its own branch of `publishPose` and
+read by its own client controller — a shared slot named `Value3` would be
+worse than either, and handing the next boss six Brinejaw-shaped numbers
+would be sharing, not abstraction.
+
+**Two gotchas that cost real time:**
+
+- `PoseCenter` is the perch's anchor, **not** where the model currently is.
+  Brinejaw's model rides its head ~60 studs above the tower's foot; a client
+  that seeds its state from the model's pivot draws the whole body in the
+  wrong place.
+- **Ease angles the short way round** on the client (`(goal - current + pi)
+  % 2pi - pi`). A sweep angle crossing north otherwise unwinds the entire
+  body backwards through the arena.
+
+Client renderers ease toward the replicated values; the server never
+interpolates. Pieces come from the boss's mesh pack with a plain-block
+fallback, so a fight is never invisible before its import lands.
+
 ## Design decisions (binding — don't reopen without the user)
 
 - **Fishing and collection are the primary axis** (2026-08-22 pivot).
