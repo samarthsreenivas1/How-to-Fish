@@ -424,19 +424,7 @@ function BossService.start()
 					-- forever - still attacking, still damaging anyone who
 					-- comes back - while this island happily summons a second
 					-- boss on top of the invisible one.
-					-- Guarded because the two halves cannot land together:
-					-- CreatureService currently carries another lane's
-					-- in-flight work, so `despawn` may not exist at this
-					-- commit. Falling back to the old behaviour is wrong but
-					-- survivable; calling a nil function would kill this
-					-- reaper loop outright and leave EVERY abandoned boss up.
-					-- Drop the guard once the CreatureService half lands.
-					local despawn = (CreatureService :: any).despawn
-					if despawn then
-						despawn(model)
-					else
-						model:Destroy()
-					end -- AncestryChanged clears active[islandId]
+					CreatureService.despawn(model) -- AncestryChanged clears active[islandId]
 				end
 			end
 		end
