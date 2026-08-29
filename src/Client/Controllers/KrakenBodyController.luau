@@ -399,11 +399,28 @@ function KrakenBodyController.init()
 end
 
 function KrakenBodyController.start()
+	local warned = false
 	RunService.RenderStepped:Connect(function(dt)
-		local now = os.clock()
+		-- Server time, not os.clock(): every ambient term here - the mantle's
+		-- swell, each arm's breathe and sway - is a phase two machines have to
+		-- agree on, and os.clock() is time since THIS process started, so no
+		-- two clients share an epoch. On a local one the arms you are dodging
+		-- sway on a different phase for every player in the party, and the
+		-- moment anything server-side reads these curves for a hitbox it is
+		-- reading a different arm from the one you can see. Same reasoning as
+		-- BrinejawBodyController.
+		local now = Workspace:GetServerTimeNow()
 		for model, body in bodies do
 			if model.Parent then
-				drawBody(model, body, dt, now)
+				-- Guarded for the same reason the serpent is: an error here
+				-- aborts the whole RenderStepped callback, so one bad frame
+				-- in one body would stop every other body drawing, and the
+				-- Kraken would freeze mid-fight with no error anyone sees.
+				local ok, err = pcall(drawBody, model, body, dt, now)
+				if not ok and not warned then
+					warned = true
+					warn("[KrakenBody] draw failed: " .. tostring(err))
+				end
 			else
 				destroyBody(model)
 			end
