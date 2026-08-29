@@ -29,9 +29,28 @@
 #     origin, a chest wraps a 2.0 x 1.6 x 1.0 UpperTorso, and the legs ring
 #     wraps a 2.0-wide hip line. (Blocky R15 reference sizes; slim avatars
 #     just wear it a little loose, like every Roblox armor.)
-#   - Pieces must stay CLEAR of the face (front of the head below its middle)
-#     and the arms' swing arc (nothing solid further out than x = +/-1.35 at
-#     shoulder height).
+#   - Pieces must stay CLEAR of the arms' swing arc (nothing solid further
+#     out than x = +/-1.35 at shoulder height) and of THE FACE BOX below.
+#
+#     THE FACE BOX (canonical - this is the ONE definition; three different
+#     ones were floating around after the 10-set revamp). In authored space,
+#     with the head a 1.2-stud cube at the origin and the face looking down
+#     -Y, nothing solid may sit inside ALL of:
+#
+#         y <= -0.52          at or in front of the face plane
+#         |x| <= 0.40         the central band only - cheeks stay fair game
+#         -0.60 <= z <= 0.00  the head's lower half, chin to midline
+#
+#     It is a midline rule, not an eye-band rule, because that is what all
+#     ten sets already do: measured across the pack, every helm's front
+#     geometry sits in z 0.02..0.30 - a BROW OVERHANG above the midline, with
+#     the nose, mouth and chin left as open air. So crests, brow facets and
+#     hanging lures above the line are explicitly fine (they shade the face,
+#     which reads well); a plate crossing down over the nose is not.
+#     Cheek/jaw guards outboard of |x| = 0.40, anything behind the face
+#     plane, and gorgets/scarves hanging below the head (z < -0.60, off the
+#     face entirely) are all unaffected. check_faces() enforces it at build time - it
+#     prints and does not throw, so a work-in-progress set still exports.
 #   - Flat shading everywhere, matching the island and the other packs.
 #
 # Colours here are only for the preview; in game ArmorService recolours per
@@ -1060,6 +1079,27 @@ def build_duskveil_legs():
     return finish("Duskveil_Legs", bm, DUSK_SILK)
 
 
+def check_faces(objects):
+    """Enforce the header's FACE BOX. Prints offenders; never throws, so a
+    half-built set still exports and can be looked at."""
+    offenders = {}
+    for obj in objects:
+        if not obj.name.endswith("_Helm"):
+            continue
+        for vert in obj.data.vertices:
+            x, y, z = vert.co
+            if y <= -0.52 and abs(x) <= 0.40 and -0.60 <= z <= 0.00:
+                entry = offenders.setdefault(obj.name, [0, None])
+                entry[0] += 1
+                if entry[1] is None or y < entry[1][1]:
+                    entry[1] = (round(x, 2), round(y, 2), round(z, 2))
+    if not offenders:
+        print("FACE BOX: clear - every helm leaves the face open below the brow")
+        return
+    for name, (count, worst) in sorted(offenders.items()):
+        print("FACE BOX VIOLATION: %s has %d vert(s) below the brow line, deepest at %s" % (name, count, worst))
+
+
 # ---------------------------------------------------------------- registry
 
 
@@ -1631,6 +1671,7 @@ def build_all():
     for _prefix, builders in SETS.items():
         for builder in builders:
             objects.append(builder())
+    check_faces(objects)
     return objects
 
 
@@ -1670,9 +1711,9 @@ def render_preview(path, objects):
     sun.rotation_euler = (math.radians(55), 0, math.radians(30))
     bpy.context.collection.objects.link(sun)
     cam_data = bpy.data.cameras.new("Cam")
-    cam_data.lens = 28
+    cam_data.lens = 23
     cam = bpy.data.objects.new("Cam", cam_data)
-    cam.location = Vector((0.0, -21.0, 1.9))
+    cam.location = Vector((0.0, -26.0, 1.9))
     cam.rotation_euler = (math.radians(88), 0, math.radians(2))
     bpy.context.collection.objects.link(cam)
     bpy.context.scene.camera = cam
