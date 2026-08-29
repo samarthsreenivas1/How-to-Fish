@@ -651,13 +651,64 @@ def _spire_radius(z):
     return 5.2
 
 
-def _bj_rest_path(t):
+# The rest of the pose vocabulary, ported from the SHIPPED math in
+# src/Shared/Modules/BrinejawPath.luau so a render can show any fight state,
+# not just the idle one. Keeping the two in step matters: these images are
+# how an attack gets reviewed before anyone can play it, and a render that
+# quietly disagreed with the game would be worse than no render. The Luau is
+# the source of truth; if you change one, change both.
+#
+# Roblox is Y-up and Blender is Z-up, so the mapping throughout is
+# Luau (x, y, z) -> Blender (x, z, y): the helix is the same circle, and
+# "height" moves from the Luau's Y to Blender's Z.
+
+BJ_SWEEP_REACH = 66.0
+BJ_SWEEP_INNER = 13.0
+BJ_SWEEP_LOW = 1.6
+BJ_SWEEP_HIGH = 5.4
+BJ_MAX_COIL = 3
+BJ_COIL_DROP = (BJ_REST["top_z"] - BJ_REST["bottom_z"]) / BJ_REST["turns"]
+
+
+def _bj_sand_z(r):
+    """The beach's height at radius r (arena_gen's BJ_PROFILE)."""
+    profile = ((0, 3.2), (10, 3.0), (16, 2.2), (30, 1.6), (48, 1.4), (62, 1.0), (70, 0.4))
+    for a, b in zip(profile, profile[1:]):
+        if r <= b[0]:
+            t = max(0.0, min(1.0, (r - a[0]) / (b[0] - a[0])))
+            return a[1] + (b[1] - a[1]) * t
+    return 0.4
+
+
+def _smoothstep(x):
+    x = max(0.0, min(1.0, x))
+    return x * x * (3 - 2 * x)
+
+
+def bj_state(**overrides):
+    """A pose state: what the server publishes, in one dict."""
+    state = {
+        "coil": BJ_MAX_COIL,
+        "unwind": 0.0,
+        "sweep_angle": 0.0,
+        "sweep_height": BJ_SWEEP_LOW,
+        "slump": 0.0,
+        "face_angle": BJ_REST["bearing"] - 0.8,
+        "time": 0.0,
+    }
+    state.update(overrides)
+    return state
+
+
+def _bj_rest_path(t, state=None):
     """Head (t=0) to rattle (t=1) in arena-local space, waterline at z=0."""
     rest = BJ_REST
+    state = state or bj_state()
+    drop = (BJ_MAX_COIL - state["coil"]) * BJ_COIL_DROP
     neck_end, helix_end = rest["neck_end"], rest["helix_end"]
 
     def helix(k):
-        z = rest["top_z"] + (rest["bottom_z"] - rest["top_z"]) * k
+        z = (rest["top_z"] - drop) + ((rest["bottom_z"] - drop) - (rest["top_z"] - drop)) * k
         theta = rest["bearing"] + rest["turns"] * TAU * k
         r = _spire_radius(z) + rest["clearance"]
         return Vector((math.cos(theta) * r, math.sin(theta) * r, z))
@@ -666,8 +717,9 @@ def _bj_rest_path(t):
         # A quadratic sweep from the reared neck down onto the top coil.
         u = t / neck_end
         theta = rest["bearing"] - 0.8
-        r = _spire_radius(rest["head_z"]) + rest["clearance"] + rest["head_out"]
-        top = Vector((math.cos(theta) * r, math.sin(theta) * r, rest["head_z"]))
+        head_z = rest["head_z"] - drop
+        r = _spire_radius(head_z) + rest["clearance"] + rest["head_out"]
+        top = Vector((math.cos(theta) * r, math.sin(theta) * r, head_z))
         start = helix(0.0)
         # The control point sets the head's carry angle: top - control is the
         # direction the skull points, so a mostly-outward vector with a little
@@ -681,11 +733,55 @@ def _bj_rest_path(t):
 
     # Slack: the tail leaves the tower, spirals down and lies on the sand.
     k = (t - helix_end) / (1.0 - helix_end)
-    inner = _spire_radius(rest["bottom_z"]) + rest["clearance"]
+    inner = _spire_radius(rest["bottom_z"] - drop) + rest["clearance"]
     theta = rest["bearing"] + rest["turns"] * TAU + rest["tail_turn"] * TAU * k
     r = inner + (rest["tail_out"] - inner) * k**0.75
-    z = rest["bottom_z"] + (rest["tail_z"] - rest["bottom_z"]) * k**0.6
+    z = (rest["bottom_z"] - drop) + (rest["tail_z"] - (rest["bottom_z"] - drop)) * k**0.6
     return Vector((math.cos(theta) * r, math.sin(theta) * r, z))
+
+
+def _bj_swept_point(state, t, blend_start):
+    """The tail laid out along one bearing at sweep height - the arm."""
+    k = max(0.0, min(1.0, (t - blend_start) / max(1 - blend_start, 1e-3)))
+    r = BJ_SWEEP_INNER + (BJ_SWEEP_REACH - BJ_SWEEP_INNER) * k
+    theta = state["sweep_angle"]
+    return Vector((math.cos(theta) * r, math.sin(theta) * r, _bj_sand_z(r) + state["sweep_height"]))
+
+
+def _bj_slump_point(state, t):
+    """Where the head goes when it loses its grip: down, onto the sand."""
+    rest = BJ_REST
+    drop = (BJ_MAX_COIL - state["coil"]) * BJ_COIL_DROP
+    theta = state["face_angle"]
+    reach = 26.0
+    k = max(0.0, min(1.0, t / 0.30))
+    bottom = rest["bottom_z"] - drop
+    r = reach - (reach - (_spire_radius(bottom) + rest["clearance"])) * k
+    return Vector((math.cos(theta) * r, math.sin(theta) * r, _bj_sand_z(r) + 2.6 + 9.0 * k**1.5))
+
+
+def bj_pose_path(state):
+    """A path function for any fight state - the Luau's pointAt, in Blender."""
+
+    def path(t):
+        t = max(0.0, min(1.0, t))
+        point = _bj_rest_path(t, state)
+
+        unwind = state["unwind"]
+        if unwind > 0:
+            blend_start = 1.0 - 0.40 * unwind
+            w = _smoothstep((t - blend_start) / 0.14) * unwind
+            if w > 0:
+                point = point.lerp(_bj_swept_point(state, t, blend_start), w)
+
+        slump = state["slump"]
+        if slump > 0 and t < 0.34:
+            point = point.lerp(_bj_slump_point(state, t), _smoothstep((0.34 - t) / 0.34) * slump)
+
+        breath = math.sin(t * 9.0 - state["time"] * 1.7) * 0.45
+        return point + Vector((0, 0, breath))
+
+    return path
 
 
 # ---------------------------------------------------------------- assembly
@@ -884,6 +980,85 @@ def render_preview(path_out, objects, boss="brinejaw"):
     print("BOSS PREVIEW:", path_out)
 
 
+# The fight, as still images. Each entry is a moment the design turns on, so
+# an attack can be reviewed before anyone can play it: what the party sees,
+# and whether the answer to it is legible from where they stand.
+BJ_POSES = {
+    "sweep_low": (
+        "LOW SWEEP - jump it",
+        bj_state(unwind=1.0, sweep_height=BJ_SWEEP_LOW, sweep_angle=math.radians(232)),
+        (138, -110, 13), (0, 0, 18),
+    ),
+    "sweep_high": (
+        "HIGH SWEEP - stand under it",
+        bj_state(unwind=1.0, sweep_height=BJ_SWEEP_HIGH, sweep_angle=math.radians(232)),
+        (138, -110, 13), (0, 0, 18),
+    ),
+    "slam_raise": (
+        "TAIL SLAM, windup - the tail is over a reef stone",
+        bj_state(unwind=1.0, sweep_height=BJ_SWEEP_HIGH + 9.0, sweep_angle=math.radians(15)),
+        (36, -128, 27), (32, 8, 12),
+    ),
+    "stagger": (
+        "THE PUNISH WINDOW - grip lost, head down on the sand",
+        bj_state(coil=2, slump=1.0, face_angle=math.radians(250)),
+        (-95, -150, 34), (-20, -12, 12),
+    ),
+    "last_coil": (
+        "THIRD STANCE - the stack has slid two turns down the tower",
+        bj_state(coil=1),
+        (96, -144, 46), (0, 0, 30),
+    ),
+}
+
+
+def render_pose(path_out, objects, state, camera, target):
+    import os
+
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import arena_gen  # noqa: E402
+
+    clear_scene()
+    objects = BOSSES["brinejaw"]()
+    arena_gen.build_brinejaw()
+    for obj in objects:
+        obj.hide_render = True
+    _place_chain(objects, bj_pose_path(state), head_scale=1.35, tail_scale=0.55)
+    _light_and_shoot(path_out, camera, target)
+
+
+def _light_and_shoot(path_out, camera, target, lens=42):
+    sun = bpy.data.objects.new("Sun", bpy.data.lights.new("Sun", "SUN"))
+    sun.rotation_euler = (math.radians(48), 0, math.radians(-40))
+    sun.data.energy = 2.4
+    bpy.context.collection.objects.link(sun)
+    fill = bpy.data.objects.new("Fill", bpy.data.lights.new("Fill", "SUN"))
+    fill.rotation_euler = (math.radians(70), 0, math.radians(130))
+    fill.data.energy = 0.9
+    bpy.context.collection.objects.link(fill)
+
+    cam_data = bpy.data.cameras.new("Cam")
+    cam_data.lens = lens
+    cam = bpy.data.objects.new("Cam", cam_data)
+    cam.location = Vector(camera)
+    cam.rotation_euler = (Vector(target) - cam.location).to_track_quat("-Z", "Y").to_euler()
+    bpy.context.collection.objects.link(cam)
+    bpy.context.scene.camera = cam
+
+    scene = bpy.context.scene
+    scene.render.engine = "BLENDER_EEVEE"
+    scene.render.resolution_x = 1500
+    scene.render.resolution_y = 1000
+    scene.render.filepath = path_out
+    scene.world = bpy.data.worlds.new("World")
+    scene.world.use_nodes = True
+    bg = scene.world.node_tree.nodes.get("Background")
+    if bg:
+        bg.inputs[0].default_value = (0.46, 0.62, 0.72, 1.0)
+    bpy.ops.render.render(write_still=True)
+    print("BOSS POSE:", path_out)
+
+
 def render_staged(path_out, objects):
     """The money shot: the arena built, the serpent coiled on its lighthouse.
 
@@ -957,7 +1132,7 @@ def export(path_out, objects):
 def main():
     argv = sys.argv[sys.argv.index("--") + 1 :] if "--" in sys.argv else []
     if len(argv) < 2 or argv[1] not in BOSSES:
-        print("usage: blender --background --python boss_gen.py -- <out.glb> <%s> [preview] [staged]" % "|".join(BOSSES))
+        print("usage: blender --background --python boss_gen.py -- <out.glb> <%s> [preview] [staged] [poses]" % "|".join(BOSSES))
         return
     clear_scene()
     objects = BOSSES[argv[1]]()
@@ -966,6 +1141,10 @@ def main():
         render_preview(argv[0].replace(".glb", "_preview.png"), objects, argv[1])
     if "staged" in argv[2:]:
         render_staged(argv[0].replace(".glb", "_staged.png"), objects)
+    if "poses" in argv[2:]:
+        for name, (label, state, camera, target) in BJ_POSES.items():
+            print("POSE", name, "-", label)
+            render_pose(argv[0].replace(".glb", "_pose_%s.png" % name), objects, state, camera, target)
 
 
 if __name__ == "__main__":
