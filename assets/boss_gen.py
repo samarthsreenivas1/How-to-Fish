@@ -5,9 +5,12 @@
 #
 #   blender --background --python assets/boss_gen.py -- assets/boss_brinejaw.glb brinejaw
 #   blender --background --python assets/boss_gen.py -- assets/boss_brinejaw.glb brinejaw preview
+#   blender --background --python assets/boss_gen.py -- assets/boss_brinejaw.glb brinejaw staged
 #
-# The second form also renders assets/boss_brinejaw_preview.png - the pieces
-# ASSEMBLED into a serpent so the chain can be judged, not a parts sheet.
+# The second form renders assets/boss_brinejaw_preview.png - the pieces
+# ASSEMBLED into a serpent so the chain can be judged, not a parts sheet. The
+# third renders assets/boss_brinejaw_staged.png: the serpent in its REST POSE
+# on the real arena, coiled around the lighthouse (see BJ_REST).
 #
 # ---------------------------------------------------------------- the idea
 #
@@ -403,7 +406,84 @@ BOSSES = {
 # client's poseAt does - so the chain can be judged as a creature.
 
 
-def _chain_preview(objects, count=22, spacing=4.0):
+# ---------------------------------------------------------------- rest pose
+#
+# WHERE BRINEJAW SITS WHEN NOTHING IS HAPPENING: three turns strangling the
+# Tidebreak Spire, head rearing past the lantern room, tail draped down the
+# tower and pooled on the sand. This is the SPEC the client's poseAt(u, 0)
+# reproduces - the numbers below are the contract, and the staged render is
+# how we check them. Every attack is a blend away from this pose and back:
+# a sweep re-parameterises the tail portion onto a ground arc, a lost grip
+# drops `top_z`/`bottom_z` by one turn, the punish slumps the neck to the sand.
+
+BJ_REST = {
+    "neck_end": 0.11,  # u where the neck meets the top coil
+    "helix_end": 0.74,  # u where the bottom coil lets go of the tower
+    "turns": 3.0,  # one per phase: each lost grip drops the stack a turn
+    "top_z": 44.0,
+    "bottom_z": 12.0,
+    "clearance": 3.4,  # body centre stands this far off the masonry
+    "head_z": 60.0,  # neck's top, where the head takes over
+    "head_out": 8.0,  # how far past the gallery the neck leans over the arena
+    "bearing": math.radians(342.0),  # where the head leans out - toward the party's arrival ring
+    "tail_out": 31.0,  # how far onto the sand the slack tail reaches
+    "tail_z": 3.4,
+    "tail_turn": 0.85,
+}
+
+
+def _spire_radius(z):
+    """The lighthouse's radius at height z (arena_gen's three drums)."""
+    for z0, z1, r0, r1 in ((3.5, 20.0, 8.5, 7.4), (20.0, 38.0, 7.2, 6.2), (38.0, 54.0, 6.0, 5.2)):
+        if z <= z1:
+            t = max(0.0, min(1.0, (z - z0) / (z1 - z0)))
+            return r0 + (r1 - r0) * t
+    return 5.2
+
+
+def _bj_rest_path(t):
+    """Head (t=0) to rattle (t=1) in arena-local space, waterline at z=0."""
+    rest = BJ_REST
+    neck_end, helix_end = rest["neck_end"], rest["helix_end"]
+
+    def helix(k):
+        z = rest["top_z"] + (rest["bottom_z"] - rest["top_z"]) * k
+        theta = rest["bearing"] + rest["turns"] * TAU * k
+        r = _spire_radius(z) + rest["clearance"]
+        return Vector((math.cos(theta) * r, math.sin(theta) * r, z))
+
+    if t <= neck_end:
+        # A quadratic sweep from the reared neck down onto the top coil.
+        u = t / neck_end
+        theta = rest["bearing"] - 0.8
+        r = _spire_radius(rest["head_z"]) + rest["clearance"] + rest["head_out"]
+        top = Vector((math.cos(theta) * r, math.sin(theta) * r, rest["head_z"]))
+        start = helix(0.0)
+        # The control point sets the head's carry angle: top - control is the
+        # direction the skull points, so a mostly-outward vector with a little
+        # lift gives the cobra look - reared over the gallery, watching the
+        # sand - instead of a snout aimed at the sky.
+        control = top - Vector((math.cos(theta) * 11.0, math.sin(theta) * 11.0, 2.5))
+        return top * (1 - u) ** 2 + control * (2 * (1 - u) * u) + start * u**2
+
+    if t <= helix_end:
+        return helix((t - neck_end) / (helix_end - neck_end))
+
+    # Slack: the tail leaves the tower, spirals down and lies on the sand.
+    k = (t - helix_end) / (1.0 - helix_end)
+    inner = _spire_radius(rest["bottom_z"]) + rest["clearance"]
+    theta = rest["bearing"] + rest["turns"] * TAU + rest["tail_turn"] * TAU * k
+    r = inner + (rest["tail_out"] - inner) * k**0.75
+    z = rest["bottom_z"] + (rest["tail_z"] - rest["bottom_z"]) * k**0.6
+    return Vector((math.cos(theta) * r, math.sin(theta) * r, z))
+
+
+# ---------------------------------------------------------------- assembly
+
+
+def _place_chain(objects, path_fn, spacing=BJ_SEG_SPACING, taper=0.62, head_scale=1.2, tail_scale=0.62):
+    """Lay the pieces along `path_fn` (t in 0..1) by ARC LENGTH - the job the
+    client's poseAt does every frame. Returns the placed copies."""
     by_name = {obj.name.split("_", 1)[1]: obj for obj in objects}
     made = []
 
@@ -418,17 +498,10 @@ def _chain_preview(objects, count=22, spacing=4.0):
         made.append(copy)
         return copy
 
-    def path(t):
-        # A lazy S with the head lifting - reads as a swimming serpent.
-        x = -t * spacing * count
-        y = math.sin(t * 2.3 * math.pi) * 11.0
-        z = 6.5 * (1 - t) ** 2
-        return Vector((x, y, z))
-
     # Walk the curve by ARC LENGTH, the way the client's poseAt does: even
     # spacing along the actual path, so the vertebrae overlap into one body
     # instead of drifting apart wherever the curve bends.
-    samples = [path(i / 400) for i in range(401)]
+    samples = [path_fn(i / 800) for i in range(801)]
     cumulative = [0.0]
     for a, b in zip(samples, samples[1:]):
         cumulative.append(cumulative[-1] + (b - a).length)
@@ -447,25 +520,32 @@ def _chain_preview(objects, count=22, spacing=4.0):
         return (at_length(distance - 1.2) - at_length(distance + 1.2)).normalized()
 
     step = spacing * 0.85  # slight overlap so the chain reads continuous
+    count = max(int(total / step), 2)
     for i in range(count):
         distance = i * step
-        scale = 1.0 - 0.62 * (distance / total) ** 1.3
+        scale = 1.0 - taper * (distance / total) ** 1.3
         source = by_name["SegFin"] if i % 4 == 2 else by_name["Seg"]
         place(source, at_length(distance), tangent_at(distance), scale)
 
     head_pos = at_length(0) + tangent_at(0) * 7.4
     for name in ("Head", "HeadBone", "Eyes", "Frill", "Jaw", "JawBone"):
-        place(by_name[name], head_pos, tangent_at(0), 1.2)
+        place(by_name[name], head_pos, tangent_at(0), head_scale)
 
     tail_distance = (count - 1) * step
-    place(by_name["Rattle"], at_length(tail_distance) - tangent_at(tail_distance) * 2.2, tangent_at(tail_distance), 0.62)
+    place(by_name["Rattle"], at_length(tail_distance) - tangent_at(tail_distance) * 2.2, tangent_at(tail_distance), tail_scale)
+    print("CHAIN: %.0f studs of serpent, %d vertebrae at %.1f-stud steps" % (total, count, step))
     return made
+
+
+def _swim_path(t):
+    """A lazy S with the head lifting - the parts-sheet-replacement preview."""
+    return Vector((-t * 88.0, math.sin(t * 2.3 * math.pi) * 11.0, 6.5 * (1 - t) ** 2))
 
 
 def render_preview(path_out, objects):
     for obj in objects:
         obj.hide_render = True
-    placed = _chain_preview(objects)
+    placed = _place_chain(objects, _swim_path)
 
     sun = bpy.data.objects.new("Sun", bpy.data.lights.new("Sun", "SUN"))
     sun.rotation_euler = (math.radians(52), 0, math.radians(28))
@@ -512,6 +592,54 @@ def render_preview(path_out, objects):
     print("BOSS PREVIEW:", path_out)
 
 
+def render_staged(path_out, objects):
+    """The money shot: the arena built, the serpent coiled on its lighthouse.
+
+    Imports arena_gen so the tower under the coils is the REAL one - if the
+    arena's profile ever changes, this render shows the coils floating or
+    biting into masonry instead of hugging it.
+    """
+    import os
+
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import arena_gen  # noqa: E402  (guarded: importing it builds nothing)
+
+    arena_gen.build_brinejaw()
+    for obj in objects:
+        obj.hide_render = True
+    _place_chain(objects, _bj_rest_path, head_scale=1.35, tail_scale=0.55)
+
+    sun = bpy.data.objects.new("Sun", bpy.data.lights.new("Sun", "SUN"))
+    sun.rotation_euler = (math.radians(48), 0, math.radians(-40))
+    sun.data.energy = 2.4
+    bpy.context.collection.objects.link(sun)
+    fill = bpy.data.objects.new("Fill", bpy.data.lights.new("Fill", "SUN"))
+    fill.rotation_euler = (math.radians(70), 0, math.radians(130))
+    fill.data.energy = 0.9
+    bpy.context.collection.objects.link(fill)
+
+    cam_data = bpy.data.cameras.new("Cam")
+    cam_data.lens = 42
+    cam = bpy.data.objects.new("Cam", cam_data)
+    cam.location = Vector((96, -144, 46))
+    cam.rotation_euler = (Vector((0, 0, 38.0)) - cam.location).to_track_quat("-Z", "Y").to_euler()
+    bpy.context.collection.objects.link(cam)
+    bpy.context.scene.camera = cam
+
+    scene = bpy.context.scene
+    scene.render.engine = "BLENDER_EEVEE"
+    scene.render.resolution_x = 1500
+    scene.render.resolution_y = 1000
+    scene.render.filepath = path_out
+    scene.world = bpy.data.worlds.new("World")
+    scene.world.use_nodes = True
+    bg = scene.world.node_tree.nodes.get("Background")
+    if bg:
+        bg.inputs[0].default_value = (0.46, 0.62, 0.72, 1.0)
+    bpy.ops.render.render(write_still=True)
+    print("BOSS STAGED:", path_out)
+
+
 def export(path_out, objects):
     bpy.ops.object.select_all(action="DESELECT")
     for obj in objects:
@@ -537,13 +665,16 @@ def export(path_out, objects):
 def main():
     argv = sys.argv[sys.argv.index("--") + 1 :] if "--" in sys.argv else []
     if len(argv) < 2 or argv[1] not in BOSSES:
-        print("usage: blender --background --python boss_gen.py -- <out.glb> <%s> [preview]" % "|".join(BOSSES))
+        print("usage: blender --background --python boss_gen.py -- <out.glb> <%s> [preview] [staged]" % "|".join(BOSSES))
         return
     clear_scene()
     objects = BOSSES[argv[1]]()
     export(argv[0], objects)
     if "preview" in argv[2:]:
         render_preview(argv[0].replace(".glb", "_preview.png"), objects)
+    if "staged" in argv[2:]:
+        render_staged(argv[0].replace(".glb", "_staged.png"), objects)
 
 
-main()
+if __name__ == "__main__":
+    main()

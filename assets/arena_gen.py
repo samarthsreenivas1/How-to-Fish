@@ -516,4 +516,5 @@ def main():
         render_preview(argv[0].replace(".glb", "_preview.png"))
 
 
-main()
+if __name__ == "__main__":
+    main()
