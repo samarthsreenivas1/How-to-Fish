@@ -395,8 +395,218 @@ def build_brinejaw():
     return objects
 
 
+# ================================================================ the kraken
+#
+# THE MAW OF THE MAELSTROM. A squid the size of a harbour: a pointed mantle
+# behind, a bulbous head with two lamp-eyes, and under the brow a hooked bone
+# beak - the only clean thing on it. The eight fighting arms are NOT modelled
+# here as body parts: they are the six `kraken_tentacle` entities the boss
+# engine already plants on a ring (spawnBossParts), so an arm is ONE authored
+# segment instanced down a ChainPose curve, exactly like Brinejaw's body.
+#
+# Scale contract: the row spawns it at 2.6 and declares hitRadius 8 (so ~21
+# studs of hide in game). Everything below is authored at scale 1 against
+# that 8: the mantle's widest half-width is 7.2 and the beak tip sits at
+# x=+10.4, which is what makes the melee reach and the visible body agree.
+#
+# It has been down there a long time: the mantle carries the same barnacle
+# crust the wreck island wears, a snapped spar grown into its back and a
+# length of anchor chain it never shook off - it is the thing that sank the
+# fleet rotting on the spiral outside.
+
+KR_HIDE = (0.24, 0.17, 0.33)   # deep ink-violet (the creature row's body colour)
+KR_CRUST = (0.36, 0.29, 0.22)  # barnacle plate + drowned timber
+KR_BEAK = (0.78, 0.71, 0.54)   # bone, matte, deliberately unlit
+KR_EYE = (0.59, 0.47, 1.00)    # storm-lit: the fight's only violet light
+
+# Mantle cross-sections: (x, centre z, half-width, half-height). +X is the
+# front (the brow, over the beak); the mantle tapers to a point behind.
+KR_MANTLE = [
+    (-15.0, 0.0, 0.35, 0.30),
+    (-12.2, 0.2, 2.4, 2.0),
+    (-8.5, 0.3, 4.8, 4.1),
+    (-4.5, 0.4, 6.6, 5.6),
+    (-1.0, 0.3, 7.2, 6.0),   # the shoulder - the widest of it
+    (2.5, 0.0, 6.4, 5.4),
+    (5.5, -0.4, 4.6, 4.2),
+    (7.6, -1.0, 2.6, 2.6),   # the brow front, over the beak
+]
+
+KR_BEAK_HINGE = (4.6, 0.0, -2.9)  # both mandibles rotate about this
+KR_ARM_SPACING = 3.4              # authored segment pitch, scale 1
+KR_ARM_SEGMENTS = 9               # + the tip: ~32 studs of arm at scale 1
+
+
+def build_kr_mantle(rng):
+    bm = bmesh.new()
+    loft(bm, [ring_pts(x, cz, hw, hh, sides=10) for x, cz, hw, hh in KR_MANTLE])
+    # Dorsal ridges: three low keels down the mantle so a huge smooth sack
+    # reads as muscle instead of a balloon.
+    for i in range(3):
+        x = -10.5 + i * 4.2
+        box(bm, (x, 0, 5.1 - i * 0.35), (3.0, 1.1, 1.0), Matrix.Rotation(math.radians(45), 3, "X"))
+    # Mantle collar: the thickened rim where the head meets the body.
+    disc(bm, 1.6, 2.6, 6.6, 6.5, sides=10)
+    return finish("Kraken_Mantle", bm, KR_HIDE)
+
+
+def build_kr_crust(rng):
+    bm = bmesh.new()
+    # Barnacle plate over the crown and one shoulder.
+    for _ in range(26):
+        x = rng.uniform(-11.0, 5.0)
+        angle = rng.uniform(-0.9, 0.9)
+        r = rng.uniform(4.2, 6.9)
+        ellipsoid(
+            bm,
+            (x, math.sin(angle) * r, 0.6 + math.cos(angle) * r * 0.86),
+            (rng.uniform(0.35, 0.85),) * 3,
+            subdiv=0,
+        )
+    # A snapped spar driven into its back and never worked loose.
+    box(bm, (-6.4, 1.2, 5.6), (9.0, 0.9, 0.9), Matrix.Rotation(math.radians(-18), 3, "Y") @ Matrix.Rotation(math.radians(12), 3, "Z"))
+    box(bm, (-1.6, 1.9, 6.1), (3.4, 0.7, 0.7), Matrix.Rotation(math.radians(28), 3, "Y"))
+    # Anchor chain grown into the hide, links alternating flat and edge-on.
+    for i in range(6):
+        x = -9.0 + i * 1.9
+        z = 4.9 + math.sin(i * 0.7) * 0.5
+        flat = i % 2 == 0
+        box(bm, (x, -3.4, z), (1.5, 1.1, 0.45) if flat else (1.5, 0.45, 1.1))
+    return finish("Kraken_Crust", bm, KR_CRUST)
+
+
+def build_kr_brow(rng):
+    bm = bmesh.new()
+    # The armour shelf the eyes sit under - it DROPS before a bite, which is
+    # the tell that reads from the platforms.
+    for side in (-1, 1):
+        blade(bm, (6.4, side * 1.6, 1.4), (1.2, side * 6.4, 2.2), 3.2, 4.4, 0.9)
+        # A horn off each corner of the shelf.
+        spike(bm, (2.2, side * 5.8, 2.0), (-1.4, side * 7.6, 4.6), 0.75, sides=5)
+    box(bm, (4.4, 0, 2.0), (4.0, 3.2, 0.9))
+    return finish("Kraken_Brow", bm, KR_HIDE)
+
+
+def build_kr_beak_upper():
+    bm = bmesh.new()
+    # A hooked wedge: wide at the hinge, narrowing to a down-turned point.
+    loft(bm, [
+        ring_pts(4.4, -2.6, 2.5, 1.5, sides=7),
+        ring_pts(6.6, -3.0, 2.2, 1.4, sides=7),
+        ring_pts(8.6, -3.8, 1.5, 1.0, sides=7),
+        ring_pts(9.8, -4.8, 0.7, 0.5, sides=7),
+    ], cap_end=False)
+    spike(bm, (9.8, 0, -4.8), (10.4, 0, -6.4), 0.55, sides=5)
+    return finish("Kraken_BeakUpper", bm, KR_BEAK)
+
+
+def build_kr_beak_lower():
+    bm = bmesh.new()
+    # The lower mandible hooks the other way - the two cross like shears.
+    loft(bm, [
+        ring_pts(4.4, -4.4, 2.2, 1.2, sides=7),
+        ring_pts(6.6, -4.8, 1.9, 1.1, sides=7),
+        ring_pts(8.4, -4.9, 1.3, 0.8, sides=7),
+        ring_pts(9.4, -4.2, 0.6, 0.45, sides=7),
+    ], cap_end=False)
+    spike(bm, (9.4, 0, -4.2), (10.0, 0, -2.9), 0.5, sides=5)
+    return finish("Kraken_BeakLower", bm, KR_BEAK)
+
+
+def build_kr_eyes():
+    bm = bmesh.new()
+    # Enormous, and the only warm light in the arena.
+    for side in (-1, 1):
+        ellipsoid(bm, (3.2, side * 5.4, 0.9), (1.9, 1.5, 1.9), subdiv=1)
+    return finish("Kraken_Eyes", bm, KR_EYE)
+
+
+def build_kr_fin():
+    bm = bmesh.new()
+    # The mantle fins: broad triangular flaps down the back half, the things
+    # that sweep when it turns.
+    for side in (-1, 1):
+        blade(bm, (-6.0, side * 4.4, 1.2), (-14.2, side * 9.6, 2.6), 7.6, 1.2, 0.5)
+        blade(bm, (-9.0, side * 3.6, 0.2), (-13.6, side * 7.2, -2.2), 3.4, 0.8, 0.4)
+    return finish("Kraken_Fin", bm, KR_HIDE)
+
+
+def build_kr_arm_seg():
+    bm = bmesh.new()
+    # ONE arm segment, centred on its vertebra, +X pointing UP-ARM toward the
+    # body (the pack convention). The client instances this down a ChainPose
+    # curve at KR_ARM_SPACING and scales by u to taper toward the tip.
+    half = KR_ARM_SPACING / 2
+    loft(bm, [
+        ring_pts(-half, 0.0, 1.62, 1.48, sides=7),
+        ring_pts(0.0, 0.05, 1.80, 1.66, sides=7),
+        ring_pts(half, 0.0, 1.70, 1.56, sides=7),
+    ])
+    # The aboral keel - an arm reads as an arm, not a sausage, from its edge.
+    box(bm, (0, 0, 1.62), (KR_ARM_SPACING * 0.9, 0.7, 0.8), Matrix.Rotation(math.radians(45), 3, "X"))
+    return finish("Kraken_ArmSeg", bm, KR_HIDE)
+
+
+def build_kr_arm_tip():
+    bm = bmesh.new()
+    # The club: squid arms widen into a hooked paddle before the point. Joins
+    # at +X, tapers away along -X.
+    loft(bm, [
+        ring_pts(1.7, 0.0, 1.60, 1.46, sides=7),
+        ring_pts(-0.4, 0.1, 2.05, 1.80, sides=7),
+        ring_pts(-2.6, 0.0, 1.30, 1.15, sides=7),
+        ring_pts(-4.2, -0.1, 0.40, 0.40, sides=7),
+    ])
+    # Hooks around the club - what the slam actually lands with.
+    for i in range(5):
+        angle = (i / 5) * TAU
+        spike(
+            bm,
+            (-0.4, math.cos(angle) * 1.7, 0.1 + math.sin(angle) * 1.6),
+            (-1.5, math.cos(angle) * 2.9, 0.1 + math.sin(angle) * 2.7),
+            0.3,
+            sides=4,
+        )
+    return finish("Kraken_ArmTip", bm, KR_HIDE)
+
+
+def build_kr_sucker():
+    bm = bmesh.new()
+    # One sucker, centred at the origin. Instanced in rows along every arm and
+    # lit base-to-tip through a wind-up: the telegraph is anatomy, not a ring
+    # painted on the floor.
+    disc(bm, -0.18, 0.18, 0.55, 0.38, sides=7)
+    return finish("Kraken_Sucker", bm, KR_EYE)
+
+
+def build_kraken():
+    rng = random.Random(4471)
+    objects = [
+        build_kr_mantle(rng),
+        build_kr_crust(rng),
+        build_kr_brow(rng),
+        build_kr_beak_upper(),
+        build_kr_beak_lower(),
+        build_kr_eyes(),
+        build_kr_fin(),
+        build_kr_arm_seg(),
+        build_kr_arm_tip(),
+        build_kr_sucker(),
+    ]
+    print("HANDOFF kraken: body faces +X; mantle centre at the origin, brow front x=+7.6, beak tip x=+10.4")
+    print("HANDOFF kraken: hide half-width 7.2 at the shoulder -> matches the row's hitRadius 8 at scale 1")
+    print("HANDOFF kraken: beak hinge pivot (%.1f, %.1f, %.1f) - the server rotates BOTH mandibles about it" % KR_BEAK_HINGE)
+    print("HANDOFF kraken: eyes at (3.2, +/-5.4, 0.9) r1.9 - Neon swap for the wind-up flare, no light source")
+    print("HANDOFF kraken: arm segment pitch %.1f, %d segments + tip = ~%.0f studs of arm at scale 1"
+          % (KR_ARM_SPACING, KR_ARM_SEGMENTS, KR_ARM_SPACING * KR_ARM_SEGMENTS + 4.2))
+    print("HANDOFF kraken: arm half-width 1.80 at the base -> slam hit girth ~3.6 studs; taper by u toward the tip")
+    print("HANDOFF kraken: suckers 2 per segment, alternating rows, indexed base->tip for the wind-up sweep")
+    return objects
+
+
 BOSSES = {
     "brinejaw": build_brinejaw,
+    "kraken": build_kraken,
 }
 
 
@@ -481,6 +691,33 @@ def _bj_rest_path(t):
 # ---------------------------------------------------------------- assembly
 
 
+def _arc_walker(path_fn, samples=800, look=1.2):
+    """Re-parameterise `path_fn` (t in 0..1) by ARC LENGTH.
+
+    Shared by every boss's preview placer - and the same job ChainPose does
+    at runtime, so what a render shows is what the fight will pose.
+    Returns (at_length, tangent_at, total)."""
+    pts = [path_fn(i / samples) for i in range(samples + 1)]
+    cumulative = [0.0]
+    for a, b in zip(pts, pts[1:]):
+        cumulative.append(cumulative[-1] + (b - a).length)
+    total = cumulative[-1]
+
+    def at_length(distance):
+        distance = min(max(distance, 0.0), total)
+        for i in range(len(cumulative) - 1):
+            if cumulative[i + 1] >= distance:
+                span = cumulative[i + 1] - cumulative[i]
+                t = 0 if span < 1e-9 else (distance - cumulative[i]) / span
+                return pts[i].lerp(pts[i + 1], t)
+        return pts[-1]
+
+    def tangent_at(distance):
+        return (at_length(distance - look) - at_length(distance + look)).normalized()
+
+    return at_length, tangent_at, total
+
+
 def _place_chain(objects, path_fn, spacing=BJ_SEG_SPACING, taper=0.62, head_scale=1.2, tail_scale=0.62):
     """Lay the pieces along `path_fn` (t in 0..1) by ARC LENGTH - the job the
     client's poseAt does every frame. Returns the placed copies."""
@@ -501,23 +738,7 @@ def _place_chain(objects, path_fn, spacing=BJ_SEG_SPACING, taper=0.62, head_scal
     # Walk the curve by ARC LENGTH, the way the client's poseAt does: even
     # spacing along the actual path, so the vertebrae overlap into one body
     # instead of drifting apart wherever the curve bends.
-    samples = [path_fn(i / 800) for i in range(801)]
-    cumulative = [0.0]
-    for a, b in zip(samples, samples[1:]):
-        cumulative.append(cumulative[-1] + (b - a).length)
-    total = cumulative[-1]
-
-    def at_length(distance):
-        distance = min(max(distance, 0.0), total)
-        for i in range(len(cumulative) - 1):
-            if cumulative[i + 1] >= distance:
-                span = cumulative[i + 1] - cumulative[i]
-                t = 0 if span < 1e-9 else (distance - cumulative[i]) / span
-                return samples[i].lerp(samples[i + 1], t)
-        return samples[-1]
-
-    def tangent_at(distance):
-        return (at_length(distance - 1.2) - at_length(distance + 1.2)).normalized()
+    at_length, tangent_at, total = _arc_walker(path_fn)
 
     step = spacing * 0.85  # slight overlap so the chain reads continuous
     count = max(int(total / step), 2)
@@ -542,10 +763,81 @@ def _swim_path(t):
     return Vector((-t * 88.0, math.sin(t * 2.3 * math.pi) * 11.0, 6.5 * (1 - t) ** 2))
 
 
-def render_preview(path_out, objects):
+def _kraken_arm_path(angle, t):
+    """One arm at its REST POSE: out of the water beside the mantle, arcing
+    up over the fight stacks, tip curling back down into the sea. t=0 at the
+    base. This is the shape ChainPose blends away from for a lash and back
+    to afterwards - the rest pose is the spec."""
+    r = 9.0 + 27.0 * t
+    # Low and long: up out of the water, over the stacks, tip back down into
+    # the sea - a draped arm, not an arched leg.
+    z = math.sin(t * math.pi * 0.92) * 6.4 - 2.5
+    a = angle + math.sin(t * 2.3 + angle * 1.7) * 0.16
+    return Vector((math.cos(a) * r, math.sin(a) * r, z))
+
+
+def _place_kraken(objects, arms=6):
+    """The body at the origin with its arms laid out in the rest pose, so the
+    silhouette can be judged as one animal rather than a parts sheet."""
+    by_name = {obj.name.split("_", 1)[1]: obj for obj in objects}
+    made = []
+
+    def place(source, position, tangent=None, scale=1.0):
+        copy = source.copy()
+        copy.data = source.data
+        copy.hide_render = False
+        bpy.context.collection.objects.link(copy)
+        copy.location = position
+        if tangent is not None:
+            copy.rotation_euler = Vector((1, 0, 0)).rotation_difference(tangent).to_euler()
+        copy.scale = (scale, scale, scale)
+        made.append(copy)
+        return copy
+
+    # The body sits where it was authored - one CFrame, no offsets.
+    for part in ("Mantle", "Crust", "Brow", "BeakUpper", "BeakLower", "Eyes", "Fin"):
+        place(by_name[part], Vector((0, 0, 0)))
+
+    seg, tip, sucker = by_name["ArmSeg"], by_name["ArmTip"], by_name["Sucker"]
+    for k in range(arms):
+        angle = (k / arms) * TAU + 0.22
+        at_length, tangent_at, total = _arc_walker(lambda t, a=angle: _kraken_arm_path(a, t))
+        step = KR_ARM_SPACING * 0.88  # slight overlap so the arm reads continuous
+        count = max(int(total / step), 3)
+        for i in range(count):
+            distance = i * step
+            u = distance / total
+            scale = 1.0 - 0.45 * u ** 1.2  # taper toward the tip
+            position = at_length(distance)
+            tangent = tangent_at(distance)
+            place(seg, position, tangent, scale)
+            # Two sucker rows along the UNDERSIDE. Build the frame from the
+            # tangent with a guarded up-vector: an arm mid-whip really does
+            # point straight up, where a naive cross degenerates.
+            up = Vector((0, 0, 1))
+            if abs(tangent.dot(up)) > 0.98:
+                up = Vector((0, 1, 0))
+            lateral = tangent.cross(up).normalized()
+            down = lateral.cross(tangent).normalized()
+            if down.z > 0:
+                down = -down
+            for side in (-1, 1):
+                seat = position + down * (1.05 * scale) + lateral * (side * 0.72 * scale)
+                place(sucker, seat, tangent, scale)
+        place(tip, at_length(total), tangent_at(total), 1.0 - 0.45)
+    return made
+
+
+PLACERS = {
+    "kraken": _place_kraken,
+}
+
+
+def render_preview(path_out, objects, boss="brinejaw"):
     for obj in objects:
         obj.hide_render = True
-    placed = _place_chain(objects, _swim_path)
+    placer = PLACERS.get(boss)
+    placed = placer(objects) if placer else _place_chain(objects, _swim_path)
 
     sun = bpy.data.objects.new("Sun", bpy.data.lights.new("Sun", "SUN"))
     sun.rotation_euler = (math.radians(52), 0, math.radians(28))
@@ -671,7 +963,7 @@ def main():
     objects = BOSSES[argv[1]]()
     export(argv[0], objects)
     if "preview" in argv[2:]:
-        render_preview(argv[0].replace(".glb", "_preview.png"), objects)
+        render_preview(argv[0].replace(".glb", "_preview.png"), objects, argv[1])
     if "staged" in argv[2:]:
         render_staged(argv[0].replace(".glb", "_staged.png"), objects)
 
