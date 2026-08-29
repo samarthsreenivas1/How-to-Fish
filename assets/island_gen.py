@@ -3107,14 +3107,28 @@ def build_hut_morra():
     # wattle on the leaning side, prop roots splayed into the bog.
     tx, ty, _ = P(-3.2, 6.5, 0)  # on the side the hut leans onto - it holds it up
     t_g = _swamp_height(tx, ty)
-    add_cone(walls, (tx, ty, t_g - 1.2), 1.5, 0.75, 24.0, sides=6, tilt=(0.06, -0.10))
+    T_BASE = (tx, ty, t_g - 1.2)
+    T_TILT = (0.06, -0.10)
+    add_cone(walls, T_BASE, 1.5, 0.75, 24.0, sides=6, tilt=T_TILT)
+    # The trunk LEANS, so its axis walks away from (tx, ty) as it climbs -
+    # about 2.3 studs by the upper limb's height, against a trunk barely 0.9
+    # wide up there. Anything hung off the base coordinates therefore floats
+    # (user, 2026-08-29: "there is a floating stick"). Seat everything on the
+    # real axis instead, computed with add_cone's own rotation order.
+    t_axis = (Matrix.Rotation(T_TILT[0], 4, "X") @ Matrix.Rotation(T_TILT[1], 4, "Y")) @ Vector((0.0, 0.0, 1.0))
+
+    def _on_trunk(height_above_ground):
+        """The point on the trunk's axis level with `t_g + height`."""
+        return Vector(T_BASE) + t_axis * ((height_above_ground + 1.2) / t_axis.z)
+
     for k in range(4):
         ang = k * math.tau / 4 + 0.6
         root = Vector((math.cos(ang) * 2.6, math.sin(ang) * 2.6, -3.4)).normalized()
-        add_cone(walls, (tx, ty, t_g + 2.6), 0.55, 0.2, 4.6, sides=3, tilt=_tilt_toward(root))
+        add_cone(walls, tuple(_on_trunk(2.6)), 0.55, 0.2, 4.6, sides=3, tilt=_tilt_toward(root))
     for k, (h, lean_ang) in enumerate(((15.0, 0.8), (18.5, 3.9))):  # two limbs over the roof
         d = Vector((math.cos(lean_ang) * 0.9, math.sin(lean_ang) * 0.9, 0.42)).normalized()
-        add_cone(walls, (tx, ty, t_g + h), 0.5, 0.16, 9.0 - k * 1.5, sides=3, tilt=_tilt_toward(d))
+        # Base ON the axis, so each limb grows out from INSIDE the trunk.
+        add_cone(walls, tuple(_on_trunk(h)), 0.5, 0.16, 9.0 - k * 1.5, sides=3, tilt=_tilt_toward(d))
 
     # The plank path out to Morra's mark, every plank resting ON the bog (or
     # on its own pile where the ground has dropped under the water).
@@ -3367,6 +3381,11 @@ def build_swamp():
         *build_swamp_smalls(),
         build_swamp_foam(),
     ]
+    # The same guard the wreck island runs. It was Wreckwater-only, and a
+    # floating mangrove limb shipped on THIS island because nothing checked
+    # it (user, 2026-08-29). Nothing in the fen is meant to hover: the wisps
+    # sit on their posts, the moss and bundles hang off geometry they touch.
+    validate_no_floaters(objects, _swamp_height, label="swamp")
     a = math.radians(270)  # the +Z quadrant the dock will eventually face
     shore = ring_radius(1.0, a)
     mx, my, mr = SWAMP_MERE
