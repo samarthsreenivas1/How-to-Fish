@@ -756,6 +756,36 @@ local function kill(creature, killer: Player?)
 	end
 end
 
+-- Take a creature out of the world WITHOUT killing it: no Killed event, no
+-- rewards, no drops. BossService's abandon reaper wants exactly this - a
+-- boss nobody is fighting any more sinks back rather than dying.
+--
+-- Exists because destroying the Model alone is NOT removal. The struct stays
+-- in `creatures`, keeps being updated, keeps answering inRange/raycastNearest
+-- and keeps damaging anyone who wanders back, while `byModel` holds a key on
+-- a destroyed Instance. The walk now also drops parentless models as
+-- defence-in-depth, but going through here means the invariant "a struct in
+-- `creatures` has a live model" is never broken in the first place, rather
+-- than being repaired a frame later.
+function CreatureService.despawn(model: Model)
+	local creature = byModel[model]
+	if creature then
+		-- Flagged before the walk can see it half-removed; if we are INSIDE
+		-- the walk right now, its own dead-check drops the struct this pass.
+		creature.dead = true
+		byModel[model] = nil
+		if not updating then
+			local index = table.find(creatures, creature)
+			if index then
+				removeAt(index)
+			end
+		end
+	end
+	if model.Parent then
+		model:Destroy()
+	end
+end
+
 -- Archetype hooks defined further down (they need the health API and the
 -- health API needs them): the urchin's swell-and-pop on every hit.
 local onBloaterHit
@@ -2762,13 +2792,25 @@ local function beginBossAttack(creature, def, name: string, now: number)
 	setMode(creature, "attack", 0, now)
 	-- `p.tell` lets a themed attack borrow a stock telegraph (a renamed bite
 	-- still flashes like a snap); `p.skin` colors the client's effects.
-	fireEvent("telegraph", creature.model:GetPivot().Position, {
-		kind = p.tell or name,
-		duration = p.windup,
-		radius = p.radius,
-		facing = bossFacing(creature),
-		skin = p.skin,
-	})
+	--
+	-- `tell = false` opts OUT entirely, for an attack that fires its own,
+	-- better-placed telegraph from its handler. The generic one is drawn at
+	-- the boss's PIVOT and chosen before the handler picks a target, which
+	-- is right for a boss that attacks around itself and wrong for one whose
+	-- reach lands far away: Brinejaw's pivot is its head, ~60 studs up a
+	-- lighthouse, so a stock tell marks the tower while the tail comes down
+	-- somewhere else entirely. Note there is no "silent" tell value - an
+	-- unrecognised kind still falls through the client's catch-all flash and
+	-- plays the tell sound - so opting out has to be explicit.
+	if p.tell ~= false then
+		fireEvent("telegraph", creature.model:GetPivot().Position, {
+			kind = p.tell or name,
+			duration = p.windup,
+			radius = p.radius,
+			facing = bossFacing(creature),
+			skin = p.skin,
+		})
+	end
 end
 
 local function endBossAttack(creature, def, now: number)
@@ -3058,6 +3100,123 @@ ATTACK_HANDLERS.gustpush = {
 		end
 	end,
 }
+
+-- ---------------------------------------------------------------- rimefang
+--
+-- The Floe-Breaker's two bespoke moves. Everything else in its book runs on
+-- handlers that already exist (snap / charge / slam / undertow / barrage).
+
+-- Mirrors BossArenaService.FOLDER_NAME - the arena furniture lives here, and
+-- a wash asks it whether a player is behind cover.
+local BOSS_ARENA_FOLDER = "BossArenas"
+local washParams: RaycastParams? = nil
+
+-- Anything solid between the boss and a player shelters them from a wash.
+-- This is what the arena's bergs and its frozen whaler are FOR: the counter
+-- to the wash is position, not timing, and without an occlusion test the
+-- furniture is scenery.
+local function washSheltered(creature, root: BasePart): boolean
+	local arenas = Workspace:FindFirstChild(BOSS_ARENA_FOLDER)
+	if not arenas then
+		return false
+	end
+	if not washParams then
+		washParams = RaycastParams.new()
+		washParams.FilterType = Enum.RaycastFilterType.Include
+	end
+	washParams.FilterDescendantsInstances = { arenas }
+	local from = creature.pos + Vector3.new(0, 2.5, 0)
+	local hit = Workspace:Raycast(from, root.Position - from, washParams)
+	-- The floor is in the same folder and a ray across a domed floe grazes
+	-- it; only standing geometry counts as cover.
+	if not hit then
+		return false
+	end
+	local name = hit.Instance.Name
+	return not (string.find(name, "_Base", 1, true) or string.find(name, "Floor", 1, true))
+end
+
+-- THE WAVE WASH. An orca hunting seals on pack ice charges the floe and
+-- shoulders a wall of water over it; the seal is not bitten, it is WASHED
+-- OFF. So the threat here is displacement, not damage - you are shoved
+-- toward the holes and the pressure ridge - and shelter beats it.
+ATTACK_HANDLERS.wash = {
+	windup = function(creature, _def, _p, u, sub)
+		local e = smoothstep(u)
+		-- Rolls onto its side and shoulders down: the tell has to read from
+		-- the far side of the arena, because the answer is to move.
+		creature.model:PivotTo(poseCFrame(creature, sub + 1.4 * e, 0, math.rad(-26) * e))
+	end,
+	fire = function(creature, def, p, now, root)
+		local a = creature.attack
+		-- LATCHED ONCE, never per frame. A bearing recomputed each frame
+		-- snaps to whoever is nearest, so in a party the wall would jump
+		-- across the arena mid-attack and stop being dodgeable.
+		a.dir = if root then flatUnit(root.Position - creature.pos) else bossFacing(creature)
+		local sheltered = {}
+		local lo, hi = bossRoll(creature, def, p.damage)
+		for _, entry in livingRootsNear(creature.pos, p.radius) do
+			local to = flatUnit(entry.root.Position - creature.pos)
+			if to:Dot(a.dir) >= math.cos(p.cone) then
+				if washSheltered(creature, entry.root) then
+					table.insert(sheltered, entry.player.UserId)
+				else
+					PlayerService.damage(entry.player, math.random(lo, hi), creature, { bypassIframe = true })
+				end
+			end
+		end
+		-- Rides the kit engine's `gust` vocabulary (displacement is the pull
+		-- machinery in reverse, client-side) plus one new field: `sheltered`
+		-- is the list of players cover saved, and their clients skip the shove.
+		fireEvent("gust", creature.pos, {
+			radius = p.radius,
+			push = p.push or 70,
+			duration = math.max(p.duration, 0.2),
+			cone = p.cone,
+			facing = a.dir,
+			skin = p.skin,
+			sheltered = sheltered,
+		})
+		if p.slick then
+			spawnPool(creature, groundedPos(creature.pos + a.dir * (p.radius * 0.45), 0), p.slick, now)
+		end
+	end,
+	strike = function(creature, _def, _p, _now, _dt, u, _root, sub)
+		creature.model:PivotTo(poseCFrame(creature, sub + 1.4 * (1 - u), 0, math.rad(-26) * (1 - u)))
+	end,
+}
+
+-- THE SPY-HOP. Not an attack: the LOOK. It rises vertically out of the
+-- water, half its body clear, and picks someone. Orcas really do this to
+-- find prey on a floe, and it earns its slot by being the one beat in the
+-- fight where nothing is coming - which is what makes the beats that ARE
+-- coming legible. It marks its target, and the mark is who the NEXT move
+-- opens on.
+ATTACK_HANDLERS.spyhop = {
+	windup = function(creature, _def, p, u, sub)
+		local e = smoothstep(u)
+		creature.model:PivotTo(poseCFrame(creature, sub + (p.rise or 10) * e, 0, math.rad(62) * e))
+	end,
+	fire = function(creature, _def, p, _now, root)
+		if root then
+			fireEvent("telegraph", root.Position, {
+				kind = "mark",
+				radius = p.radius or 7,
+				duration = p.hold or 1.0,
+				skin = p.skin,
+			})
+		end
+	end,
+	strike = function(creature, _def, p, now, _dt, _u, _root, sub)
+		-- Held high and turning slowly, looking you over.
+		creature.model:PivotTo(poseCFrame(creature, sub + (p.rise or 10), math.sin(now * 1.6) * math.rad(9), math.rad(62)))
+	end,
+	recover = function(creature, _def, p, u, sub)
+		local e = 1 - smoothstep(u)
+		creature.model:PivotTo(poseCFrame(creature, sub + (p.rise or 10) * e, 0, math.rad(62) * e))
+	end,
+}
+
 
 -- ============================================================ per-row move kits (hostile revamp, 2026-08-28)
 --
@@ -3489,6 +3648,13 @@ local function updateChoir(creature, state, dt: number)
 	-- A socket whose stalk is gone: the light goes out the instant it dies,
 	-- and the shape keeps falling for a second so the client has a collapse
 	-- to draw rather than a stalk vanishing mid-air.
+	-- A lean eases back on its own. An attack that ends leaves its stalk
+	-- reaching over the arena, and nothing else would ever put it upright.
+	for index, stalk in state.stalks do
+		if stalk.standing and index ~= state.activeStalk then
+			stalk.lean = math.max((stalk.lean or 0) - dt * 1.6, 0)
+		end
+	end
 	for _, stalk in state.stalks do
 		if not stalk.standing then
 			stalk.alive = false
@@ -3574,11 +3740,24 @@ end
 -- Stand the model where its pose says its head is, aimed up-body.
 local function placeColossus(creature, def, now: number, root: BasePart?)
 	local state = colossusState(creature, def)
-	state.time = now
+	-- Derived rather than passed, so every existing call site keeps working.
+	local dt = math.clamp(now - (state.placedAt or now), 0, 0.1)
+	state.placedAt = now
+	-- Shared epoch with the client (see BrinejawBodyController): the ambient
+	-- breath is the one term both sides compute independently, so it has to
+	-- be driven by a clock they agree on.
+	state.time = Workspace:GetServerTimeNow()
 	if root then
 		local to = root.Position - state.center
 		if to.Magnitude > 0.01 then
-			state.faceAngle = math.atan2(to.Z, to.X)
+			-- Turn at the row's own turnRate rather than snapping. The
+			-- slumped head sits on this bearing during a punish window, and
+			-- with it the melee hit point - so an unrated assignment made
+			-- the target teleport around the tower the instant a different
+			-- player became nearest, which is unhittable in a party.
+			local goal = math.atan2(to.Z, to.X)
+			local rate = (def.turnRate or math.rad(70)) * dt
+			state.faceAngle = approachAngle(state.faceAngle or goal, goal, rate)
 		end
 	end
 	-- Where the tracked player is, remembered on the pose. A handler's WINDUP
@@ -3586,6 +3765,19 @@ local function placeColossus(creature, def, now: number, root: BasePart?)
 	-- a telegraph can still be a telegraph - `fire` runs when the strike
 	-- starts, which is the blow, not the warning. So an attack aims from here.
 	state.targetPos = root and root.Position or nil
+	if def.pose == "kraken" then
+		-- The head does not prowl, so nothing else ever writes its yaw - and
+		-- bossFacing() reads THAT, not the pose. Left alone, the beak's cone
+		-- fired along whatever compass bearing the yaw happened to spawn on,
+		-- for the whole fight, no matter where you stood.
+		--
+		-- Taking it from the pose rather than from the player is the point:
+		-- faceAngle above is already turn-rate limited, so the cone inherits
+		-- that instead of snapping to whoever is nearest this frame. The
+		-- negation is the two conventions meeting - yawToward is
+		-- atan2(-z, x), faceAngle is atan2(z, x).
+		creature.yaw0 = -state.faceAngle
+	end
 	if def.pose == "noctyss" then
 		-- Her authority position is the MOUTH when it is up and the pit's
 		-- centre when it is not: hits, the HUD's range checks and every
@@ -3614,9 +3806,110 @@ local function openStagger(creature, def, now: number, seconds: number)
 	creature.untargetable = false
 	creature.exposedUntil = now + seconds
 	creature.model:SetAttribute(ATTR_EXPOSED, true)
+	-- Retire the attack here, because opening a window SKIPS endBossAttack -
+	-- which is the only place cooldowns are written. Without this the move
+	-- that earns a window is the one move that never goes on cooldown, so a
+	-- good party gets slam -> window -> slam -> window and the patterns the
+	-- fight is made of stop happening.
+	local attack = creature.attack
+	if attack then
+		local rage = if creature.enraged then def.enrageCooldownMult else 1
+		creature.cooldowns = creature.cooldowns or {}
+		creature.cooldowns[attack.name] = now + attack.p.cooldown * rage
+	end
 	creature.attack = nil
 	setMode(creature, "stagger", seconds, now)
 	fireEvent("bossStagger", creature.pos, { name = def.name, duration = seconds })
+end
+
+-- ---------------------------------------------------------- the collapse
+--
+-- A colossus does not blink out where it stands: the thing it is HOLDING is
+-- half of what it is, so its death is letting go. The killing blow starts a
+-- fall instead of ending the fight, and the ordinary death - kill(), which
+-- destroys the model and fires Killed - runs at the bottom of it.
+--
+-- NOTHING about the win changes. kill() is called with the killer that landed
+-- the blow and the participant set the fight already built, so BossService's
+-- rewards, the Cleared_/Heart_ attributes and the bossDown banner are the ones
+-- they have always been - just COLLAPSE_TIME later. That is the whole reason
+-- this is a delay in front of the death rather than a rewrite of it.
+local COLLAPSE_TIME = 2.5
+-- How much further down the perch the fall drags the body, in Brinejaw's
+-- units: one more full turn than any stance ever costs it, so the coils end
+-- up sprawled round the tower's foot instead of gripping its drum.
+local COLLAPSE_COILS = 1.0
+
+-- Assigned to the forward local beside kill(). CreatureService.damage calls
+-- this INSTEAD of kill() when the health hits zero; returning true means "I
+-- have taken this death, don't kill it yet".
+beginBossCollapse = function(creature, killer: Player?): boolean
+	if creature.collapsing then
+		-- Already falling. A poison tick or a stray blast must not start a
+		-- second collapse, and must not slip past this one into kill().
+		return true
+	end
+	local def = bossDef(creature)
+	-- Only a boss that is HOLDING a perch has anything to fall off. A posed
+	-- boss that swims (the Kraken) and every ordinary creature take the
+	-- ordinary death, untouched.
+	if not def or not def.entrenched or not def.pose or not creature.mode or creature.mode == "rising" then
+		return false
+	end
+	local state = colossusState(creature, def)
+	creature.collapsing = true
+	creature.deathBlow = killer
+	-- Nothing lands on it and nothing is owed by it any more: the fall is not
+	-- a phase of the fight, it is the end of one.
+	creature.untargetable = true
+	creature.attack = nil
+	creature.forcedAttack = nil
+	creature.poison = nil
+	creature.knockVel = nil
+	creature.airY, creature.vertVel = nil, nil
+	creature.stunnedUntil = nil
+	creature.exposedUntil = nil
+	creature.model:SetAttribute(ATTR_EXPOSED, nil)
+	-- Where it is easing FROM, so the fall starts wherever the fight left it -
+	-- mid-sweep, mid-stagger, still reared - instead of snapping to a pose.
+	creature.collapseFrom = {
+		coil = state.coil or BrinejawPath.MAX_COIL,
+		slump = state.slump or 0,
+		unwind = state.unwind or 0,
+		sweepHeight = state.sweepHeight or BrinejawPath.SWEEP_LOW,
+	}
+	setMode(creature, "collapse", COLLAPSE_TIME, os.clock())
+	fireEvent("bossCollapse", creature.pos, { name = def.name, duration = COLLAPSE_TIME })
+	return true
+end
+
+-- One frame of the fall. Ends by handing the death straight back to kill().
+local function updateBossCollapse(creature, def, now: number)
+	local u = modeProgress(creature, now)
+	local e = u * u * (3 - 2 * u)
+	local from = creature.collapseFrom
+	local state = colossusState(creature, def)
+	-- Per-pose, the way publishPose is: what "coming down" LOOKS like is the
+	-- boss's own vocabulary, and a pose with no branch here still gets the
+	-- beat and the event - the generic half of the contract.
+	if creature.poseKind == "brinejaw" then
+		-- The grip goes (coil slides a turn past its last stance), the head
+		-- comes down on the sand (slump), and the tail lets go of the tower
+		-- and lies out in the shallows (unwind, at sweep height).
+		state.coil = from.coil - COLLAPSE_COILS * e
+		state.slump = from.slump + (1 - from.slump) * e
+		state.unwind = from.unwind + (1 - from.unwind) * e
+		state.sweepHeight = from.sweepHeight + (BrinejawPath.SWEEP_LOW - from.sweepHeight) * e
+	end
+	-- No `root`: a dying boss does not track anybody, so the face angle it
+	-- died on is the one it falls on.
+	placeColossus(creature, def, now, nil)
+	if u >= 1 then
+		creature.collapsing = nil
+		-- And now the death that always happened. Same killer, same
+		-- participants, same everything downstream.
+		kill(creature, creature.deathBlow)
+	end
 end
 
 -- The reef stones a slam can be baited onto: three of them, and each one
@@ -3644,8 +3937,21 @@ local function colossusStones(creature, def)
 			position = Vector3.new(center.X + offset.X, center.Y, center.Z + offset.Z),
 			standing = true,
 			part = part,
-			restCFrame = part and part.CFrame or nil,
+			-- NOT `part.CFrame`: a stone spent in a previous fight is still
+			-- sunk when the next summon builds this table, so capturing the
+			-- live pose would record the underground position as "rest" and
+			-- restoreStones would faithfully put it back underground. The
+			-- config position is the only thing that stays true across
+			-- fights, and the bait test already reads from there.
+			restCFrame = part and CFrame.new(part.Position.X, World.WATER_Y + 1.6, part.Position.Z) or nil,
 		})
+		-- A new fight starts with every stone standing, so raise anything the
+		-- last party sank. Nothing else does this: the previous boss's table
+		-- died with it, and its stones were left in the ground.
+		local stone = stones[#stones]
+		if stone.part and stone.restCFrame then
+			stone.part.CFrame = stone.restCFrame
+		end
 	end
 	creature.stones = stones
 	return stones
@@ -3654,6 +3960,9 @@ end
 -- Every stance it loses, the grinding coils shed fresh masonry: the spent
 -- stones come back. Without this a party that misread three baits would be
 -- left with no way to open a window at all.
+-- Raise every spent stone: on a stance change (the coils shed fresh rock)
+-- and again when the fight ends, so the NEXT summon finds a full arena
+-- rather than three holes left by the last party.
 local function restoreStones(creature, def)
 	for _, stone in colossusStones(creature, def) do
 		if not stone.standing then
@@ -3752,7 +4061,13 @@ local function aimSweep(creature, def, p)
 		reach = BrinejawPath.SWEEP_REACH,
 		height = if a.high then BrinejawPath.SWEEP_HIGH else BrinejawPath.SWEEP_LOW,
 		high = a.high,
-		duration = p.windup + p.duration,
+		-- BOTH halves, because they are not interchangeable: the arm holds
+		-- still on the start bearing for `windup` and only travels the arc
+		-- during `duration`. A marker that spreads the arc over the sum runs
+		-- ahead of the tail by most of a sweep - players dodge the warning
+		-- and get hit by the thing it was warning about.
+		windup = p.windup,
+		duration = p.duration,
 	})
 end
 
@@ -3784,15 +4099,31 @@ ATTACK_HANDLERS.orbitsweep = {
 		local state = colossusState(creature, def)
 		state.unwind = 1
 		local rate = a.arc / math.max(p.duration, 1e-3)
+		local from = state.sweepAngle
 		state.sweepAngle += a.dir * rate * dt
 		local girth = p.girth or 3.2
 		local lo, hi = bossRoll(creature, def, p.damage)
+		-- Test the WEDGE the arm crossed this frame, not the bearing it
+		-- happens to be on now. A 340-degree sweep in 2.6s travels 131
+		-- deg/sec while the arm is only ~6 degrees wide out at full reach,
+		-- so a single 20fps step (6.5 deg) can straddle a distant player
+		-- entirely and the boss whiffs for free on a loaded server. Sampling
+		-- the step keeps the hit independent of framerate.
+		local swept = math.abs(state.sweepAngle - from)
+		local steps = math.max(1, math.ceil(swept / math.rad(3)))
+		local probe = { center = state.center, sweepHeight = state.sweepHeight }
 		for _, player in Players:GetPlayers() do
 			local character = player.Character
 			local root = character and character:FindFirstChild("HumanoidRootPart")
-			if root and not a.hit[player] and BrinejawPath.sweepHits(state, root.Position, girth) then
-				a.hit[player] = true
-				PlayerService.damage(player, math.random(lo, hi), creature, { bypassIframe = true })
+			if root and not a.hit[player] then
+				for step = 0, steps do
+					probe.sweepAngle = from + (state.sweepAngle - from) * (step / steps)
+					if BrinejawPath.sweepHits(probe, root.Position, girth) then
+						a.hit[player] = true
+						PlayerService.damage(player, math.random(lo, hi), creature, { bypassIframe = true })
+						break
+					end
+				end
 			end
 		end
 	end,
@@ -3880,6 +4211,138 @@ ATTACK_HANDLERS.tailslam = {
 	end,
 }
 
+-- ------------------------------------------------------ the choir's two
+--
+-- LIGHTSWEEP: one stalk leans onto a bearing and scythes its light across the
+-- shelf. The lit wedge IS the hitbox - being seen is being hit - so the
+-- answer is the dark behind a shadow fin, or outrunning the arc, and both are
+-- things you do with your feet rather than your cooldowns. Nothing spawns and
+-- no geometry is built: a beam is a bearing and a half-angle (NoctyssPath).
+ATTACK_HANDLERS.lightsweep = {
+	windup = function(creature, def, p, u, _sub)
+		local state = colossusState(creature, def)
+		local a = creature.attack
+		if not a.stalk then
+			-- Picked on the first windup frame rather than at `fire`, because
+			-- the lean IS the telegraph: the stalk has to start moving before
+			-- the light arrives or there is nothing to read.
+			local root = nearestPlayerRoot(state.center)
+			a.stalk = pickChoirStalk(state, root)
+			local stalk = a.stalk and state.stalks[a.stalk]
+			if stalk then
+				local socket = state.center + NoctyssPath.socketPoint(a.stalk)
+				local target = stalk.beamAngle
+				if root then
+					local to = root.Position - socket
+					target = math.atan2(to.Z, to.X)
+				end
+				local arc = p.arc or math.rad(155)
+				a.dir = if math.random() < 0.5 then 1 else -1
+				a.arc = arc
+				-- Start behind them so the beam sweeps THROUGH where they
+				-- are, not at where they were.
+				a.startAngle = target - a.dir * arc * 0.5
+			end
+		end
+		local stalk = a.stalk and state.stalks[a.stalk]
+		if stalk then
+			state.activeStalk = a.stalk
+			stalk.lean = u
+			stalk.beamAngle = a.startAngle or stalk.beamAngle
+		end
+	end,
+	fire = function(creature, def, _p, _now, _root)
+		local state = colossusState(creature, def)
+		local a = creature.attack
+		local stalk = a.stalk and state.stalks[a.stalk]
+		if stalk then
+			stalk.lean = 1
+			stalk.beamAngle = a.startAngle or stalk.beamAngle
+		end
+		a.hit = {}
+		a.nextTick = 0
+	end,
+	strike = function(creature, def, p, now, dt, _u, _root, _sub)
+		local state = colossusState(creature, def)
+		local a = creature.attack
+		local stalk = a.stalk and state.stalks[a.stalk]
+		if not stalk or not stalk.alive then
+			return
+		end
+		stalk.lean = 1
+		stalk.beamAngle = (stalk.beamAngle or 0) + a.dir * (a.arc / math.max(p.duration, 1e-3)) * dt
+		-- Ticks rather than landing once: standing in a moving light is a
+		-- continuous mistake, and a single hit would make the dodge binary.
+		if now < (a.nextTick or 0) then
+			return
+		end
+		a.nextTick = now + (p.tick or 0.45)
+		local lo, hi = bossRoll(creature, def, p.damage)
+		for _, player in Players:GetPlayers() do
+			local character = player.Character
+			local playerRoot = character and character:FindFirstChild("HumanoidRootPart")
+			if playerRoot and NoctyssPath.beamHits(state, a.stalk, playerRoot.Position, p.girth or 3.0) then
+				PlayerService.damage(player, math.random(lo, hi), creature)
+			end
+		end
+	end,
+	finish = function(creature, def, _p, _now)
+		local state = colossusState(creature, def)
+		state.activeStalk = nil
+	end,
+}
+
+-- DOUSEHUNT: every lantern goes out at once. Real darkness for `dark`
+-- seconds, and then a strike where you were standing when the lights died.
+-- The cheapest attack in the book and the one people will talk about: it
+-- spawns nothing at all, it just stops being possible to see by.
+--
+-- The strike itself is an ordinary `barrage` - delegated, not reimplemented,
+-- so its telegraphs, damage and client effects stay the ones every other
+-- boss uses. All this handler owns is the dark.
+ATTACK_HANDLERS.dousehunt = {
+	windup = function(creature, def, p, u, sub)
+		local state = colossusState(creature, def)
+		-- Out over the last third of the windup: fast enough to feel like the
+		-- choir being switched off, slow enough to be a tell.
+		local douse = math.clamp((u - 0.62) / 0.38, 0, 1)
+		for _, stalk in state.stalks do
+			if stalk.alive then
+				stalk.douse = douse
+			end
+		end
+		local base = ATTACK_HANDLERS.barrage.windup
+		if base then
+			base(creature, def, p, u, sub)
+		end
+	end,
+	fire = function(creature, def, p, now, root)
+		local state = colossusState(creature, def)
+		for _, stalk in state.stalks do
+			if stalk.alive then
+				stalk.douse = 1
+			end
+		end
+		creature.relightAt = now + (p.dark or 1.6)
+		local base = ATTACK_HANDLERS.barrage.fire
+		if base then
+			base(creature, def, p, now, root)
+		end
+	end,
+	strike = function(creature, def, p, now, dt, u, root, sub)
+		local base = ATTACK_HANDLERS.barrage.strike
+		if base then
+			base(creature, def, p, now, dt, u, root, sub)
+		end
+	end,
+	finish = function(creature, def, p, now)
+		local base = ATTACK_HANDLERS.barrage.finish
+		if base then
+			base(creature, def, p, now)
+		end
+	end,
+}
+
 local function spawnBossParts(creature, def)
 	local parts = def.parts
 	local row = Creatures.items[parts.row]
@@ -3888,10 +4351,28 @@ local function spawnBossParts(creature, def)
 		return
 	end
 	local centre = creature.anchor or creature.pos
-	for i = 1, parts.count do
-		local angle = (i / parts.count) * math.pi * 2
-		local at =
-			Vector3.new(centre.X + math.cos(angle) * parts.ring, centre.Y, centre.Z + math.sin(angle) * parts.ring)
+	-- WHERE THEY STAND. `at = "sockets"` takes the AUTHORED offsets from the
+	-- arena row (BossArenas), so the Lantern Choir grows out of the arena's
+	-- seven carved collars instead of a guessed circle - the one thing that
+	-- would make the whole set-piece read as a mistake. Anything without it
+	-- keeps the even ring, which is the Kraken's tentacles.
+	local offsets = nil
+	if parts.at == "sockets" then
+		local arena = def.islandId and BossArenas.items[def.islandId]
+		offsets = arena and arena.sockets
+	end
+	local count = if offsets then math.min(parts.count, #offsets) else parts.count
+	-- THE TRUE LURE: one of them, redrawn every time the choir grows back, so
+	-- "which light is real" is never answered twice by the same socket.
+	local marked = if parts.mark then math.random(1, count) else nil
+	for i = 1, count do
+		local at
+		if offsets then
+			at = Vector3.new(centre.X + offsets[i].X, centre.Y, centre.Z + offsets[i].Z)
+		else
+			local angle = (i / count) * math.pi * 2
+			at = Vector3.new(centre.X + math.cos(angle) * parts.ring, centre.Y, centre.Z + math.sin(angle) * parts.ring)
+		end
 		local model = CreatureService.spawn(row, at, nil, "Neutral", {
 			noLinger = true,
 			suppressDrops = true,
@@ -3900,10 +4381,153 @@ local function spawnBossParts(creature, def)
 		local part = byModel[model]
 		if part then
 			part.partOf = creature
+			part.socketIndex = i
+			part.marked = i == marked
+			model:SetAttribute(ATTR_SOCKET_INDEX, i)
+			-- The client needs this to draw the off-rhythm pulse, which IS
+			-- the tell - so it is published, not hidden. The honest
+			-- alternative (publishing each bulb's phase offset) carries the
+			-- same information in a form that is harder to read.
+			model:SetAttribute(ATTR_TRUE_LURE, part.marked)
+			model:SetAttribute(ATTR_POSE_CENTER, centre)
+			if parts.mark then
+				model:SetAttribute(ATTR_POSE, "choir_stalk")
+			end
 		end
 	end
-	creature.partsAlive = parts.count
+	creature.partsAlive = count
 	creature.partsDownAt = nil
+	creature.choir = parts.mark == true
+	creature.trueLure = marked
+	if creature.choir and creature.pose then
+		-- A fresh choir stands up: clear the last cycle's fallen shapes.
+		creature.pose.trueLure = marked
+		for _, stalk in creature.pose.stalks do
+			stalk.alive, stalk.fall, stalk.douse, stalk.lean = true, 0, 0, 0
+		end
+	end
+end
+
+-- ---------------------------------------------------------- the maw window
+--
+-- The three-beat loop's third beat, and the only time she can be hurt:
+-- break the true lure, the maw comes up through the pit, the party fights
+-- INSIDE it until the jaw closes. Then the choir grows back with a different
+-- true lure and the question is asked again.
+local function openMaw(creature, def, now: number)
+	local state = colossusState(creature, def)
+	creature.mawOpen = true
+	creature.mawUntil = now + ((def.parts and def.parts.window) or 12)
+	creature.mawDueAt = nil
+	creature.untargetable = false
+	creature.model:SetAttribute(ATTR_EXPOSED, true)
+	-- She surfaces facing a gap between the shadow fins, aimed at whoever
+	-- broke the lure: the fight comes to meet the party, not a rock.
+	local root = nearestPlayerRoot(creature.anchor or creature.pos)
+	if root then
+		local to = root.Position - state.center
+		state.mawYaw = NoctyssPath.laneFor(math.atan2(to.Z, to.X))
+	end
+	fireEvent("bossStagger", NoctyssPath.mawMouth(state).Position, {
+		name = def.name,
+		duration = creature.mawUntil - now,
+	})
+end
+
+local function closeMaw(creature, def, now: number)
+	local state = colossusState(creature, def)
+	creature.mawOpen = false
+	creature.mawUntil = nil
+	creature.untargetable = true
+	creature.model:SetAttribute(ATTR_EXPOSED, false)
+	-- THE BITE. Whoever is still standing in her mouth when it shuts wears
+	-- it: the window is generous, and leaving is the player's job.
+	local lo, hi = bossRoll(creature, def, { 120, 170 })
+	for _, player in Players:GetPlayers() do
+		local character = player.Character
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+		if root and NoctyssPath.insideMouth(state, root.Position) then
+			PlayerService.damage(player, math.random(lo, hi), creature, { bypassIframe = true })
+		end
+	end
+	fireEvent("slam", NoctyssPath.mawMouth(state).Position, { radius = 16, skin = "ink" })
+	clearMawFloor(creature)
+	creature.choirDueAt = now + ((def.parts and def.parts.regrow) or 5)
+end
+
+-- The whole Gloomtrench fight, in one pass: keep the choir standing, answer
+-- a broken lure, run the maw window, and let the book pick what happens next.
+-- Deliberately its own function rather than more branches inside updateBoss -
+-- nothing about this boss shares the prowl/entrench machinery, because she
+-- never moves and is never reachable except inside her own mouth.
+local function updateNoctyss(creature, def, now: number, dt: number, root, player, dist: number)
+	local state = colossusState(creature, def)
+	hideColossusModel(creature)
+	updateChoir(creature, state, dt)
+
+	-- The lanterns come back on after a dousehunt.
+	if creature.relightAt and now >= creature.relightAt then
+		creature.relightAt = nil
+		for _, stalk in state.stalks do
+			if stalk.alive then
+				stalk.douse = 0
+			end
+		end
+	end
+
+	-- A FALSE lure was broken: it flares white, and the trench takes a swing
+	-- at whoever broke it. Answered one frame after the kill, so the player
+	-- is still looking at the light they shot when the answer arrives.
+	if creature.flareAt then
+		local at = creature.flareAt
+		creature.flareAt = nil
+		fireEvent("inkBlast", at, { radius = 15, skin = "lure" })
+		fireEvent("slam", at, { radius = 12, skin = "ink" })
+		local lo, hi = bossRoll(creature, def, { 40, 58 })
+		damagePlayersInRadius(at, 15, lo, hi, creature, 0.35)
+	end
+
+	-- The TRUE lure broke: she comes up.
+	if creature.mawDueAt and not creature.mawOpen then
+		openMaw(creature, def, now)
+	end
+
+	if creature.mawOpen then
+		state.mawRise = math.min((state.mawRise or 0) + dt * 0.55, 1)
+		-- The jaw opens once she is most of the way up, and starts shutting
+		-- over the last two seconds. THE CLOSING MOUTH IS THE TIMER: nobody
+		-- should need a UI bar to know how long they have left in there.
+		local left = (creature.mawUntil or now) - now
+		local target = 1
+		if state.mawRise < 0.75 then
+			target = 0
+		elseif left < 2.0 then
+			target = math.max(left / 2.0, 0)
+		end
+		state.mawGape = (state.mawGape or 0) + (target - (state.mawGape or 0)) * math.min(dt * 3.0, 1)
+		placeMawFloor(creature, state)
+		if now >= (creature.mawUntil or now) then
+			closeMaw(creature, def, now)
+		end
+	else
+		creature.untargetable = true
+		state.mawGape = math.max((state.mawGape or 0) - dt * 1.6, 0)
+		state.mawRise = math.max((state.mawRise or 0) - dt * 0.5, 0)
+	end
+
+	-- The choir grows back, and a DIFFERENT socket carries the real light.
+	if creature.choirDueAt and now >= creature.choirDueAt and (creature.partsAlive or 0) == 0 then
+		creature.choirDueAt = nil
+		spawnBossParts(creature, def)
+		fireEvent("regrow", creature.anchor or creature.pos, { count = def.parts.count, name = def.name })
+	end
+
+	if creature.mode == "attack" then
+		updateBossAttack(creature, def, now, dt, root, player, dist, -def.submerge)
+	elseif root and now >= creature.nextAttackAt and dist <= def.aggro then
+		beginBossAttack(creature, def, pickBossAttack(creature, def, now), now)
+	end
+	placeColossus(creature, def, now, root)
 end
 
 local function updateBoss(creature, now: number, dt: number)
@@ -3930,6 +4554,13 @@ local function updateBoss(creature, now: number, dt: number)
 	-- Never lingers out: the fight's over when it's dead.
 	creature.lastFoughtAt = now
 	creature.knockVel = nil
+
+	-- Coming down. Checked before every other mode so that nothing - a stance
+	-- change, an enrage, a queued attack - gets to speak over the death.
+	if creature.collapsing then
+		updateBossCollapse(creature, def, now)
+		return
+	end
 
 	local sub = -def.submerge
 	local root, player, dist = nearestPlayerRoot(creature.pos)
@@ -3980,12 +4611,19 @@ local function updateBoss(creature, now: number, dt: number)
 	end
 
 	-- ---------------------------------------------------------- colossus
+	if def.pose == "noctyss" then
+		updateNoctyss(creature, def, now, dt, root, player, dist)
+		return
+	end
+
 	if def.entrenched then
 		local state = colossusState(creature, def)
 		-- Stance follows the health phase: each one it loses costs it ground.
 		local stance = (def.stances or 1) - (bossPhaseIndex(def, creature.health / creature.maxHealth) - 1)
 		stance = math.max(stance, 1)
-		if state.coil ~= stance then
+		-- `~=` alone never fires on the first pass (both start at MAX_COIL),
+		-- so anything reading Stance saw nil for the fight's first third.
+		if model:GetAttribute(ATTR_STANCE) == nil or state.coil ~= stance then
 			state.coil = stance
 			model:SetAttribute(ATTR_STANCE, stance)
 			restoreStones(creature, def)
@@ -4548,6 +5186,12 @@ ARCHETYPE_UPDATERS = {
 	thornback = updateRusher,
 	-- The finale: a Kraken arm, planted by the boss's parts ring.
 	tentacle = updateTentacle,
+	-- A Lantern Stalk, planted by Noctyss's. It has no updater of its own on
+	-- purpose: the boss's pose driver puts every stalk where it belongs
+	-- (updateChoir) and her attack book is the only thing that makes one do
+	-- anything. Without this row the generic flop would send a 35-stud
+	-- lantern hopping across the arena floor.
+	choirstalk = function() end,
 }
 
 -- ============================================================ update
@@ -4577,6 +5221,19 @@ local function update(dt: number)
 	-- Walk backwards so despawning (swap-remove) never skips an entry.
 	for i = #creatures, 1, -1 do
 		local creature = creatures[i]
+
+		-- A model destroyed from OUTSIDE this service (BossService's abandon
+		-- reaper does exactly this) leaves the struct behind, and nothing
+		-- else ever collects it: bosses are exempt from the linger sweep and
+		-- updateBoss refreshes lastFoughtAt every frame, so it would run
+		-- forever on a parentless model - still picking attacks, still
+		-- calling PlayerService.damage on anyone who came back, and still
+		-- answering inRange/raycastNearest, while the island happily summons
+		-- a second one on top of it. Drop it the frame its model goes away.
+		if not creature.model.Parent then
+			removeAt(i)
+			continue
+		end
 
 		-- Timers that must run whatever state the creature is in - even
 		-- mid-juggle or still flying from the bobber.
