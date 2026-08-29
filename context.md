@@ -1023,6 +1023,43 @@ recover from git before 7165cf4 if a step wants to crib).
   materials/palette, then water, then landforms/props, then the dock,
   then the boss arena re-key. Don't build ahead.
 
+### The island build guards (2026-08-29, island_gen.py)
+
+Two validators in `assets/island_gen.py`, born on Wreckwater when the user
+reported floating wreckage. Both are **generic** — `validate_no_floaters
+(objects, ground, exempt, label)` and `validate_keep_clear(objects, discs,
+exempt, label)` — and other islands' builders are expected to call them.
+
+- **`validate_no_floaters`** clusters every authored primitive by proximity
+  (a piece joins a cluster when its bbox comes within `FLOAT_PAD` of
+  another's) and RAISES if any cluster hangs free of both the waterline and
+  the ground under it. Clustering by proximity is what makes it usable: a
+  lantern on a sternpost, a flag on a yard or a lamp under a cabin roof
+  inherits its ship's support and passes. **A guard that fails correct
+  geometry gets disabled**, which is worse than no guard.
+- **`validate_keep_clear`** catches what the float guard structurally
+  cannot: geometry that is perfectly well seated but standing inside a
+  reserved footprint (an NPC house, an arena). Discs are `(x, y, r)` in
+  Blender coords.
+- **Strict raise, never a warning** (the `slab_with_hole` ruling: a warning
+  in a 600-line build log is a warning nobody reads). The escape hatch is a
+  **named `exempt` set of object names**, never a severity downgrade —
+  e.g. Gloomtrench's circling glowfish hover by design.
+- **BINDING LESSON, learned the hard way**: the keep-clear guard's first run
+  failed five objects around Hollow's sterncastle — the quay, the hulk the
+  house is built from, its lanterns, the shore boulders. None were bugs: a
+  beached sterncastle is *deliberately* sited among beached wreckage. They
+  are exempted **with the reasoning written beside the exemption**. When a
+  guard fails, ask whether the geometry is wrong or the guard is — and if
+  you exempt something, say why, or the next reader will trust the tool over
+  their eyes and delete good work.
+- Root causes the float guard found on Wreckwater: `_wr_mast` placed a
+  snapped topmast `height*0.10` ABOVE the mast head (a 126-stud air gap at
+  worst); ghost lanterns were lifted further than their own radius. The
+  lantern class is now fixed **by construction** — `_wr_seat_glow` snaps any
+  pending lantern onto the nearest timber within 12 studs (further = a
+  deliberate free-floating light, left alone).
+
 ### The volcano restart (2026-08-27, step 1 in the tree, import owed)
 
 User: "completely start from scratch... make a big base island with nothing
