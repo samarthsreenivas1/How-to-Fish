@@ -14,6 +14,16 @@
 # Everything is seeded and driven by the tables below, so an island is
 # identical on every run and "editing an island" means editing its config and
 # re-running - the mesh is never hand-sculpted.
+
+# MATERIAL NAMES ARE GLOBAL - PREFIX THEM PER ISLAND (2026-08-29).
+# make_material reuses a Blender datablock by NAME, so two islands that both
+# declare `M_HutIron` share ONE material, and whichever island builds later in
+# the pack silently repaints the other's parts. This shipped: the ice hut's
+# palette overwrote the tropical hut's hearth and ironwork, and it was only
+# caught by diffing material colours out of the built pack. It is invisible in
+# a standalone build - each island looks right alone and wrong together - so
+# name every material for its island (M_Frost*, M_Forge*, M_Bog*, ...) and
+# never reach for a generic one.
 #
 # Why glTF and not OBJ: Roblox's modern Import pipeline preserves the full
 # node hierarchy and per-object materials from glTF/FBX, but flattens OBJ into
