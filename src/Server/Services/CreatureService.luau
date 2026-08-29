@@ -3304,6 +3304,8 @@ end
 -- path module (Shared/Modules/BrinejawPath) and is selected by `def.pose`.
 
 local ATTR_STANCE = "Stance" -- 1 = final stance; counts DOWN as it loses ground
+local ATTR_POSE = "Pose" -- which path module draws this body, for the client
+local ATTR_POSE_CENTER = "PoseCenter" -- the perch's anchor (the tower's foot)
 -- Brinejaw's replicated pose. The client draws its entire body from these, so
 -- this list is the contract with BrinejawBodyController.
 local ATTR_COIL = "Coil"
@@ -3328,6 +3330,7 @@ end
 local function colossusState(creature, def)
 	local state = creature.pose
 	if not state then
+		creature.poseKind = def.pose
 		if def.pose == "brinejaw" then
 			state = BrinejawPath.newState(creature.anchor or creature.pos)
 		else
@@ -3340,6 +3343,10 @@ end
 
 local function publishPose(creature, state)
 	local model = creature.model
+	if model:GetAttribute(ATTR_POSE) == nil then
+		model:SetAttribute(ATTR_POSE_CENTER, state.center)
+		model:SetAttribute(ATTR_POSE, creature.poseKind)
+	end
 	model:SetAttribute(ATTR_COIL, state.coil)
 	model:SetAttribute(ATTR_UNWIND, state.unwind)
 	model:SetAttribute(ATTR_SWEEP_ANGLE, state.sweepAngle)
