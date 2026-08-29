@@ -5231,6 +5231,41 @@ def _float_components(obj):
     return out
 
 
+def validate_keep_clear(objects, discs, exempt=(), label="island"):
+    """Raise if any object puts geometry inside a reserved disc.
+
+    The float guard cannot catch this: a barrel standing in the middle of an
+    NPC's cabin is perfectly well seated. `discs` are (x, y, radius) in
+    Blender coords; `exempt` is the set of object names ALLOWED inside them
+    (the fixture itself, and the landform every island is made of)."""
+    bad = []
+    for obj in objects:
+        if obj.name in exempt:
+            continue
+        for cx, cy, r in discs:
+            worst = None
+            for v in obj.data.vertices:
+                d = math.hypot(v.co.x - cx, v.co.y - cy)
+                if d < r and (worst is None or d < worst[0]):
+                    worst = (d, v.co.x, v.co.y)
+            if worst is not None:
+                bad.append((obj.name, worst[0], r, worst[1], worst[2], cx, cy))
+    if bad:
+        lines = [
+            f"[island_gen] {label}: {len(bad)} object(s) intruding on a reserved footprint",
+            "             (an NPC house, a boss arena - geometry that is seated but is",
+            "             standing where something else lives). Move the scatter's bands",
+            "             or widen its keep-clear test.",
+        ]
+        for name, d, r, px, py, cx, cy in bad[:10]:
+            lines.append(
+                f"             {name}: a vertex {d:.1f} studs from ({cx:.0f}, {cy:.0f})"
+                f" (reserved r={r:.0f}) at ({px:.1f}, {py:.1f})"
+            )
+        raise RuntimeError("\n".join(lines))
+    print(f"[island_gen] {label}: keep-clear OK ({len(discs)} reserved disc(s) respected)")
+
+
 def validate_no_floaters(objects, ground, exempt=(), label="island"):
     """Raise if any cluster of geometry hangs free of both water and ground."""
     comps = []
@@ -5323,7 +5358,12 @@ def validate_no_floaters(objects, ground, exempt=(), label="island"):
 # Island-relative fixtures other lanes own; the dressing builds AROUND these.
 # Hollow's beached sterncastle (f9's lane) - Roblox rel (-11, +146) with the
 # usual y = -Z mapping, plus margin. Re-key from f9's HANDOFF if it moves.
-_WR_KEEP_CLEAR = [(-11.0, -146.0, 34.0)]
+# Roblox rel (-55, +175) r26 from the house's own HANDOFF (f9's lane), in
+# Blender coords (y = -Z). Their number exactly: the sterncastle is sited
+# AMONG the pre-existing beached wreckage on purpose (it is a beached
+# sterncastle), so this disc keeps NEW dressing out - it is not a claim that
+# the ground was empty. Re-key from that HANDOFF if the house moves.
+_WR_KEEP_CLEAR = [(-55.0, -175.0, 26.0)]
 
 # Object names the float guard skips. Nothing on this island is meant to
 # hover, so this stays EMPTY - it exists as the reviewable opt-out other
@@ -5585,6 +5625,29 @@ def build_wreckwater():
         build_foam("Wreckwater_Foam", "M_WreckFoam"),
     ]
     validate_no_floaters(objects, ground, exempt=WRECK_FLOAT_EXEMPT, label="wreckwater")
+    # The fixture disc is the NPC house's ground: the house itself and the
+    # landform/water/foam that span the whole island are allowed inside it.
+    validate_keep_clear(
+        objects,
+        _WR_KEEP_CLEAR,
+        exempt={
+            # The landform and its water/foam span the whole island.
+            "Wreckwater_Base", "Wreckwater_Bay", "Wreckwater_Foam", "Wreckwater_Dunes",
+            # The house itself.
+            "Wreckwater_Hut_Walls", "Wreckwater_Hut_Roof", "Wreckwater_Hut_Props",
+            "Wreckwater_Hut_Canvas", "Wreckwater_Hut_Glow",
+            # PRE-EXISTING wreck geometry the house was deliberately sited
+            # among - the quay it stands beside, the beached hulk it is built
+            # out of, that hulk's lanterns and canvas, and the shore boulders.
+            # Forbidding these would fail correct, intentional level design.
+            # The dressing that DOES share these objects (the careened hull,
+            # the salvage camp, the gibbets) is kept out at placement time
+            # instead, by _wr_clear_of_fixtures.
+            "Wreckwater_Quay_Planks", "Wreckwater_Quay_Posts", "Wreckwater_Hulks",
+            "Wreckwater_GhostGlow", "Wreckwater_Sails", "Wreckwater_Rocks",
+        },
+        label="wreckwater",
+    )
 
     a = math.radians(DOCK_ANGLE_DEG)
     start_r = ring_radius(DOCK_START_U, a)
