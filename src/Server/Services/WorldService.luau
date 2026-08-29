@@ -524,6 +524,11 @@ local MESH_COLOR = {
 	Wreckwater_Sails = Color3.fromRGB(189, 190, 179), -- M_WreckSail (rotted canvas, bone with a green cast)
 
 	-- ============================================================ the NPC houses
+	-- NOTE: island material names are GLOBAL in the generator (make_material
+	-- reuses a datablock by name), so two islands sharing `M_HutIron` silently
+	-- repainted each other - the ice hut's palette was overwriting Maren's
+	-- hearth and ironwork until the ice materials were renamed M_Frost*.
+	-- Keep per-island material names distinct.
 	-- (2026-08-29) Six homes, one per island, each in its own island's
 	-- palette. Multi-material meshes arrive from the importer split into
 	-- Name / Name2 / Name3..., one part per material slot in authoring
@@ -540,9 +545,9 @@ local MESH_COLOR = {
 	Island_Hut_Props = Color3.fromRGB(176, 125, 74), -- M_Plank (counter, traps, ramp)
 	Island_Hut_Props2 = Color3.fromRGB(224, 212, 180), -- M_HutCloth (the hammock)
 	Island_Hut_Props3 = Color3.fromRGB(196, 200, 189), -- M_HutFish (drying fish + the gull)
-	Island_Hut_Props4 = Color3.fromRGB(52, 51, 54), -- M_HutIron (kettle, cleaver)
+	Island_Hut_Props4 = Color3.fromRGB(74, 77, 83), -- M_HutIron (kettle, cleaver)
 	Island_Hut_Props5 = Color3.fromRGB(132, 175, 122), -- M_HutJar (pickle jars)
-	Island_Hut_Glow = Color3.fromRGB(255, 130, 40), -- M_HutEmber (hearth)
+	Island_Hut_Glow = Color3.fromRGB(255, 139, 47), -- M_HutEmber (hearth)
 	Swamp_Hut_Walls = Color3.fromRGB(82, 71, 54), -- M_BogWattle (the leaning shell)
 	Swamp_Hut_Walls2 = Color3.fromRGB(66, 53, 40), -- M_RootWood (stilts, floor, mangrove, plank path)
 	Swamp_Hut_Roof = Color3.fromRGB(61, 74, 55), -- M_BogShingle
@@ -556,9 +561,9 @@ local MESH_COLOR = {
 	Swamp_Hut_Glow = Color3.fromRGB(139, 242, 186), -- M_Wisp (lanterns, scrying bowl)
 	Frostmaw_Hut_Walls = Color3.fromRGB(225, 234, 242), -- M_HutSnowBlock (windbreak + drifts)
 	Frostmaw_Hut_Roof = Color3.fromRGB(83, 62, 50), -- M_HutHull (the upturned boat itself)
-	Frostmaw_Hut_Props = Color3.fromRGB(52, 51, 54), -- M_HutIron (stove, pipe, harpoons)
+	Frostmaw_Hut_Props = Color3.fromRGB(52, 51, 54), -- M_FrostIron (stove, pipe, harpoons)
 	Frostmaw_Hut_Trim = Color3.fromRGB(218, 214, 201), -- M_HutBone (frozen fish, whale bone, pelt)
-	Frostmaw_Hut_Glow = Color3.fromRGB(255, 130, 40), -- M_HutEmber (the firebox)
+	Frostmaw_Hut_Glow = Color3.fromRGB(255, 130, 40), -- M_FrostEmber (the firebox)
 	Volcano_Hut_Walls = Color3.fromRGB(53, 50, 55), -- M_ForgeBasalt (the bunker)
 	Volcano_Hut_Roof = Color3.fromRGB(37, 36, 40), -- M_ForgeSlate
 	Volcano_Hut_Props = Color3.fromRGB(68, 69, 74), -- M_ForgeIron (anvil, tools, racks)

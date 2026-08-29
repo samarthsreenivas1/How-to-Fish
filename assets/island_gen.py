@@ -1871,29 +1871,28 @@ def _hut_b_floor(gz):
                for y in (-8.0, -4.0, 0.0, 4.0, 8.0)) + 0.10
 
 
-def _hut_b_course_run(bm, site, rng, z0, along_x, fixed, lo, hi, skip):
-    """One WALL, laid as overlapping basalt blocks in four courses. `skip` is
-    called with (block span, course z range) and returns True where an opening
-    (the door, the hearth mouth, the culvert) eats the block."""
-    span = hi - lo
-    n = max(2, int(round(span / 3.1)))
-    pitch = span / n
+def _hut_b_panel(bm, site, rng, z0, lo, hi, z_lo, z_hi, fixed, along_x):
+    """Fill ONE rectangle of wall - a pier between openings, the strip over a
+    door, the sill under the hearth mouth - with overlapping coursed basalt.
+    Openings are made by leaving panels OUT, never by deleting whole blocks
+    from a running course: a 5-stud doorway laid that way ate a 9-stud hole.
+    Blocks overlap their neighbours in both directions, and each stands a
+    little proud of the next, or four courses render as one flat grey slab."""
+    span, rise = hi - lo, z_hi - z_lo
+    if span < 0.4 or rise < 0.4:
+        return
+    n = max(1, int(round(span / 3.1)))
+    rows = max(1, int(round(rise / _HUT_B_COURSE)))
+    pitch, ch = span / n, rise / rows
     out = -1.0 if fixed < 0 else 1.0
-    for c in range(_HUT_B_COURSES):
-        z_lo = c * _HUT_B_COURSE
-        z_hi = z_lo + _HUT_B_COURSE
+    grounded = z_lo < 0.1  # the bottom course reaches down into the plinth
+    for c in range(rows):
+        za = z_lo + ch * c
         for k in range(n):
-            a = lo + pitch * k
-            b = a + pitch
-            if skip((a, b), (z_lo, z_hi)):
-                continue
-            m = (a + b) * 0.5
-            # Blocks overlap their neighbours in both directions, and each one
-            # stands a little proud of the next - without that relief the four
-            # courses render as one flat grey slab.
+            m = lo + pitch * (k + 0.5)
             t = pitch + 0.20
-            h = _HUT_B_COURSE + (1.1 if c == 0 else 0.16)
-            zc = z0 + z_lo + h * 0.5 - (1.1 if c == 0 else 0.08)
+            h = ch + 0.16 + (0.9 if (grounded and c == 0) else 0.0)
+            zc = z0 + za + ch * 0.5 - (0.45 if (grounded and c == 0) else 0.0)
             d = _HUT_B_WALL + 0.12 + rng.uniform(0.0, 0.42)
             off = out * (d - _HUT_B_WALL - 0.12) * 0.5
             size = (t, d, h) if along_x else (d, t, h)
@@ -1935,27 +1934,25 @@ def build_volcano_hut(ground):
     _hut_b_box(stone, site, hearth, 1.0, z0 - 1.85, (2.9, hy * 2 + 4.0, 1.5))
 
     # --- the four walls -----------------------------------------------------
-    def no_skip(_x, _z):
-        return False
+    d0, d1 = _HUT_B_DOOR
+    f0, f1 = _HUT_B_FORGE
+    front_y, back_y = -(hy - wall * 0.5), hy - wall * 0.5
 
-    def front_skip(xs, zs):
-        a, b = xs
-        z_lo, z_hi = zs
-        if z_lo < _HUT_B_DOOR_H - 0.1 and b > _HUT_B_DOOR[0] and a < _HUT_B_DOOR[1]:
-            return True
-        if (_HUT_B_COURSE - 0.1 <= z_lo < _HUT_B_DOOR_H - 0.1
-                and b > _HUT_B_FORGE[0] and a < _HUT_B_FORGE[1]):
-            return True
-        return False
+    def front(lo, hi, z_lo, z_hi):
+        _hut_b_panel(stone, site, rng, z0, lo, hi, z_lo, z_hi, front_y, True)
 
-    def back_skip(xs, zs):  # the culvert the magma rill runs in through
-        a, b = xs
-        return zs[0] < _HUT_B_COURSE - 0.1 and b > hearth - 1.9 and a < hearth + 1.9
-
-    _hut_b_course_run(stone, site, rng, z0, True, -(hy - wall * 0.5), -hx, hx, front_skip)
-    _hut_b_course_run(stone, site, rng, z0, True, hy - wall * 0.5, -hx, hx, back_skip)
-    _hut_b_course_run(stone, site, rng, z0, False, -(hx - wall * 0.5), -hy, hy, no_skip)
-    _hut_b_course_run(stone, site, rng, z0, False, hx - wall * 0.5, -hy, hy, no_skip)
+    front(-hx, d0, 0.0, top - z0)  # the west pier
+    front(d1, f0, 0.0, top - z0)  # the pier between door and hearth
+    front(f1, hx, 0.0, top - z0)  # the east pier
+    front(d0, d1, _HUT_B_DOOR_H, top - z0)  # over the door
+    front(f0, f1, 0.0, _HUT_B_COURSE)  # the hearth's sill - the anvil's bed
+    front(f0, f1, _HUT_B_DOOR_H, top - z0)  # over the hearth mouth
+    _hut_b_panel(stone, site, rng, z0, -hx, hearth - 1.9, 0.0, top - z0, back_y, True)
+    _hut_b_panel(stone, site, rng, z0, hearth + 1.9, hx, 0.0, top - z0, back_y, True)
+    _hut_b_panel(stone, site, rng, z0, hearth - 1.9, hearth + 1.9, _HUT_B_COURSE,
+                 top - z0, back_y, True)  # over the culvert the rill runs in through
+    for sx in (-1.0, 1.0):
+        _hut_b_panel(stone, site, rng, z0, -hy, hy, 0.0, top - z0, sx * (hx - wall * 0.5), False)
     # Lintels: over the door, over the hearth mouth, over the culvert. Each
     # one beds into the block courses either side of its opening.
     _hut_b_box(roof, site, sum(_HUT_B_DOOR) * 0.5, -(hy - wall * 0.5), z0 + _HUT_B_DOOR_H + 0.35,
@@ -1979,9 +1976,9 @@ def build_volcano_hut(ground):
     # Hearth masonry: two cheeks and a back, open to the front, standing on
     # the floor. The molten pool sits between them, set 0.15 under the sill.
     for sx in (-1.0, 1.0):
-        _hut_b_box(stone, site, hearth + sx * 3.3, -6.4, z0 + 1.3, (1.2, 5.4, 2.6))
-    _hut_b_box(stone, site, hearth, -3.9, z0 + 1.3, (7.8, 1.4, 2.6))
-    _hut_b_box(stone, site, hearth, -6.4, z0 + 0.35, (5.6, 5.4, 0.8))  # the fire bed
+        _hut_b_box(stone, site, hearth + sx * 3.3, -6.4, z0 + 2.5, (1.2, 5.4, 5.0))
+    _hut_b_box(stone, site, hearth, -3.9, z0 + 2.75, (7.8, 1.4, 5.5))
+    _hut_b_box(stone, site, hearth, -6.4, z0 + 0.45, (5.6, 5.4, 1.0))  # the fire bed
     # The hood over the hearth, and the chimney climbing out through the roof.
     _hut_b_box(roof, site, hearth, -5.6, z0 + 8.1, (8.2, 5.2, 1.4))
     _hut_b_box(roof, site, hearth, -4.6, z0 + 9.3, (5.6, 3.4, 1.6))
@@ -1998,13 +1995,21 @@ def build_volcano_hut(ground):
     ys = [20.0, 17.0, 14.0, 11.5, 9.6, 7.0, 4.0, 1.0, -2.0, -4.6]
     for y in ys:
         if y > 9.6:
-            zt = gz(hearth, y) - 0.25
+            # Outside, the rill RIDES the ash between its kerbs (the island's
+            # own lava sheets do the same, for the same reason: a channel sunk
+            # into a surface that has no trench in it is simply buried).
+            zt = gz(hearth, y) + 0.35
         else:
-            zt = z0 - 0.20 + (gz(hearth, 9.6) - 0.25 - (z0 - 0.20)) * max(0.0, (y - 4.0) / 5.6)
+            # Inside, the rill fills its slot to the flags: recessed even a
+            # quarter stud and there is nothing to see between the grate bars.
+            zt = z0 + 0.02 + (gz(hearth, 9.6) + 0.35 - (z0 + 0.02)) * max(0.0, (y - 4.0) / 5.6)
         rows_l.append(Vector(_hut_b_pt(site, hearth - 1.3, y, zt)))
         rows_r.append(Vector(_hut_b_pt(site, hearth + 1.3, y, zt)))
     add_strip_slab(glow, rows_l, rows_r, 2.4)
-    _hut_b_cone(glow, site, hearth, -6.4, z0 + 0.9, 3.1, 2.7, 1.5, sides=9)  # the forge heart
+    # The forge heart, standing tall enough in its hearth that it fills the
+    # upper half of the mouth with light over the anvil counter.
+    _hut_b_cone(glow, site, hearth, -6.4, z0 + 0.85, 2.4, 1.9, 2.4, sides=9)
+    _hut_b_cone(glow, site, hearth, -6.4, z0 + 3.0, 1.55, 0.35, 2.4, sides=6)  # the flame off it
     _hut_b_cone(glow, site, hearth, -4.4, top + 9.6, 1.4, 1.2, 0.7, sides=6)  # ember at the lip
     # Trench lips, and the rill's banks out on the slope: laid stone kerbs
     # that sit on their own ground for the whole run.
@@ -2031,7 +2036,7 @@ def build_volcano_hut(ground):
                 0.9, 0.35, 2.2, sides=5, tilt=(0.0, math.pi / 2))  # the horn
     # The floor grate over the trench.
     for k in range(7):
-        _hut_b_box(props, site, hearth, -1.4 + k * 1.35, z0 - 0.05, (3.4, 0.55, 0.55))
+        _hut_b_box(props, site, hearth, -1.4 + k * 1.35, z0 + 0.20, (3.4, 0.5, 0.55))
     # The tool wall: a peg rail down the west side, every tong and hammer
     # hanging THROUGH it.
     _hut_b_box(props, site, -(hx - wall - 0.35), 1.0, z0 + 5.6, (0.7, 13.0, 0.5))
@@ -2060,14 +2065,17 @@ def build_volcano_hut(ground):
     _hut_b_cone(trim, site, -6.6, 6.6, z0 + 2.55, 1.5, 1.2, 0.7, sides=6)  # the bedroll
 
     # --- brass and sulfur ---------------------------------------------------
-    for s, (bx, by) in enumerate(((8.6, 4.4), (8.6, 6.6), (6.6, 5.6))):
+    for s, (bx, by) in enumerate(((9.2, 3.2), (9.2, 5.8), (8.0, 7.4))):  # clear of the trench
         for c in range(3 - (s % 2)):
             _hut_b_box(trim, site, bx, by, z0 + 0.35 + c * 0.62, (2.6, 1.6, 0.7),
                        spin=rng.uniform(-0.12, 0.12))
-    for k in range(4):
-        _hut_b_cone(trim, site, -9.0 + k * 1.5, -6.4 + (k % 2) * 1.7, z0,
-                    rng.uniform(0.85, 1.15), rng.uniform(0.45, 0.7),
-                    rng.uniform(1.5, 2.1), sides=6, spin=rng.uniform(0, 1.0))
+    for k in range(4):  # slumped sacks of sulfur, not traffic cones
+        sx, sy = -8.8 + k * 1.6, 4.6 + (k % 2) * 1.9  # the back-west corner, out of the walk
+        _hut_b_cone(trim, site, sx, sy, z0, rng.uniform(0.95, 1.25),
+                    rng.uniform(0.72, 0.95), rng.uniform(1.0, 1.4), sides=6,
+                    spin=rng.uniform(0, 1.0))
+        _hut_b_cone(trim, site, sx, sy, z0 + 1.0, 0.78, 0.30, 0.6, sides=5,
+                    spin=rng.uniform(0, 1.0))  # the tied throat
 
     # --- the yard -----------------------------------------------------------
     # Two steps down off the sill to the ash.
@@ -2107,8 +2115,8 @@ def build_volcano_hut(ground):
     _hut_b_box(props, site, bx + 1.7, by, bg + 9.7, (3.9, 0.5, 0.5))  # its arm
     _hut_b_box(props, site, bx + 3.1, by, bg + 8.85, (0.45, 0.45, 2.1))  # the shackle
     # The shell hangs mouth-DOWN off that shackle, cracked lip and all.
-    _hut_b_cone(trim, site, bx + 3.1, by, bg + 5.6, 1.35, 0.62, 3.0, sides=8)
-    _hut_b_cone(trim, site, bx + 3.1, by, bg + 8.4, 0.55, 0.34, 0.8, sides=6)  # its crown
+    _hut_b_cone(trim, site, bx + 3.1, by, bg + 6.0, 1.05, 0.50, 2.5, sides=8)
+    _hut_b_cone(trim, site, bx + 3.1, by, bg + 8.3, 0.48, 0.30, 0.9, sides=6)  # its crown
     _hut_b_cone(props, site, bx + 3.1, by, bg + 4.9, 0.18, 0.18, 1.4, sides=4)  # the clapper
 
     door = _hut_b_pt(site, sum(_HUT_B_DOOR) * 0.5, -(hy + 1.0), 0.0)
@@ -4896,9 +4904,9 @@ def build_ice_hut(ground):
     return (
         object_from_bmesh("Frostmaw_Hut_Roof", timber, ["M_HutHull"]),
         object_from_bmesh("Frostmaw_Hut_Walls", snow, ["M_HutSnowBlock"]),
-        object_from_bmesh("Frostmaw_Hut_Props", props, ["M_HutIron"]),
+        object_from_bmesh("Frostmaw_Hut_Props", props, ["M_FrostIron"]),
         object_from_bmesh("Frostmaw_Hut_Trim", trim, ["M_HutBone"]),
-        object_from_bmesh("Frostmaw_Hut_Glow", glow, ["M_HutEmber"]),
+        object_from_bmesh("Frostmaw_Hut_Glow", glow, ["M_FrostEmber"]),
     )
 
 
@@ -8568,9 +8576,9 @@ ISLANDS = {
                 # black iron, sea-bleached bone, and the stove's ember.
                 "M_HutHull": (0.325, 0.243, 0.196),
                 "M_HutSnowBlock": (0.882, 0.918, 0.949),
-                "M_HutIron": (0.204, 0.200, 0.212),
+                "M_FrostIron": (0.204, 0.200, 0.212),
                 "M_HutBone": (0.855, 0.839, 0.788),
-                "M_HutEmber": (1.000, 0.510, 0.157),
+                "M_FrostEmber": (1.000, 0.510, 0.157),
             },
         },
         "build": build_frostmaw,
