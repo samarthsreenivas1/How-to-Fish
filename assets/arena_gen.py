@@ -136,8 +136,8 @@ BJ_PROFILE = [
 ]
 
 BJ_SPIRE_BASE_R = 8.5
-BJ_SPIRE_TOP_R = 6.2
-BJ_SPIRE_TOP_Z = 40.0
+BJ_SPIRE_TOP_R = 5.2
+BJ_SPIRE_TOP_Z = 54.0  # shaft top; the ruined lantern room rises above this
 BJ_REEF_STONES = [(40.0, 15.0), (40.0, 135.0), (40.0, 255.0)]  # (radius, degrees)
 
 SAND = (0.87, 0.76, 0.5)
@@ -190,26 +190,69 @@ def build_bj_base(rng):
 
 def build_bj_spire(rng):
     bm = bmesh.new()
-    # The tower, in three tapering drums so the silhouette steps.
-    tapered_cylinder(bm, 2.0, 16.0, BJ_SPIRE_BASE_R, 7.8, sides=12)
-    tapered_cylinder(bm, 16.0, 30.0, 7.6, 7.0, sides=12)
-    tapered_cylinder(bm, 30.0, BJ_SPIRE_TOP_Z, 6.9, BJ_SPIRE_TOP_R, sides=12)
-    # Broken crown: jagged teeth around the top rim instead of a lantern room.
-    for i in range(7):
-        angle = (i / 7) * TAU + 0.3
-        x, y = math.cos(angle) * (BJ_SPIRE_TOP_R - 0.8), math.sin(angle) * (BJ_SPIRE_TOP_R - 0.8)
-        h = rng.uniform(1.5, 4.5)
-        cone(bm, (x, y, BJ_SPIRE_TOP_Z - 0.5), (x * 1.02, y * 1.02, BJ_SPIRE_TOP_Z + h), rng.uniform(0.9, 1.6), sides=5)
-    # A bite of missing masonry: one boulder-sized notch shape subtracted look,
-    # faked with a dark recess block sitting proud on the surface.
+    # A REAL lighthouse silhouette: octagonal plinth, then a tall shaft in
+    # three tapering drums, a corbel flare under the gallery, the gallery
+    # walkway disc, and the ruined lantern-room floor above it.
+    tapered_cylinder(bm, 0.5, 3.5, BJ_SPIRE_BASE_R + 2.2, BJ_SPIRE_BASE_R + 1.4, sides=8)  # plinth
+    tapered_cylinder(bm, 3.5, 20.0, BJ_SPIRE_BASE_R, 7.4, sides=12)
+    tapered_cylinder(bm, 20.0, 38.0, 7.2, 6.2, sides=12)
+    tapered_cylinder(bm, 38.0, BJ_SPIRE_TOP_Z, 6.0, BJ_SPIRE_TOP_R, sides=12)
+    # Corbel flare + gallery walkway.
+    tapered_cylinder(bm, BJ_SPIRE_TOP_Z, BJ_SPIRE_TOP_Z + 1.4, BJ_SPIRE_TOP_R + 0.4, BJ_SPIRE_TOP_R + 1.9, sides=12)
+    tapered_cylinder(bm, BJ_SPIRE_TOP_Z + 1.4, BJ_SPIRE_TOP_Z + 2.2, BJ_SPIRE_TOP_R + 2.1, BJ_SPIRE_TOP_R + 2.1, sides=12)
+    # Lantern-room floor stub the broken posts stand on.
+    tapered_cylinder(bm, BJ_SPIRE_TOP_Z + 2.2, BJ_SPIRE_TOP_Z + 3.0, BJ_SPIRE_TOP_R + 0.2, BJ_SPIRE_TOP_R + 0.2, sides=10)
+    # Storm-bitten masonry: a few jagged breaks on the gallery rim.
+    for i in range(3):
+        angle = (i / 3) * TAU + 0.9
+        x, y = math.cos(angle) * (BJ_SPIRE_TOP_R + 1.6), math.sin(angle) * (BJ_SPIRE_TOP_R + 1.6)
+        cone(bm, (x, y, BJ_SPIRE_TOP_Z + 2.0), (x, y, BJ_SPIRE_TOP_Z + rng.uniform(3.2, 4.4)), 0.8, sides=4)
     return finish("BrinejawArena_Spire", bm, STONE)
 
 
 def build_bj_spire_band():
     bm = bmesh.new()
-    # The faded keeper's paint band - instantly reads "lighthouse".
-    tapered_cylinder(bm, 20.0, 26.0, 7.45, 7.25, sides=12)
+    # The faded keeper's paint bands - instantly reads "lighthouse".
+    tapered_cylinder(bm, 24.0, 31.0, 7.05, 6.85, sides=12)
+    tapered_cylinder(bm, 42.0, 47.0, 5.95, 5.75, sides=12)
     return finish("BrinejawArena_SpireBand", bm, BAND)
+
+
+def build_bj_spire_detail(rng):
+    dark = bmesh.new()
+    # The keeper's door: an arched dark inset on the plinth, facing the
+    # spawn bearing (-Y), with a stone lintel above it.
+    box(dark, (0, -(BJ_SPIRE_BASE_R + 1.1), 3.2), (2.6, 1.6, 4.2))
+    # Window slits climbing the shaft, staggered around it.
+    for i in range(5):
+        angle = math.radians(-90 + i * 65)
+        z = 12.0 + i * 8.5
+        r = 8.0 - i * 0.55
+        x, y = math.cos(angle) * r, math.sin(angle) * r
+        rot = Matrix.Rotation(angle + math.pi / 2, 3, "Z")
+        box(dark, (x, y, z), (1.1, 1.0, 2.2), rot)
+    obj_dark = finish("BrinejawArena_SpireWindows", dark, (0.16, 0.17, 0.2))
+
+    rail = bmesh.new()
+    # Gallery railing: posts around the walkway, a few snapped short.
+    posts = 12
+    for i in range(posts):
+        angle = (i / posts) * TAU
+        x, y = math.cos(angle) * (BJ_SPIRE_TOP_R + 1.8), math.sin(angle) * (BJ_SPIRE_TOP_R + 1.8)
+        h = 2.0 if i % 4 != 1 else rng.uniform(0.5, 1.0)
+        box(rail, (x, y, BJ_SPIRE_TOP_Z + 2.2 + h / 2), (0.28, 0.28, h))
+    # Lantern-room skeleton: four corner posts (one snapped), and the old
+    # light cage - a small empty frame where the lamp was.
+    for i in range(4):
+        angle = (i / 4) * TAU + 0.4
+        x, y = math.cos(angle) * (BJ_SPIRE_TOP_R - 0.7), math.sin(angle) * (BJ_SPIRE_TOP_R - 0.7)
+        h = 4.6 if i != 2 else 1.6
+        box(rail, (x, y, BJ_SPIRE_TOP_Z + 3.0 + h / 2), (0.45, 0.45, h))
+    box(rail, (0, 0, BJ_SPIRE_TOP_Z + 4.6), (1.6, 1.6, 1.6))
+    # The collapsed roof: a cone shard leaning against the tallest posts.
+    base = Vector((0.8, 0.6, BJ_SPIRE_TOP_Z + 7.2))
+    cone(rail, base, base + Vector((1.2, 1.0, 3.4)), 3.4, sides=8)
+    return obj_dark, finish("BrinejawArena_SpireRail", rail, DRIFTWOOD)
 
 
 def build_bj_rubble(rng):
@@ -328,23 +371,124 @@ def build_bj_dressing(rng):
     return obj_boat, obj_bell
 
 
+def build_bj_floor_detail(rng):
+    # Tide pools: shallow teal discs sitting in the sand between the reef
+    # stones - visual variety on the big open ring (visual-only, stripped of
+    # collision by naming convention).
+    pools = bmesh.new()
+    for radius, degrees, size in ((28, 70, 6.5), (52, 200, 8.0), (55, 320, 5.0), (30, 300, 4.0)):
+        angle = math.radians(degrees)
+        tapered_cylinder(
+            pools, 1.35, 1.75, size, size * 0.92, sides=9, center=(math.cos(angle) * radius, math.sin(angle) * radius)
+        )
+    obj_pools = finish("BrinejawArena_TidePools", pools, (0.30, 0.62, 0.62))
+
+    # Shells and starfish scattered on the sand.
+    shells = bmesh.new()
+    for _ in range(14):
+        angle, r = rng.uniform(0, TAU), rng.uniform(16, 66)
+        x, y = math.cos(angle) * r, math.sin(angle) * r
+        rock(shells, (x, y, 1.55), (rng.uniform(0.3, 0.6), rng.uniform(0.3, 0.5), 0.25), rng, jitter=0.2)
+    obj_shells = finish("BrinejawArena_Shells", shells, (0.94, 0.9, 0.82))
+
+    stars = bmesh.new()
+    for _ in range(6):
+        angle, r = rng.uniform(0, TAU), rng.uniform(20, 62)
+        cx, cy = math.cos(angle) * r, math.sin(angle) * r
+        spin = rng.uniform(0, TAU)
+        for arm in range(5):
+            a = spin + (arm / 5) * TAU
+            cone(stars, (cx, cy, 1.55), (cx + math.cos(a) * 1.1, cy + math.sin(a) * 1.1, 1.5), 0.3, sides=4)
+    obj_stars = finish("BrinejawArena_Starfish", stars, (0.85, 0.42, 0.5))
+
+    # Seaweed tufts near the water line and the pools.
+    weed = bmesh.new()
+    for _ in range(9):
+        angle, r = rng.uniform(0, TAU), rng.uniform(58, 70)
+        cx, cy = math.cos(angle) * r, math.sin(angle) * r
+        for _ in range(rng.randint(2, 4)):
+            ox, oy = rng.uniform(-1.2, 1.2), rng.uniform(-1.2, 1.2)
+            cone(weed, (cx + ox, cy + oy, 0.7), (cx + ox + rng.uniform(-0.5, 0.5), cy + oy + rng.uniform(-0.5, 0.5), rng.uniform(1.8, 3.2)), 0.3, sides=4)
+    obj_weed = finish("BrinejawArena_Seaweed", weed, (0.2, 0.42, 0.3))
+
+    # Half-buried planks and a rope coil - keeper's flotsam.
+    wood = bmesh.new()
+    for _ in range(5):
+        angle, r = rng.uniform(0, TAU), rng.uniform(24, 60)
+        x, y = math.cos(angle) * r, math.sin(angle) * r
+        wood_rot = Matrix.Rotation(rng.uniform(0, TAU), 3, "Z") @ Matrix.Rotation(rng.uniform(-0.15, 0.15), 3, "X")
+        box(wood, (x, y, 1.35), (rng.uniform(3.5, 5.5), 0.8, 0.35), wood_rot)
+    for i in range(2):  # the rope coil: two stacked squashed rings
+        tapered_cylinder(wood, 1.4 + i * 0.35, 1.75 + i * 0.35, 1.6 - i * 0.2, 1.6 - i * 0.2, sides=9, center=(-30.0, 36.0))
+    return obj_pools, obj_shells, obj_stars, obj_weed, finish("BrinejawArena_Flotsam", wood, DRIFTWOOD)
+
+
+def build_bj_edge_detail(rng):
+    # Sea stacks: tall rock columns rising OUTSIDE the reef fence - the
+    # skyline that makes the boundary read as a place, not a wall.
+    stacks = bmesh.new()
+    for radius, degrees, h in ((84, 50, 14.0), (86, 150, 18.0), (83, 230, 11.0), (85, 335, 15.0)):
+        angle = math.radians(degrees)
+        cx, cy = math.cos(angle) * radius, math.sin(angle) * radius
+        tapered_cylinder(stacks, -4.0, h, rng.uniform(3.2, 4.6), rng.uniform(1.4, 2.2), sides=7, center=(cx, cy))
+        rock(stacks, (cx, cy, h + 0.5), (2.0, 2.0, 1.2), rng, jitter=0.3)
+    obj_stacks = finish("BrinejawArena_SeaStacks", stacks, ROCKS)
+
+    # Kelp strands climbing the boundary rocks.
+    kelp = bmesh.new()
+    for _ in range(12):
+        angle = rng.uniform(0, TAU)
+        r = rng.uniform(73, 79)
+        cx, cy = math.cos(angle) * r, math.sin(angle) * r
+        for _ in range(rng.randint(2, 3)):
+            ox, oy = rng.uniform(-1.5, 1.5), rng.uniform(-1.5, 1.5)
+            cone(kelp, (cx + ox, cy + oy, 1.0), (cx + ox + rng.uniform(-0.8, 0.8), cy + oy + rng.uniform(-0.8, 0.8), rng.uniform(4.0, 7.0)), 0.35, sides=4)
+    obj_kelp = finish("BrinejawArena_Kelp", kelp, (0.16, 0.36, 0.26))
+
+    # A wrecked mast leaning through the reef ring, sail rag still hanging -
+    # the ship the rowboat came from.
+    mast = bmesh.new()
+    base = Vector((40.0, -35.0, 0.8))
+    tip = Vector((64.0, -55.0, 10.0))
+    axis = tip - base
+    rot = Vector((0, 0, 1)).rotation_difference(axis.normalized()).to_matrix()
+    mat = Matrix.Translation((base + tip) / 2) @ rot.to_4x4()
+    bmesh.ops.create_cone(mast, cap_ends=True, segments=7, radius1=0.9, radius2=0.5, depth=axis.length, matrix=mat)
+    spar_mat = Matrix.Translation(base + axis * 0.62) @ rot.to_4x4() @ Matrix.Rotation(math.radians(90), 3, "X").to_4x4()
+    bmesh.ops.create_cone(mast, cap_ends=True, segments=6, radius1=0.4, radius2=0.4, depth=10.0, matrix=spar_mat)
+    obj_mast = finish("BrinejawArena_Mast", mast, DRIFTWOOD)
+
+    sail = bmesh.new()
+    # The rag: a torn triangle slab hanging from the spar.
+    hang = base + axis * 0.62
+    for i, (w, drop) in enumerate(((4.2, 5.5), (2.6, 3.4))):
+        sail_rot = rot @ Matrix.Rotation(math.radians(90), 3, "X") @ Matrix.Rotation(math.radians(8 - i * 16), 3, "Y")
+        corner = hang + rot @ Vector((0, (i - 0.5) * 4.5, 0))
+        box(sail, corner + Vector((0, 0, -drop / 2)), (0.15, w, drop), sail_rot)
+    obj_sail = finish("BrinejawArena_SailRag", sail, (0.88, 0.86, 0.78))
+    return obj_stacks, obj_kelp, obj_mast, obj_sail
+
+
 def build_brinejaw():
     rng = random.Random(4181)
     objects = [
         build_bj_base(rng),
         build_bj_spire(rng),
         build_bj_spire_band(),
+        *build_bj_spire_detail(rng),
         build_bj_rubble(rng),
         build_bj_rocks(rng),
         *build_bj_coral(rng),
         build_bj_foam(rng),
         *build_bj_reef_stones(),
         *build_bj_dressing(rng),
+        *build_bj_floor_detail(rng),
+        *build_bj_edge_detail(rng),
     ]
     print("HANDOFF brinejaw: mesh bottom z %.1f  <-- BossArenas meshBottom (default -9 fits)" % (SKIRT_BOTTOM - 0.5))
     print(
         "HANDOFF brinejaw: spire base r %.1f (z2..16), waist r ~7.3, top r %.1f at z %.1f"
-        " - coil stack (boss pass) wraps r ~9.5-12" % (BJ_SPIRE_BASE_R, BJ_SPIRE_TOP_R, BJ_SPIRE_TOP_Z)
+        " (gallery +2.2, lantern posts to +7.6) - coil stack (boss pass) wraps r ~9.5-12" % (BJ_SPIRE_BASE_R, BJ_SPIRE_TOP_R, BJ_SPIRE_TOP_Z)
     )
     for index, (radius, degrees) in enumerate(BJ_REEF_STONES):
         angle = math.radians(degrees)
@@ -391,10 +535,10 @@ def render_preview(path):
     sun.data.energy = 1.6
     bpy.context.collection.objects.link(sun)
     cam_data = bpy.data.cameras.new("Cam")
-    cam_data.lens = 30
+    cam_data.lens = 26
     cam = bpy.data.objects.new("Cam", cam_data)
-    cam.location = Vector((95, -130, 78))
-    cam.rotation_euler = (math.radians(58), 0, math.radians(36))
+    cam.location = Vector((120, -165, 70))
+    cam.rotation_euler = (math.radians(68), 0, math.radians(36))
     bpy.context.collection.objects.link(cam)
     bpy.context.scene.camera = cam
 
