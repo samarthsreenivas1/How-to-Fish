@@ -2516,6 +2516,19 @@ read by its own client controller — a shared slot named `Value3` would be
 worse than either, and handing the next boss six Brinejaw-shaped numbers
 would be sharing, not abstraction.
 
+**Latch the target once, at windup — never re-aim mid-telegraph.** A
+colossus attack picks its bearing on the first windup frame and holds it
+through the strike; the handler's `fire` reuses what windup chose rather than
+choosing again. Two reasons, both learned the hard way. A telegraph that
+keeps re-aiming is not a telegraph — players answer where it pointed and get
+hit somewhere else. And the engine calls `fire` at the START of the strike,
+not during the windup, so a tell emitted there is not a warning at all. The
+same rule covers anything that tracks the nearest player: run it through a
+turn rate, because "nearest" changes the instant somebody else steps closer,
+and a hit point that teleports across the arena is unhittable in a party.
+Worked examples: Brinejaw's `aimSweep`/`aimSlam`, and the gloom lane's
+`lightsweep`/`openMaw`, which arrived at the identical shape independently.
+
 **Two gotchas that cost real time:**
 
 - `PoseCenter` is the perch's anchor, **not** where the model currently is.
