@@ -604,9 +604,380 @@ def build_kraken():
     return objects
 
 
+# ================================================================ gnashroot
+#
+# "Old Gnashroot, the Fen Tyrant" - the swamp's boss, and the colossus idea
+# pushed the opposite way from Brinejaw. Brinejaw is ONE long chain that goes
+# everywhere. Gnashroot is a body that goes NOWHERE - a half-sunken gator-oak
+# lying in the Rootmere with only its back and skull above the water, reading
+# as an islet until it opens an eye - plus FOUR SHORT CHAINS that do all the
+# attacking: root-limbs that erupt out of the peat anywhere in the arena.
+#
+# So the parts split in two:
+#   BODY (one CFrame, the Kraken's convention): Head/HeadBone/Jaw/JawBone/
+#         Eyes/Maw/Back/Bark/Tree/Shelf are all authored in ONE shared space
+#         with the skull's neck joint at the origin, the snout at +X and the
+#         hump running back to -X. The client places them with a single
+#         CFrame and no offsets; only the jaw moves, about its printed hinge.
+#   LIMBS (four ChainPose chains): Arm/ArmKnot/Claw, authored the pack way -
+#         centred on their own attach point, +X pointing UP-LIMB toward the
+#         body, so a chain's tangent places them directly.
+#
+# Waterline is z = 0, so the model drops into the mere with no fudging: the
+# hump crests ~5 studs proud at scale 1 (~8 at the row's 1.5), the belly and
+# most of the mass stay under.
+
+GN_HIDE = (0.227, 0.259, 0.180)   # moss-backed hide (the creature row's body colour)
+GN_BARK = (0.345, 0.298, 0.204)   # root-bark plates (the row's finColor)
+GN_BONE = (0.827, 0.812, 0.706)   # the fen's bone
+GN_WISP = (0.588, 0.922, 0.784)   # wisp-lit eyes and maw (the row's markColor, Neon)
+GN_DEAD = (0.40, 0.34, 0.27)      # the dead cypress riding its spine
+GN_FUNG = (0.72, 0.70, 0.52)      # bracket fungus
+
+# Skull cross-sections: (x, centre z, half width, half height). A GATOR skull -
+# wide at the cheeks, flat on top, long blunt snout - not Brinejaw's serpent
+# wedge. Neck joint at the origin, snout tip at x = +12. The underside is
+# clamped flat at GN_JAW_LINE so the lower jaw closes on a real palate.
+GN_JAW_LINE = -0.9
+GN_SKULL = [
+    (-5.0, 1.0, 4.2, 3.0),
+    (-2.4, 0.9, 4.8, 2.9),  # cheeks, widest
+    (0.4, 0.6, 3.9, 2.2),
+    (3.4, 0.3, 2.9, 1.7),
+    (6.6, 0.1, 2.4, 1.4),  # the long snout
+    (9.6, 0.0, 1.9, 1.1),
+    (12.0, -0.1, 1.3, 0.8),  # blunt tip
+]
+
+GN_JAW_TOP = -1.15
+GN_JAW = [
+    (-4.6, -2.0, 3.6, 1.5),
+    (-2.0, -2.2, 4.2, 1.7),
+    (0.8, -2.2, 3.4, 1.5),
+    (3.8, -2.1, 2.6, 1.2),
+    (7.0, -2.0, 2.0, 1.0),
+    (10.0, -1.9, 1.4, 0.7),
+    (12.0, -1.8, 0.9, 0.5),
+]
+
+# Where the client hinges the jaw (the gape before a bogspit, the gnash, the
+# death bellow).
+GN_JAW_HINGE = (-4.4, 0.0, -1.6)
+
+# The hump: the drowned-oak back, lofted from the tail end forward into the
+# shoulders where the skull takes over.
+GN_BACK = [
+    (-24.0, -1.2, 3.4, 2.2),  # the tail end, already sinking
+    (-20.0, -0.7, 6.4, 4.2),
+    (-15.5, -0.2, 9.0, 6.2),  # the crest - what reads as an islet
+    (-11.0, 0.0, 9.5, 6.6),
+    (-6.5, 0.4, 7.4, 5.0),  # shoulders, meeting the skull
+]
+
+# One limb vertebra, authored mid-limb; the client scales by u to taper.
+GN_ARM = [
+    (-1.8, 0.0, 1.5, 1.5),
+    (-0.8, 0.0, 1.9, 1.9),
+    (0.8, 0.0, 1.9, 1.9),
+    (1.8, 0.0, 1.5, 1.5),
+]
+GN_ARM_SPACING = 3.6  # studs between segment centres along the path
+GN_ARM_SEGMENTS = 9  # + the claw: ~36 studs of limb at scale 1
+
+
+def build_gn_head(rng):
+    bm = bmesh.new()
+    loft(bm, [ring_pts(x, cz, hw, hh, sides=9, floor_z=GN_JAW_LINE) for x, cz, hw, hh in GN_SKULL])
+    # Brow ridges standing over the eyes - a gator's periscope skull.
+    for side in (-1, 1):
+        box(
+            bm,
+            (-1.9, side * 3.3, 2.4),
+            (5.4, 1.5, 1.0),
+            Matrix.Rotation(math.radians(side * -6), 3, "X") @ Matrix.Rotation(math.radians(4), 3, "Y"),
+        )
+    # Nostril ridge on the snout - the part that breaks the water first.
+    box(bm, (9.4, 0, 0.9), (2.6, 2.0, 0.8), Matrix.Rotation(math.radians(-3), 3, "Y"))
+    # Moss and knotted growth crusting the skull: it has been lying here a
+    # very long time.
+    for _ in range(11):
+        x = rng.uniform(-4.6, 6.0)
+        side = rng.choice((-1, 1))
+        ellipsoid(
+            bm,
+            (x, side * rng.uniform(1.6, 3.6), rng.uniform(0.6, 2.6)),
+            (rng.uniform(0.35, 0.75),) * 3,
+            subdiv=0,
+        )
+    return finish("Gnashroot_Head", bm, GN_HIDE)
+
+
+def build_gn_head_bone(rng):
+    bm = bmesh.new()
+    # Upper teeth: a gator's are IRREGULAR - a few long canines among small
+    # ones, which is what makes the jawline read as a bite rather than a comb.
+    for i in range(9):
+        t = i / 8
+        x = 11.0 - t * 15.0
+        hw = 1.1 + t * 3.4
+        length = (1.1 if i in (2, 5) else 0.6) + t * 0.5
+        for side in (-1, 1):
+            spike(bm, (x, side * hw, GN_JAW_LINE + 0.1), (x, side * hw * 0.93, GN_JAW_LINE - length), 0.32, sides=4)
+    return finish("Gnashroot_HeadBone", bm, GN_BONE)
+
+
+def build_gn_jaw(rng):
+    bm = bmesh.new()
+    loft(bm, [ring_pts(x, cz, hw, hh, sides=8, ceil_z=GN_JAW_TOP) for x, cz, hw, hh in GN_JAW])
+    # A ragged fringe of weed hanging off the lower jaw.
+    for _ in range(7):
+        x = rng.uniform(-3.0, 9.0)
+        side = rng.choice((-1, 1))
+        spike(bm, (x, side * rng.uniform(1.4, 3.4), -2.9), (x, side * rng.uniform(1.8, 4.2), -5.2), 0.22, sides=3)
+    return finish("Gnashroot_Jaw", bm, GN_HIDE)
+
+
+def build_gn_jaw_bone():
+    bm = bmesh.new()
+    # Lower teeth, standing up to interlock with the upper set.
+    for i in range(8):
+        t = i / 7
+        x = 10.4 - t * 14.0
+        hw = 0.9 + t * 2.9
+        length = (1.4 if i in (3, 6) else 0.7) + t * 0.6
+        for side in (-1, 1):
+            spike(bm, (x, side * hw, GN_JAW_TOP - 0.1), (x, side * hw * 0.94, GN_JAW_TOP + length), 0.28, sides=4)
+    return finish("Gnashroot_JawBone", bm, GN_BONE)
+
+
+def build_gn_eyes():
+    bm = bmesh.new()
+    # Set high and forward on the brow: at rest, the eyes and the nostril
+    # ridge are the ONLY things above the water. Neon in game.
+    for side in (-1, 1):
+        ellipsoid(bm, (-1.9, side * 3.3, 3.1), (0.95, 0.95, 0.8), subdiv=1)
+    return finish("Gnashroot_Eyes", bm, GN_WISP)
+
+
+def build_gn_maw():
+    bm = bmesh.new()
+    # The throat: dark until it gapes, then a wisp-lit furnace. This is the
+    # bogspit tell - the client swells it through the wind-up.
+    loft(
+        bm,
+        [
+            ring_pts(-4.0, -0.9, 2.6, 1.0, sides=7),
+            ring_pts(-1.0, -0.9, 3.0, 1.2, sides=7),
+            ring_pts(2.5, -0.9, 2.2, 0.9, sides=7),
+            ring_pts(5.5, -0.9, 1.4, 0.6, sides=7),
+        ],
+    )
+    return finish("Gnashroot_Maw", bm, GN_WISP)
+
+
+def build_gn_back(rng):
+    bm = bmesh.new()
+    loft(bm, [ring_pts(x, cz, hw, hh, sides=11) for x, cz, hw, hh in GN_BACK])
+    # Boulders of moss-grown hide breaking the surface along the spine, so the
+    # crest reads as ground rather than as a smooth animal.
+    for _ in range(14):
+        x = rng.uniform(-23.0, -7.0)
+        ellipsoid(
+            bm,
+            (x, rng.uniform(-6.5, 6.5), rng.uniform(3.2, 6.4)),
+            (rng.uniform(0.9, 2.1), rng.uniform(0.9, 1.9), rng.uniform(0.6, 1.3)),
+            subdiv=0,
+        )
+    return finish("Gnashroot_Back", bm, GN_HIDE)
+
+
+def build_gn_bark(rng):
+    bm = bmesh.new()
+    # The oak half: broken root-tusks sweeping back off the skull like a
+    # stump's shattered crown. WOOD, not bone - as bone they read as tusks
+    # from a different animal.
+    for side in (-1, 1):
+        spike(bm, (-3.6, side * 3.0, 2.6), (-9.4, side * 5.0, 5.4), 0.75, sides=5)
+        spike(bm, (-4.4, side * 3.4, 1.0), (-8.6, side * 5.8, 2.2), 0.5, sides=5)
+    # Osteoderm scutes in ranks down the back - gator armour read as bark.
+    # Broad and low: PLATES. Tall ones turn the fen tyrant into a stegosaur.
+    for i in range(9):
+        x = -22.5 + i * 2.0
+        t = i / 8
+        for side in (-2, -1, 1, 2):
+            spread = 1.6 + t * 3.0
+            height = 4.0 + math.sin(t * math.pi) * 3.0
+            size = 0.9 - abs(side) * 0.15
+            box(
+                bm,
+                (x, side * spread, height - 0.2),
+                (1.5, 1.9, size),
+                Matrix.Rotation(math.radians(side * 26), 3, "X"),
+            )
+    # Long bark plates along the flanks, half-lifted off the hide.
+    for _ in range(10):
+        x = rng.uniform(-22.0, -7.5)
+        side = rng.choice((-1, 1))
+        box(
+            bm,
+            (x, side * rng.uniform(5.6, 8.4), rng.uniform(0.4, 3.2)),
+            (rng.uniform(2.6, 4.6), 0.55, rng.uniform(1.4, 2.6)),
+            Matrix.Rotation(math.radians(side * rng.uniform(8, 24)), 3, "X"),
+        )
+    # Plates over the snout, so the skull matches the back.
+    for _ in range(5):
+        x = rng.uniform(1.0, 9.0)
+        box(bm, (x, rng.uniform(-1.4, 1.4), 1.5), (rng.uniform(1.6, 2.6), 2.2, 0.5))
+    return finish("Gnashroot_Bark", bm, GN_BARK)
+
+
+def build_gn_tree(rng):
+    bm = bmesh.new()
+    # THE SILHOUETTE. A dead cypress growing out of its spine - the thing that
+    # tells you at 200 studs that the islet is an animal. Built the fen's way
+    # (island_gen build_swamp_trees): a leaning trunk that forks.
+    base = Vector((-15.0, 1.2, 5.8))
+    top = base + Vector((-2.2, 0.4, 8.6))
+    spike(bm, tuple(base), tuple(top), 2.4, sides=6)
+    for _ in range(rng.randint(2, 3)):
+        frac = rng.uniform(0.55, 0.92)
+        at = base.lerp(top, frac)
+        angle = rng.uniform(0, TAU)
+        reach = rng.uniform(4.0, 7.0)
+        tip = at + Vector((math.cos(angle) * reach, math.sin(angle) * reach, rng.uniform(1.5, 4.0)))
+        spike(bm, tuple(at), tuple(tip), 1.0, sides=5)
+        if rng.random() < 0.6:
+            fork = tip + Vector((math.cos(angle + 0.8) * reach * 0.5, math.sin(angle + 0.8) * reach * 0.5, rng.uniform(0.8, 2.4)))
+            spike(bm, tuple(tip), tuple(fork), 0.55, sides=4)
+    # A second, snapped-off trunk further back: it has lost limbs before.
+    stub = Vector((-20.0, -3.2, 4.2))
+    spike(bm, tuple(stub), tuple(stub + Vector((-1.0, -0.6, 4.6))), 1.1, sides=5)
+    return finish("Gnashroot_Tree", bm, GN_DEAD)
+
+
+def build_gn_shelf(rng):
+    bm = bmesh.new()
+    # Bracket fungus stepping up the dead trunk and the hump's flanks - the
+    # one pale note on a dark animal, and the fen's own colour language.
+    # Squashed ellipsoids rather than discs: a bracket is a shelf, and a
+    # flattened blob reads as one from every angle without a rotation.
+    for _ in range(10):
+        x = rng.uniform(-22.0, -8.0)
+        side = rng.choice((-1, 1))
+        ellipsoid(
+            bm,
+            (x, side * rng.uniform(5.2, 8.2), rng.uniform(1.0, 5.2)),
+            (rng.uniform(1.3, 2.2), rng.uniform(1.0, 1.8), rng.uniform(0.28, 0.45)),
+            subdiv=1,
+        )
+    for _ in range(6):
+        angle = rng.uniform(0, TAU)
+        ellipsoid(
+            bm,
+            (-15.4 + math.cos(angle) * 1.7, 1.2 + math.sin(angle) * 1.7, rng.uniform(7.0, 14.0)),
+            (rng.uniform(0.9, 1.6), rng.uniform(0.9, 1.6), rng.uniform(0.24, 0.4)),
+            subdiv=1,
+        )
+    return finish("Gnashroot_Shelf", bm, GN_FUNG)
+
+
+def build_gn_arm():
+    bm = bmesh.new()
+    loft(bm, [ring_pts(x, cz, hw, hh, sides=7) for x, cz, hw, hh in GN_ARM])
+    # Longitudinal root flanges: what makes a limb read as ROOT rather than
+    # as a tentacle. Three ribs running the segment's length.
+    for i in range(3):
+        angle = (i / 3) * TAU + 0.4
+        blade(
+            bm,
+            (-1.9, math.cos(angle) * 1.5, math.sin(angle) * 1.5),
+            (1.9, math.cos(angle) * 2.3, math.sin(angle) * 2.3),
+            1.3,
+            1.0,
+            0.3,
+            roll=angle,
+        )
+    return finish("Gnashroot_Arm", bm, GN_BARK)
+
+
+def build_gn_arm_knot(rng):
+    bm = bmesh.new()
+    loft(bm, [ring_pts(x, cz, hw, hh, sides=7) for x, cz, hw, hh in GN_ARM])
+    # The burl: a knuckled swelling every few segments, so a long limb reads
+    # as jointed wood instead of a hose.
+    ellipsoid(bm, (0, 0, 0), (2.2, 2.5, 2.5), subdiv=1)
+    for _ in range(4):
+        angle = rng.uniform(0, TAU)
+        length = rng.uniform(1.6, 3.2)
+        spike(
+            bm,
+            (rng.uniform(-1.0, 1.0), math.cos(angle) * 1.9, math.sin(angle) * 1.9),
+            (rng.uniform(-1.6, 1.6), math.cos(angle) * (1.9 + length), math.sin(angle) * (1.9 + length)),
+            0.4,
+            sides=4,
+        )
+    return finish("Gnashroot_ArmKnot", bm, GN_BARK)
+
+
+def build_gn_claw(rng):
+    bm = bmesh.new()
+    # The hand at the limb's end. +X runs up-limb toward the body, so the
+    # fingers splay toward -X: this is what plants in the peat, what the slam
+    # lands on, and what closes round a snared player.
+    loft(
+        bm,
+        [
+            ring_pts(1.6, 0.0, 1.7, 1.7, sides=7),
+            ring_pts(0.2, 0.0, 2.3, 2.3, sides=7),
+            ring_pts(-1.2, 0.0, 1.9, 1.9, sides=7),
+        ],
+    )
+    for i in range(5):
+        angle = (i / 5) * TAU + 0.3
+        spread = Vector((0, math.cos(angle), math.sin(angle)))
+        knuckle = Vector((-1.4, 0, 0)) + spread * 1.7
+        mid = knuckle + Vector((-2.6, 0, 0)) + spread * 1.5
+        tip = mid + Vector((-2.4, 0, 0)) + spread * 0.4
+        spike(bm, tuple(knuckle), tuple(mid), 0.62, sides=4)
+        spike(bm, tuple(mid), tuple(tip), 0.42, sides=4)
+        _ = rng
+    return finish("Gnashroot_Claw", bm, GN_BARK)
+
+
+def build_gnashroot():
+    rng = random.Random(8821)
+    objects = [
+        build_gn_head(rng),
+        build_gn_head_bone(rng),
+        build_gn_jaw(rng),
+        build_gn_jaw_bone(),
+        build_gn_eyes(),
+        build_gn_maw(),
+        build_gn_back(rng),
+        build_gn_bark(rng),
+        build_gn_tree(rng),
+        build_gn_shelf(rng),
+        build_gn_arm(),
+        build_gn_arm_knot(rng),
+        build_gn_claw(rng),
+    ]
+    print("HANDOFF gnashroot: BODY is one CFrame - neck joint at the origin, snout tip x=+12, hump back to x=-24")
+    print("HANDOFF gnashroot: waterline z=0; hump crests z=+6.6 (x=-11), belly to z=-6.6 - it lies half-sunk in the mere")
+    print("HANDOFF gnashroot: jaw hinge pivot (%.1f, %.1f, %.1f) - the client rotates jaw + JawBone + Maw about it" % GN_JAW_HINGE)
+    print("HANDOFF gnashroot: skull half-width 4.8 at the cheeks -> matches the row's hitRadius 6 at scale 1")
+    print("HANDOFF gnashroot: eyes (-1.9, +/-3.3, 3.1) r0.95 and the nostril ridge (9.4, 0, 0.9) are ALL that shows at rest")
+    print(
+        "HANDOFF gnashroot: limb pitch %.1f, %d segments + claw = ~%.0f studs of reach at scale 1 (x1.5 = %.0f)"
+        % (GN_ARM_SPACING, GN_ARM_SEGMENTS, GN_ARM_SPACING * GN_ARM_SEGMENTS + 4.0, (GN_ARM_SPACING * GN_ARM_SEGMENTS + 4.0) * 1.5)
+    )
+    print("HANDOFF gnashroot: limb half-width 1.9 at scale 1 -> slam hit girth ~3.8 studs; taper by u toward the claw")
+    print("HANDOFF gnashroot: four limbs, ChainPose each; ArmKnot every 3rd segment, Claw at the tip")
+    return objects
+
 BOSSES = {
     "brinejaw": build_brinejaw,
     "kraken": build_kraken,
+    "gnashroot": build_gnashroot,
 }
 
 
@@ -924,8 +1295,73 @@ def _place_kraken(objects, arms=6):
     return made
 
 
+def _gn_limb_path(angle, t, reach=27.0, lift=7.0):
+    """One limb at its REST POSE: out of the peat beside the hump, arcing up
+    over the bank, claw planted on the ground well out toward the stumps.
+    t=0 at the shoulder. This is the shape ChainPose blends AWAY from for a
+    rootwave or a slam and back to afterwards - the rest pose is the spec."""
+    r = 8.0 + reach * t
+    # Up out of the mere, over the bank, tip back down into the peat.
+    z = math.sin(t * math.pi * 0.95) * lift - 1.2
+    a = angle + math.sin(t * 1.9 + angle) * 0.13
+    return Vector((math.cos(a) * r, math.sin(a) * r, z))
+
+
+def _place_gnashroot(objects, scale=1.0):
+    """The colossus at rest: body half-sunk at the origin, four limbs planted
+    around it, so the silhouette can be judged as one animal. `scale` lets the
+    staged render show it at the creature row's 1.5 against its real arena."""
+    by_name = {obj.name.split("_", 1)[1]: obj for obj in objects}
+    made = []
+
+    def place(source, position, tangent=None, size=1.0):
+        copy = source.copy()
+        copy.data = source.data
+        copy.hide_render = False  # sources are hidden; their copies are the shot
+        bpy.context.collection.objects.link(copy)
+        copy.location = position
+        if tangent is not None:
+            copy.rotation_euler = Vector((1, 0, 0)).rotation_difference(tangent).to_euler()
+        copy.scale = (size, size, size)
+        made.append(copy)
+        return copy
+
+    # The body is ONE CFrame - every piece was authored in the same space.
+    for part in ("Back", "Bark", "Tree", "Shelf", "Head", "HeadBone", "Jaw", "JawBone", "Eyes", "Maw"):
+        place(by_name[part], Vector((0, 0, 0)), None, scale)
+
+    seg, knot, claw = by_name["Arm"], by_name["ArmKnot"], by_name["Claw"]
+    # Four limbs, set like a gator's legs rather than a radial ring: the front
+    # pair flanks the skull, the rear pair braces beside the hump.
+    # (bearing, reach, lift) per limb - one stretched out ahead, one drawn
+    # in and arched high, so the rest pose reads as an animal at rest rather
+    # than a specimen pinned out.
+    for k, (degrees, reach, lift) in enumerate(
+        ((52.0, 26.0, 7.5), (-52.0, 31.0, 5.2), (133.0, 22.0, 8.6), (-133.0, 28.0, 6.2))
+    ):
+        angle = math.radians(degrees)
+        at_length, tangent_at, total = _arc_walker(
+            lambda t, a=angle, rr=reach, ll=lift: _gn_limb_path(a, t, rr, ll)
+        )
+        step = GN_ARM_SPACING * 0.88  # slight overlap so the limb reads continuous
+        count = max(int(total / step) + 1, 3)
+        for i in range(count):
+            distance = min(i * step, total)
+            u = distance / total
+            taper = 1.0 - 0.42 * u ** 1.15
+            source = knot if i % 3 == 2 else seg
+            place(source, at_length(distance) * scale, tangent_at(distance), taper * scale)
+        # Seated INTO the last vertebra: the claw's attach is at +X, so
+        # placing it on the path's end alone leaves it hanging past the tip.
+        tip_taper = (1.0 - 0.42) * scale
+        place(claw, (at_length(total) + tangent_at(total) * 1.5 * tip_taper) * scale, tangent_at(total), tip_taper)
+        _ = k
+    return made
+
+
 PLACERS = {
     "kraken": _place_kraken,
+    "gnashroot": _place_gnashroot,
 }
 
 
@@ -1107,6 +1543,89 @@ def render_staged(path_out, objects):
     print("BOSS STAGED:", path_out)
 
 
+def _stage_gnashroot(path_out, objects):
+    """The Rootmere built, and Old Gnashroot lying in it at the creature
+    row's real scale (1.5).
+
+    Imports arena_gen so the mere under the body is the REAL one - if the
+    arena's bowl or bank ever moves, this render shows the colossus floating
+    or buried instead of half-sunk. It is also the only honest check on the
+    design's central claim: from the bank it should read as an islet with a
+    dead tree growing out of it, until it opens an eye.
+    """
+    import os
+
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import arena_gen  # noqa: E402  (guarded: importing it builds nothing)
+
+    arena_gen.build_gnashroot()
+    for obj in objects:
+        obj.hide_render = True
+    _place_gnashroot(objects, scale=1.5)
+
+    # The fen's own light: a low hard key and a soft fill against an overcast
+    # sky - the mood island_gen's swamp previews are judged in. The bright
+    # neutral sun the parts-sheet preview uses washes peat-green to sage.
+    sun = bpy.data.objects.new("Sun", bpy.data.lights.new("Sun", "SUN"))
+    sun.rotation_euler = (math.radians(44), 0, math.radians(-52))
+    sun.data.energy = 1.9
+    bpy.context.collection.objects.link(sun)
+    fill = bpy.data.objects.new("Fill", bpy.data.lights.new("Fill", "SUN"))
+    fill.rotation_euler = (math.radians(68), 0, math.radians(120))
+    fill.data.energy = 0.45
+    bpy.context.collection.objects.link(fill)
+
+    scene = bpy.context.scene
+    scene.render.engine = "BLENDER_EEVEE"
+    scene.render.resolution_x = 1500
+    scene.render.resolution_y = 1000
+    scene.world = bpy.data.worlds.new("World")
+    scene.world.use_nodes = True
+    bg = scene.world.node_tree.nodes.get("Background")
+    if bg:
+        bg.inputs[0].default_value = (0.17, 0.19, 0.20, 1.0)
+
+    # Two shots: the approach across the bank (how a player actually meets
+    # it) and a three-quarter showing the whole limb spread in the arena.
+    for suffix, location, target, lens in (
+        # THE APPROACH: head-on, from the bank off its snout (the body
+        # faces +X), at eye height. This is the angle a player actually
+        # arrives at, and the one the whole silhouette is designed for.
+        # Kept clear of the limbs, which rest on bearings +/-52 and +/-133.
+        # r 62 on a bearing of 35 deg: ON THE BANK (which ends at r 70 - at
+        # r 74 the lens sat inside the grove and a trunk filled the frame),
+        # three-quarters onto the snout, clear of the limbs at +/-52.
+        # r 52 puts the lens INSIDE the bank (grove starts at 67, and its
+        # crowns lean outward, so nothing overhangs here), on the one bearing
+        # with no stump (they sit at 45/135/225/315), and 34 up clears the
+        # limb crests. Three attempts at eye level all ended inside a leaf
+        # mass or behind a trunk - in a walled arena the honest hero angle is
+        # from above the fight, not in it.
+        ("", (52, 0, 34), (-2, 0, 4), 22),
+        # THE WIDE: steep enough to clear the near canopy, which swallowed
+        # the bottom half of the first attempt.
+        ("_wide", (75, -100, 150), (0, 0, 4), 26),
+    ):
+        cam_data = bpy.data.cameras.new("Cam" + suffix)
+        cam_data.lens = lens
+        cam = bpy.data.objects.new("Cam" + suffix, cam_data)
+        cam.location = Vector(location)
+        cam.rotation_euler = (Vector(target) - cam.location).to_track_quat("-Z", "Y").to_euler()
+        bpy.context.collection.objects.link(cam)
+        scene.camera = cam
+        out = path_out if not suffix else path_out.replace("_staged.png", "_staged%s.png" % suffix)
+        scene.render.filepath = out
+        bpy.ops.render.render(write_still=True)
+        print("BOSS STAGED:", out)
+
+
+# Per-boss staged renderers (the arena-and-boss shot). A boss with no entry
+# falls through to render_staged's brinejaw body, which is what shipped first.
+STAGERS = {
+    "gnashroot": _stage_gnashroot,
+}
+
+
 def export(path_out, objects):
     bpy.ops.object.select_all(action="DESELECT")
     for obj in objects:
@@ -1140,7 +1659,8 @@ def main():
     if "preview" in argv[2:]:
         render_preview(argv[0].replace(".glb", "_preview.png"), objects, argv[1])
     if "staged" in argv[2:]:
-        render_staged(argv[0].replace(".glb", "_staged.png"), objects)
+        stager = STAGERS.get(argv[1], render_staged)
+        stager(argv[0].replace(".glb", "_staged.png"), objects)
     if "poses" in argv[2:]:
         for name, (label, state, camera, target) in BJ_POSES.items():
             print("POSE", name, "-", label)
