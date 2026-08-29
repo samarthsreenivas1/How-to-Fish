@@ -84,6 +84,14 @@ local function placeAuthored(parent: Instance, arena, template: Instance)
 	for _, descendant in model:GetDescendants() do
 		if descendant:IsA("BasePart") then
 			descendant.Anchored = true
+			-- Dressing that must not catch feet or casts - the island
+			-- NON_COLLIDE idea, by the arena naming convention (arena_gen.py):
+			-- surf foam (which OceanController also rides on the tide) and
+			-- coral tufts stay visual-only.
+			if string.find(descendant.Name, "Foam", 1, true) or string.find(descendant.Name, "Coral", 1, true) then
+				descendant.CanCollide = false
+				descendant.CanQuery = false
+			end
 		end
 	end
 
