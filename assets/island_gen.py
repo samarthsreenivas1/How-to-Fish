@@ -4458,7 +4458,11 @@ def _wr_mast(wood_bm, glow_bm, sail_bm, frame, base, lean, dir_ang, height, snap
                 a + belly * (1 - abs(2 * f0 - 1)) - Vector((0, 0, hem[k])),
             ), 0.30)
     if snapped:
-        broke = head + axis * (height * 0.10)
+        # The snapped topmast HINGES at the break: it starts just BELOW the
+        # head so the two spars overlap. It used to start height*0.10 ABOVE
+        # it, which left the topmast hanging in open air - the "random
+        # floating objects" the user reported, 2026-08-29.
+        broke = head - axis * (height * 0.03)
         tip = broke + Vector((axis.x, axis.y, 0)).normalized() * height * 0.30 - Vector((0, 0, height * 0.16))
         _wr_spar(wood_bm, frame, broke, tip, 0.4, 0.18, sides=4)
     if glow_bm is not None:
@@ -4591,6 +4595,37 @@ def _wr_in_channel(x, y, bay_r, half=16.0):
 
 
 _WR_EXTRA_GLOW = []  # (x, y, z, r) lanterns other wreck builders hand to the glow object
+_WR_GLOW_SEATED = []  # entries already snapped onto their own builder's timber
+
+
+def _wr_seat_glow(wood_bm, reach=12.0):
+    """Seat every pending lantern ON the timber it belongs to.
+
+    A hand-computed lantern position drifts the moment the spar it hangs on
+    is tapered or rotated, and an orb lifted further than its own radius is
+    a light hanging in mid-air - which is what the float guard rejects and
+    what the island's rule forbids (every fitting meets its mount). So
+    instead of tuning offsets per call site, snap: find the nearest point on
+    the builder's wood, and if the orb is not already touching it, move it
+    onto that point and leave it standing a little proud.
+
+    A lantern further than `reach` from any timber is left alone - that is
+    deliberate free-floating sea-fire (the two adrift on the bay), not a
+    mistake."""
+    if not _WR_EXTRA_GLOW:
+        return
+    tree = BVHTree.FromBMesh(wood_bm)
+    for gx, gy, gz, gr in _WR_EXTRA_GLOW:
+        at = Vector((gx, gy, gz))
+        loc, _normal, _index, dist = tree.find_nearest(at, reach)
+        if loc is None or dist is None or dist <= gr:
+            _WR_GLOW_SEATED.append((gx, gy, gz, gr))
+            continue
+        away = at - loc
+        away = away.normalized() if away.length > 1e-4 else Vector((0.0, 0.0, 1.0))
+        seat = loc + away * (gr * 0.55)
+        _WR_GLOW_SEATED.append((seat.x, seat.y, seat.z, gr))
+    _WR_EXTRA_GLOW.clear()
 
 
 def build_wreck_quay(ground):
@@ -4820,8 +4855,17 @@ def build_sea_wrecks(ground):
             roll=math.radians(random.choice((1, -1)) * random.uniform(10.0, 34.0)),
             length=length, beam=beam, rise=rise,
         )
-        if k % 2 == 0:  # clear of the frame tops, not buried among them
-            _WR_EXTRA_GLOW.append(tuple(frame @ Vector((length * 0.18, 0.0, rise * 1.15 + 1.4))) + (1.3,))
+        if k % 2 == 0:
+            # ON a rib, not floating in the arch between them: the ribcage is
+            # picked clean, so its centreline is open air (the float guard
+            # caught exactly this, 2026-08-29). Mirrors _wr_sea_ribcage's own
+            # station maths so the orb meets the timber it hangs on.
+            t = 0.68
+            hb = (beam / 2) * math.sqrt(max(0.06, 1.0 - (2 * t - 1) ** 2))
+            r_top = rise * (0.5 + 0.5 * math.sin(math.pi * t))
+            _WR_EXTRA_GLOW.append(
+                tuple(frame @ Vector((-length / 2 + length * t, hb * 0.62, r_top - 0.35))) + (1.3,)
+            )
         made += 1
 
     # 4. Lone masts: nothing left above water but the rig, leaning up out of the
@@ -4854,11 +4898,14 @@ def build_sea_wrecks(ground):
                 at - perp * half + Vector((0, 0, half * 0.09)),
                 h * 0.045, h * 0.045,
             )
-        broke = head + axis * (h * 0.06)  # the snapped-off topmast, hanging on
+        broke = head - axis * (h * 0.03)  # the snapped-off topmast, hinged AT the break (never above it)
         tip = broke + Vector((axis.x, axis.y, 0)).normalized() * h * 0.30 - Vector((0, 0, h * 0.16))
         _wr_spar(bm, frame, broke, tip, h * 0.030, h * 0.014, sides=4)
-        _WR_EXTRA_GLOW.append((x + head.x, y + head.y, z + head.z + 1.4, 1.35))
+        _WR_EXTRA_GLOW.append((x + head.x, y + head.y, z + head.z + 0.7, 1.35))  # overlaps the mast head
         made += 1
+
+    made += build_wreck_mast_forest(bm)
+    _wr_seat_glow(bm)  # the fleet's lanterns meet the fleet's timber
 
     _WR_SEA_COUNT = made
     return object_from_bmesh("Wreckwater_SeaHulks", bm, ["M_HullWood"])
@@ -5049,11 +5096,16 @@ def build_wrecks(ground):
         _wr_beam(wood_bm, frame, head, head + Vector((2.4, 0, 0.3)), 0.5, 0.4)
         _wr_orb(glow_bm, frame, head + Vector((2.4, 0, -0.9)), 1.05)
 
-    for gx, gy, gz, gr in _WR_EXTRA_GLOW:
+    _wr_seat_glow(wood_bm)
+    for gx, gy, gz, gr in _WR_GLOW_SEATED:
         _wr_orb(glow_bm, _wr_frame((gx, gy, gz)), (0, 0, 0), gr)
-    _WR_EXTRA_GLOW.clear()
+    _WR_GLOW_SEATED.clear()
 
     print(f"[island_gen] wrecks: 3 in the bay + {beached} beached + {piles} debris piles")
+    build_wreck_careened(wood_bm, ground)
+    build_wreck_salvage(wood_bm, ground)
+    build_wreck_gibbets(wood_bm, glow_bm, ground)
+
     return (
         object_from_bmesh("Wreckwater_Hulks", wood_bm, ["M_HullWood"]),
         object_from_bmesh("Wreckwater_GhostGlow", glow_bm, ["M_GhostGlow"]),
@@ -5133,6 +5185,387 @@ def build_wreck_rocks(ground):
     return object_from_bmesh("Wreckwater_Rocks", bm, ["M_GraveRock"])
 
 
+
+# ---- Wreckwater: the float guard ----------------------------------------
+#
+# NOTHING ON THIS ISLAND FLOATS. The guard clusters every authored primitive
+# by proximity (a piece joins a cluster when its bounding box comes within
+# FLOAT_PAD of another's - so a lantern on a sternpost, a flag on a yard or a
+# lamp under a cabin roof inherits its ship's support) and then demands that
+# each CLUSTER either reaches the water or rests on the terrain beneath it.
+# A cluster hanging in open air raises, with coordinates - the slab_with_hole
+# ruling: a warning in a 600-line build log is a warning nobody reads.
+#
+# `exempt` is a set of OBJECT NAMES skipped entirely - for deliberately
+# suspended decor (the gloom island's circling glowfish, when this
+# generalizes). It is an explicit, reviewable list, never a severity dial.
+
+FLOAT_PAD = 1.5  # studs of slack when joining touching pieces
+FLOAT_TOLERANCE = 1.5  # how far a cluster may sit above its support
+
+
+def _float_components(obj):
+    """Every connected primitive in an object, as (lo, hi) bounding boxes."""
+    bm = bmesh.new()
+    bm.from_mesh(obj.data)
+    bm.verts.ensure_lookup_table()
+    seen, out = set(), []
+    for v in bm.verts:
+        if v.index in seen:
+            continue
+        stack, pts = [v], []
+        seen.add(v.index)
+        while stack:
+            cur = stack.pop()
+            pts.append(cur.co)
+            for e in cur.link_edges:
+                n = e.other_vert(cur)
+                if n.index not in seen:
+                    seen.add(n.index)
+                    stack.append(n)
+        xs = [p.x for p in pts]
+        ys = [p.y for p in pts]
+        zs = [p.z for p in pts]
+        out.append(((min(xs), min(ys), min(zs)), (max(xs), max(ys), max(zs))))
+    bm.free()
+    return out
+
+
+def validate_no_floaters(objects, ground, exempt=(), label="island"):
+    """Raise if any cluster of geometry hangs free of both water and ground."""
+    comps = []
+    for obj in objects:
+        if obj.name in exempt:
+            continue
+        for lo, hi in _float_components(obj):
+            comps.append((lo, hi, obj.name))
+
+    parent = list(range(len(comps)))
+
+    def find(a):
+        while parent[a] != a:
+            parent[a] = parent[parent[a]]
+            a = parent[a]
+        return a
+
+    # Bucket by cell so this stays linear-ish instead of comparing every pair.
+    cell, buckets = 12.0, {}
+    for i, (lo, hi, _n) in enumerate(comps):
+        for cx in range(int((lo[0] - FLOAT_PAD) // cell), int((hi[0] + FLOAT_PAD) // cell) + 1):
+            for cy in range(int((lo[1] - FLOAT_PAD) // cell), int((hi[1] + FLOAT_PAD) // cell) + 1):
+                buckets.setdefault((cx, cy), []).append(i)
+
+    def touches(a, b):
+        la, ha, _ = comps[a]
+        lb, hb, _ = comps[b]
+        for k in range(3):
+            if la[k] - FLOAT_PAD > hb[k] or lb[k] - FLOAT_PAD > ha[k]:
+                return False
+        return True
+
+    for idxs in buckets.values():
+        for ii in range(len(idxs)):
+            for jj in range(ii + 1, len(idxs)):
+                a, b = idxs[ii], idxs[jj]
+                ra, rb = find(a), find(b)
+                if ra != rb and touches(a, b):
+                    parent[rb] = ra
+
+    clusters = {}
+    for i in range(len(comps)):
+        clusters.setdefault(find(i), []).append(i)
+
+    bad = []
+    for members in clusters.values():
+        z_min = min(comps[i][0][2] for i in members)
+        if z_min <= 0.2:  # in the water: supported
+            continue
+        support = None
+        for i in members:
+            lo, hi, _n = comps[i]
+            for px, py in ((lo[0], lo[1]), (hi[0], hi[1]), ((lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2)):
+                gz = _drop_to_ground(ground, px, py)
+                if gz is not None:
+                    support = gz if support is None else max(support, gz)
+        gap = z_min - support if support is not None else z_min
+        if gap > FLOAT_TOLERANCE:
+            names = sorted({comps[i][2] for i in members})
+            cx = sum((comps[i][0][0] + comps[i][1][0]) / 2 for i in members) / len(members)
+            cy = sum((comps[i][0][1] + comps[i][1][1]) / 2 for i in members) / len(members)
+            bad.append((gap, z_min, cx, cy, len(members), names))
+
+    if bad:
+        bad.sort(key=lambda b: -b[0])
+        lines = [
+            f"[island_gen] {label}: {len(bad)} FLOATING cluster(s) - geometry hanging free of",
+            "             both the waterline and the ground under it. Seat it, attach it to",
+            "             something that IS seated, or (for deliberate decor) add its object",
+            "             name to the builder's float-exempt set.",
+        ]
+        for gap, z_min, cx, cy, n, names in bad[:12]:
+            lines.append(
+                f"             gap {gap:6.1f} studs  bottom z={z_min:7.2f}  at (x={cx:7.1f}, y={cy:7.1f})"
+                f"  {n} piece(s)  {', '.join(names)}"
+            )
+        raise RuntimeError("\n".join(lines))
+    print(f"[island_gen] {label}: float guard OK ({len(clusters)} clusters, none hanging)")
+
+
+# ---- Wreckwater: the dressing (2026-08-29) -------------------------------
+#
+# The graveyard given somewhere to LOOK: a drowned mast forest off the
+# seaward shoal, an anchor graveyard rusting on the beach, a careened hull
+# propped on its side above the tideline, the wreckers' salvage camp, and
+# gibbet posts flanking the harbour mouth. Everything seats on the real
+# faceted ground, keeps out of the bay and the harbour lane, and stays clear
+# of the NPC house fixture (_WR_KEEP_CLEAR).
+
+# Island-relative fixtures other lanes own; the dressing builds AROUND these.
+# Hollow's beached sterncastle (f9's lane) - Roblox rel (-11, +146) with the
+# usual y = -Z mapping, plus margin. Re-key from f9's HANDOFF if it moves.
+_WR_KEEP_CLEAR = [(-11.0, -146.0, 34.0)]
+
+# Object names the float guard skips. Nothing on this island is meant to
+# hover, so this stays EMPTY - it exists as the reviewable opt-out other
+# islands will need (the gloom lighthouse's circling glowfish).
+WRECK_FLOAT_EXEMPT = frozenset()
+
+
+def _wr_clear_of_fixtures(x, y, pad=0.0):
+    for cx, cy, r in _WR_KEEP_CLEAR:
+        if (x - cx) ** 2 + (y - cy) ** 2 < (r + pad) ** 2:
+            return False
+    return True
+
+
+def _wr_shore_spot(ground, u_lo, u_hi, theta_lo_deg, theta_hi_deg, pad=8.0, tries=40):
+    """A raycast-seated point on the island's shore band, clear of the harbour
+    lane, the bay and every fixture."""
+    for _ in range(tries):
+        theta = math.radians(random.uniform(theta_lo_deg, theta_hi_deg))
+        u = random.uniform(u_lo, u_hi)
+        if _near_dock_corridor(theta, u):
+            continue
+        r = ring_radius(u, theta)
+        x, y = math.cos(theta) * r, math.sin(theta) * r
+        if not _wr_clear_of_fixtures(x, y, pad):
+            continue
+        if not _clear_of_ponds(x, y, pad):
+            continue
+        z = _drop_to_ground(ground, x, y)
+        if z is not None and z > 0.4:
+            return x, y, z
+    return None
+
+
+
+def _wr_anchor(bm, x, y, z, size, yaw, lean):
+    """One admiralty anchor, half-buried: shank, crown arms with flukes, the
+    stock across the head, and the ring. Sunk `size*0.18` so it reads as
+    settled into the sand rather than dropped on it."""
+    frame = _wr_frame((x, y, z - size * 0.18), yaw=yaw, pitch=lean)
+    _wr_beam(bm, frame, (0, 0, 0), (0, 0, size), size * 0.085, size * 0.085)
+    for side in (1, -1):
+        elbow = (0, side * size * 0.40, size * 0.26)
+        _wr_beam(bm, frame, (0, 0, size * 0.05), elbow, size * 0.07, size * 0.07)
+        _wr_beam(bm, frame, elbow, (0, side * size * 0.50, size * 0.44), size * 0.12, size * 0.045)
+    _wr_beam(bm, frame, (0, -size * 0.28, size * 0.88), (0, size * 0.28, size * 0.88), size * 0.06, size * 0.06)
+    _wr_spar(bm, frame, (0, 0, size * 0.90), (0, 0, size * 1.02), size * 0.05, size * 0.05, sides=6)
+
+
+def build_wreck_ironwork(ground):
+    """The anchor graveyard: giant admiralty anchors rusting along the beach
+    where the wreckers dragged them clear, plus the mooring chains still
+    running from two of them down into the water. One object,
+    Wreckwater_Ironwork (M_WreckIron)."""
+    bm = bmesh.new()
+    made = 0
+    for _ in range(9):
+        spot = _wr_shore_spot(ground, 0.86, 0.99, 20.0, 250.0, pad=10.0)
+        if spot is None:
+            continue
+        x, y, z = spot
+        size = random.uniform(13.0, 21.0)
+        yaw = random.uniform(0.0, math.tau)
+        lean = math.radians(random.uniform(38.0, 84.0))  # toppled over, not standing
+        _wr_anchor(bm, x, y, z, size, yaw, lean)
+        made += 1
+        # Two of them still have their cable, running down into the sea.
+        if made % 4 == 0:
+            theta = math.atan2(y, x)
+            out = Vector((math.cos(theta), math.sin(theta), 0))
+            frame = _wr_frame((x, y, z + 1.0))
+            prev = Vector((0, 0, 0))
+            for k in range(1, 9):
+                nxt = out * (k * 5.5) - Vector((0, 0, k * k * 0.28))
+                nxt = Vector((nxt.x, nxt.y, max(nxt.z, -(z + 3.0))))
+                _wr_beam(bm, frame, prev, nxt, 1.5 if k % 2 else 0.6, 0.6 if k % 2 else 1.5)
+                prev = nxt
+    print(f"[island_gen] HANDOFF wreckwater: {made} shore anchors")
+    return object_from_bmesh("Wreckwater_Ironwork", bm, ["M_WreckIron"])
+
+
+def build_wreck_mast_forest(bm):
+    """The drowned forest: a shoal seaward of the island where a dozen masts
+    still stand out of the water, yards crossed, with nothing left below.
+    Appended into the SeaHulks bmesh (same timber), so it costs no new object.
+    Every spar runs from below the waterline up - they are sunk ships, and the
+    float guard holds them to it."""
+    made = 0
+    for i in range(13):
+        theta = math.radians(random.uniform(28.0, 96.0)) + random.gauss(0.0, 0.05)
+        r = random.uniform(252.0, 330.0)
+        x, y = math.cos(theta) * r, math.sin(theta) * r
+        z = -random.uniform(2.5, 5.0)
+        h = random.uniform(17.0, 34.0)
+        lean = random.uniform(0.06, 0.34)
+        dir_ang = random.uniform(0.0, math.tau)
+        frame = _wr_frame((x, y, z))
+        axis = Vector((math.sin(lean) * math.cos(dir_ang), math.sin(lean) * math.sin(dir_ang), math.cos(lean)))
+        head = axis * h
+        _wr_spar(bm, frame, (0, 0, 0), head, h * 0.075, h * 0.035, sides=6)
+        perp = axis.cross(Vector((0, 0, 1)))
+        perp = perp.normalized() if perp.length > 1e-4 else Vector((0, 1, 0))
+        if i % 3 != 2:  # most still carry a yard
+            at = axis * (h * random.uniform(0.56, 0.78))
+            half = h * random.uniform(0.20, 0.30)
+            _wr_beam(
+                bm, frame,
+                at + perp * half + Vector((0, 0, -half * 0.10)),
+                at - perp * half + Vector((0, 0, half * 0.08)),
+                h * 0.040, h * 0.040,
+            )
+        made += 1
+    return made
+
+
+def build_wreck_careened(wood_bm, ground):
+    """A hull hauled out and rolled onto her side above the tideline for a
+    repair nobody finished - propped on shore timbers, her open flank a
+    walk-through arch. The island's one piece of ship you meet on FOOT."""
+    spot = _wr_shore_spot(ground, 0.80, 0.90, 120.0, 200.0, pad=26.0, tries=60)
+    if spot is None:
+        return
+    x, y, z = spot
+    theta = math.atan2(y, x)
+    length = random.uniform(46.0, 58.0)
+    beam = length * 0.42
+    roll = math.radians(random.uniform(66.0, 80.0))  # careened: down on her flank
+    frame = _wr_frame((x, y, z + beam * 0.30), yaw=theta + math.pi / 2, pitch=math.radians(-4.0), roll=roll)
+    st = _wr_stations(length, beam, beam * 0.46, freeboard=beam * 0.40, n=9, bow_rise=0.9)
+    _wr_hull_shell(wood_bm, frame, st, cap_break=True)
+    _wr_ribs(wood_bm, frame, st, (0.10, 0.62), rise=beam * 0.42, thick=0.7)
+    # Shore props: heavy timbers wedged from the sand into her exposed side,
+    # each one seated on the real ground so the whole assembly is supported.
+    for k in range(5):
+        t = 0.16 + 0.16 * k
+        i = min(len(st) - 1, int(t * (len(st) - 1)))
+        head = frame @ Vector((st[i][0], -st[i][1] * 0.95, st[i][3] * 0.30))
+        foot_x = head.x + math.cos(theta) * random.uniform(7.0, 12.0)
+        foot_y = head.y + math.sin(theta) * random.uniform(7.0, 12.0)
+        foot_z = _drop_to_ground(ground, foot_x, foot_y)
+        if foot_z is None:
+            continue
+        ident = Matrix.Identity(4)
+        _wr_beam(wood_bm, ident, (foot_x, foot_y, foot_z - 0.6), (head.x, head.y, head.z), 1.5, 1.5)
+    print(f"[island_gen] HANDOFF wreckwater: careened hull at ({x:.0f}, {y:.0f})")
+
+
+def build_wreck_salvage(wood_bm, ground):
+    """The wreckers' camp: what came off the hulls and never went anywhere -
+    crate stacks, barrels on their sides, coiled cable and a capstan, spread
+    over the rim above the quay. Appended into the hulk timber."""
+    made = 0
+    for _ in range(16):
+        spot = _wr_shore_spot(ground, 0.68, 0.86, 200.0, 340.0, pad=12.0)
+        if spot is None:
+            continue
+        x, y, z = spot
+        pick = random.random()
+        ident = Matrix.Identity(4)
+        if pick < 0.42:  # a crate stack
+            n = random.randint(1, 3)
+            for k in range(n):
+                sz = random.uniform(2.6, 4.4) * (1.0 - 0.12 * k)
+                add_box(
+                    wood_bm,
+                    (x + random.uniform(-1.2, 1.2), y + random.uniform(-1.2, 1.2), z + sz / 2 + k * sz * 0.92),
+                    (sz, sz * random.uniform(0.85, 1.15), sz),
+                    yaw=random.uniform(0, math.tau),
+                )
+        elif pick < 0.72:  # barrels, most on their sides
+            for _k in range(random.randint(1, 3)):
+                bx = x + random.uniform(-3.0, 3.0)
+                by = y + random.uniform(-3.0, 3.0)
+                bz = _drop_to_ground(ground, bx, by)
+                if bz is None:
+                    continue
+                rr = random.uniform(1.3, 1.9)
+                if random.random() < 0.6:
+                    a = random.uniform(0, math.tau)
+                    frame = _wr_frame((bx, by, bz + rr))
+                    _wr_spar(wood_bm, frame, (-math.cos(a) * rr * 1.5, -math.sin(a) * rr * 1.5, 0),
+                             (math.cos(a) * rr * 1.5, math.sin(a) * rr * 1.5, 0), rr, rr * 0.86, sides=8)
+                else:
+                    add_post(wood_bm, bx, by, bz, bz + rr * 2.6, rr, sides=8)
+        elif pick < 0.88:  # a coil of cable
+            frame = _wr_frame((x, y, z + 0.35))
+            for k in range(3):
+                rr = 2.6 - k * 0.55
+                seg = 9
+                for sgi in range(seg):
+                    a0 = (sgi / seg) * math.tau
+                    a1 = ((sgi + 1) / seg) * math.tau
+                    _wr_beam(
+                        wood_bm, frame,
+                        (math.cos(a0) * rr, math.sin(a0) * rr, k * 0.55),
+                        (math.cos(a1) * rr, math.sin(a1) * rr, k * 0.55),
+                        0.55, 0.5,
+                    )
+        else:  # a capstan, still standing
+            add_post(wood_bm, x, y, z - 0.5, z + 3.2, 1.5, sides=8)
+            frame = _wr_frame((x, y, z + 3.0))
+            for k in range(4):
+                a = k * math.pi / 2 + random.uniform(-0.2, 0.2)
+                _wr_beam(wood_bm, frame, (0, 0, 0), (math.cos(a) * 4.2, math.sin(a) * 4.2, -0.3), 0.7, 0.7)
+        made += 1
+    print(f"[island_gen] HANDOFF wreckwater: {made} salvage piles")
+
+
+def build_wreck_gibbets(wood_bm, glow_bm, ground):
+    """Two warning posts flanking the harbour mouth, cross-armed like gibbets,
+    a chain swinging off each arm with a lantern at its end - the last thing a
+    ship saw. Placed on the notch bearing, one to each side of the channel."""
+    a = math.radians(DOCK_ANGLE_DEG)
+    d = Vector((math.cos(a), math.sin(a), 0.0))
+    perp = Vector((-d.y, d.x, 0.0))
+    made = 0
+    for side in (1, -1):
+        for attempt in range(14):
+            r = ring_radius(0.97 - attempt * 0.02, a)
+            base = d * r + perp * (side * random.uniform(22.0, 40.0))
+            z = _drop_to_ground(ground, base.x, base.y)
+            if z is None or z < 0.6:
+                continue
+            if not _wr_clear_of_fixtures(base.x, base.y, 14.0):
+                continue
+            h = random.uniform(15.0, 19.0)
+            frame = _wr_frame((base.x, base.y, z - 0.8), yaw=math.atan2(perp.y, perp.x))
+            _wr_beam(wood_bm, frame, (0, 0, 0), (0, 0, h), 1.5, 1.5)
+            arm = h * 0.30
+            _wr_beam(wood_bm, frame, (0, 0, h * 0.94), (0, -side * arm, h * 0.90), 1.0, 1.0)
+            # The chain, hanging to a lantern - each link meets the last.
+            prev = Vector((0, -side * arm, h * 0.90))
+            for k in range(4):
+                nxt = prev - Vector((0, 0, 1.5))
+                _wr_beam(wood_bm, frame, prev, nxt, 0.9 if k % 2 else 0.4, 0.4 if k % 2 else 0.9)
+                prev = nxt
+            _wr_orb(glow_bm, frame, prev - Vector((0, 0, 0.5)), 1.1)
+            made += 1
+            break
+    print(f"[island_gen] HANDOFF wreckwater: {made} harbour gibbets")
+
+
 def build_wreckwater():
     base = build_island_base("Wreckwater_Base", ["M_BayFloor", "M_WreckSand", "M_WreckWet"])
     ground = _ground_bvh(base)
@@ -5147,9 +5580,12 @@ def build_wreckwater():
         build_sea_wrecks(ground),
         *build_wrecks(ground),
         build_wreck_rocks(ground),
+        build_wreck_ironwork(ground),
         *build_dock("Wreckwater_Dock_Planks", "Wreckwater_Dock_Posts", "M_WreckPlank", "M_WreckPost"),
         build_foam("Wreckwater_Foam", "M_WreckFoam"),
     ]
+    validate_no_floaters(objects, ground, exempt=WRECK_FLOAT_EXEMPT, label="wreckwater")
+
     a = math.radians(DOCK_ANGLE_DEG)
     start_r = ring_radius(DOCK_START_U, a)
     print(f"[island_gen] HANDOFF wreckwater: dock start (Roblox rel) X=0 Z={start_r:.0f}, spawn suggestion X=0 Z={start_r - 18:.0f} ground Y~{height_at(0, -(start_r - 18)):.1f}, {_WR_SEA_COUNT} sea hulks")
@@ -5982,6 +6418,7 @@ ISLANDS = {
                 "M_WreckPlank": (0.475, 0.404, 0.310),
                 "M_WreckPost": (0.329, 0.271, 0.204),
                 "M_WreckFoam": (0.882, 0.906, 0.894),
+                "M_WreckIron": (0.216, 0.196, 0.180),  # rusted anchor iron / mooring chain
             },
         },
         "build": build_wreckwater,

@@ -522,6 +522,8 @@ local MESH_COLOR = {
 	Wreckwater_Dock_Planks = Color3.fromRGB(121, 103, 79),
 	Wreckwater_Dock_Posts = Color3.fromRGB(84, 69, 52),
 	Wreckwater_Foam = Color3.fromRGB(225, 231, 228),
+	-- The anchor graveyard + mooring chains (2026-08-29 dressing pass).
+	Wreckwater_Ironwork = Color3.fromRGB(55, 50, 46), -- M_WreckIron
 
 	-- The Maelstrom (assets/island_gen.py `maelstrom`, 2026-08-27). The base
 	-- is a fully SUBMERGED storm-shoal (three materials, so it splits into
