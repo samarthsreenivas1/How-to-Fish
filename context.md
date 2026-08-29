@@ -3051,7 +3051,8 @@ are recorded here so nobody re-derives them.
 **Byte comparison of .glb or .png — DOESN'T WORK.** Measured on Blender
 5.2.0 LTS: two consecutive builds of *identical* sources produce different
 file hashes, while the geometry is unchanged. `PYTHONHASHSEED=0` does not
-fix it. The container's byte layout churns; the meshes do not. Comparing
+fix it. **The geometry is stable — your exported mesh does not silently
+change between builds; only the container's byte layout churns.** Comparing
 hashes (or committed preview PNGs) is a false-positive generator, and gating
 a commit on it blocks clean work. **This section corrects an earlier claim
 of mine that these renders were deterministic — they are not.**
