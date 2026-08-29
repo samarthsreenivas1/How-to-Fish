@@ -76,6 +76,44 @@ local function arenaTemplate(arena): Instance?
 	return assets:FindFirstChild(arena.model)
 end
 
+-- Parts the artist authored as a light source, by name marker.
+--
+-- Studio's glTF importer carries geometry and colour across but lands every
+-- MeshPart on Material.Plastic: the emission set in Blender does not survive
+-- the trip, and neither does the material NAME (Studio names a MeshPart after
+-- the OBJECT it came from, so `M_Wrack_Glow` never reaches runtime). Without
+-- this, the ghost-fire, the careenage lanterns, the wisps and the magma all
+-- import as flat grey lumps. arena_gen.py's `_py_glow` docstring already
+-- states the intent - "in game these parts are Neon, set by name at
+-- placement" - this is that placement.
+--
+-- THE CONTRACT for the arena mesh generators: an object whose NAME contains
+-- `Glow` is rendered Enum.Material.Neon. Case-sensitive, matched as a
+-- substring anywhere in the name, so `<Arena>_GlowKelp` and
+-- `<Arena>_LampGlow` both work. Marker on the object, never the material.
+--
+-- The four names after it are grandfathered: emissive objects authored
+-- BEFORE this marker existed, each mirroring a name WorldService already
+-- treats as emissive on the islands (Volcano_Lava, M_Wisp, Wreckwater_
+-- GhostGlow). New meshes use `Glow`; when these are renamed on their next
+-- export, everything below "Glow" here can go.
+local GLOW_MARKERS = {
+	"Glow",
+	"GhostFire",
+	"GhostLamp",
+	"Wisp",
+	"Lava",
+}
+
+local function isGlow(instanceName: string): boolean
+	for _, marker in GLOW_MARKERS do
+		if string.find(instanceName, marker, 1, true) then
+			return true
+		end
+	end
+	return false
+end
+
 -- Clone and place an authored arena mesh: anchor every part, pin the model's
 -- bbox bottom to its authored depth, and centre its `<model>_Base` part on
 -- the arena centre (the placeIsland pivot math).
@@ -84,6 +122,12 @@ local function placeAuthored(parent: Instance, arena, template: Instance)
 	for _, descendant in model:GetDescendants() do
 		if descendant:IsA("BasePart") then
 			descendant.Anchored = true
+			-- Emissive accents, by the name contract above. Colour is left to
+			-- the import (the arena meshes are one flat material per object,
+			-- untextured); only the material needs restoring.
+			if isGlow(descendant.Name) then
+				descendant.Material = Enum.Material.Neon
+			end
 			-- Dressing that must not catch feet or casts - the island
 			-- NON_COLLIDE idea, by the arena naming convention (arena_gen.py):
 			-- surf foam (which OceanController also rides on the tide),
