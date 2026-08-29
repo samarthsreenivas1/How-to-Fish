@@ -68,7 +68,7 @@ ending at something playable in Studio. Concretely:
   `rojo build` + `python3 tools/check_content.py` — all four green before
   every commit. Full commands under "Tooling / verification".
 
-## Where things stand (2026-08-22)
+## Where things stand (opened 2026-08-22; table current through 2026-08-29)
 
 The loop is playable end to end: spawn on the beach → walk to the dock →
 right-click at water to cast (rod swing, bobber arcs out) → reel bar → a
@@ -114,13 +114,19 @@ between sessions.
 | **Island visual overhaul, rounds 1+2** (2026-08-26→27) | done, in the imported pack | every non-tropical island redesigned to be theme-distinct; Frostmaw went a THIRD round (rejected berg → soft glacier → cornice); pack-authority re-key rule + `meshBottom` born here |
 | **Bipedal creature redesign** (2026-08-26) | done, re-import landed | every humanoid in the CreaturePack got a silhouette, gear and a weapon (0903783) |
 | **Guns rebuilt as guns** (2026-08-27) | done, imported | 15 recognizable firearm silhouettes + the separable `Mag`/`Action`/`Sight`/`Muzzle` part contract + ranged hold poses (fd9c861/c67b5dc/7cc0a90) |
-| **Melee arsenal revamp** (2026-08-27) | built; `weapon.glb` re-import pending | 15 post-cove melee models rebuilt + six per-family swing classes (f309c40/1c1132b) — see "The post-ship days" |
+| **Melee arsenal revamp** (2026-08-27) | SUPERSEDED same day by the weapons feel + icon-canon rounds below | 15 post-cove melee models rebuilt + six per-family swing classes (f309c40/1c1132b) — see "The post-ship days" |
 | **Per-gun reload animations** (2026-08-27) | built, live (code-side) | multi-track clip system: visible mag handling by an appearing left hand, revolver cylinder work, bow nocking... one unique clip per gun (a738a16/4b60215) |
 | **Real projectiles** (2026-08-27) | built, live | bow/crossbow/harpooner fly their own `_Mag` mesh, not tracers (`ranged.projectile`, 648ba2c) |
 | **Voyage-arc map redesign** (2026-08-27) | built, **unreviewed** | islands scattered across one huge sea (legs 4,000→8,700 studs, arc around the cove), boat speeds/seaworthiness retuned per leg, sailing compass on the helm — see "The voyage-arc map" |
 | **Boss redesign: 6 unique movesets + gimmicks + models** (2026-08-27) | built, **unreviewed / creatures.glb re-import pending** | e84f7e9 (engine+data+client) + ba93efb (art): every post-cove boss has its own attack book on a new parameterized boss arsenal, a one-of-a-kind gimmick, and a bespoke Blender model — see "The boss redesign" |
 | **Beyond the Cast: NPCs/quests/collections/economy** (2026-08-28) | built, **unreviewed**, NO re-import | b918da0..b119701: 7 NPCs w/ dialog+shops, 14 quests (log J + tracker), fishing bestiary (N) w/ set rewards, trinket charm slot + 4 live perks, coin-sink shops w/ daily rotation — see "Beyond the Cast" |
 | **SWAMP RESTART, step 1: bare grey landform** (2026-08-27) | built, **awaiting Studio review / island_pack.glb re-import pending** | 7165cf4: the shipped fen REJECTED and deleted wholesale; `build_swamp` now emits only a grey `Swamp_Base` dome — step-by-step rebuild, each step reviewed before the next — see "The swamp restart" |
+| **Weapons feel round: anims actually work + 20 bespoke swings + melee at rod bar** (2026-08-27) | done (0c80a76); superseded models same day | mag/action rig-group composition fix, per-weapon swing clips on the user's axis spec, 20 melee remodels, 67-agent adversarial anim review — see "The weapons feel rounds" |
+| **Icon-canon round: models redone to the uploaded icons** (2026-08-28) | done; `weapon.glb` re-import owed (c562dd6/363c70f) | THE ICONS ARE CANON for item art; all 20 melee rebuilt to their PNGs, gauntlets worn on the fist, spears carry horizontal + jab (`model.hold`), trail toned way down — see "The weapons feel rounds" |
+| **Per-island water colors + fog moods** (2026-08-28) | built, live (code-side, no import) | every island stains its own sea + matching fog (110e070) — see "Per-island water and weather" |
+| **Ocean tile grid** (2026-08-28) | done (c753737) | the 2048-stud part cap was real: the sea is a 32x32 grid of 2040-stud tiles now, span floored at ~65k (48c2733) |
+| **All-hostile pivot + kit engine + boss lairs** (2026-08-28) | built, **unreviewed** | every catch fights (b358837), per-row hostile movesets off the boss arsenal (f4417a5), boss fights move to lair arenas (c8b8f67) |
+| **ARMOR: full four-lane system** (2026-08-28) | built; `armor.glb` FIRST import owed | 10 sets / 30 pieces, set bonuses, shops+quest distribution, ArmorPack meshes + ArmorService welds — see "Armor" |
 | More archetypes (charger/spitter), style/juggle, arena | not started | see Known gaps |
 
 ### Manual Studio steps — check these first
@@ -128,10 +134,12 @@ between sessions.
 All meshes go through Studio's Import once and the result is checked in as
 `assets/Assets.rbxm` (see "Asset pipelines"). **The running ledger of which
 `.glb`s currently owe a re-import is `docs/import-checklist.md`** — trust
-it over file dates; as of this rewrite three are owed: `weapon.glb`
-(melee rebuild 1c1132b), `rod.glb` (rod round be82f72), and
-`island_pack.glb` (the swamp declutter + pine-fix pack 384c971 postdates
-the last island import). If
+it over file dates; as of the 2026-08-29 rewrite FIVE are owed:
+`island_pack.glb` (swamp + volcano restarts, all seven islands in one
+pack), `weapon.glb` (the icon-canon melee, c562dd6), `creatures.glb`
+(the boss redesign models, ba93efb), `rod.glb` (rod round be82f72), and
+`armor.glb` (**FIRST import** — bring it in as `ArmorPack` under
+ReplicatedStorage/Assets, 30 objects, f41a4c6). If
 a catch spawns as a grey ball and Output warns about `FishPack`, the pack
 model is missing or misnamed: it must be `ReplicatedStorage/Assets/FishPack`
 (the old single `Fish` model is unused and can be deleted). If the species
@@ -784,6 +792,69 @@ boat." Pure code/data — NO re-imports owed by this slice.
   feel, boat top speeds, compass size/placement, whether locked islands
   should show on the compass at all, marker colours.
 
+### The weapons feel rounds (2026-08-27 → 28)
+
+Two same-day user rounds on top of the gun/melee rebuilds; both fully
+landed, `weapon.glb` re-import owed (c562dd6).
+
+- **Round 1 — "the animations are bugged / all swings are the same"
+  (0c80a76)**: root cause of the frozen gun parts was the `mag`/`action`
+  rig groups never receiving the arm transform — the render step now
+  composes `arm * local` for every group (WeaponViewmodelController),
+  the parked left hand keeps its park, reload state dies with the rig.
+  The 8 shared swing classes were replaced by **20 bespoke clips, one
+  per melee weapon**, on the user's axis law (daggers cut left-to-right,
+  blades up-to-down, spears drive forward, heavies fall overhead), each
+  with anticipation/snap/follow-through/settle. A 67-agent adversarial
+  review (numeric per-clip analyzers, two refuters per finding)
+  confirmed 10/28 findings — all fixed, plus two sibling defects the fix
+  agents caught (both revolvers spun their cylinders AFTER lockup; the
+  maul fell 158 degrees in one frame). Standing rule from it: after
+  fixing one track, velocity-sweep ALL tracks.
+- **Round 2 — "the models arent accurate to the icons" (c562dd6)**:
+  **THE UPLOADED ICON SET IS CANON for item art** — all 20 melee rebuilt
+  to their PNGs (the icon's pickaxe/bearded-axe/double-bit replaced the
+  invented anchor/icicle designs), MagmaGauntlets are WORN on the fist
+  (palm centre on the grip point), and melee rows may carry
+  `model.hold = { pitch/yaw/roll/position }`: spears couch near-level
+  and JAB (translation-first clips, max ~16 degrees of rotation),
+  `WeaponModel.holdOffsetFor` keeps third person in agreement. The
+  swing trail is a faint accent-coloured hint (none at all on jabs).
+- **`slab_with_hole` never opened a hole** until 363c70f: the inner ring
+  wound the same sense as the outer profile and `bridge_loops` folded
+  the annulus SOLID — silent, guard never trips. Fixed in the shared
+  helper; the failure mode generalizes (see Gotchas).
+
+### Per-island water and weather (2026-08-28, live code-side)
+
+User: "when I visit a new island, there should be a new environment...
+smoothly transition." Each island may declare `water = { color,
+caustics?, causticsTransparency?, reflectance?, seabed? }` on its
+Islands.luau entry (all six non-tropical + the maelstrom do; the cove
+keeps tropical blue by omission). Two halves, one owner each:
+
+- **Server**: `applyMeshColors(island, entry)` dresses the interior
+  pools (fen murk, ice holes, gloom lake, wreck bay) in their island's
+  palette at placement — born murky, never recoloured by the client.
+- **Client (OceanController)**: blends the SEA toward the nearest
+  island's palette — spatial smoothstep over radius+300..radius+1500
+  (a 15-25s colour roll at boat speed), then a 1.5s time-constant ease
+  so teleports fade. ONE uniform colour across every near tile
+  (per-tile colours would seam at 2040-stud edges); caustics tint +
+  seabeds follow (seabeds are their own list — they must never ride the
+  tide); tiles un-stain on exit via the tide's own reset pattern; all
+  writes stop once settled. Tuning: `Ocean.TINT`; palettes: the
+  `water` blocks. `Islands.nearestIsland` is the smooth sibling of
+  `islandAt` (and the marked consolidation target for the three
+  hand-rolled nearest-island loops).
+- **Fog moves with the water**: WeatherController's `STANDING_MODES`
+  maps island → mood — swamp mist, gloom dark, plus new volcano ash
+  (ember glare), wreck ghost-green mist, maelstrom slate stormlight;
+  blizzards stay server-windowed events on top. The
+  atmosphere-adoption re-apply now covers every mode.
+- Excluded on purpose: `Maelstrom_Water` (MaelstromVfxController owns
+  it) and `Volcano_Lava` (LavaController) — never tracked, never tinted.
+
 ### Armor (2026-08-28, four-lane build, core landed)
 
 User order: full armor system - helmet/chest/legs SETS with set bonuses,
@@ -822,9 +893,23 @@ Blender models, ~12 collectible sets - split across all four sessions.
   Wraithbound is deliberately the only all-three-fields bonus) + their
   models after 80's skeleton + ICONS for every piece (rod-icon flow,
   monogram fallback until sliced).
-- **Import owed once models land**: armor.glb (their lane's checklist row).
-- **Unreviewed in Studio**; expect a stat/economy tuning round once all
-  twelve sets are in.
+- **COMPLETE 2026-08-29 — all four lanes landed.** Ten sets / 30 pieces:
+  chitin + boneplate (pilots), mirewalker/rimebound/cindershell/duskveil
+  (island bands, 42e42fe), tideward/corsairs_rest/stormcaller/wraithbound
+  (0f's bands, e3ae409). Distribution live: Hollow gained a shop
+  (`hollows_locker` — sells the Corsair chest+legs, never craftable by
+  design), Maren stocks `tideward_helm`, `the_wider_water` and
+  `ledger_of_teeth` pay armor pieces via the new quest `items` rewards.
+  Wraithbound is craftable-only ON PURPOSE: each recipe mixes essences
+  from different islands, so the shopping list is the itinerary.
+  ArmorPack meshes for all ten sets are in `assets/armor.glb`
+  (9fdd9d5 + 0b817ab + f41a4c6; authoring contract in armor_gen.py's
+  header — pieces centered on their body part, -Y forward, |x| <= 1.35
+  at shoulder height, the export prints every bbox for that check).
+- **Import owed**: armor.glb — FIRST import, as `ArmorPack` (checklist).
+- **Unreviewed in Studio**; expect a stat/economy tuning round once worn
+  in play. Armor icons: manifest ready (30 pieces, 6x5 sheet), waiting
+  on the user's Gemini sheet; monogram fallback covers meanwhile.
 
 ### Beyond the Cast: NPCs, quests, collections, economy (2026-08-28, unreviewed)
 
@@ -882,7 +967,7 @@ code+data; live on next boot). The plan file:
   (economy rule: a normal session should out-earn the shop), tracker
   position, dialog sizing, NPC body species choices.
 
-### The swamp restart (2026-08-27, step 1 in the tree)
+### The swamp restart (2026-08-27 → 28, marsh + trees in the tree, import owed)
 
 User verdict on the shipped mangrove fen: "absolutely atrocious" — grey
 unpainted objects in the canopy, water floating above the terrain, prop
@@ -2402,6 +2487,21 @@ power-up does." Every menu and HUD is now built from one kit:
 
 ## Gotchas (tell the user — they'll hit them again)
 
+- **The 2048-stud BasePart size cap is REAL (2026-08-28).** A
+  `Size = 65000` part silently clamps to 2048 — the "infinite" ocean
+  span floor (48c2733) shipped clamped until c753737 rebuilt the sea as
+  a 32x32 grid of 2040-stud tiles. Never size a single part past 2048;
+  MeshPart IMPORTS have the same 2048 cap separately.
+- **`bridge_loops` with two same-sense loops folds a SOLID annulus —
+  silently (2026-08-28).** Any "cut a hole with an inner ring" helper
+  must wind the inner ring OPPOSITE the outer profile, or every hole it
+  makes renders filled and no guard trips (slab_with_hole shipped that
+  way for days; fixed 363c70f, verified by ray-casting through the
+  hole). If a pierced mesh looks solid, check the winding first.
+- **The uploaded icon set is CANON for item art (user, 2026-08-28).**
+  When a model and its `assets/icons/<id>.png` disagree, the MODEL is
+  wrong — redesigns start from the icon. Icon sheets come from the
+  user via Gemini; we slice/key/wire (see the icon rounds in git).
 - **Raycasts test a MeshPart's COLLISION geometry, not its render mesh
   (2026-08-23).** With the Default (convex hull) CollisionFidelity the
   volcano's crater is capped by an invisible floor at rim height: the
@@ -2683,6 +2783,8 @@ src/
       Bosses.luau           island bosses: gate (level + rod + weapon), arena, phases + the attack book; Bosses.byIsland
       Materials.luau        6 crafting-material rows (tier basic|rare, rarity, icon, colour) + Materials.order; +barnacle_chitin, cursed_bone (creature drops)
       Weapons.luau          melee weapon rows: fists (refs Tuning.Combat), driftwood_club, scale_blade
+      Armor.luau                   armor sets/pieces + set-bonus helpers (10 sets, 30 pieces; four-lane build 2026-08-28)
+      Shops.luau                   NPC shop stock (marens_stall / halvards_cache / brakks_forge / hollows_locker; item slots sell armor)
                             (damage/cooldown/reach/knockback, swing clip name, procedural model block, recipe)
       RodCastAnim.luau      GENERATED cast clip
       FistPunchAnim.luau    GENERATED punch clips (jab/cross, track per fist)
@@ -2713,6 +2815,7 @@ src/
       PlayerService.luau    player health on the Humanoid: damage(), i-frame, regen
       RodService.luau       welds/removes the world rod per loadout
       WeaponService.luau    welds/removes the world weapon per loadout (only rows with a model)
+      ArmorService.luau            welds worn ArmorPack pieces onto characters off the Equipped*Id attributes
       CreatureService.luau  flat array + one Heartbeat: spawn (+extra → Killed), throw, flop, 11 archetype updaters (ARCHETYPE_UPDATERS incl. boss:
                             BOSS_ATTACKS handlers, phases, enrage, globs list), upright stance, damage/untargetable/hitModifiers/participants,
                             knockback + juggle, spit timers, explosions, CreatureEvent moments
@@ -2743,14 +2846,14 @@ src/
       InventoryController.luau     I/B modal: Rods/Materials/Weapons tabs + card grid + detail panel
       CraftingController.luau      C modal: Rods/Weapons tabs + recipe/craft/equip detail (mats+coins+level gated)
       FishingController.luau       right-click cast, bobber arc + line, reel bar, banners, VFX/SFX hooks
-      OceanController.luau         scrolls the water texture + drives the tide (water plane + foam rim rise/fall)
+      OceanController.luau         scrolls the caustics + drives the tide over the 32x32 tile grid + blends per-island water colors (Ocean.TINT / Islands `water` blocks)
       CreatureVfxController.luau   breach/land/flop effects off creature attributes
       CreatureEventController.luau enemy states off Dashing/Exposed/Buried/Open/Charging/Enraged attrs + moments off CreatureEvent (spit glob, explosion, emerge, snap, steal, pulse,
                                    + the boss's bossRise/telegraph/bossSnap/sweep/slam/pull (VectorForce on the local root)/spine/spineHit/summon/bossDive/enrage/bossDown)
       BossHudController.luau       top-centre boss name + health bar off BossName/Health/Enraged; rise/CLEARED/EXPOSED/REGROW/finale cards off CreatureEvent
       TrophyController.luau        (S4) H / HALL button: the Trophy Hall - one card per boss in saga order off the Heart_* attributes
       TrophyShelfController.luau   (S4) decorates any boat's TrophyShelf HeartMount1..6 with the owner's heart orbs (OwnerUserId attr)
-      WeatherController.luau       (S4) ice blizzard fog/snow off WorldEvent + the gloom island's perpetual dark / personal lamp (lantern rods double it)
+      WeatherController.luau       (S4) blizzards off WorldEvent + STANDING_MODES per island: gloom dark (lantern rods), swamp mist, volcano ash, wreck ghost, maelstrom storm
       BoatController.luau          (S3) R/touch-button summon; drives the owner's hull (Boat_Move/Boat_Align, Y held at WATER_Y); BoatMessage banners
       RaidHudController.luau       (S3) raid countdown/wave/remaining line + cards off RaidState, filtered to the local island (Islands.islandAt)
       EquipController.luau         1 (rod) / 2 (weapon) hotkeys → RequestEquip
@@ -2778,6 +2881,7 @@ assets/
   fish_gen.py / fish.glb / fish_preview.png
   creatures_gen.py / creatures.glb / creatures_preview.png  (CreaturePack: Crab/Deckhand/Angler + Skipper/GulletCod/Urchin/Jelly/Lurker/Mimic/Hermit/Voltray + Leviathan (boss); re-import pending)
   weapon_gen.py / weapon.glb / weapon_preview.png  (WeaponPack: DriftwoodClub/Scaleblade/Shellcrusher/Drowncleaver; import pending)
+    armor_gen.py                 the ArmorPack: 10 sets x Helm/Chest/Legs, worn-piece authoring contract in its header
   water_gen.py / water.png
   rod_cast_anim.py / rod_cast.blend
   fist_punch_anim.py / fist_punch.blend
