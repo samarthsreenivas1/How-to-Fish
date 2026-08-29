@@ -88,122 +88,159 @@ Bosses.items.brinejaw = {
 	shortName = "Brinejaw",
 	creature = "brinejaw",
 	islandId = "tropical",
-	-- Summoned by casting the Leviathan's Call bait (Bait.luau, itself Lv 7
-	-- and crafted from the cove's signature drops), so the bait IS the gear
-	-- gate: no rod/weapon requirement (user, 2026-08-23 - it replaced the
-	-- original "best rod + best weapon" rule). Re-gated 15 -> 7 in the
-	-- revamp's level-band pass (docs/revamp-plan.md): Starter Cove is L1-7
-	-- and Brinejaw is its band-end capstone.
+	-- Summoned by casting the Leviathan's Call bait (itself Lv 7 and crafted
+	-- from the cove's signature drops), so the bait IS the gear gate: no
+	-- rod/weapon requirement. Starter Cove is L1-7 and Brinejaw is its
+	-- band-end capstone.
 	gate = { level = 7 },
-	-- The open water just past the round arena deck at the dock's end (the
-	-- deck spans z 122..198 - World.ARENA_CENTER / ARENA_RADIUS): it rises
-	-- off the deck's far rim and can haul itself a few studs onto it, so
-	-- players fight it from the planks.
+
+	-- ---------------------------------------------------------- the colossus
 	--
-	-- Sized for the row's body.scale 1.5 (~26 studs long, 9,000 HP; user,
-	-- 2026-08-22: "bigger, beefier, genuinely hard even with the best
-	-- weapon"). Every range below is that scale's. `hitRadius` is how far its
-	-- hide extends from the pivot toward the player at scale 1; CreatureService
-	-- multiplies it by the row's scale and subtracts it from melee distance, so
-	-- a 14-16 reach connects from the stand-off.
+	-- REDESIGNED 2026-08-29 (user: the bosses should be huge set-pieces you
+	-- outthink, "not just running at the boss aimlessly and attacking and
+	-- brute forcing"). Brinejaw no longer swims at anybody. It is coiled
+	-- three times around the Tidebreak Spire in its own lair arena
+	-- (BossArenas.tropical), and it fights by UNWINDING: the coils and the
+	-- sweeping tail are one chain, so an attack re-poses the body rather
+	-- than spawning anything (Shared/Modules/BrinejawPath).
+	--
+	-- The loop, and the grammar every later boss speaks harder:
+	--   1. survive a pattern - low sweeps are JUMPED, high sweeps are STOOD
+	--      UNDER, and reading which is coming is the whole dodge;
+	--   2. earn the opening - bait a tail slam onto one of the arena's three
+	--      REEF STONES. Sand absorbs the blow; rock does not, and the rattle
+	--      cracks against it;
+	--   3. spend it - the serpent loses its grip and its head comes down on
+	--      the sand, targetable and Exposed, for `stagger` seconds. That is
+	--      the ONLY time it can be hurt at all.
+	-- Each stone shatters as it is spent, so a wasted bait costs something
+	-- real; the fight stays winnable without them (a slam on bare sand still
+	-- staggers it briefly - see `weakStagger`).
+	--
+	-- `stances = 3` is its three coils: every health phase it loses, the
+	-- whole stack slides one turn down the tower, which drops the head lower
+	-- and makes each window a little easier to reach - the fight literally
+	-- comes down to you.
+	entrenched = true,
+	pose = "brinejaw",
+	stances = 3,
+
+	-- The old roam disc, kept because arena.offset is still the fallback
+	-- spawn for an island with no lair row. Entrenched bosses never roam.
 	arena = { offset = Vector3.new(0, 0, 210), radius = 28 },
-	aggro = 90,
-	standoff = 14, -- prowls no closer than this to a player
-	hitRadius = 6, -- at scale 1: pivot (torso) to the jaw; x1.5 = 9
-	submerge = 2.4,
-	riseDepth = 18,
-	riseTime = 3.8,
-	speed = 7,
-	turnRate = math.rad(75),
-	attackGapMin = 0.7,
-	attackGapMax = 1.4,
-	enrageBelow = 0.35,
-	enrageCooldownMult = 0.55,
-	enrageDamageMult = 1.4,
+	-- The head perches ~60 studs up, so "in the arena at all" has to count as
+	-- aggro range; standoff and speed are dead numbers for a colossus.
+	aggro = 220,
+	standoff = 0,
+	hitRadius = 8, -- the slumped head is a big target during a window
+	submerge = 0,
+	riseDepth = 0,
+	riseTime = 4.2, -- the wake: the head lifts out of its slump, coils grind
+	speed = 0,
+	turnRate = math.rad(70),
+	attackGapMin = 1.5,
+	attackGapMax = 2.6,
+	enrageBelow = 0.3,
+	enrageCooldownMult = 0.6,
+	enrageDamageMult = 1.35,
+
+	-- Phase = coil. Sweeps arrive in pairs from the second coil down, and the
+	-- third opens with CONSTRICT: a slow, near-full-circle high sweep with a
+	-- fast low one chasing it.
 	phases = {
-		{ below = 1.0, attacks = { "snap", "tail", "volley", "slam" } },
-		{ below = 0.7, attacks = { "snap", "tail", "volley", "slam", "pull", "brood", "dive" } },
-		{ below = 0.35, attacks = { "snap", "tail", "slam", "pull", "brood", "dive", "spines", "spines", "volley" } },
+		{ below = 1.0, attacks = { "sweeplow", "sweephigh", "tailslam", "rubble" } },
+		{ below = 0.66, attacks = { "sweeplow", "sweephigh", "tailslam", "rubble", "sweeppair" } },
+		{
+			below = 0.33,
+			attacks = { "sweeplow", "sweephigh", "tailslam", "sweeppair", "constrict", "rubble" },
+		},
 	},
+
 	attacks = {
-		snap = {
-			windup = 0.75,
-			duration = 0.35,
-			recover = 0.55,
-			cooldown = 1.8,
-			lunge = 13,
-			radius = 17,
-			cone = math.rad(65),
-			damage = { 55, 80 },
-		},
-		-- Full circle round the pivot (the hide reaches 9 of those studs);
-		-- dodged by backing out of the ring the tell draws.
-		tail = {
-			windup = 0.9,
-			duration = 0.45,
-			recover = 0.65,
-			cooldown = 2.4,
-			radius = 21,
-			damage = { 45, 65 },
-		},
-		volley = {
-			windup = 0.7,
-			duration = 0.9,
-			recover = 0.5,
-			cooldown = 3.0,
-			count = 6,
-			spread = 12,
-			flight = 1.0,
-			stagger = 0.13,
-			radius = 8,
-			damage = { 22, 32 },
-		},
-		-- From the 14-stud stand-off the player has to clear the ring: 12
-		-- studs in 1.6 s at walk speed 16 leaves ~0.8 s to read the tell -
-		-- "dodgeable but not trivial" (playtest, 2026-08-22; 33 / 1.15 was
-		-- physically undodgeable).
-		slam = { windup = 1.6, duration = 0.3, recover = 0.85, cooldown = 4.2, radius = 26, damage = { 55, 80 } },
-		pull = {
-			windup = 0.5,
-			duration = 2.4,
-			recover = 0.2,
-			cooldown = 6.5,
-			radius = 65,
-			strength = 36,
-			follow = "snap",
-		},
-		brood = {
-			windup = 0.8,
-			duration = 0.4,
-			recover = 0.6,
-			cooldown = 10.0,
-			count = 4,
-			rows = { "pufferfish", "snapjaw_crab", "tidebomb_urchin", "voltray" },
-		},
-		-- Tunnels (obstacle-free, under the deck) after the player's live
-		-- position for duration - lock, then locks under their feet for the
-		-- last `lock` seconds with a ring tell, and bursts there: 13 studs to
-		-- clear in 0.9 s means you move the instant the ring appears or eat it.
-		dive = {
-			windup = 0.7,
+		-- Jump it. 2.6 s for ~340 degrees is a wave you can see coming from
+		-- anywhere on the ring, which is the point at a level-7 capstone.
+		sweeplow = {
+			handler = "orbitsweep",
+			tell = "ringTell",
+			windup = 1.5,
 			duration = 2.6,
-			lock = 0.9,
-			recover = 0.9,
-			cooldown = 7.5,
-			speed = 30,
-			radius = 13,
-			damage = { 55, 80 },
-		},
-		spines = {
-			windup = 0.8,
-			duration = 1.6,
-			recover = 0.5,
+			recover = 1.0,
 			cooldown = 5.0,
-			count = 10,
-			spread = 14,
-			flight = 0.8,
-			radius = 6,
-			damage = { 28, 40 },
+			arc = math.rad(340),
+			girth = 3.4,
+			damage = { 38, 55 },
+		},
+		-- Stand still. Panic-jumping this is how the cove teaches height.
+		sweephigh = {
+			handler = "orbitsweep",
+			high = true,
+			tell = "ringTell",
+			windup = 1.6,
+			duration = 2.4,
+			recover = 1.0,
+			cooldown = 5.5,
+			arc = math.rad(320),
+			girth = 3.6,
+			damage = { 40, 58 },
+		},
+		-- Low, then immediately high: jump, land, hold. The follow chains it.
+		sweeppair = {
+			handler = "orbitsweep",
+			tell = "ringTell",
+			windup = 1.2,
+			duration = 2.2,
+			recover = 0.5,
+			cooldown = 9.0,
+			arc = math.rad(300),
+			girth = 3.4,
+			damage = { 38, 55 },
+			follow = "sweephigh",
+		},
+		-- The opening. Long windup on purpose: the bait is a decision, not a
+		-- reaction - you have to be STANDING at a stone when it lands.
+		tailslam = {
+			handler = "tailslam",
+			tell = "mark",
+			windup = 1.9,
+			duration = 0.85,
+			recover = 1.1,
+			cooldown = 8.0,
+			radius = 13,
+			lift = 9,
+			stoneReach = 11, -- how near a stone the blow has to land
+			stagger = 8.0, -- the punish window a stone buys
+			weakStagger = 2.2, -- sand only jars it: winnable, never the plan
+			damage = { 52, 74 },
+		},
+		-- Masonry knocked off the tower by the grinding coils.
+		rubble = {
+			handler = "volley",
+			tell = "burst",
+			windup = 0.8,
+			duration = 1.0,
+			recover = 0.6,
+			cooldown = 6.0,
+			count = 6,
+			spread = 22,
+			flight = 1.1,
+			stagger = 0.14,
+			radius = 8,
+			damage = { 20, 30 },
+		},
+		-- Phase 3: the squeeze. A slow high sweep all the way round with a
+		-- low one chasing it, so the safe answer changes mid-move.
+		constrict = {
+			handler = "orbitsweep",
+			high = true,
+			tell = "ringTell",
+			windup = 1.8,
+			duration = 4.4,
+			recover = 0.6,
+			cooldown = 14.0,
+			arc = math.rad(400),
+			girth = 3.8,
+			damage = { 44, 62 },
+			follow = "sweeplow",
 		},
 	},
 }

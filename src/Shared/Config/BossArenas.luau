@@ -46,6 +46,11 @@ export type Arena = {
 	model: string, -- authored-mesh name (see header)
 	meshBottom: number?,
 	palette: Palette,
+	-- Fight furniture, arena-local XZ: the boss's own mechanics read these.
+	-- Brinejaw's three reef stones are the slam-bait targets, and they match
+	-- the `<Model>_ReefStone1..3` objects the authored mesh carries (their
+	-- HANDOFF positions, converted from the generator's Blender axes).
+	stones: { Vector3 }?,
 }
 
 BossArenas.items = {
@@ -56,6 +61,11 @@ BossArenas.items = {
 		palette = {
 			floor = Color3.fromRGB(230, 207, 160), -- sun-bleached sand bar
 			rim = Color3.fromRGB(124, 94, 62), -- driftwood palisade
+		},
+		stones = {
+			Vector3.new(38.6, 0, -10.4),
+			Vector3.new(-28.3, 0, -28.3),
+			Vector3.new(-10.4, 0, 38.6),
 		},
 	},
 	swamp = {

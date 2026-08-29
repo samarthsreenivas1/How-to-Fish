@@ -39,6 +39,8 @@ local Workspace = game:GetService("Workspace")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Bosses = require(Shared.Data.Bosses)
 local Creatures = require(Shared.Data.Creatures)
+local BossArenas = require(Shared.Config.BossArenas)
+local BrinejawPath = require(Shared.Modules.BrinejawPath)
 local CreatureModel = require(Shared.Modules.CreatureModel)
 local Tuning = require(Shared.Config.Tuning)
 local World = require(Shared.Config.World)
@@ -2749,7 +2751,8 @@ local function endBossAttack(creature, def, now: number)
 		creature.nextAttackAt = now + randomBetween(def.attackGapMin, def.attackGapMax) * rage
 	end
 	creature.attack = nil
-	setMode(creature, "prowl", 0, now)
+	-- A colossus goes back to its perch, not to prowling: it never chases.
+	setMode(creature, if def.entrenched then "entrenched" else "prowl", 0, now)
 end
 
 local function updateBossAttack(
@@ -3281,6 +3284,295 @@ end
 -- bounty - and the ring is what gates the head: damage() refuses a
 -- `vulnerableWhen = "partsDown"` boss while partsAlive > 0, kill() counts
 -- the ring down, and the regrow clock below re-plants it.
+-- ============================================================ colossus bosses (2026-08-29)
+--
+-- A COLOSSUS holds a perch instead of chasing: `entrenched = true` in its
+-- Bosses row. It never walks, its appendages do the attacking, and it cannot
+-- be hurt at all until the players EARN a stagger - the punish window a
+-- handler opens with openStagger(). The loop the redesign is built on:
+-- survive a pattern, earn the opening, spend it.
+--
+-- Three pieces are generic, so the other colossi (Wrack's beached flagship,
+-- the Kraken's arms) get them for free:
+--   * entrenched  - hold the perch, face the nearest player, attack from it.
+--   * stances     - how many times its stance shifts over the fight. The
+--                   engine derives the current one from the health phase and
+--                   publishes it; what a stance MEANS is the boss's fiction
+--                   (Brinejaw drops a coil, Wrack hauls itself forward).
+--   * stagger     - the punish window: targetable, Exposed, then back up.
+-- What stays per-boss is the SHAPE its body takes, which lives in its own
+-- path module (Shared/Modules/BrinejawPath) and is selected by `def.pose`.
+
+local ATTR_STANCE = "Stance" -- 1 = final stance; counts DOWN as it loses ground
+-- Brinejaw's replicated pose. The client draws its entire body from these, so
+-- this list is the contract with BrinejawBodyController.
+local ATTR_COIL = "Coil"
+local ATTR_UNWIND = "Unwind"
+local ATTR_SWEEP_ANGLE = "SweepAngle"
+local ATTR_SWEEP_HEIGHT = "SweepHeight"
+local ATTR_SLUMP = "Slump"
+local ATTR_FACE_ANGLE = "FaceAngle"
+
+-- Which phase the health fraction puts it in (1-based), the stance's source.
+local function bossPhaseIndex(def, hpFraction: number): number
+	local index = 1
+	for i, phase in def.phases do
+		if hpFraction <= phase.below then
+			index = i
+		end
+	end
+	return index
+end
+
+-- The boss's own pose state, created on first use.
+local function colossusState(creature, def)
+	local state = creature.pose
+	if not state then
+		if def.pose == "brinejaw" then
+			state = BrinejawPath.newState(creature.anchor or creature.pos)
+		else
+			state = { center = creature.anchor or creature.pos, time = 0 }
+		end
+		creature.pose = state
+	end
+	return state
+end
+
+local function publishPose(creature, state)
+	local model = creature.model
+	model:SetAttribute(ATTR_COIL, state.coil)
+	model:SetAttribute(ATTR_UNWIND, state.unwind)
+	model:SetAttribute(ATTR_SWEEP_ANGLE, state.sweepAngle)
+	model:SetAttribute(ATTR_SWEEP_HEIGHT, state.sweepHeight)
+	model:SetAttribute(ATTR_SLUMP, state.slump)
+	model:SetAttribute(ATTR_FACE_ANGLE, state.faceAngle)
+end
+
+-- The whole visible boss is drawn by the client from the pose attributes, so
+-- the server's model is authority only: it keeps its parts (hits and the HUD
+-- read them) but shows nothing, or the head would be drawn twice.
+local function hideColossusModel(creature)
+	if creature.hiddenModel then
+		return
+	end
+	creature.hiddenModel = true
+	for _, descendant in creature.model:GetDescendants() do
+		if descendant:IsA("BasePart") then
+			descendant.Transparency = 1
+			descendant.CastShadow = false
+		elseif descendant:IsA("Decal") or descendant:IsA("Texture") then
+			descendant.Transparency = 1
+		end
+	end
+end
+
+-- Stand the model where its pose says its head is, aimed up-body.
+local function placeColossus(creature, def, now: number, root: BasePart?)
+	local state = colossusState(creature, def)
+	state.time = now
+	if root then
+		local to = root.Position - state.center
+		if to.Magnitude > 0.01 then
+			state.faceAngle = math.atan2(to.Z, to.X)
+		end
+	end
+	if def.pose == "brinejaw" then
+		creature.pos = BrinejawPath.headPosition(state)
+		local forward = BrinejawPath.tangentAt(state, 0)
+		local up = if math.abs(forward.Y) > 0.99 then Vector3.new(0, 0, 1) else Vector3.new(0, 1, 0)
+		local right = forward:Cross(up)
+		if right.Magnitude > 1e-4 then
+			creature.model:PivotTo(CFrame.fromMatrix(creature.pos, forward, right.Unit:Cross(forward).Unit))
+		end
+	end
+	publishPose(creature, state)
+end
+
+-- The earned opening: it loses its grip, comes down, and takes damage for
+-- `seconds`. Called by a handler that has just been baited into a mistake.
+local function openStagger(creature, def, now: number, seconds: number)
+	creature.untargetable = false
+	creature.exposedUntil = now + seconds
+	creature.model:SetAttribute(ATTR_EXPOSED, true)
+	creature.attack = nil
+	setMode(creature, "stagger", seconds, now)
+	fireEvent("bossStagger", creature.pos, { name = def.name, duration = seconds })
+end
+
+-- The reef stones a slam can be baited onto: three of them, and each one
+-- shatters as it is spent, so a wasted bait is a real cost.
+local function colossusStones(creature, def)
+	if creature.stones then
+		return creature.stones
+	end
+	local stones = {}
+	local arena = def.islandId and BossArenas.items[def.islandId]
+	local arenas = Workspace:FindFirstChild("BossArenas")
+	for index, offset in (arena and arena.stones or {}) do
+		local center = creature.anchor or creature.pos
+		local part = nil
+		if arenas then
+			for _, descendant in arenas:GetDescendants() do
+				if descendant:IsA("BasePart") and string.find(descendant.Name, "ReefStone" .. index, 1, true) then
+					part = descendant
+					break
+				end
+			end
+		end
+		table.insert(stones, {
+			index = index,
+			position = Vector3.new(center.X + offset.X, center.Y, center.Z + offset.Z),
+			standing = true,
+			part = part,
+			restCFrame = part and part.CFrame or nil,
+		})
+	end
+	creature.stones = stones
+	return stones
+end
+
+-- Every stance it loses, the grinding coils shed fresh masonry: the spent
+-- stones come back. Without this a party that misread three baits would be
+-- left with no way to open a window at all.
+local function restoreStones(creature, def)
+	for _, stone in colossusStones(creature, def) do
+		if not stone.standing then
+			stone.standing = true
+			if stone.part and stone.part.Parent and stone.restCFrame then
+				stone.part.CFrame = stone.restCFrame
+			end
+		end
+	end
+end
+
+-- Take the stone nearest `at` if one is close enough and still standing.
+local function spendStone(creature, def, at: Vector3, reach: number)
+	local best, bestDist = nil, reach
+	for _, stone in colossusStones(creature, def) do
+		if stone.standing then
+			local d = Vector3.new(stone.position.X - at.X, 0, stone.position.Z - at.Z).Magnitude
+			if d <= bestDist then
+				best, bestDist = stone, d
+			end
+		end
+	end
+	if not best then
+		return nil
+	end
+	best.standing = false
+	-- Sink the rock rather than destroy it: a stance change raises it again
+	-- (restoreStones), and the authored and procedural arenas both work
+	-- because their stones carry the same names.
+	if best.part and best.part.Parent then
+		best.part.CFrame = best.part.CFrame - Vector3.new(0, 9, 0)
+	end
+	fireEvent("reefShatter", best.position, { index = best.index })
+	return best
+end
+
+-- ---------------------------------------------------------- brinejaw's two
+--
+-- ORBIT SWEEP: the tail unwinds off the tower and scythes round the arena
+-- like a clock hand. LOW is jumped, HIGH is stood under - reading which is
+-- coming is the whole dodge, and panic-jumping a high sweep is how you die.
+-- Nothing spawns: the arm IS the coils, re-posed (BrinejawPath).
+ATTACK_HANDLERS.orbitsweep = {
+	windup = function(creature, def, p, u, _sub)
+		local state = colossusState(creature, def)
+		-- The tail peels off the tower during the windup - the telegraph is
+		-- the body itself, so a player who reads the serpent reads the attack.
+		state.unwind = u
+		state.sweepHeight = if p.high then BrinejawPath.SWEEP_HIGH else BrinejawPath.SWEEP_LOW
+		state.sweepAngle = creature.attack.startAngle or state.sweepAngle
+	end,
+	fire = function(creature, def, p, _now, root)
+		local a = creature.attack
+		local state = colossusState(creature, def)
+		state.unwind = 1
+		local arc = p.arc or math.rad(320)
+		local dir = if math.random() < 0.5 then 1 else -1
+		local target = state.faceAngle or 0
+		if root then
+			local to = root.Position - state.center
+			target = math.atan2(to.Z, to.X)
+		end
+		-- Start behind the target so the arm sweeps THROUGH them, not at them.
+		a.dir = dir
+		a.arc = arc
+		a.startAngle = target - dir * arc * 0.5
+		a.hit = {}
+		state.sweepAngle = a.startAngle
+	end,
+	strike = function(creature, def, p, _now, dt, _u, _root, _sub)
+		local a = creature.attack
+		local state = colossusState(creature, def)
+		state.unwind = 1
+		local rate = a.arc / math.max(p.duration, 1e-3)
+		state.sweepAngle += a.dir * rate * dt
+		local girth = p.girth or 3.2
+		local lo, hi = bossRoll(creature, def, p.damage)
+		for _, player in Players:GetPlayers() do
+			local character = player.Character
+			local root = character and character:FindFirstChild("HumanoidRootPart")
+			if root and not a.hit[player] and BrinejawPath.sweepHits(state, root.Position, girth) then
+				a.hit[player] = true
+				PlayerService.damage(player, math.random(lo, hi), creature, { bypassIframe = true })
+			end
+		end
+	end,
+	finish = function(creature, def, _p, _now)
+		-- The arm stays out; the entrenched branch winds it back onto the
+		-- tower, so the recovery reads as the serpent re-gripping.
+		local state = colossusState(creature, def)
+		state.unwind = math.min(state.unwind or 1, 1)
+	end,
+}
+
+-- TAIL SLAM: the opening. It hammers the tail down where a player stands.
+-- Sand absorbs it. A REEF STONE does not - bait it onto one and the rattle
+-- cracks against the rock, the serpent loses its grip, and it comes down.
+ATTACK_HANDLERS.tailslam = {
+	windup = function(creature, def, p, u, _sub)
+		local state = colossusState(creature, def)
+		state.unwind = math.min(u * 1.2, 1)
+		state.sweepHeight = BrinejawPath.SWEEP_HIGH + (p.lift or 9) * u
+		state.sweepAngle = creature.attack.aimAngle or state.sweepAngle
+	end,
+	fire = function(creature, def, _p, _now, root)
+		local a = creature.attack
+		local state = colossusState(creature, def)
+		local at = if root then root.Position else state.center
+		local to = at - state.center
+		a.aimAngle = math.atan2(to.Z, to.X)
+		a.impact = Vector3.new(at.X, state.center.Y, at.Z)
+		state.sweepAngle = a.aimAngle
+	end,
+	strike = function(creature, def, p, now, _dt, u, _root, _sub)
+		local a = creature.attack
+		local state = colossusState(creature, def)
+		state.unwind = 1
+		-- Down it comes.
+		state.sweepHeight = BrinejawPath.SWEEP_HIGH + (p.lift or 9) * (1 - u) ^ 2
+		if a.fired or u < 0.62 then
+			return
+		end
+		a.fired = true
+		state.sweepHeight = BrinejawPath.SWEEP_LOW
+		local lo, hi = bossRoll(creature, def, p.damage)
+		damagePlayersInCone(a.impact, Vector3.new(1, 0, 0), p.radius or 13, math.pi, false, lo, hi, creature)
+		fireEvent("slam", a.impact, { radius = p.radius or 13, skin = p.skin })
+		local stone = spendStone(creature, def, a.impact, p.stoneReach or 11)
+		if stone then
+			openStagger(creature, def, now, p.stagger or 8)
+		elseif p.weakStagger then
+			-- Sand absorbs most of it: the serpent is jarred, not brought
+			-- down. Enough to keep the fight winnable, far too short to be
+			-- the plan.
+			openStagger(creature, def, now, p.weakStagger)
+		end
+	end,
+}
+
 local function spawnBossParts(creature, def)
 	local parts = def.parts
 	local row = Creatures.items[parts.row]
@@ -3343,6 +3635,21 @@ local function updateBoss(creature, now: number, dt: number)
 
 	if creature.mode == "rising" then
 		local u = modeProgress(creature, now)
+		if def.entrenched then
+			-- It does not rise from the deep - it is already up there. The
+			-- wake is the head lifting out of its slump as the coils grind.
+			hideColossusModel(creature)
+			local state = colossusState(creature, def)
+			state.slump = 1 - (1 - (1 - u) ^ 2)
+			placeColossus(creature, def, now, root)
+			if u >= 1 then
+				state.slump = 0
+				-- Still untouchable: the only way in is an earned stagger.
+				creature.untargetable = true
+				setMode(creature, "entrenched", 0, now)
+			end
+			return
+		end
 		local e = 1 - (1 - u) ^ 3
 		model:PivotTo(poseCFrame(creature, -def.riseDepth + (def.riseDepth + sub) * e, 0, math.rad(-20) * (1 - e)))
 		if u >= 1 then
@@ -3352,6 +3659,51 @@ local function updateBoss(creature, now: number, dt: number)
 			if def.parts then
 				spawnBossParts(creature, def)
 			end
+		end
+		return
+	end
+
+	-- ---------------------------------------------------------- colossus
+	if def.entrenched then
+		local state = colossusState(creature, def)
+		-- Stance follows the health phase: each one it loses costs it ground.
+		local stance = (def.stances or 1) - (bossPhaseIndex(def, creature.health / creature.maxHealth) - 1)
+		stance = math.max(stance, 1)
+		if state.coil ~= stance then
+			state.coil = stance
+			model:SetAttribute(ATTR_STANCE, stance)
+			restoreStones(creature, def)
+			fireEvent("bossStance", creature.pos, { name = def.name, stance = stance })
+		end
+
+		if creature.mode == "stagger" then
+			-- The punish window: it is down, open, and taking hits. The head
+			-- eases to the sand and back so the window has a shape.
+			local u = modeProgress(creature, now)
+			state.slump = math.clamp(math.min(u * 6, 1) - math.max(u - 0.82, 0) / 0.18, 0, 1)
+			placeColossus(creature, def, now, root)
+			if u >= 1 then
+				state.slump = 0
+				creature.untargetable = true
+				creature.model:SetAttribute(ATTR_EXPOSED, nil)
+				creature.nextAttackAt = now + 0.6
+				setMode(creature, "entrenched", 0, now)
+			end
+			return
+		end
+
+		if creature.mode == "attack" then
+			updateBossAttack(creature, def, now, dt, root, player, dist, sub)
+			placeColossus(creature, def, now, root)
+			return
+		end
+
+		-- Entrenched: hold the perch, watch, and pick the next pattern. The
+		-- tail eases back onto the tower between attacks.
+		state.unwind = math.max((state.unwind or 0) - dt * 1.8, 0)
+		placeColossus(creature, def, now, root)
+		if root and now >= creature.nextAttackAt and dist <= def.aggro then
+			beginBossAttack(creature, def, pickBossAttack(creature, def, now), now)
 		end
 		return
 	end

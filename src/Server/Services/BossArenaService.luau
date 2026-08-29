@@ -151,6 +151,24 @@ local function buildRim(parent: Instance, arena, radius: number)
 	end
 end
 
+-- The fight furniture an arena's boss needs even before its authored mesh
+-- lands: Brinejaw's reef stones are its slam-bait targets, so the fight is
+-- unplayable without something standing there. Named to match the authored
+-- objects, so the boss code finds either one the same way.
+local function buildStones(parent: Instance, arena)
+	for index, offset in (arena.stones or {}) do
+		local stone = Instance.new("Part")
+		stone.Name = arena.model .. "_ReefStone" .. index
+		stone.Size = Vector3.new(5.5, 4.4, 5.5)
+		stone.CFrame = CFrame.new(arena.center.X + offset.X, World.WATER_Y + 1.6, arena.center.Z + offset.Z)
+			* CFrame.Angles(0, index * 1.1, 0)
+		stone.Anchored = true
+		stone.Color = arena.palette.rim
+		stone.Material = Enum.Material.Rock
+		stone.Parent = parent
+	end
+end
+
 -- ============================================================ public
 
 -- The arena centre for an island's boss, or nil when it fights in place.
@@ -194,6 +212,7 @@ function BossArenaService.init()
 		else
 			buildFloor(folder, arena, radius)
 			buildRim(folder, arena, radius)
+			buildStones(folder, arena)
 		end
 	end
 end
