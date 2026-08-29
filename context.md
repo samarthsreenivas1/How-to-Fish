@@ -3039,6 +3039,55 @@ this machine (macOS, 2026-08-25): commit per milestone with explicit paths
 The pre-reset build was mined on the old Windows machine; its path there
 (`C:\Users\sreen\Desktop\Roblox Game (pre-reset backup)\`) is stale here.
 
+### Did my edit move someone else's mesh? (2026-08-29)
+
+Several lanes share the asset generators (`arena_gen.py`, `boss_gen.py`,
+`armor_gen.py`), so a plausible edit in one lane can silently move another
+lane's geometry — it happened: a global string replace hit `build_bj_foam`
+instead of `build_gn_foam` and two arenas swapped surf rings. Use
+`tools/mesh_digest.py`; the two checks tried before it are both unsound and
+are recorded here so nobody re-derives them.
+
+**Byte comparison of .glb or .png — DOESN'T WORK.** Measured on Blender
+5.2.0 LTS: two consecutive builds of *identical* sources produce different
+file hashes, while the geometry is unchanged. `PYTHONHASHSEED=0` does not
+fix it. The container's byte layout churns; the meshes do not. Comparing
+hashes (or committed preview PNGs) is a false-positive generator, and gating
+a commit on it blocks clean work. **This section corrects an earlier claim
+of mine that these renders were deterministic — they are not.**
+
+**Diffing the exporter's bbox lines — CATCHES ONLY OUTER EXTENTS.** Sound
+and version-proof as far as it goes, but blind to interior changes.
+Measured on the foam ring: outer radius 86 → 88 moves the bbox and is
+caught; inner radius 80 → 82 does **not** move the bbox and passes silently
+— and the inner radius is exactly what the real accident changed. An empty
+bbox diff does not mean the geometry is unchanged.
+
+**What works: `tools/mesh_digest.py`** — decodes the glb's POSITION
+accessors and hashes each object's vertices, so it sees any change to any
+vertex while ignoring container churn. Build the same target at both
+revisions and diff:
+
+```
+blender --background --python <arena_gen.py at rev A> -- /tmp/a.glb brinejaw
+blender --background --python assets/arena_gen.py            -- /tmp/b.glb brinejaw
+python3 tools/mesh_digest.py /tmp/a.glb > /tmp/a.txt
+python3 tools/mesh_digest.py /tmp/b.glb > /tmp/b.txt
+diff /tmp/a.txt /tmp/b.txt
+```
+
+**Always keep a positive control.** An empty diff means nothing until you
+have shown the instrument can produce a non-empty one — perturb something
+harmless in your own builder, confirm the diff fires, revert, re-run. A
+typo'd path, a wrong arena name, or a grep matching nothing reads exactly
+like success. That is the line between a test and a ritual; it is also how
+the bbox method's blind spot was found, by running the control and watching
+it *not* fire.
+
+And the check that needs no tooling at all: a **textual** assertion. "My
+diff is additive-only" and "no other lane's prefix appears inside my cut"
+are exact, cheap, and were what actually proved the foam restoration.
+
 ## Known gaps / next steps (not yet asked for — don't start unprompted)
 
 - **Crafting Slice 2 — now BUILT** for rods AND weapons (see the crafting
