@@ -196,7 +196,41 @@ end
 
 -- ---------------------------------------------------------------- per frame
 
+-- The server's welded rod must not draw for the owner IN FIRST PERSON: Roblox
+-- hides it anyway there, but a transparency override makes that explicit and
+-- covers the frames before the camera settles.
+--
+-- In THIRD person it is the opposite - the viewmodel is gone (the boss arena
+-- takes the camera out; Viewmodel.setHidden) and this welded rod is the only
+-- rod there is, so hiding it would leave the character holding nothing.
+local currentWorldRod: Model? = nil
+local worldRodHidden: boolean? = nil
+
+local function applyWorldRod(worldRod: Model, hidden: boolean)
+	for _, part in worldRod:GetDescendants() do
+		if part:IsA("BasePart") then
+			part.LocalTransparencyModifier = if hidden then 1 else 0
+		end
+	end
+end
+
 local function onRenderStep(dt: number)
+	-- The world rod trades places with the viewmodel: whichever one is not
+	-- drawing, the other is. Cheap to re-check, and it has to be checked
+	-- outside the `rig` guard below - in third person there IS no rig.
+	if currentWorldRod then
+		if currentWorldRod.Parent == nil then
+			currentWorldRod = nil
+			worldRodHidden = nil
+		else
+			local hidden = not Viewmodel.isHidden()
+			if hidden ~= worldRodHidden then
+				worldRodHidden = hidden
+				applyWorldRod(currentWorldRod, hidden)
+			end
+		end
+	end
+
 	if not rig then
 		return
 	end
@@ -255,17 +289,6 @@ end
 
 -- ---------------------------------------------------------------- lifecycle
 
--- The server's welded rod must not draw for the owner: in first person
--- Roblox hides it anyway, but a transparency override makes that explicit
--- and covers the frames before the camera settles.
-local function hideWorldRod(worldRod: Model)
-	for _, part in worldRod:GetDescendants() do
-		if part:IsA("BasePart") then
-			part.LocalTransparencyModifier = 1
-		end
-	end
-end
-
 -- The rod row currently welded into the character (nil when fists are out),
 -- and whether the character's arms are ready to clone - the player's real
 -- hands, skin and all, only exist once the avatar has loaded (see
@@ -300,7 +323,9 @@ local function watchCharacter(character: Model)
 		if worldRod.Name ~= EQUIPPED_NAME or not worldRod:IsA("Model") then
 			return
 		end
-		hideWorldRod(worldRod)
+		currentWorldRod = worldRod
+		worldRodHidden = not Viewmodel.isHidden()
+		applyWorldRod(worldRod, worldRodHidden)
 
 		local rodId = worldRod:GetAttribute("RodId")
 		local rodData = rodId and Rods.items[rodId]
