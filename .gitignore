@@ -31,3 +31,7 @@ Thumbs.db
 
 # Claude session state (agent worktrees etc.)
 .claude/
+
+# Python bytecode cache: boss_gen imports arena_gen for its staged render,
+# which makes Blender leave one of these behind in assets/.
+__pycache__/
