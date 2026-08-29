@@ -511,12 +511,6 @@ local MESH_COLOR = {
 	Gloomtrench_Dock_Posts = Color3.fromRGB(50, 46, 60),
 	Gloomtrench_Foam = Color3.fromRGB(171, 179, 199),
 
-	-- Keeper Lumen's lighthouse: the trench's one standing light.
-	Gloomtrench_Hut_Walls = Color3.fromRGB(93, 90, 113), -- M_GloomPath (pale flagstone tower)
-	Gloomtrench_Hut_Roof = Color3.fromRGB(20, 21, 30), -- M_GloomShelf (gallery, lamp cage, cap)
-	Gloomtrench_Hut_Props = Color3.fromRGB(59, 62, 76), -- M_GloomStalk
-	Gloomtrench_Hut_Glow = Color3.fromRGB(74, 239, 224), -- M_GlowCyan (Neon below)
-
 	-- Wreckwater (assets/island_wreck_gen.py). The ghost-glow is Neon.
 	Wreckwater_Base = Color3.fromRGB(60, 62, 60), -- M_BayFloor (drowned grey-green silt)
 	Wreckwater_Base2 = Color3.fromRGB(170, 163, 142), -- M_WreckSand (bone-grey sand)
@@ -529,25 +523,56 @@ local MESH_COLOR = {
 	Wreckwater_GhostGlow = Color3.fromRGB(173, 241, 196),
 	Wreckwater_Sails = Color3.fromRGB(189, 190, 179), -- M_WreckSail (rotted canvas, bone with a green cast)
 
-	-- Quartermaster Hollow's beached sterncastle (the NPC houses, 2026-08-29).
-	-- Walls take the fleet's own hull colour so the house reads as wreckage
-	-- that was made into a home, not a building dropped on the beach.
-	Wreckwater_Hut_Walls = Color3.fromRGB(55, 46, 37), -- M_HullWood, matches Wreckwater_Hulks
-	Wreckwater_Hut_Roof = Color3.fromRGB(121, 103, 79), -- M_WreckPlank
-	Wreckwater_Hut_Props = Color3.fromRGB(84, 69, 52), -- M_WreckPost
-	Wreckwater_Hut_Canvas = Color3.fromRGB(189, 190, 179), -- M_WreckSail
-	Wreckwater_Hut_Glow = Color3.fromRGB(173, 241, 196), -- M_GhostGlow (Neon below)
-	Wreckwater_Dunes = Color3.fromRGB(165, 154, 131), -- M_WreckDrift (drifted dune ridges)
-	Wreckwater_Rocks = Color3.fromRGB(90, 92, 96),
-	-- Round 1 added a lagoon-side quay ALONGSIDE the standard sea dock (the
-	-- export carries both name sets), so both get the plank/post palette.
-	Wreckwater_Quay_Planks = Color3.fromRGB(121, 103, 79),
-	Wreckwater_Quay_Posts = Color3.fromRGB(84, 69, 52),
-	Wreckwater_Dock_Planks = Color3.fromRGB(121, 103, 79),
-	Wreckwater_Dock_Posts = Color3.fromRGB(84, 69, 52),
-	Wreckwater_Foam = Color3.fromRGB(225, 231, 228),
-	-- The anchor graveyard + mooring chains (2026-08-29 dressing pass).
-	Wreckwater_Ironwork = Color3.fromRGB(55, 50, 46), -- M_WreckIron
+	-- ============================================================ the NPC houses
+	-- (2026-08-29) Six homes, one per island, each in its own island's
+	-- palette. Multi-material meshes arrive from the importer split into
+	-- Name / Name2 / Name3..., one part per material slot in authoring
+	-- order - hence the numbered rows on Maren's and Morra's, which are the
+	-- only two houses built from more than one material per layer.
+	--
+	-- `_Hut_Walls` and `_Hut_Roof` are deliberately NOT in NON_COLLIDE:
+	-- these are the rare props a player walks INTO, and the porch decks,
+	-- floors, stilts and plank paths are what the NPCs stand on.
+	Island_Hut_Walls = Color3.fromRGB(165, 140, 109), -- M_Driftwood (shack + porch deck + stilts)
+	Island_Hut_Walls2 = Color3.fromRGB(66, 66, 72), -- M_Rock (the crooked chimney + hearth)
+	Island_Hut_Roof = Color3.fromRGB(74, 160, 74), -- M_Frond
+	Island_Hut_Roof2 = Color3.fromRGB(56, 128, 61), -- M_FrondDark (the overlapping courses)
+	Island_Hut_Props = Color3.fromRGB(176, 125, 74), -- M_Plank (counter, traps, ramp)
+	Island_Hut_Props2 = Color3.fromRGB(224, 212, 180), -- M_HutCloth (the hammock)
+	Island_Hut_Props3 = Color3.fromRGB(196, 200, 189), -- M_HutFish (drying fish + the gull)
+	Island_Hut_Props4 = Color3.fromRGB(52, 51, 54), -- M_HutIron (kettle, cleaver)
+	Island_Hut_Props5 = Color3.fromRGB(132, 175, 122), -- M_HutJar (pickle jars)
+	Island_Hut_Glow = Color3.fromRGB(255, 130, 40), -- M_HutEmber (hearth)
+	Swamp_Hut_Walls = Color3.fromRGB(82, 71, 54), -- M_BogWattle (the leaning shell)
+	Swamp_Hut_Walls2 = Color3.fromRGB(66, 53, 40), -- M_RootWood (stilts, floor, mangrove, plank path)
+	Swamp_Hut_Roof = Color3.fromRGB(61, 74, 55), -- M_BogShingle
+	Swamp_Hut_Roof2 = Color3.fromRGB(115, 131, 93), -- M_HangMoss
+	Swamp_Hut_Props = Color3.fromRGB(66, 53, 40), -- M_RootWood
+	Swamp_Hut_Props2 = Color3.fromRGB(123, 130, 77), -- M_BogHerb (hanging bundles, cot straw)
+	Swamp_Hut_Props3 = Color3.fromRGB(211, 207, 180), -- M_BogBone (gator skull, wind chime)
+	Swamp_Hut_Props4 = Color3.fromRGB(102, 140, 115), -- M_BogJar (leech jars)
+	Swamp_Hut_Props5 = Color3.fromRGB(43, 45, 50), -- M_BogIron (cauldron, scrying bowl)
+	Swamp_Hut_Props6 = Color3.fromRGB(90, 93, 85), -- M_BogStone (the cauldron pit ring)
+	Swamp_Hut_Glow = Color3.fromRGB(139, 242, 186), -- M_Wisp (lanterns, scrying bowl)
+	Frostmaw_Hut_Walls = Color3.fromRGB(225, 234, 242), -- M_HutSnowBlock (windbreak + drifts)
+	Frostmaw_Hut_Roof = Color3.fromRGB(83, 62, 50), -- M_HutHull (the upturned boat itself)
+	Frostmaw_Hut_Props = Color3.fromRGB(52, 51, 54), -- M_HutIron (stove, pipe, harpoons)
+	Frostmaw_Hut_Trim = Color3.fromRGB(218, 214, 201), -- M_HutBone (frozen fish, whale bone, pelt)
+	Frostmaw_Hut_Glow = Color3.fromRGB(255, 130, 40), -- M_HutEmber (the firebox)
+	Volcano_Hut_Walls = Color3.fromRGB(53, 50, 55), -- M_ForgeBasalt (the bunker)
+	Volcano_Hut_Roof = Color3.fromRGB(37, 36, 40), -- M_ForgeSlate
+	Volcano_Hut_Props = Color3.fromRGB(68, 69, 74), -- M_ForgeIron (anvil, tools, racks)
+	Volcano_Hut_Trim = Color3.fromRGB(173, 140, 71), -- M_ForgeBrass (the cannon-shell bell)
+	Volcano_Hut_Glow = Color3.fromRGB(255, 115, 22), -- M_ForgeEmber (forge heart + magma channel)
+	Gloomtrench_Hut_Walls = Color3.fromRGB(93, 90, 113), -- M_GloomPath (the flagstone tower)
+	Gloomtrench_Hut_Roof = Color3.fromRGB(20, 21, 30), -- M_GloomShelf (gallery, lamp cage, cap)
+	Gloomtrench_Hut_Props = Color3.fromRGB(59, 62, 76), -- M_GloomStalk (desk, treads, cot)
+	Gloomtrench_Hut_Glow = Color3.fromRGB(74, 239, 224), -- M_GlowCyan (the beacon + lantern spiral)
+	Wreckwater_Hut_Walls = Color3.fromRGB(50, 40, 32), -- M_HullWood (the stern itself, fleet colour)
+	Wreckwater_Hut_Roof = Color3.fromRGB(121, 103, 79), -- M_WreckPlank (deck + cabin lining)
+	Wreckwater_Hut_Props = Color3.fromRGB(84, 69, 52), -- M_WreckPost (ledger desk, crates, gangplank)
+	Wreckwater_Hut_Canvas = Color3.fromRGB(189, 190, 179), -- M_WreckSail (flag, charts, net)
+	Wreckwater_Hut_Glow = Color3.fromRGB(173, 241, 196), -- M_GhostGlow (taffrail + cabin lamps)
 
 	-- The Maelstrom (assets/island_gen.py `maelstrom`, 2026-08-27). The base
 	-- is a fully SUBMERGED storm-shoal (three materials, so it splits into
@@ -575,8 +600,12 @@ local MESH_MATERIAL = {
 	Gloomtrench_GlowCyan = Enum.Material.Neon,
 	Gloomtrench_GlowViolet = Enum.Material.Neon,
 	Wreckwater_GhostGlow = Enum.Material.Neon,
-	Wreckwater_Hut_Glow = Enum.Material.Neon,
+	Island_Hut_Glow = Enum.Material.Neon,
+	Swamp_Hut_Glow = Enum.Material.Neon,
+	Frostmaw_Hut_Glow = Enum.Material.Neon,
+	Volcano_Hut_Glow = Enum.Material.Neon,
 	Gloomtrench_Hut_Glow = Enum.Material.Neon,
+	Wreckwater_Hut_Glow = Enum.Material.Neon,
 	Maelstrom_StormGlow = Enum.Material.Neon,
 	-- Frostmaw's big glacial forms glint like real ice; nothing Neon here.
 	Frostmaw_Berg = Enum.Material.Ice,
