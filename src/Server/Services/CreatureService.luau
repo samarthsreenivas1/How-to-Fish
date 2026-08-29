@@ -3341,18 +3341,26 @@ local function colossusState(creature, def)
 	return state
 end
 
+-- Publish the pose for the client that draws this body. Pose/PoseCenter/
+-- Stance are the GENERIC three - every colossus sets them, and they are all
+-- a renderer needs to know which module draws it and where its perch is.
+-- Everything past that is the boss's OWN vocabulary, so each pose publishes
+-- its own named set: Wrack's chains have no use for a coil count, and a
+-- shared slot named `Value3` would be worse than either.
 local function publishPose(creature, state)
 	local model = creature.model
 	if model:GetAttribute(ATTR_POSE) == nil then
 		model:SetAttribute(ATTR_POSE_CENTER, state.center)
 		model:SetAttribute(ATTR_POSE, creature.poseKind)
 	end
-	model:SetAttribute(ATTR_COIL, state.coil)
-	model:SetAttribute(ATTR_UNWIND, state.unwind)
-	model:SetAttribute(ATTR_SWEEP_ANGLE, state.sweepAngle)
-	model:SetAttribute(ATTR_SWEEP_HEIGHT, state.sweepHeight)
-	model:SetAttribute(ATTR_SLUMP, state.slump)
-	model:SetAttribute(ATTR_FACE_ANGLE, state.faceAngle)
+	if creature.poseKind == "brinejaw" then
+		model:SetAttribute(ATTR_COIL, state.coil)
+		model:SetAttribute(ATTR_UNWIND, state.unwind)
+		model:SetAttribute(ATTR_SWEEP_ANGLE, state.sweepAngle)
+		model:SetAttribute(ATTR_SWEEP_HEIGHT, state.sweepHeight)
+		model:SetAttribute(ATTR_SLUMP, state.slump)
+		model:SetAttribute(ATTR_FACE_ANGLE, state.faceAngle)
+	end
 end
 
 -- The whole visible boss is drawn by the client from the pose attributes, so
