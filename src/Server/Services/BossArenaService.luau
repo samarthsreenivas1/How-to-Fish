@@ -86,11 +86,14 @@ local function placeAuthored(parent: Instance, arena, template: Instance)
 			descendant.Anchored = true
 			-- Dressing that must not catch feet or casts - the island
 			-- NON_COLLIDE idea, by the arena naming convention (arena_gen.py):
-			-- surf foam (which OceanController also rides on the tide) and
-			-- coral tufts stay visual-only.
-			if string.find(descendant.Name, "Foam", 1, true) or string.find(descendant.Name, "Coral", 1, true) then
-				descendant.CanCollide = false
-				descendant.CanQuery = false
+			-- surf foam (which OceanController also rides on the tide),
+			-- coral, plant tufts, and hanging cloth stay visual-only.
+			for _, tag in { "Foam", "Coral", "Seaweed", "Kelp", "SailRag", "Starfish" } do
+				if string.find(descendant.Name, tag, 1, true) then
+					descendant.CanCollide = false
+					descendant.CanQuery = false
+					break
+				end
 			end
 		end
 	end
