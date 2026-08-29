@@ -448,7 +448,7 @@ def build_brinejaw():
 
 KR_HIDE = (0.13, 0.08, 0.20)    # deep dark purple - the body
 KR_HIDE2 = (0.20, 0.13, 0.30)   # the lighter underside / arm crown
-KR_CRUST = (0.30, 0.24, 0.19)   # barnacle plate and drowned timber
+KR_CRUST = (0.34, 0.32, 0.28)   # barnacle plate and drowned timber - PALE, not gold
 KR_BEAK = (0.74, 0.68, 0.52)    # bone
 KR_EYE = (0.40, 0.27, 0.72)
 KR_PUPIL = (0.05, 0.03, 0.09)  # the slit: near-black, so the lens reads as an eye     # storm-lit: the only violet light in the fight
@@ -478,49 +478,72 @@ def _capsule(bm, length, r_mid, r_end, sides=12):
     ])
 
 
+# The mantle's shape, as a profile turned about +Z. TALL, not round: 46 up
+# against 19.8 of half-width is a ratio of 2.3, where the first pass was 1.7
+# and read as a beach ball. And it is FLUTED - eight lobes running the height,
+# one over each arm socket, so the head explains the arms instead of sitting
+# on top of them.
+KR_HEAD_PROFILE = [
+    (0.0, 14.2), (4.5, 17.4), (9.5, 19.2), (14.5, 19.8),
+    (20.0, 19.2), (25.5, 17.8), (31.0, 15.6), (36.0, 12.6),
+    (40.0, 9.2), (43.0, 5.6), (45.0, 2.2), (46.2, 0.8),
+]
+KR_HEAD_TOP = 46.2
+KR_HEAD_SIDES = 32
+KR_HEAD_LOBES = 8
+KR_LOBE_DEPTH = 0.085
+
+
+def _kr_flute(a, z):
+    """Lobe modulation at bearing `a`, height `z`. Zero at the crown and at the
+    tip, deepest through the middle - a groove that runs out at both ends
+    rather than a scallop cut into the silhouette."""
+    t = min(max(z / KR_HEAD_TOP, 0.0), 1.0)
+    amp = KR_LOBE_DEPTH * math.sin(math.pi * t ** 0.85)
+    return 1.0 + amp * math.cos(KR_HEAD_LOBES * a)
+
+
 def build_kr_head(rng):
     bm = bmesh.new()
-    # The great domed head: a tall bulb, widest below the middle, drawn as
-    # stacked rings up +Z so it reads as a heavy sack of muscle.
     rings = []
-    profile = [
-        (0.0, 14.6), (4.0, 17.6), (8.4, 19.6), (13.0, 20.0),
-        (17.8, 18.8), (22.2, 16.4), (26.2, 13.0), (29.6, 8.6),
-        (32.0, 4.4), (33.2, 1.2),
-    ]
-    for z, r in profile:
+    for z, r in KR_HEAD_PROFILE:
         pts = []
-        for i in range(14):
-            a = (i / 14) * TAU
-            pts.append((math.cos(a) * r, math.sin(a) * r, z))
+        for i in range(KR_HEAD_SIDES):
+            a = (i / KR_HEAD_SIDES) * TAU
+            rr = r * _kr_flute(a, z)
+            pts.append((math.cos(a) * rr, math.sin(a) * rr, z))
         rings.append(pts)
     verts = [[bm.verts.new(pt) for pt in ring] for ring in rings]
     for lower, upper in zip(verts, verts[1:]):
-        for i in range(14):
-            j = (i + 1) % 14
+        for i in range(KR_HEAD_SIDES):
+            j = (i + 1) % KR_HEAD_SIDES
             bm.faces.new((lower[i], lower[j], upper[j], upper[i]))
     bm.faces.new(list(reversed(verts[0])))
     bm.faces.new(verts[-1])
-    # Brow ridges over each eye - the shelf that DROPS before a bite.
-    for side in (-1, 1):
-        blade(bm, (9.2, side * 14.2, 17.0), (-7.0, side * 16.2, 18.4), 8.8, 5.0, 2.4)
-    # The slit pupil, in the head's own dark hide so the glowing eye reads as
-    # an eye rather than a lamp: a bar laid across each eyeball.
-    for side in (-1, 1):
-        box(bm, (6.4, side * 17.2, 12.6), (8.2, 1.8, 1.9))
-        # A lid fold above and below, so the eye sits in a socket.
-        box(bm, (6.4, side * 16.2, 15.9), (9.0, 2.6, 1.6), Matrix.Rotation(math.radians(side * -8), 3, "X"))
-        box(bm, (6.4, side * 16.2, 9.2), (8.2, 2.4, 1.4), Matrix.Rotation(math.radians(side * 10), 3, "X"))
+
     # A heavy mantle fold where the head meets the arm crown.
     for i in range(12):
         a = (i / 12) * TAU
-        ellipsoid(bm, (math.cos(a) * 16.0, math.sin(a) * 16.0, 2.0), (3.8, 3.8, 2.6), subdiv=1)
-    # A heavy brow over each eye. Part of the HEAD, not the eye, so it is
-    # hide-coloured and the lens sits under an overhang instead of on a bald
-    # curve - the difference between a face and a balloon.
+        ellipsoid(bm, (math.cos(a) * 15.4, math.sin(a) * 15.4, 2.0), (3.8, 3.8, 2.6), subdiv=1)
+
+    # A heavy brow over each eye, hide-coloured and tilted down at the front,
+    # so the lens sits under an overhang instead of on a bald curve.
     for side in (-1, 1):
         rot, out = _kr_eye_frame(side, tilt=0.34)
-        ellipsoid(bm, (out[0] * 17.2, out[1] * 17.2, KR_EYE_Z + 5.0), (3.6, 8.8, 2.7), subdiv=1, rot=rot)
+        ellipsoid(bm, (out[0] * 17.0, out[1] * 17.0, KR_EYE_Z + 5.4), (3.6, 7.4, 2.9), subdiv=1, rot=rot)
+
+    # Two horns off the upper flanks, sweeping up and out. Overlapping beads
+    # along an arc, so they weld smooth for the same reason the arms do.
+    # SHORT and THICK: drawn long and fine they read as insect antennae, which
+    # is a worse look than having no horns at all.
+    for side in (-1, 1):
+        for i in range(12):
+            t = i / 11
+            a = side * math.radians(33 + t * 17)
+            rad = 13.8 + t * 8.0
+            z = 26.0 + t * 11.5
+            rr = 5.4 * (1 - 0.62 * t ** 1.35)
+            ellipsoid(bm, (math.cos(a) * rad, math.sin(a) * rad, z), (rr, rr, rr * 1.15), subdiv=1)
     return finish("Kraken_Head", bm, KR_HIDE)
 
 
@@ -556,19 +579,20 @@ def build_kr_crust(rng):
     # the crown it just read as rubble dropped on its head - and built from
     # flat plates rather than pebbles, so it looks grown on rather than
     # sprinkled.
-    for _ in range(26):
-        a = rng.uniform(-1.9, 1.1)  # clustered on one shoulder, not sprinkled
+    for _ in range(20):
+        a = rng.uniform(1.5, 3.5)  # clustered on ONE FLANK, off the face, not sprinkled
         z = rng.uniform(1.5, 13.5)
         r = 19.6 * math.sin(math.pi * ((z + 6.0) / 42.0)) ** 0.40
         rot = Matrix.Rotation(a, 3, "Z")
         ellipsoid(bm, (math.cos(a) * r, math.sin(a) * r, z),
                   (rng.uniform(0.5, 1.0), rng.uniform(1.3, 2.7), rng.uniform(1.1, 2.4)),
                   subdiv=0, rot=rot)
-    # A snapped spar driven into the shoulder, and anchor chain grown into it.
-    box(bm, (2.2, 12.8, 15.0), (18.0, 1.7, 1.7), Matrix.Rotation(math.radians(-24), 3, "Y"))
+    # A snapped spar driven into that same flank, and anchor chain grown into
+    # it - on the shoulder the barnacles are on, not floating on its own.
+    box(bm, (-6.0, 15.0, 16.0), (18.0, 1.7, 1.7), Matrix.Rotation(math.radians(-24), 3, "Y"))
     for i in range(7):
         t = i / 6
-        box(bm, (-13.6 + t * 3.2, -10.2 - t * 3.4, 13.4 - t * 7.2),
+        box(bm, (-12.0 - t * 2.6, 11.6 + t * 2.2, 14.0 - t * 7.4),
             (1.7, 1.2, 0.5) if i % 2 == 0 else (1.7, 0.5, 1.2))
     return finish("Kraken_Crust", bm, KR_CRUST)
 
@@ -576,9 +600,9 @@ def build_kr_crust(rng):
 # Where the eyes sit: bearing off +X, and the height of the dome's widest
 # ring. Everything eye-shaped is built on this one frame so the lens, the
 # pupil and the brow over them cannot drift apart.
-KR_EYE_BEARING = math.radians(58.0)
-KR_EYE_Z = 13.0
-KR_EYE_SEAT = 18.6  # centre radius; the dome's own surface here is 20.0
+KR_EYE_BEARING = math.radians(27.0)
+KR_EYE_Z = 15.0
+KR_EYE_SEAT = 18.4  # centre radius; the mantle's own surface here is 19.8
 
 
 def _kr_eye_frame(side, tilt=0.0):
@@ -597,13 +621,16 @@ def _kr_eye_frame(side, tilt=0.0):
 def build_kr_eyes():
     bm = bmesh.new()
     # Enormous and BULGING, the way an octopus's are. The previous pass sat
-    # them at radius 16.9 inside a dome whose surface is at 20.0 - they were
-    # buried, and the head read as a blank potato. They are seated proud now:
-    # centre at 18.6, 4.6 deep, so 3.2 studs of lens stand out of the hide.
+    # them buried inside the dome and the head read as a blank potato. They
+    # are seated proud now - 4.8 deep on an 18.4 seat, so 3.4 studs of lens
+    # stand out - and brought FORWARD to 27 degrees off the nose, close enough
+    # together that you see BOTH of them at once from in front. An octopus's
+    # eyes really do sit on its flanks, but a boss you fight head-on has to
+    # look back at you.
     for side in (-1, 1):
         rot, out = _kr_eye_frame(side)
         ellipsoid(bm, (out[0] * KR_EYE_SEAT, out[1] * KR_EYE_SEAT, KR_EYE_Z),
-                  (4.4, 7.4, 4.2), subdiv=2, rot=rot)
+                  (5.0, 6.4, 5.4), subdiv=2, rot=rot)
     return finish("Kraken_Eyes", bm, KR_EYE)
 
 
@@ -611,11 +638,13 @@ def build_kr_pupil():
     bm = bmesh.new()
     # The horizontal slit, laid on the lens's outer face. Its own object so it
     # can be its own colour - an eye is not one flat disc of purple, and this
-    # is the piece that makes the head look back at you.
+    # is the piece that makes the head look back at you. HALF the lens's
+    # width, deliberately: spanning it edge to edge just draws a closed
+    # eyelid, and the thing stops looking awake.
     for side in (-1, 1):
         rot, out = _kr_eye_frame(side)
-        seat = KR_EYE_SEAT + 3.0
-        ellipsoid(bm, (out[0] * seat, out[1] * seat, KR_EYE_Z), (1.7, 6.0, 0.92), subdiv=1, rot=rot)
+        seat = KR_EYE_SEAT + 3.4
+        ellipsoid(bm, (out[0] * seat, out[1] * seat, KR_EYE_Z), (2.0, 3.1, 1.05), subdiv=1, rot=rot)
     return finish("Kraken_Pupil", bm, KR_PUPIL)
 
 
@@ -638,7 +667,7 @@ def build_kr_arm_seg():
     bm = bmesh.new()
     # ONE arm segment: a capsule, authored LONGER than the pitch it is placed
     # at so consecutive segments always overlap into one limb.
-    _capsule(bm, KR_SEG_LENGTH, 3.05, 3.05, sides=9)
+    _capsule(bm, KR_SEG_LENGTH, 4.30, 4.30, sides=14)
     return finish("Kraken_ArmSeg", bm, KR_HIDE)
 
 
@@ -647,20 +676,24 @@ def build_kr_arm_tip():
     # The last stretch of arm: still a capsule so it welds to the segment
     # before it, but drawn out to a long curling point.
     loft(bm, [
-        ring_pts(2.8, 0.0, 1.4, 1.4, sides=9),
-        ring_pts(1.6, 0.0, 2.75, 2.75, sides=9),
-        ring_pts(-1.6, 0.0, 1.95, 1.95, sides=9),
-        ring_pts(-5.0, 0.0, 1.05, 1.05, sides=9),
-        ring_pts(-8.0, 0.0, 0.28, 0.28, sides=9),
+        ring_pts(2.8, 0.0, 2.1, 2.1, sides=14),
+        ring_pts(1.6, 0.0, 3.90, 3.90, sides=14),
+        ring_pts(-1.6, 0.0, 2.80, 2.80, sides=14),
+        ring_pts(-5.4, 0.0, 1.50, 1.50, sides=14),
+        ring_pts(-9.0, 0.0, 0.34, 0.34, sides=14),
     ])
     return finish("Kraken_ArmTip", bm, KR_HIDE)
 
 
 def build_kr_sucker():
     bm = bmesh.new()
-    # One sucker. Instanced in two rows down the underside of every arm and
-    # lit base-to-tip through a wind-up: the telegraph is anatomy.
-    disc(bm, -0.22, 0.22, 0.78, 0.52, sides=8)
+    # One sucker, and they are MEANT to be seen - the first pass made them a
+    # quarter of the arm's width AND laid them along it, so they vanished into
+    # the hide. A raised rim with a pad standing proud of it, 4.6 across on an
+    # 8.6-wide arm, in ONE row down the underside. Instanced base-to-tip and
+    # lit through a wind-up: the telegraph is anatomy.
+    disc(bm, -0.50, 0.42, 2.30, 1.90, sides=14)
+    disc(bm, 0.36, 0.78, 1.66, 1.18, sides=14)
     return finish("Kraken_Sucker", bm, KR_EYE)
 
 
@@ -1471,10 +1504,10 @@ def build_noctyss():
 #   4. Countershading: _Belly rides every vertebra, so the white underside
 #      runs the length of the body without a second material on _Body.
 #
-# THE WEAK POINT IS A STORY, NOT AN ORB: an old whaling harpoon still buried
-# behind the fin, trailing a snapped chain. Somebody tried this before - and
-# the wreck frozen into the arena is their boat. It is what you go for while
-# the thing is beached.
+# NO HARPOON (user, 2026-08-29). The iron in its back is gone; the punish is
+# the BEACHED WINDOW itself - the seconds it spends thrashing on the floe
+# after a breach - not a marked spot to hit. The arena's frozen whaler keeps
+# its harpoon gun, so the story survives without the prop on the boss.
 
 RF_SLATE = (0.10, 0.12, 0.15)  # the hide - near-black, cold
 RF_RIME = (0.90, 0.93, 0.95)  # rime-crust markings, not pigment
@@ -1486,36 +1519,36 @@ RF_IRON = (0.20, 0.19, 0.18)
 # Skull cross-sections: (x, centre z, half width, half height). Snout at +X,
 # neck joint at the origin end - the pack's convention. The underside is
 # clamped flat at RF_MOUTH_LINE so the lower jaw closes on a real palate.
-RF_MOUTH_LINE = -0.55
+RF_MOUTH_LINE = -2.2
 RF_SKULL = [
-    (-6.5, 0.0, 3.7, 4.2),  # neck joint
-    (-3.6, 0.3, 4.3, 4.8),  # widest: the melon's shoulder
-    (-0.6, 0.5, 4.2, 4.6),  # the melon crown
-    (2.4, 0.3, 3.8, 4.0),
-    (5.0, 0.0, 3.0, 3.0),
-    (7.0, -0.2, 2.1, 2.0),
-    (8.2, -0.3, 1.4, 1.3),  # blunt snout - NOT a point
+    (-6.5, 0.0, 6.4, 6.9),  # neck joint - carries the body's full girth
+    (-3.6, 0.3, 6.9, 7.4),  # widest: the melon's shoulder
+    (-0.6, 0.5, 6.6, 7.0),  # the melon crown
+    (2.4, 0.3, 5.6, 5.8),
+    (5.0, 0.0, 4.2, 4.2),
+    (7.0, -0.2, 2.8, 2.7),
+    (8.6, -0.3, 1.6, 1.5),  # blunt snout - NOT a point
 ]
 
-RF_JAW_TOP = -1.1
+RF_JAW_TOP = -2.6
 RF_JAW = [
-    (-6.0, -2.7, 3.2, 2.1),
-    (-3.0, -2.9, 3.7, 2.3),
-    (0.5, -2.9, 3.3, 2.2),
-    (3.6, -2.7, 2.6, 1.8),
-    (6.0, -2.4, 1.8, 1.2),
-    (7.8, -2.2, 1.0, 0.7),
+    (-6.0, -4.4, 5.6, 2.4),
+    (-3.0, -4.6, 6.2, 2.6),
+    (0.5, -4.6, 5.6, 2.5),
+    (3.6, -4.4, 4.4, 2.0),
+    (6.0, -4.0, 3.0, 1.4),
+    (8.0, -3.6, 1.6, 0.9),
 ]
 
 # Where the client hinges the jaw (the spy-hop gape, the bite, the death).
-RF_JAW_HINGE = (-5.4, 0.0, -1.8)
+RF_JAW_HINGE = (-5.4, 0.0, -3.2)
 
 # Mid-body vertebra - the client scales this by u down the girth curve.
 RF_SEG = [
-    (-2.7, 0.0, 3.35, 3.85),
-    (-1.3, 0.0, 3.5, 4.0),
-    (1.3, 0.0, 3.5, 4.0),
-    (2.7, 0.0, 3.35, 3.85),
+    (-2.7, 0.0, 6.3, 6.9),
+    (-1.3, 0.0, 6.6, 7.2),
+    (1.3, 0.0, 6.6, 7.2),
+    (2.7, 0.0, 6.3, 6.9),
 ]
 RF_SEG_SPACING = 3.6
 
@@ -1538,7 +1571,7 @@ def build_rf_head(rng):
     bm = bmesh.new()
     loft(bm, [ring_pts(x, cz, hw, hh, sides=10, floor_z=RF_MOUTH_LINE) for (x, cz, hw, hh) in RF_SKULL])
     # The blowhole, set back on the crown where a whale's actually is.
-    ellipsoid(bm, (-2.6, 0.0, 4.6), (0.9, 0.7, 0.35))
+    ellipsoid(bm, (-2.6, 0.0, 7.3), (1.5, 1.1, 0.5))
     # Rime crust caked along the rostrum - it has been in the cold a long time.
     for _ in range(9):
         x = rng.uniform(3.0, 9.5)
@@ -1571,21 +1604,21 @@ def build_rf_teeth():
     for i in range(8):
         t = i / 7.0
         x = -4.0 + t * 11.0
-        size = 0.8 * (1.0 - 0.5 * t)
+        size = 1.15 * (1.0 - 0.5 * t)
         _, upper_w, _ = _rf_at(RF_SKULL, x)
         _, lower_w, _ = _rf_at(RF_JAW, x)
         for side in (-1, 1):
-            uy = side * (upper_w - 0.85)
-            spike(bm, (x, uy, RF_MOUTH_LINE + 0.25), (x - 0.2, uy, RF_MOUTH_LINE - 2.1 * size / 0.8), size)
-            ly = side * (lower_w - 0.75)
-            spike(bm, (x, ly, RF_JAW_TOP - 0.25), (x - 0.2, ly, RF_JAW_TOP + 2.1 * size / 0.8), size)
+            uy = side * (upper_w - 1.5)
+            spike(bm, (x, uy, RF_MOUTH_LINE + 0.3), (x - 0.2, uy, RF_MOUTH_LINE - 2.6 * size / 1.15), size)
+            ly = side * (lower_w - 1.3)
+            spike(bm, (x, ly, RF_JAW_TOP - 0.3), (x - 0.2, ly, RF_JAW_TOP + 2.6 * size / 1.15), size)
     return finish("Rimefang_Teeth", bm, RF_TOOTH)
 
 
 def build_rf_eyes():
     bm = bmesh.new()
     for side in (-1, 1):
-        ellipsoid(bm, (-2.9, side * 3.75, -0.5), (0.5, 0.3, 0.42))
+        ellipsoid(bm, (-2.6, side * (_rf_flank_y(-2.6, -1.5) + 0.1), -1.5), (0.62, 0.34, 0.52))
     return finish("Rimefang_Eyes", bm, RF_EYE)
 
 
@@ -1624,16 +1657,16 @@ def build_rf_rime(rng):
     # THE EYE PATCH - the marking that carries the whole read. Big, raked up
     # and back off the eye, and seated on the real flank.
     for side in (-1, 1):
-        _rf_patch(bm, -3.7, 2.2, 7.2, 3.1, math.radians(19), side)
+        _rf_patch(bm, -4.1, 2.3, 8.6, 3.8, math.radians(15), side, thick=0.7)
     # The throat panel: countershading running back off the chin. _Belly
     # carries it on down the body.
     loft(
         bm,
         [
-            ring_pts(-6.2, -3.4, 2.5, 0.45, sides=6),
-            ring_pts(-1.0, -3.5, 2.8, 0.5, sides=6),
-            ring_pts(3.8, -3.2, 2.1, 0.42, sides=6),
-            ring_pts(7.0, -2.7, 1.1, 0.3, sides=6),
+            ring_pts(-6.2, -6.2, 4.4, 0.6, sides=6),
+            ring_pts(-1.0, -6.4, 4.8, 0.7, sides=6),
+            ring_pts(3.8, -5.8, 3.4, 0.6, sides=6),
+            ring_pts(7.0, -4.6, 1.6, 0.4, sides=6),
         ],
     )
     return finish("Rimefang_Rime", bm, RF_RIME)
@@ -1649,7 +1682,12 @@ def build_rf_belly():
     bm = bmesh.new()
     # Rides every vertebra, so the white underside runs the whole body
     # without needing a second material on _Body.
-    ellipsoid(bm, (0.0, 0.0, -3.15), (2.6, 2.2, 0.85))
+    #
+    # Authored MUCH longer than the vertebra pitch (12 studs against a 2-4
+    # stud step) and nearly flat underneath. A panel the length of its own
+    # segment stair-steps down the belly as a row of white scallops - the
+    # same overlap rule the kraken's arm capsules use, for the same reason.
+    ellipsoid(bm, (0.0, 0.0, -6.3), (6.2, 3.0, 1.1))
     return finish("Rimefang_Belly", bm, RF_RIME)
 
 
@@ -1659,7 +1697,7 @@ def build_rf_fin():
     # wake under the sheet. Rolled 90 so the blade is thin side-to-side and
     # broad fore-and-aft - unrolled, a blade lofted onto +Z comes out facing
     # the wrong way entirely.
-    blade(bm, (0, 0, 0), (-3.4, 0, 10.6), 8.2, 1.2, 1.2, roll=math.radians(90))
+    blade(bm, (0, 0, 0), (-4.0, 0, 12.4), 9.6, 1.3, 1.5, roll=math.radians(90))
     # Fracture lines through the ice.
     for i in range(3):
         blade(
@@ -1679,7 +1717,7 @@ def build_rf_pec():
     # The paddle: broad at the shoulder, swept back, drooping slightly.
     # Authored pointing +Y so the client (and the preview) makes the other
     # side by a half turn about the body axis - no mirrored normals.
-    blade(bm, (0, 0, 0), (-3.8, 6.9, -1.0), 4.4, 1.9, 0.9)
+    blade(bm, (0, 0, 0), (-5.2, 11.0, -1.6), 6.2, 2.5, 1.2)
     return finish("Rimefang_Pec", bm, RF_SLATE)
 
 
@@ -1688,30 +1726,9 @@ def build_rf_fluke():
     # HORIZONTAL lobes - the single most important thing about a whale's
     # tail. Swept back off a central boss, thin in Z.
     for side in (-1, 1):
-        blade(bm, (0, 0, 0), (-3.4, side * 8.2, 0), 5.0, 1.3, 0.85)
-    ellipsoid(bm, (0, 0, 0), (1.7, 1.4, 1.0))
+        blade(bm, (0, 0, 0), (-4.2, side * 11.2, 0), 6.6, 1.6, 1.05)
+    ellipsoid(bm, (0, 0, 0), (2.2, 1.9, 1.4))
     return finish("Rimefang_Fluke", bm, RF_SLATE)
-
-
-def build_rf_harpoon(rng):
-    bm = bmesh.new()
-    # The iron somebody left in it - the twin of the gun on the arena's
-    # wreck, and the weak point you go for while it is beached. Sized to be
-    # spotted from across the arena, not from arm's reach.
-    shaft = Matrix.Rotation(math.radians(30), 3, "Y")
-    box(bm, (1.5, 0.0, 3.4), (0.78, 0.78, 8.6), shaft)
-    for side in (-1, 1):
-        spike(bm, (0.2, 0.0, 0.7), (-2.2, side * 1.6, -1.0), 0.45, sides=4)
-    # The eye at the head of the shaft, and the snapped chain still on it.
-    ellipsoid(bm, (3.4, 0.0, 7.1), (0.85, 0.45, 0.85))
-    for i in range(4):
-        box(
-            bm,
-            (4.3 + i * 1.5, 0.0, 7.4 + i * 0.5),
-            (1.35, 0.72, 0.55),
-            Matrix.Rotation(0 if i % 2 else math.pi / 2, 3, "X"),
-        )
-    return finish("Rimefang_Harpoon", bm, RF_IRON)
 
 
 def build_rimefang():
@@ -1727,15 +1744,526 @@ def build_rimefang():
         build_rf_fin(),
         build_rf_pec(),
         build_rf_fluke(),
-        build_rf_harpoon(rng),
     ]
     print("HANDOFF rimefang: head faces +X; neck joint at the origin, snout tip x=+11.0")
     print("HANDOFF rimefang: jaw hinge pivot (%.1f, %.1f, %.1f) - client rotates the jaw about it" % RF_JAW_HINGE)
     print("HANDOFF rimefang: vertebra spacing %.1f studs at scale 1; scale by _rf_girth(u), NOT a linear taper" % RF_SEG_SPACING)
     print("HANDOFF rimefang: Belly rides every vertebra (countershading); Pec is authored +Y, mirror by a half turn about the body axis")
     print("HANDOFF rimefang: Fin base is the dorsal mount, ~3.4 studs above the spine at full girth; Fluke mounts on the tail tip, lobes HORIZONTAL")
-    print("HANDOFF rimefang: Harpoon mounts on the back behind the fin - the weak point, exposed while beached")
     return objects
+
+
+# ================================================================ pyrelisk
+#
+# "Pyrelisk, the Ashfall Colossus" - the volcano's boss, and NOT a creature
+# in the sense the rest of this file means it. It is a 400-stud obsidian
+# giant rooted in the caldera lake of its own arena (arena_gen's Ashfall
+# Throne), and the player fights it from the rim path with guns, because the
+# lake is a moat it can never be crossed on foot.
+#
+# ---------------------------------------------------------------- the idea
+#
+# ARMOUR OVER A MOLTEN INTERIOR. The shell is slabs of cooled volcanic glass
+# with GAPS between them, and `Pyrelisk_Core` is a single glowing body
+# underneath showing through every gap. Undamaged it is a black mountain;
+# every seam broken is a permanent orange scar, so by phase three it is
+# visibly coming apart and lit from inside. Nothing about that read needs a
+# texture - it is two objects and the space between them.
+#
+# ---------------------------------------------------------------- contract
+#
+#   - 1 Blender unit = 1 Roblox stud. Up is Blender +Z -> Roblox +Y.
+#   - The body faces +X. LIMB pieces are authored along +X FROM THEIR JOINT
+#     (upper arm from the shoulder, forearm from the elbow, hand from the
+#     wrist), so the rig aligns each piece's +X with its bone and writes one
+#     CFrame per part - the same rule the segment chain uses.
+#   - The TORSO is authored standing, its base at z=0, because z=0 is the
+#     caldera lake's surface: the arena's rim path is at the same height, so
+#     boss-space z and arena-space z are the same number and the rig needs
+#     no offset.
+#   - MODULES are placed many times by the rig, each authored at the origin
+#     with +Z as its OUTWARD SURFACE NORMAL:
+#       Seam  the shootable weak point (glow). Also sits inside a Vent's
+#             throat, so one module lights both.
+#       Vent  the mounted breakable you smash while standing on the boss.
+#   - `_Walk*` pieces are the CLIMBABLE ROUTE and the only collidable parts:
+#     simple slabs matching the shell's upper surfaces. Everything else is
+#     shell - non-collidable, so a 300-stud arm can sweep through the air
+#     without physics ever being asked about it (see the fight design: the
+#     boss is static while you are on it, and the slabs only move when
+#     nobody can be standing on them).
+#
+# Colours here are preview-only; the client tints each part as it builds it.
+# Deterministic: seeded random only, so re-exports are byte-stable.
+
+PY_OBSIDIAN = (0.075, 0.072, 0.088)  # the shell: cooled volcanic glass
+PY_BASALT = (0.130, 0.118, 0.130)  # crown columns, claws
+PY_MOLTEN = (1.00, 0.28, 0.03)  # the interior, and every broken seam
+PY_EMBER = (1.00, 0.62, 0.12)  # eyes
+PY_SLAG = (0.185, 0.165, 0.170)  # the walkable decks - matte, so they read as footing
+
+# The rig, and the HANDOFF contract the client's poser is written against.
+# Everything below is in boss space: z=0 is the lake surface.
+PY_RIG = {
+    "shoulder": (0.0, 58.0, 238.0),  # mirrored in y
+    "upper_arm": 118.0,
+    "forearm": 132.0,
+    "hand": 42.0,
+    "neck": (6.0, 0.0, 250.0),
+    "height": 400.0,
+}
+
+# Torso cross-sections: (z, radius fore-aft, radius across). A hunched mass -
+# broad at the waterline, pinched at the waist, flaring into the shoulders.
+PY_TORSO = [
+    (0.0, 50.0, 46.0),
+    (46.0, 47.0, 43.0),
+    (96.0, 42.0, 39.0),
+    (146.0, 38.0, 36.0),
+    (188.0, 40.0, 37.0),
+    (224.0, 45.0, 40.0),
+    (250.0, 42.0, 36.0),
+]
+
+
+def _py_ring(bm, z, rx, ry, sides, twist, jitter, rng):
+    pts = []
+    for i in range(sides):
+        a = (i / sides) * TAU + twist
+        wobble = 1.0 + rng.uniform(-jitter, jitter)
+        pts.append(bm.verts.new((math.cos(a) * rx * wobble, math.sin(a) * ry * wobble, z)))
+    return pts
+
+
+def build_py_core(rng):
+    bm = bmesh.new()
+    # The molten body. Every gap in the shell shows THIS, so it is a complete
+    # form in its own right rather than a glow card: a smooth tapering mass
+    # inset ~5 studs inside the plating, running the full height.
+    rings = []
+    for z, rx, ry in PY_TORSO:
+        rings.append(_py_ring(bm, z, rx - 6.0, ry - 6.0, 9, 0.0, 0.02, rng))
+    for a, b in zip(rings, rings[1:]):
+        for i in range(9):
+            j = (i + 1) % 9
+            bm.faces.new((a[i], a[j], b[j], b[i]))
+    bm.faces.new(list(reversed(rings[0])))
+    # Neck and head core: the throat glow the jaw opens onto.
+    top = rings[-1]
+    bm.faces.new(top)
+    ellipsoid(bm, (2.0, 0.0, 254.0), (18.0, 17.0, 16.0), subdiv=1)  # the throat, and nothing above it
+    return finish("Pyrelisk_Core", bm, PY_MOLTEN)
+
+
+def build_py_torso(rng):
+    bm = bmesh.new()
+    # THE SHELL: bands of big angular slabs with gaps between them, not a
+    # closed body. The gaps are the design - they are where the core shows,
+    # and they are where seams open when it winds up an attack.
+    for index, (z, rx, ry) in enumerate(PY_TORSO[:-1]):
+        z1, rx1, ry1 = PY_TORSO[index + 1]
+        span = z1 - z
+        plates = 7 if index % 2 == 0 else 8
+        for k in range(plates):
+            a = (k / plates) * TAU + index * 0.31
+            mid_rx, mid_ry = (rx + rx1) / 2, (ry + ry1) / 2
+            r = (mid_rx + mid_ry) / 2
+            cx, cy = math.cos(a) * mid_rx * 0.86, math.sin(a) * mid_ry * 0.86
+            width = (TAU * r / plates) * rng.uniform(0.62, 0.78)  # the gap IS the leftover
+            tilt = math.radians(rng.uniform(-9, 9))
+            box(
+                bm,
+                (cx, cy, z + span * 0.5),
+                (rng.uniform(9.0, 15.0), width, span * rng.uniform(0.86, 1.02)),
+                Matrix.Rotation(a, 3, "Z") @ Matrix.Rotation(tilt, 3, "Y"),
+            )
+    # Shoulder shelf: the flat mass the arms hang off and the deck sits on.
+    for side in (-1, 1):
+        box(bm, (0.0, side * 52.0, 240.0), (86.0, 42.0, 30.0), Matrix.Rotation(math.radians(side * -9), 3, "X"))
+    # Spine ridge: a run of raked slabs up the back, the colossus's skyline.
+    for i in range(7):
+        t = i / 6
+        box(
+            bm,
+            (-38.0 + t * 6.0, 0.0, 60.0 + t * 178.0),
+            (16.0 + t * 8.0, 12.0, 26.0 - t * 6.0),
+            Matrix.Rotation(math.radians(-24 + t * 10), 3, "Y"),
+        )
+    return finish("Pyrelisk_Torso", bm, PY_OBSIDIAN)
+
+
+def build_py_head(rng):
+    bm = bmesh.new()
+    # A wedge of glass. Centred on the NECK JOINT, snout at +X - the same
+    # head convention as every other boss here.
+    skull = [
+        (-30.0, 2.0, 26.0, 25.0),
+        (-9.0, 4.0, 35.0, 31.0),
+        (14.0, 2.0, 33.0, 27.0),
+        (39.0, -1.0, 25.0, 19.0),
+        (60.0, -4.0, 16.0, 12.0),
+        (74.0, -5.0, 8.0, 6.0),
+    ]
+    loft(bm, [ring_pts(x, cz, hw, hh, sides=7, floor_z=-8.0) for x, cz, hw, hh in skull])
+    # Brow shelf, heavy and squared, so the face reads at 300 studs.
+    for side in (-1, 1):
+        box(bm, (2.0, side * 22.0, 18.0), (54.0, 12.0, 10.0), Matrix.Rotation(math.radians(side * -8), 3, "X"))
+    _ = rng
+    return finish("Pyrelisk_Head", bm, PY_OBSIDIAN)
+
+
+def build_py_jaw():
+    bm = bmesh.new()
+    jaw = [
+        (-25.0, -18.0, 22.0, 10.0),
+        (-5.0, -19.0, 27.0, 11.0),
+        (21.0, -19.0, 23.0, 10.0),
+        (46.0, -18.0, 16.0, 8.0),
+        (67.0, -17.0, 8.0, 4.5),
+    ]
+    loft(bm, [ring_pts(x, cz, hw, hh, sides=6, ceil_z=-7.0) for x, cz, hw, hh in jaw])
+    return finish("Pyrelisk_Jaw", bm, PY_OBSIDIAN)
+
+
+def build_py_crown(rng):
+    bm = bmesh.new()
+    # THE SIGNATURE: a fan of broken basalt columns raked back off the skull.
+    # Hexagonal prisms at different lengths - the one shape that says volcano
+    # before anything else on the model does.
+    for i in range(9):
+        t = i / 8
+        side = -1 if i % 2 else 1
+        lean = math.radians(-52 - rng.uniform(0, 16))
+        base = Vector((-12.0 - t * 6.0, side * (2.0 + t * 19.0), 27.0 + math.sin(t * math.pi) * 9.0))
+        length = rng.uniform(38.0, 74.0) * (1.0 - abs(t - 0.5) * 0.5)
+        direction = Vector((math.cos(lean), side * 0.22 * t, -math.sin(lean))).normalized()
+        spike(bm, tuple(base), tuple(base + direction * length), rng.uniform(4.0, 7.0), sides=6)
+    return finish("Pyrelisk_Crown", bm, PY_BASALT)
+
+
+def build_py_eyes():
+    bm = bmesh.new()
+    for side in (-1, 1):
+        ellipsoid(bm, (20.0, side * 17.0, 8.0), (6.5, 5.0, 4.2), subdiv=1)
+    return finish("Pyrelisk_Eyes", bm, PY_EMBER)
+
+
+def build_py_shoulder(rng):
+    bm = bmesh.new()
+    # A pauldron of stacked slabs, centred on the shoulder joint.
+    for i in range(4):
+        t = i / 3
+        box(
+            bm,
+            (-4.0 + t * 4.0, t * 16.0, 14.0 - t * 20.0),
+            (54.0 - t * 10.0, 22.0 - t * 4.0, 20.0 - t * 5.0),
+            Matrix.Rotation(math.radians(-14 - t * 22), 3, "X") @ Matrix.Rotation(math.radians(rng.uniform(-5, 5)), 3, "Y"),
+        )
+    return finish("Pyrelisk_Shoulder", bm, PY_OBSIDIAN)
+
+
+def _py_limb(bm, length, r0, r1, sides, rng, plates):
+    """A tapered limb along +X from its joint at the origin, plated."""
+    loft(
+        bm,
+        [
+            ring_pts(0.0, 0.0, r0, r0 * 0.92, sides=sides),
+            ring_pts(length * 0.35, 0.0, (r0 + r1) * 0.52, (r0 + r1) * 0.48, sides=sides),
+            ring_pts(length * 0.75, 0.0, r1 * 1.06, r1 * 0.98, sides=sides),
+            ring_pts(length, 0.0, r1, r1 * 0.9, sides=sides),
+        ],
+    )
+    for i in range(plates):
+        t = (i + 0.5) / plates
+        r = r0 + (r1 - r0) * t
+        for k in range(3):
+            a = (k / 3) * TAU + t * 1.4
+            box(
+                bm,
+                (t * length, math.cos(a) * r * 0.8, math.sin(a) * r * 0.8),
+                (length / plates * rng.uniform(0.7, 0.92), r * 0.75, r * 0.55),
+                Matrix.Rotation(a, 3, "X"),
+            )
+
+
+def build_py_upper_arm(rng):
+    bm = bmesh.new()
+    _py_limb(bm, PY_RIG["upper_arm"], 26.0, 20.0, 7, rng, 4)
+    return finish("Pyrelisk_UpperArm", bm, PY_OBSIDIAN)
+
+
+def build_py_forearm(rng):
+    bm = bmesh.new()
+    _py_limb(bm, PY_RIG["forearm"], 22.0, 17.0, 7, rng, 5)
+    return finish("Pyrelisk_Forearm", bm, PY_OBSIDIAN)
+
+
+def build_py_hand(rng):
+    bm = bmesh.new()
+    # The hand is a PLATFORM as much as a weapon: a broad flat palm slab, then
+    # four claws. When this plants on the rim path it is 60 studs of standable
+    # rock and the only way onto the boss.
+    box(bm, (16.0, 0.0, -2.0), (44.0, 46.0, 13.0))
+    box(bm, (2.0, 0.0, 2.0), (18.0, 34.0, 18.0))
+    for i in range(4):
+        t = i / 3
+        y = -18.0 + t * 36.0
+        spike(bm, (36.0, y, -4.0), (72.0 - abs(t - 0.5) * 16.0, y * 1.25, -14.0), 5.5, sides=5)
+    # A thumb claw, so it reads as a hand and not a paddle.
+    spike(bm, (16.0, -22.0, -2.0), (44.0, -44.0, -10.0), 5.0, sides=5)
+    _ = rng
+    return finish("Pyrelisk_Hand", bm, PY_BASALT)
+
+
+def build_py_seam():
+    bm = bmesh.new()
+    # THE WEAK POINT, and it has to read as one from 200 studs away across a
+    # dark arena: a glowing wedge sunk in a socket, +Z out of the surface.
+    # The rig places it wherever a seam opens, and inside a vent's throat.
+    loft(
+        bm,
+        [
+            ring_pts(-3.0, 0.0, 5.0, 5.0, sides=6),
+            ring_pts(0.0, 0.0, 8.5, 8.5, sides=6),
+            ring_pts(2.5, 0.0, 6.0, 6.0, sides=6),
+        ],
+    )
+    # The crack that runs out of it, so a broken seam scars the plate.
+    for i in range(3):
+        a = (i / 3) * TAU + 0.4
+        spike(bm, (0.0, math.cos(a) * 5.0, math.sin(a) * 5.0), (1.0, math.cos(a) * 17.0, math.sin(a) * 17.0), 1.6, sides=4)
+    obj = finish("Pyrelisk_Seam", bm, PY_MOLTEN)
+    obj.rotation_euler = (0.0, math.radians(90), 0.0)  # authored along +X; +Z is the surface normal
+    return obj
+
+
+def build_py_vent(rng):
+    bm = bmesh.new()
+    # THE MOUNTED BREAKABLE: a vent shaft you smash while standing on it.
+    # A cracked chimney of stacked collars, throat open to the core - the rig
+    # drops a Seam inside it for the glow.
+    for i in range(4):
+        t = i / 3
+        disc(bm, t * 13.0, t * 13.0 + 9.0, 15.0 - t * 3.0, 13.5 - t * 3.0, sides=7)
+    for i in range(5):
+        a = (i / 5) * TAU + 0.3
+        spike(bm, (36.0, math.cos(a) * 9.0, math.sin(a) * 9.0), (50.0 + rng.uniform(-6, 6), math.cos(a) * 13.0, math.sin(a) * 13.0), 3.0, sides=4)
+    obj = finish("Pyrelisk_Vent", bm, PY_OBSIDIAN)
+    obj.rotation_euler = (0.0, math.radians(-90), 0.0)
+    return obj
+
+
+def build_py_walk_arm():
+    bm = bmesh.new()
+    # THE RAMP. A plain slab matching the forearm's upper surface, because the
+    # climb has to be walkable geometry a humanoid never trips on - and simple
+    # boxes are exact where a convex hull of the plated arm would not be.
+    box(bm, (PY_RIG["forearm"] * 0.5, 0.0, 15.0), (PY_RIG["forearm"] + 20.0, 30.0, 4.0))
+    return finish("Pyrelisk_WalkArm", bm, PY_SLAG)
+
+
+def build_py_walk_deck():
+    bm = bmesh.new()
+    # The shoulder deck and the spine walk between them: where the mounted
+    # phase actually happens.
+    box(bm, (0.0, 0.0, 252.0), (74.0, 118.0, 4.0))
+    box(bm, (-30.0, 0.0, 236.0), (30.0, 60.0, 4.0))
+    return finish("Pyrelisk_WalkDeck", bm, PY_SLAG)
+
+
+def build_pyrelisk():
+    rng = random.Random(4409)
+    objects = [
+        build_py_core(rng),
+        build_py_torso(rng),
+        build_py_head(rng),
+        build_py_jaw(),
+        build_py_crown(rng),
+        build_py_eyes(),
+        build_py_shoulder(rng),
+        build_py_upper_arm(rng),
+        build_py_forearm(rng),
+        build_py_hand(rng),
+        build_py_seam(),
+        build_py_vent(rng),
+        build_py_walk_arm(),
+        build_py_walk_deck(),
+    ]
+    print("HANDOFF pyrelisk: torso base z=0 IS the caldera lake surface - boss z and arena z are the same number")
+    print("HANDOFF pyrelisk: shoulder joint (%.0f, +/-%.0f, %.0f); upper arm %.0f, forearm %.0f, hand %.0f - reach %.0f from the shoulder"
+          % (PY_RIG["shoulder"][0], PY_RIG["shoulder"][1], PY_RIG["shoulder"][2], PY_RIG["upper_arm"], PY_RIG["forearm"], PY_RIG["hand"],
+             PY_RIG["upper_arm"] + PY_RIG["forearm"] + PY_RIG["hand"]))
+    print("HANDOFF pyrelisk: neck joint (%.0f, %.0f, %.0f); head faces +X, snout tip x=+64" % PY_RIG["neck"])
+    print("HANDOFF pyrelisk: Seam and Vent are MODULES - authored at the origin, +Z is the outward surface normal, placed many times by the rig")
+    print("HANDOFF pyrelisk: _Walk* are the ONLY collidable parts (the climb route); every shell piece is non-collide")
+    return objects
+
+
+# ---------------------------------------------------------------- the pose
+#
+# Assembling the pieces the way the client's rig will: one CFrame per part,
+# limbs walked joint to joint. This IS the spec for that rig - if the preview
+# assembles, the numbers are right.
+
+# Where seams open. Boss space, each (position, outward normal). The fight
+# opens a subset per attack and closes them on recovery; the rig reads this
+# table, so the art and the hitboxes can never drift apart.
+PY_SEAM_SITES = [
+    ((44.0, 0.0, 214.0), (1.0, 0.0, 0.2)),  # chest, dead centre - the phase-3 core
+    ((30.0, 34.0, 176.0), (0.7, 0.7, 0.1)),
+    ((30.0, -34.0, 176.0), (0.7, -0.7, 0.1)),
+    ((-6.0, 44.0, 120.0), (0.0, 1.0, 0.1)),
+    ((-6.0, -44.0, 120.0), (0.0, -1.0, 0.1)),
+    ((10.0, 40.0, 62.0), (0.4, 0.9, 0.0)),
+    ((10.0, -40.0, 62.0), (0.4, -0.9, 0.0)),
+]
+# Vent shafts on the back and shoulders: the mounted breakables.
+PY_VENT_SITES = [
+    ((-24.0, 0.0, 244.0), (0.0, 0.0, 1.0)),
+    ((-16.0, 40.0, 236.0), (-0.3, 0.6, 0.75)),
+    ((-16.0, -40.0, 236.0), (-0.3, -0.6, 0.75)),
+]
+
+
+def _py_copy(source, matrix):
+    copy = source.copy()
+    copy.data = source.data
+    copy.hide_render = False
+    bpy.context.collection.objects.link(copy)
+    copy.matrix_world = matrix
+    return copy
+
+
+def _py_aim(origin, direction):
+    """A transform putting a limb piece's +X along `direction` from `origin`."""
+    rot = Vector((1, 0, 0)).rotation_difference(Vector(direction).normalized()).to_matrix().to_4x4()
+    return Matrix.Translation(Vector(origin)) @ rot
+
+
+def _py_surface(position, normal):
+    """A module's transform: +Z along the outward surface normal."""
+    rot = Vector((0, 0, 1)).rotation_difference(Vector(normal).normalized()).to_matrix().to_4x4()
+    return Matrix.Translation(Vector(position)) @ rot
+
+
+def _py_arm(parts, made, side, elbow_dir, wrist_dir, hand_dir, walk=False):
+    """One arm, walked joint to joint - exactly what the client rig does."""
+    sx, sy, sz = PY_RIG["shoulder"]
+    shoulder = Vector((sx, side * sy, sz))
+    made.append(_py_copy(parts["Shoulder"], _py_aim(shoulder, (0.0, side * 1.0, 0.0))))
+    elbow_dir = Vector((elbow_dir[0], side * elbow_dir[1], elbow_dir[2]))
+    made.append(_py_copy(parts["UpperArm"], _py_aim(shoulder, elbow_dir)))
+    elbow = shoulder + elbow_dir.normalized() * PY_RIG["upper_arm"]
+    wrist_dir = Vector((wrist_dir[0], side * wrist_dir[1], wrist_dir[2]))
+    made.append(_py_copy(parts["Forearm"], _py_aim(elbow, wrist_dir)))
+    if walk:
+        made.append(_py_copy(parts["WalkArm"], _py_aim(elbow, wrist_dir)))
+    wrist = elbow + wrist_dir.normalized() * PY_RIG["forearm"]
+    hand_dir = Vector((hand_dir[0], side * hand_dir[1], hand_dir[2]))
+    made.append(_py_copy(parts["Hand"], _py_aim(wrist, hand_dir)))
+    return wrist + hand_dir.normalized() * PY_RIG["hand"]
+
+
+def _place_pyrelisk(objects, planted_side=None, head_yaw=0.0):
+    """Stand the colossus up. `planted_side` drops that arm onto the rim path
+    (the stagger pose - the arm is the ramp); the other arm stays raised."""
+    parts = {obj.name.split("_", 1)[1]: obj for obj in objects}
+    made = []
+    for name in ("Core", "Torso", "WalkDeck"):
+        made.append(_py_copy(parts[name], Matrix.Identity(4)))
+    neck = Vector(PY_RIG["neck"])
+    head = Matrix.Translation(neck) @ Matrix.Rotation(head_yaw, 4, "Z") @ Matrix.Rotation(math.radians(-8), 4, "Y")
+    for name in ("Head", "Jaw", "Crown", "Eyes"):
+        made.append(_py_copy(parts[name], head))
+    for side in (-1, 1):
+        if planted_side == side:
+            # Planted: the forearm lies along the ground as the ramp, and the
+            # walk slab rides with it.
+            _py_arm(parts, made, side, (0.32, 0.86, -0.40), (0.30, 0.52, -0.80), (0.55, 0.35, -0.06), walk=True)
+        else:
+            _py_arm(parts, made, side, (0.18, 0.80, -0.57), (0.42, 0.42, -0.80), (0.60, 0.10, -0.36))
+    # The maw: the same Seam module, seated in the throat behind the jaw, so
+    # an open mouth glows without the core ever poking through the skull.
+    made.append(_py_copy(parts["Seam"], head @ _py_surface((26.0, 0.0, -6.0), (1.0, 0.0, -0.25))))
+    for position, normal in PY_SEAM_SITES:
+        made.append(_py_copy(parts["Seam"], _py_surface(position, normal)))
+    for position, normal in PY_VENT_SITES:
+        made.append(_py_copy(parts["Vent"], _py_surface(position, normal)))
+        made.append(_py_copy(parts["Seam"], _py_surface(
+            (position[0] + normal[0] * 30.0, position[1] + normal[1] * 30.0, position[2] + normal[2] * 30.0), normal)))
+    print("POSE: %d parts placed (%d seams, %d vents)" % (len(made), len(PY_SEAM_SITES) + len(PY_VENT_SITES), len(PY_VENT_SITES)))
+    return made
+
+
+def _stage_pyrelisk(path_out, objects):
+    """The colossus rooted in its own caldera, one arm planted on the rim path.
+
+    Imports arena_gen so the crater under it is the REAL one, and ASSERTS the
+    arm can actually reach the path - if either file's radii move, this fails
+    loudly instead of shipping a boss that cannot touch its own arena.
+    """
+    import os
+
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import arena_gen  # noqa: E402  (guarded: importing it builds nothing)
+
+    sx, sy, sz = PY_RIG["shoulder"]
+    reach = PY_RIG["upper_arm"] + PY_RIG["forearm"] + PY_RIG["hand"]
+    # Furthest the hand can plant on the ground, measured from the body's axis.
+    span = sy + math.sqrt(max(reach**2 - sz**2, 0.0))
+    if not (arena_gen.PY_LAKE_R < span):
+        raise SystemExit(
+            "STAGED ABORT: reach %.0f from shoulder z%.0f spans only r%.0f - the lake is r%.0f, "
+            "so the arm cannot bridge the moat" % (reach, sz, span, arena_gen.PY_LAKE_R)
+        )
+    print("STAGE: hand plants out to r%.0f; lake r%.0f, rim path r%.0f..%.0f"
+          % (span, arena_gen.PY_LAKE_R, arena_gen.PY_LAKE_R, arena_gen.PY_PATH_R))
+    arena_gen.build_pyrelisk()
+    for obj in objects:
+        obj.hide_render = True
+    _place_pyrelisk(objects, planted_side=-1, head_yaw=math.radians(-24))
+
+    # The summit's own light: a warm low key through ash, and a real fill so
+    # near-black glass keeps its facets instead of going to one silhouette.
+    sun = bpy.data.objects.new("Sun", bpy.data.lights.new("Sun", "SUN"))
+    sun.rotation_euler = (math.radians(48), 0, math.radians(38))
+    sun.data.energy = 2.4
+    bpy.context.collection.objects.link(sun)
+    fill = bpy.data.objects.new("Fill", bpy.data.lights.new("Fill", "SUN"))
+    fill.rotation_euler = (math.radians(66), 0, math.radians(-132))
+    fill.data.energy = 0.55
+    bpy.context.collection.objects.link(fill)
+
+    scene = bpy.context.scene
+    scene.render.engine = "BLENDER_EEVEE"
+    scene.render.resolution_x = 1500
+    scene.render.resolution_y = 1000
+    scene.world = bpy.data.worlds.new("World")
+    scene.world.use_nodes = True
+    bg = scene.world.node_tree.nodes.get("Background")
+    if bg:
+        bg.inputs[0].default_value = (0.415, 0.360, 0.330, 1.0)
+
+    for suffix, location, target, lens in (
+        # The whole thing in its arena, from outside the crater.
+        ("", (690.0, -880.0, 300.0), (0.0, 0.0, 150.0), 40),
+        # THE PLAYER'S ANGLE: the fight camera on the rim path, 22 up, looking
+        # at what it is standing under. The planted arm comes down on this
+        # side - this is the shot that has to sell "climb that".
+        ("_fight", (-186.0, -196.0, 26.0), (-20.0, -30.0, 165.0), 24),
+    ):
+        cam_data = bpy.data.cameras.new("Cam" + suffix)
+        cam_data.lens = lens
+        cam_data.clip_end = 20000.0
+        cam = bpy.data.objects.new("Cam" + suffix, cam_data)
+        cam.location = Vector(location)
+        cam.rotation_euler = (Vector(target) - cam.location).to_track_quat("-Z", "Y").to_euler()
+        bpy.context.collection.objects.link(cam)
+        scene.camera = cam
+        out = path_out if not suffix else path_out.replace("_staged.png", "_staged%s.png" % suffix)
+        scene.render.filepath = out
+        bpy.ops.render.render(write_still=True)
+        print("BOSS STAGED:", out)
 
 
 BOSSES = {
@@ -1744,6 +2272,7 @@ BOSSES = {
     "gnashroot": build_gnashroot,
     "noctyss": build_noctyss,
     "rimefang": build_rimefang,
+    "pyrelisk": build_pyrelisk,
 }
 
 
@@ -2000,9 +2529,25 @@ def _kraken_arm_path(angle, t):
     """One arm at REST: out of its socket on the crown, sprawling outward over
     the water, tip curling back down. t=0 at the socket. This is the shape
     ChainPose blends away from for a lash and back to afterwards."""
-    r = 18.2 + 46.0 * t
-    z = -2.0 + math.sin(t * math.pi * 0.72) * 13.0 - t * 7.0
-    a = angle + math.sin(t * 2.1 + angle * 1.9) * 0.20
+    # LONG and high: 82 studs of reach against a 19.8 half-width head - the
+    # 4:1 an octopus actually has, where the first pass was under 2:1 and the
+    # arms read as stubs.
+    #
+    # TWO RULES KEEP THE FACE CLEAR, which a bare arch does not. First, an arm
+    # leaves the crown going DOWN - out from under the mantle skirt - and only
+    # starts climbing once it is well outside the head's footprint. Second,
+    # how high it climbs depends on WHERE IT SITS: the arms at the front stay
+    # low and reach along the water, and only the flank and rear arms rear up.
+    # Eight identical arches put two of them straight across the eyes.
+    front = math.cos(angle)
+    crest = 40.0 * (0.24 + 0.76 * (1.0 - max(front, 0.0)))
+    climb = max((t - 0.16) / 0.84, 0.0)
+    r = 18.2 + 64.0 * t
+    z = (-2.0
+         - 13.0 * math.sin(min(t / 0.16, 1.0) * math.pi * 0.5) ** 2
+         + math.sin(climb * math.pi * 0.92) * crest
+         - t * 8.0)
+    a = angle + math.sin(t * math.pi * 1.15) * 0.30
     return Vector((math.cos(a) * r, math.sin(a) * r, z))
 
 
@@ -2041,12 +2586,12 @@ def _place_kraken(objects, arms=8):
         for i in range(count):
             distance = i * KR_ARM_SPACING
             u = distance / total
-            scale = 1.0 - 0.62 * u ** 1.15  # heavy at the shoulder, fine at the tip
+            scale = 1.0 - 0.52 * u ** 1.10  # heavy at the shoulder, fine at the tip
             length = 1.0 - 0.16 * u  # barely: see place()
             position = at_length(distance)
             tangent = tangent_at(distance)
             place(seg, position, tangent, scale, length)
-            # Two sucker rows along the UNDERSIDE, on a guarded frame (an arm
+            # ONE sucker row along the UNDERSIDE, on a guarded frame (an arm
             # mid-whip points straight up, where a naive cross degenerates).
             up = Vector((0, 0, 1))
             if abs(tangent.dot(up)) > 0.98:
@@ -2055,11 +2600,13 @@ def _place_kraken(objects, arms=8):
             down = lateral.cross(tangent).normalized()
             if down.z > 0:
                 down = -down
-            if i % 2 == 0:
-                for side in (-1, 1):
-                    seat = position + down * (2.2 * scale) + lateral * (side * 1.2 * scale)
-                    place(sucker, seat, tangent, scale)
-        place(tip, at_length(total - 2.0), tangent_at(total - 2.0), 1.0 - 0.62)
+            if u < 0.93:
+                # Seated on the hide and pointing OUT of it. Handing `tangent`
+                # here laid each disc along the arm instead, edge-on and
+                # invisible - the bug that made the suckers vanish.
+                seat = position + down * (3.70 * scale)
+                place(sucker, seat, down, scale)
+        place(tip, at_length(total - 2.0), tangent_at(total - 2.0), 1.0 - 0.52)
     return made
 
 
@@ -2144,6 +2691,11 @@ def _place_gnashroot(objects, scale=1.0):
 NC_SOCKET_R = 34.0  # MIRRORS arena_gen.GL_SOCKETS - the staged render asserts they agree
 NC_SOCKETS = [(NC_SOCKET_R, 12.0 + i * (360.0 / 7.0)) for i in range(7)]
 
+# How far a leaning stalk pushes its lantern toward what it is aiming at
+# (NoctyssPath.LEAN_REACH): far enough that a swept beam visibly comes FROM a
+# stalk you could have shot.
+NC_LEAN_REACH = 9.0
+
 NC_REST = {
     "height": 33.0,  # root to the top of the rise
     "crook": 11.0,  # studs the top arcs INWARD over the pit - the angler's illicium
@@ -2171,27 +2723,57 @@ NC_MAW = {
 NC_STALK_SCALE = 1.0
 
 
+def nc_state(**overrides):
+    """A pose state: what the server publishes, in one dict.
+
+    Mirrors NoctyssPath.newState - and the shape function below mirrors
+    NoctyssPath's stalkCurve line for line. The LUAU IS THE SOURCE OF TRUTH;
+    if you change one, change both, because these renders are how an attack
+    gets reviewed before anyone can play it and a render that quietly
+    disagreed with the game would be worse than no render at all.
+
+    Bearings here are in AUTHORED space (arena_gen's degrees). The Luau
+    negates them on the way in - Blender +Y exports as Roblox -Z - so a
+    reader comparing the two files should expect exactly that one sign.
+    """
+    stalks = []
+    for i in range(len(NC_SOCKETS)):
+        stalks.append({"alive": True, "lean": 0.0, "beam": math.radians(NC_SOCKETS[i][1]), "douse": 0.0, "fall": 0.0})
+    state = {"stalks": stalks, "true_lure": 1, "maw_rise": 0.0, "maw_gape": 0.0, "time": 0.0}
+    state.update(overrides)
+    return state
+
+
+def _nc_smoothstep(x):
+    x = max(0.0, min(1.0, x))
+    return x * x * (3 - 2 * x)
+
+
 def _nc_stalk_path(index, t, state=None):
-    """One stalk, root (t=0) to hood neck (t=1), in arena-local space."""
-    state = state or {}
+    """One stalk, root (t=0) to hood (t=1) - NoctyssPath.stalkCurve."""
+    state = state or nc_state()
+    stalk = state["stalks"][index]
     radius, degrees = NC_SOCKETS[index]
     angle = math.radians(degrees)
     inward = Vector((-math.cos(angle), -math.sin(angle), 0.0))
     lateral = Vector((-inward.y, inward.x, 0.0))
     root = Vector((math.cos(angle) * radius, math.sin(angle) * radius, NC_REST["root_z"]))
-    height = state.get("height", NC_REST["height"])
-    crook = state.get("crook", NC_REST["crook"])
-    sway = state.get("sway", 0.0) + (1 if index % 2 else -1) * NC_REST["bow"]
-    # A quadratic Bezier: straight up, then arcing INWARD over the pit so the
-    # chain's last tangent is near-horizontal. That crook is the whole point -
-    # it is what makes the hood overhang and the lantern hang FREE beneath it,
-    # the way an angler's illicium does. A stalk that just stood up straight
-    # would carry its light like a lamppost, and the light has to be out over
-    # the floor where the players are.
+
+    fall = _nc_smoothstep(stalk["fall"])
+    height = NC_REST["height"] * (1 - 0.82 * fall)
+    bow = NC_REST["bow"] if index % 2 else -NC_REST["bow"]
+
+    rest_tip = inward * NC_REST["crook"] + lateral * (bow * 0.6)
+    aim = Vector((math.cos(stalk["beam"]), math.sin(stalk["beam"]), 0.0))
+    lean_tip = aim * (NC_REST["crook"] + NC_LEAN_REACH)
+    lean = _nc_smoothstep(stalk["lean"])
+    tip = rest_tip.lerp(lean_tip, lean) + aim * (28.0 * fall)
+
     p0 = root
-    p1 = root + Vector((0, 0, height)) + lateral * sway
-    p2 = root + Vector((0, 0, height * 0.93)) + inward * crook + lateral * (sway * 0.6)
-    return p0 * (1 - t) ** 2 + p1 * (2 * (1 - t) * t) + p2 * (t ** 2)
+    p1 = root + Vector((0, 0, height)) + lateral * bow
+    p2 = root + Vector((0, 0, height * 0.93 - 26.0 * fall)) + tip
+    inv = 1 - t
+    return p0 * (inv * inv) + p1 * (2 * inv * t) + p2 * (t * t)
 
 
 def _place_pieces(sources, matrix):
@@ -2349,6 +2931,7 @@ def _stage_noctyss(path_out, objects):
             "the choir would not stand in its collars. Fix one to match the other."
         )
 
+    state = nc_state()
     arena_gen.build_noctyss()
     _emissive(objects, {"StalkBulb"}, (1.0, 0.80, 0.42), 3.2)
     _emissive(objects, {"Gullet"}, (1.0, 0.84, 0.46), 2.6)
@@ -2357,7 +2940,7 @@ def _stage_noctyss(path_out, objects):
     by_name = {obj.name.split("_", 1)[1]: obj for obj in objects}
 
     for index in range(len(NC_SOCKETS)):
-        _, hood_matrix = _place_stalk(by_name, lambda t, i=index: _nc_stalk_path(i, t))
+        _, hood_matrix = _place_stalk(by_name, lambda t, i=index: _nc_stalk_path(i, t, state))
         _lantern(hood_matrix @ Vector(NC_BULB), 6000.0, (1.0, 0.80, 0.42), radius=2.4)
 
     maw_scale = NC_MAW["scale"]
@@ -2467,24 +3050,14 @@ def _place_rimefang(objects):
         count += 1
         distance += RF_SEG_SPACING * 0.62 * max(scale, 0.42)
 
-    head_at = at_length(0) + tangent_at(0) * 5.0
+    head_at = at_length(0) + tangent_at(0) * 5.2
     for name in ("Head", "Jaw", "Teeth", "Eyes", "Rime"):
         place(by_name[name], head_at, tangent_at(0), 1.0)
 
-    fin_d = total * 0.33
-    place(by_name["Fin"], at_length(fin_d), tangent_at(fin_d), 1.0, lift=3.4 * _rf_girth(fin_d / total))
+    fin_d = total * 0.42
+    place(by_name["Fin"], at_length(fin_d), tangent_at(fin_d), 1.0, lift=6.6 * _rf_girth(fin_d / total))
 
-    harpoon_d = total * 0.52
-    place(
-        by_name["Harpoon"],
-        at_length(harpoon_d),
-        tangent_at(harpoon_d),
-        1.0,
-        extra=Matrix.Rotation(math.radians(18), 4, "X"),
-        lift=3.1 * _rf_girth(harpoon_d / total),
-    )
-
-    pec_d = total * 0.26
+    pec_d = total * 0.20
     girth = _rf_girth(pec_d / total)
     for side in (1, -1):
         place(
@@ -2493,8 +3066,8 @@ def _place_rimefang(objects):
             tangent_at(pec_d),
             1.0,
             extra=Matrix.Rotation(0 if side > 0 else math.pi, 4, "X"),
-            lift=-2.1 * girth,
-            side=side * 2.4 * girth,
+            lift=-3.6 * girth,
+            side=side * 5.2 * girth,
         )
 
     place(by_name["Fluke"], at_length(total), tangent_at(total), 0.95)
@@ -2502,11 +3075,16 @@ def _place_rimefang(objects):
     return made
 
 
+PREVIEW_CAMS = {
+    "kraken": (0.95, -0.62, 0.30),
+}
+
 PLACERS = {
     "kraken": _place_kraken,
     "gnashroot": _place_gnashroot,
     "noctyss": _place_noctyss,
     "rimefang": _place_rimefang,
+    "pyrelisk": _place_pyrelisk,
 }
 
 def _stage_gnashroot(path_out, objects):
@@ -2589,6 +3167,7 @@ def _stage_gnashroot(path_out, objects):
 # falls through to the brinejaw body below, which is what shipped first.
 STAGERS = {
     "noctyss": _stage_noctyss,
+    "pyrelisk": _stage_pyrelisk,
     "gnashroot": _stage_gnashroot,
 }
 
@@ -2624,7 +3203,10 @@ def render_preview(path_out, objects, boss="brinejaw"):
     cam_data = bpy.data.cameras.new("Cam")
     cam_data.lens = 45
     cam = bpy.data.objects.new("Cam", cam_data)
-    offset = Vector((0.30, -1.0, 0.42)).normalized() * span * 1.28
+    # A 3/4 angle suits a long body, but a boss whose whole point is the FACE
+    # gets judged from nearer the front - side-on you see one eye and cannot
+    # tell whether the other one is even there.
+    offset = Vector(PREVIEW_CAMS.get(boss, (0.30, -1.0, 0.42))).normalized() * span * 1.28
     cam.location = center + offset
     cam.rotation_euler = (center - cam.location).to_track_quat("-Z", "Y").to_euler()
     bpy.context.collection.objects.link(cam)
@@ -2797,6 +3379,202 @@ def export(path_out, objects):
         )
 
 
+# THE FIGHT, AS STILL IMAGES. Each entry is a moment the design turns on, so
+# an attack can be reviewed before anyone can play it: what the party sees,
+# and whether the answer to it is legible from where they stand. Every state
+# here is one the server can actually publish - these are renders of the
+# shipped math (NoctyssPath), not illustrations of it.
+
+
+def _nc_dark_bulb(by_name):
+    """A DOUSED lantern, as its own object with its own material.
+
+    Blender shares a material datablock across every instance of a piece, so
+    without this copy one lit stalk lights all seven and the dousehunt frame
+    renders as a lie - which is exactly what the first pass of it did. In game
+    this is the client swapping the bulb Neon -> SmoothPlastic per stalk
+    (NoctyssBodyController.setLantern); here it has to be a second object.
+    """
+    source = by_name["StalkBulb"]
+    dark = source.copy()
+    dark.data = source.data.copy()
+    dark.data.materials.clear()
+    dark.data.materials.append(make_material("Noctyss_StalkBulbDoused", (0.15, 0.13, 0.11)))
+    dark.hide_render = True
+    bpy.context.collection.objects.link(dark)
+    return dark
+
+
+def _nc_lit(state, *, doused=False):
+    """Which stalks are lit, for the render's lantern lights."""
+    return [
+        (i, stalk)
+        for i, stalk in enumerate(state["stalks"])
+        if stalk["alive"] and (stalk["douse"] < 0.5 and not doused)
+    ]
+
+
+def _nc_pose_sweep():
+    # One stalk leaned onto its bearing mid-sweep, the rest at rest: the
+    # telegraph and the attack are the same object, and this is the frame
+    # that has to prove it reads from the floor.
+    state = nc_state()
+    state["stalks"][3]["lean"] = 1.0
+    state["stalks"][3]["beam"] = math.radians(196.0)
+    return state
+
+
+def _nc_pose_douse():
+    state = nc_state()
+    for stalk in state["stalks"]:
+        stalk["douse"] = 1.0
+    return state
+
+
+def _nc_pose_broken():
+    # A false lure has been shot: its stalk is down, its socket is a stump,
+    # and the choir is one light poorer - which makes the next read harder,
+    # not easier. That cost is the whole reason to hunt the RIGHT light.
+    state = nc_state()
+    state["stalks"][5]["alive"] = False
+    state["stalks"][5]["fall"] = 1.0
+    state["stalks"][5]["douse"] = 1.0
+    state["stalks"][1]["lean"] = 0.45
+    return state
+
+
+def _nc_pose_maw():
+    state = nc_state()
+    for stalk in state["stalks"]:
+        stalk["douse"] = 0.35
+    state["maw_rise"] = 1.0
+    state["maw_gape"] = 1.0
+    return state
+
+
+def _nc_pose_bite():
+    # The window closing. The jaw is most of the way shut and anyone still
+    # inside is about to wear it - the mouth IS the timer.
+    state = nc_state()
+    state["maw_rise"] = 1.0
+    state["maw_gape"] = 0.22
+    return state
+
+
+NC_POSES = {
+    "lightsweep": (
+        "LIGHTSWEEP - the lit wedge is the hitbox; the dark behind a fin is the answer",
+        _nc_pose_sweep,
+        (86, -104, 30),
+        (0, 0, 16),
+    ),
+    "dousehunt": (
+        "DOUSEHUNT - every lantern out at once, and a strike coming where you stood",
+        _nc_pose_douse,
+        (0, -118, 34),
+        (0, 0, 18),
+    ),
+    "brokenlure": (
+        "A FALSE LURE BROKEN - one stalk down, its socket a stump, the arena darker",
+        _nc_pose_broken,
+        (-64, -92, 26),
+        (-10, 0, 14),
+    ),
+    "mawopen": (
+        "THE PUNISH WINDOW - she is up through the pit and you fight in her mouth",
+        _nc_pose_maw,
+        (18, -74, 22),
+        (0, 0, 10),
+    ),
+    "mawbite": (
+        "THE MOUTH CLOSING - the gape IS the timer; leaving is the player's job",
+        _nc_pose_bite,
+        (26, -58, 16),
+        (0, 0, 8),
+    ),
+}
+
+
+def render_nc_pose(path_out, objects, entry):
+    """One fight moment, on the real arena, lit by whatever is still lit."""
+    import os
+
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import arena_gen  # noqa: E402
+
+    label, make_state, camera, target = entry
+    state = make_state()
+
+    clear_scene()
+    objects = BOSSES["noctyss"]()
+    arena_gen.build_noctyss()
+    _emissive(objects, {"StalkBulb"}, (1.0, 0.80, 0.42), 3.2)
+    _emissive(objects, {"Gullet"}, (1.0, 0.84, 0.46), 2.6)
+    for obj in objects:
+        obj.hide_render = True
+    by_name = {obj.name.split("_", 1)[1]: obj for obj in objects}
+
+    doused_names = dict(by_name)
+    doused_names["StalkBulb"] = _nc_dark_bulb(by_name)
+    for index, stalk in enumerate(state["stalks"]):
+        lit = stalk["alive"] and stalk["douse"] < 0.5
+        _, hood_matrix = _place_stalk(
+            by_name if lit else doused_names, lambda t, i=index: _nc_stalk_path(i, t, state)
+        )
+        if lit:
+            _lantern(hood_matrix @ Vector(NC_BULB), 6000.0, (1.0, 0.80, 0.42), radius=2.4)
+
+    if state["maw_rise"] > 0.01:
+        maw = dict(NC_MAW)
+        maw_scale = maw["scale"]
+        # The rise and the gape are what the state says, so a half-open jaw
+        # renders as a half-open jaw rather than the pose we happen to like.
+        z = -26.0 + (maw["origin_z"] + 26.0) * state["maw_rise"]
+        pitch, yaw = math.radians(maw["pitch"]), math.radians(maw["yaw"])
+        forward = Vector((math.cos(pitch) * math.cos(yaw), math.cos(pitch) * math.sin(yaw), math.sin(pitch)))
+        base = (
+            Matrix.Translation(Vector((0.0, 0.0, z)))
+            @ Vector((1, 0, 0)).rotation_difference(forward).to_matrix().to_4x4()
+            @ Matrix.Diagonal((maw_scale,) * 3).to_4x4()
+        )
+        _place_maw(by_name, (0.0, 0.0, z), maw["pitch"], maw["yaw"], maw["gape"] * state["maw_gape"], maw_scale)
+        _lantern(base @ Vector(NC_GULLET), 11000.0, (1.0, 0.84, 0.46), radius=4.0)
+
+    sun = bpy.data.objects.new("Sun", bpy.data.lights.new("Sun", "SUN"))
+    sun.rotation_euler = (math.radians(54), 0, math.radians(-36))
+    # The dousehunt frame gets almost nothing: the point of that image is how
+    # little you can see, and lighting it for legibility would be a lie.
+    lit = len(_nc_lit(state))
+    sun.data.energy = 1.5 if lit else 0.45
+    bpy.context.collection.objects.link(sun)
+    fill = bpy.data.objects.new("Fill", bpy.data.lights.new("Fill", "SUN"))
+    fill.rotation_euler = (math.radians(68), 0, math.radians(132))
+    fill.data.energy = 0.5 if lit else 0.12
+    bpy.context.collection.objects.link(fill)
+
+    scene = bpy.context.scene
+    scene.render.engine = "BLENDER_EEVEE"
+    scene.render.resolution_x = 1500
+    scene.render.resolution_y = 1000
+    scene.view_settings.view_transform = "Standard"
+    scene.world = bpy.data.worlds.new("World")
+    scene.world.use_nodes = True
+    bg = scene.world.node_tree.nodes.get("Background")
+    if bg:
+        bg.inputs[0].default_value = (0.045, 0.052, 0.078, 1.0)
+
+    cam_data = bpy.data.cameras.new("Cam")
+    cam_data.lens = 32
+    cam = bpy.data.objects.new("Cam", cam_data)
+    cam.location = Vector(camera)
+    cam.rotation_euler = (Vector(target) - cam.location).to_track_quat("-Z", "Y").to_euler()
+    bpy.context.collection.objects.link(cam)
+    scene.camera = cam
+    scene.render.filepath = path_out
+    bpy.ops.render.render(write_still=True)
+    print("BOSS POSE:", path_out, "-", label)
+
+
 def main():
     argv = sys.argv[sys.argv.index("--") + 1 :] if "--" in sys.argv else []
     if len(argv) < 2 or argv[1] not in BOSSES:
@@ -2810,9 +3588,13 @@ def main():
     if "staged" in argv[2:]:
         render_staged(argv[0].replace(".glb", "_staged.png"), objects, argv[1])
     if "poses" in argv[2:]:
-        for name, (label, state, camera, target) in BJ_POSES.items():
-            print("POSE", name, "-", label)
-            render_pose(argv[0].replace(".glb", "_pose_%s.png" % name), objects, state, camera, target)
+        if argv[1] == "noctyss":
+            for name, entry in NC_POSES.items():
+                render_nc_pose(argv[0].replace(".glb", "_pose_%s.png" % name), objects, entry)
+        else:
+            for name, (label, state, camera, target) in BJ_POSES.items():
+                print("POSE", name, "-", label)
+                render_pose(argv[0].replace(".glb", "_pose_%s.png" % name), objects, state, camera, target)
 
 
 if __name__ == "__main__":

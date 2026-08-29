@@ -44,12 +44,19 @@ local SPACING = KrakenPath.SEG_SPACING * SCALE
 -- Taper: the arm thins a LOT toward the tip but barely shortens, so the
 -- overlap above survives all the way to the end. Tapering the length as hard
 -- as the girth is what opens gaps between the last few segments.
-local TIP_GIRTH = 0.55
-local TIP_LENGTH = 0.18
+local TIP_GIRTH = 0.52
+local TIP_LENGTH = 0.16
 -- A sucker row down the underside, on every Nth segment, stopping before the
--- tip goes thin.
-local SUCKER_EVERY = 2
-local SUCKER_UNTIL = 0.7
+-- tip goes thin. ONE row of big ones, matching the pack: two rows of small
+-- ones is what made them vanish into the hide in the first place.
+local SUCKER_EVERY = 1
+local SUCKER_UNTIL = 0.93
+-- How far off the arm's axis a sucker seats, as a fraction of the segment's
+-- authored girth. Less than half, so the rim sits IN the hide with the pad
+-- proud of it rather than floating alongside.
+local SUCKER_SEAT = 0.43
+-- Turns the disc from pointing along the arm to pointing out of its underside.
+local SUCKER_TURN = CFrame.Angles(0, 0, -math.pi / 2)
 
 local HEAD_PIECES = { "Head", "Crown", "Crust", "Eyes", "Pupil", "Beak" }
 
@@ -57,8 +64,8 @@ local HEAD_PIECES = { "Head", "Crown", "Crust", "Eyes", "Pupil", "Beak" }
 -- `hump` is doing the heavy lifting: the arch is most of an arm's visible
 -- length, and it is what makes the thing crest out of the water and come
 -- DOWN on the rock rather than poke at it.
-local BOUND = { hump = 15.0, wave = 0.14, breathe = 1.8 }
-local RESTING = { hump = 6.0, wave = 0.09, breathe = 1.2, reach = 34.0, tipY = -14.0 }
+local BOUND = { hump = 26.0, wave = 0.22, breathe = 1.8 }
+local RESTING = { hump = 10.0, wave = 0.12, breathe = 1.2, reach = 36.0, tipY = -16.0 }
 -- How fast an arm's reach chases its tentacle. Slow enough that a regrown
 -- ring sweeps back out instead of popping into place.
 local EASE = { reach = 3.5, tip = 3.5, rise = 2.2, face = 4.0, shape = 2.5 }
@@ -76,15 +83,15 @@ local FALLBACK_COLOR = {
 }
 -- Rough bulk of each authored piece, at scale 1.
 local FALLBACK_SIZE = {
-	Head = Vector3.new(40, 33, 40),
+	Head = Vector3.new(40, 46, 40),
 	Crown = Vector3.new(39, 8, 39),
 	Crust = Vector3.new(34, 6, 34),
 	Eyes = Vector3.new(11, 6, 32),
 	Pupil = Vector3.new(7, 2, 30),
 	Beak = Vector3.new(9, 7, 9),
-	ArmSeg = Vector3.new(5.4, 6.1, 6.1),
-	ArmTip = Vector3.new(5.0, 3.0, 3.0),
-	Sucker = Vector3.new(1.6, 1.6, 1.6),
+	ArmSeg = Vector3.new(5.4, 8.6, 8.6),
+	ArmTip = Vector3.new(11.8, 7.8, 7.8),
+	Sucker = Vector3.new(1.3, 4.6, 4.6),
 }
 -- The pieces that read better as a round fallback than a brick.
 local FALLBACK_SHAPE = {
@@ -325,9 +332,14 @@ local function drawArm(entry, body, dt: number, now: number, target: Vector3?)
 			end
 			-- On the underside, sitting proud of the hide. The drop comes off
 			-- the SEGMENT's authored girth, so suckers stay on the skin as
-			-- the arm tapers instead of sinking into it.
+			-- the arm tapers instead of sinking into it. The quarter turn
+			-- matters as much as the drop: a sucker is authored as a disc on
+			-- +X like everything else in the pack, so without it each one
+			-- lies flat ALONG the arm, edge-on and invisible - the same bug
+			-- that hid them in the generator.
 			local segBase = segment:GetAttribute("BaseSize") or FALLBACK_SIZE.ArmSeg
-			applyPiece(sucker, cframe * CFrame.new(0, -segBase.Y * 0.5 * girth, 0), girth, girth)
+			local seat = cframe * CFrame.new(0, -segBase.Y * SUCKER_SEAT * girth, 0) * SUCKER_TURN
+			applyPiece(sucker, seat, girth, girth)
 		end
 	end)
 	for index = used + 1, #entry.segments do

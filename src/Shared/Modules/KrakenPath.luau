@@ -24,16 +24,20 @@ local KrakenPath = {}
 -- Every number here is measured off the authored model (assets/boss_gen.py,
 -- build_kraken) at scale 1, so a drawn arm leaves the socket the modelled
 -- crown was actually cut for. Change the mesh, change these.
-KrakenPath.HEAD_HEIGHT = 33.2 -- crown (z=0) to the top of the dome
-KrakenPath.HEAD_HALF_WIDTH = 20.0 -- the widest ring, at z = 13
+KrakenPath.HEAD_HEIGHT = 46.2 -- crown (z=0) to the top of the mantle
+KrakenPath.HEAD_HALF_WIDTH = 19.8 -- the widest ring, at z = 14.5
 KrakenPath.SOCKET_RADIUS = 18.2 -- the eight arm sockets' circle
 KrakenPath.SOCKET_HEIGHT = -2.0 -- and how far below the crown they sit
 KrakenPath.SEG_LENGTH = 5.4 -- one authored arm segment, tip to tip
 KrakenPath.SEG_SPACING = 2.6 -- and the pitch they were authored to overlap at
+-- How far an arm drops as it leaves the socket, before it starts to climb.
+-- An arm has to come out from UNDER the mantle skirt; one that starts rising
+-- immediately grows out of the head's cheek instead.
+KrakenPath.SKIRT_DROP = 12.6
 
 -- How big it is drawn. The arena is 34 studs to the platforms, and the brief
--- is that the head fills the middle of it: 20.0 x 1.4 = 28 studs of half-
--- width, standing 46 studs out of the water. You do not shoot over this.
+-- is that the head fills the middle of it: 19.8 x 1.4 = 27.7 studs of half-
+-- width, standing 65 studs out of the water. You do not shoot over this.
 KrakenPath.SCALE = 1.4
 
 KrakenPath.ARM_COUNT = 8
@@ -134,11 +138,18 @@ function KrakenPath.armPoint(arm, t: number): Vector3
 	-- 0 at both ends, 1 in the middle: the envelope every free term rides,
 	-- which is what pins t=0 to the socket and t=1 to the tentacle.
 	local bump = 4 * u * (1 - u)
+	-- The arch, held off until the arm is clear of the head, and the dip that
+	-- takes it there. Both are zero at u=0 and u=1 like everything else here,
+	-- so the arm still starts in its socket and still ends on its tentacle.
+	local climb = math.clamp((u - 0.14) / 0.86, 0, 1)
+	local arch = math.sin(climb * math.pi) * arm.hump
+	local skirt = -KrakenPath.SKIRT_DROP * math.sin(math.min(u / 0.16, 1) * math.pi)
 
 	local radius = socketR + (arm.reach - socketR) * e
 	local height = socketY
 		+ (arm.tipY - socketY) * e
-		+ bump * arm.hump
+		+ arch
+		+ skirt
 		+ bump * math.sin(arm.time * 1.3 + arm.phase + u * 3.0) * arm.breathe
 	local angle = arm.angle + bump * arm.wave * math.sin(arm.time * 0.9 + arm.phase)
 
