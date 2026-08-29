@@ -25,7 +25,8 @@
 #     targets), separate objects so the fight logic can find and shatter
 #     each: <Model>_ReefStone1..3. Positions printed in the HANDOFF.
 #   - dressing: fallen lantern-room rubble at the spire's foot, a shattered
-#     rowboat, a half-buried bell.
+#     rowboat, a half-buried bell. Open sand kept CLEAN on purpose (user,
+#     2026-08-29) - the fight paints its own telegraphs on it.
 #
 # Deterministic: seeded random only, so re-exports are byte-stable.
 
@@ -371,58 +372,6 @@ def build_bj_dressing(rng):
     return obj_boat, obj_bell
 
 
-def build_bj_floor_detail(rng):
-    # Tide pools: shallow teal discs sitting in the sand between the reef
-    # stones - visual variety on the big open ring (visual-only, stripped of
-    # collision by naming convention).
-    pools = bmesh.new()
-    for radius, degrees, size in ((28, 70, 6.5), (52, 200, 8.0), (55, 320, 5.0), (30, 300, 4.0)):
-        angle = math.radians(degrees)
-        tapered_cylinder(
-            pools, 1.35, 1.75, size, size * 0.92, sides=9, center=(math.cos(angle) * radius, math.sin(angle) * radius)
-        )
-    obj_pools = finish("BrinejawArena_TidePools", pools, (0.30, 0.62, 0.62))
-
-    # Shells and starfish scattered on the sand.
-    shells = bmesh.new()
-    for _ in range(14):
-        angle, r = rng.uniform(0, TAU), rng.uniform(16, 66)
-        x, y = math.cos(angle) * r, math.sin(angle) * r
-        rock(shells, (x, y, 1.55), (rng.uniform(0.3, 0.6), rng.uniform(0.3, 0.5), 0.25), rng, jitter=0.2)
-    obj_shells = finish("BrinejawArena_Shells", shells, (0.94, 0.9, 0.82))
-
-    stars = bmesh.new()
-    for _ in range(6):
-        angle, r = rng.uniform(0, TAU), rng.uniform(20, 62)
-        cx, cy = math.cos(angle) * r, math.sin(angle) * r
-        spin = rng.uniform(0, TAU)
-        for arm in range(5):
-            a = spin + (arm / 5) * TAU
-            cone(stars, (cx, cy, 1.55), (cx + math.cos(a) * 1.1, cy + math.sin(a) * 1.1, 1.5), 0.3, sides=4)
-    obj_stars = finish("BrinejawArena_Starfish", stars, (0.85, 0.42, 0.5))
-
-    # Seaweed tufts near the water line and the pools.
-    weed = bmesh.new()
-    for _ in range(9):
-        angle, r = rng.uniform(0, TAU), rng.uniform(58, 70)
-        cx, cy = math.cos(angle) * r, math.sin(angle) * r
-        for _ in range(rng.randint(2, 4)):
-            ox, oy = rng.uniform(-1.2, 1.2), rng.uniform(-1.2, 1.2)
-            cone(weed, (cx + ox, cy + oy, 0.7), (cx + ox + rng.uniform(-0.5, 0.5), cy + oy + rng.uniform(-0.5, 0.5), rng.uniform(1.8, 3.2)), 0.3, sides=4)
-    obj_weed = finish("BrinejawArena_Seaweed", weed, (0.2, 0.42, 0.3))
-
-    # Half-buried planks and a rope coil - keeper's flotsam.
-    wood = bmesh.new()
-    for _ in range(5):
-        angle, r = rng.uniform(0, TAU), rng.uniform(24, 60)
-        x, y = math.cos(angle) * r, math.sin(angle) * r
-        wood_rot = Matrix.Rotation(rng.uniform(0, TAU), 3, "Z") @ Matrix.Rotation(rng.uniform(-0.15, 0.15), 3, "X")
-        box(wood, (x, y, 1.35), (rng.uniform(3.5, 5.5), 0.8, 0.35), wood_rot)
-    for i in range(2):  # the rope coil: two stacked squashed rings
-        tapered_cylinder(wood, 1.4 + i * 0.35, 1.75 + i * 0.35, 1.6 - i * 0.2, 1.6 - i * 0.2, sides=9, center=(-30.0, 36.0))
-    return obj_pools, obj_shells, obj_stars, obj_weed, finish("BrinejawArena_Flotsam", wood, DRIFTWOOD)
-
-
 def build_bj_edge_detail(rng):
     # Sea stacks: tall rock columns rising OUTSIDE the reef fence - the
     # skyline that makes the boundary read as a place, not a wall.
@@ -482,7 +431,6 @@ def build_brinejaw():
         build_bj_foam(rng),
         *build_bj_reef_stones(),
         *build_bj_dressing(rng),
-        *build_bj_floor_detail(rng),
         *build_bj_edge_detail(rng),
     ]
     print("HANDOFF brinejaw: mesh bottom z %.1f  <-- BossArenas meshBottom (default -9 fits)" % (SKIRT_BOTTOM - 0.5))
