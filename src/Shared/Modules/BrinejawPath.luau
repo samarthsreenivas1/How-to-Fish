@@ -1,0 +1,265 @@
+--!nonstrict
+-- BrinejawPath.luau
+-- Where every piece of Brinejaw is, right now: ONE boss's path shape.
+--
+-- The generic half lives in ChainPose (walking any path by arc length and
+-- handing out CFrames) - Wrack's anchor chains and the Kraken's arms drive
+-- the same machinery with their own path functions. This file is only the
+-- serpent's geometry.
+--
+-- The serpent is one continuous chain of ~100 parts (assets/boss_gen.py),
+-- and this module is the single function that says where each one sits:
+-- `pointAt(state, t)` with t = 0 at the snout and t = 1 at the rattle. The
+-- coils on the lighthouse and the sweeping tail are the SAME chain, so an
+-- attack is never a new object - it is this path changing shape. That is why
+-- the tail can lash across the arena without anything spawning: it UNWINDS
+-- off the tower.
+--
+-- Server and client both require this file, and that is the point:
+--   * the server needs one point (the head) to stand its model on, and does
+--     its damage tests analytically (bearing + radius + height bands), so a
+--     sweep costs it no geometry at all;
+--   * the client walks the whole chain every frame to draw the body.
+-- Sharing the math means the thing you dodge and the thing you see can never
+-- drift apart.
+--
+-- The numbers below ARE the pose in assets/boss_brinejaw_staged.png - the
+-- staged render is the review artifact for this table. Coordinates are
+-- Roblox's (Y up), arena-local until `state.center` is added.
+--
+-- NOTE ON GROUND HEIGHT: sandY() mirrors the authored arena's beach profile
+-- (assets/arena_gen.py). Before that mesh is imported the arena is a flat
+-- procedural disc, so a resting tail rides a couple of studs high - cosmetic,
+-- and it corrects itself the moment the real arena lands.
+
+local BrinejawPath = {}
+
+local TAU = math.pi * 2
+
+-- ---------------------------------------------------------------- the tower
+
+-- The lighthouse's radius at height y - arena_gen's three tapering drums.
+function BrinejawPath.spireRadius(y: number): number
+	local drums = { { 3.5, 20.0, 8.5, 7.4 }, { 20.0, 38.0, 7.2, 6.2 }, { 38.0, 54.0, 6.0, 5.2 } }
+	for _, drum in drums do
+		local y0, y1, r0, r1 = drum[1], drum[2], drum[3], drum[4]
+		if y <= y1 then
+			local t = math.clamp((y - y0) / (y1 - y0), 0, 1)
+			return r0 + (r1 - r0) * t
+		end
+	end
+	return 5.2
+end
+
+-- The beach's height at radius r from the tower (arena_gen's BJ_PROFILE).
+function BrinejawPath.sandY(r: number): number
+	local profile = { { 0, 3.2 }, { 10, 3.0 }, { 16, 2.2 }, { 30, 1.6 }, { 48, 1.4 }, { 62, 1.0 }, { 70, 0.4 } }
+	for i = 1, #profile - 1 do
+		local a, b = profile[i], profile[i + 1]
+		if r <= b[1] then
+			local t = math.clamp((r - a[1]) / (b[1] - a[1]), 0, 1)
+			return a[2] + (b[2] - a[2]) * t
+		end
+	end
+	return 0.4
+end
+
+-- ---------------------------------------------------------------- rest pose
+
+BrinejawPath.REST = {
+	NECK_END = 0.11, -- t where the neck meets the top coil
+	HELIX_END = 0.74, -- t where the bottom coil lets go of the tower
+	TURNS = 3.0,
+	TOP_Y = 44.0,
+	BOTTOM_Y = 12.0,
+	CLEARANCE = 3.4, -- body centre stands this far off the masonry
+	HEAD_Y = 60.0,
+	HEAD_OUT = 8.0, -- how far past the gallery the neck leans out
+	BEARING = math.rad(342.0),
+	TAIL_OUT = 31.0,
+	TAIL_TURN = 0.85,
+}
+
+-- One turn's pitch: what a lost grip costs it, and how far the head drops.
+BrinejawPath.COIL_DROP = (BrinejawPath.REST.TOP_Y - BrinejawPath.REST.BOTTOM_Y) / BrinejawPath.REST.TURNS
+
+-- How many coils it starts with, and so how many times it can be dropped.
+BrinejawPath.MAX_COIL = 3
+
+-- The sweeping tail reaches this far out - past the sand ring's edge, so
+-- there is nowhere on the floor a sweep cannot find you.
+BrinejawPath.SWEEP_REACH = 66.0
+-- ...but never closer in than this, so hugging the tower is a real (if
+-- dangerous) answer to a sweep.
+BrinejawPath.SWEEP_INNER = 13.0
+
+-- Sweep heights: LOW is jumped, HIGH is stood under. Far enough apart that
+-- reading which one is coming is the whole skill.
+BrinejawPath.SWEEP_LOW = 1.6
+BrinejawPath.SWEEP_HIGH = 5.4
+
+local function smoothstep(x: number): number
+	x = math.clamp(x, 0, 1)
+	return x * x * (3 - 2 * x)
+end
+
+-- A fresh pose state. `coil` counts DOWN as it loses its grip.
+function BrinejawPath.newState(center: Vector3)
+	return {
+		center = center,
+		coil = BrinejawPath.MAX_COIL,
+		unwind = 0, -- 0 coiled, 1 tail fully off the tower
+		sweepAngle = 0,
+		sweepHeight = BrinejawPath.SWEEP_LOW,
+		slump = 0, -- 0 reared, 1 head down on the sand (the punish window)
+		faceAngle = BrinejawPath.REST.BEARING - 0.8, -- who it is watching
+		time = 0,
+	}
+end
+
+-- How far the whole stack has slid down the tower, in studs.
+local function coilOffset(state): number
+	return (BrinejawPath.MAX_COIL - (state.coil or BrinejawPath.MAX_COIL)) * BrinejawPath.COIL_DROP
+end
+
+-- The coiled-on-the-lighthouse pose, arena-local.
+local function restPoint(state, t: number): Vector3
+	local rest = BrinejawPath.REST
+	local drop = coilOffset(state)
+	local topY = rest.TOP_Y - drop
+	local bottomY = rest.BOTTOM_Y - drop
+
+	local function helix(k: number): Vector3
+		local y = topY + (bottomY - topY) * k
+		local theta = rest.BEARING + rest.TURNS * TAU * k
+		local r = BrinejawPath.spireRadius(y) + rest.CLEARANCE
+		return Vector3.new(math.cos(theta) * r, y, math.sin(theta) * r)
+	end
+
+	if t <= rest.NECK_END then
+		-- The reared neck: a quadratic sweep down onto the top coil. The
+		-- control point sets the head's carry angle, so the skull looks out
+		-- over the sand instead of at the sky.
+		local u = t / rest.NECK_END
+		local theta = rest.BEARING - 0.8
+		local headY = rest.HEAD_Y - drop
+		local r = BrinejawPath.spireRadius(headY) + rest.CLEARANCE + rest.HEAD_OUT
+		local top = Vector3.new(math.cos(theta) * r, headY, math.sin(theta) * r)
+		local control = top - Vector3.new(math.cos(theta) * 11.0, 2.5, math.sin(theta) * 11.0)
+		local start = helix(0)
+		return top * (1 - u) ^ 2 + control * (2 * (1 - u) * u) + start * u ^ 2
+	end
+
+	if t <= rest.HELIX_END then
+		return helix((t - rest.NECK_END) / (rest.HELIX_END - rest.NECK_END))
+	end
+
+	-- Slack: the tail leaves the tower, spirals down and lies on the sand.
+	local k = (t - rest.HELIX_END) / (1 - rest.HELIX_END)
+	local inner = BrinejawPath.spireRadius(bottomY) + rest.CLEARANCE
+	local theta = rest.BEARING + rest.TURNS * TAU + rest.TAIL_TURN * TAU * k
+	local r = inner + (rest.TAIL_OUT - inner) * k ^ 0.75
+	local y = bottomY + (BrinejawPath.sandY(rest.TAIL_OUT) + 1.2 - bottomY) * k ^ 0.6
+	return Vector3.new(math.cos(theta) * r, y, math.sin(theta) * r)
+end
+
+-- The swept pose: the tail laid out along one bearing, at sweep height. `t`
+-- is remapped so the further down the body you are, the further out you lie.
+local function sweptPoint(state, t: number, blendStart: number): Vector3
+	local k = math.clamp((t - blendStart) / math.max(1 - blendStart, 1e-3), 0, 1)
+	local r = BrinejawPath.SWEEP_INNER + (BrinejawPath.SWEEP_REACH - BrinejawPath.SWEEP_INNER) * k
+	local theta = state.sweepAngle or 0
+	local y = BrinejawPath.sandY(r) + (state.sweepHeight or BrinejawPath.SWEEP_LOW)
+	return Vector3.new(math.cos(theta) * r, y, math.sin(theta) * r)
+end
+
+-- Where the head slumps when it loses its grip: off the tower, onto the sand,
+-- jaw within reach. The neck drags after it, so the front of the body follows.
+local function slumpPoint(state, t: number): Vector3
+	local rest = BrinejawPath.REST
+	-- It slumps toward whoever it was facing, so the punish window opens
+	-- where the party already is instead of across the ring.
+	local theta = state.faceAngle or (rest.BEARING - 0.8)
+	local reach = 26.0
+	local k = math.clamp(t / 0.30, 0, 1) -- the front 30% of the body comes down
+	local bottomY = rest.BOTTOM_Y - coilOffset(state)
+	local r = reach - (reach - (BrinejawPath.spireRadius(bottomY) + rest.CLEARANCE)) * k
+	local y = BrinejawPath.sandY(r) + 2.6 + 9.0 * k ^ 1.5
+	return Vector3.new(math.cos(theta) * r, y, math.sin(theta) * r)
+end
+
+-- ---------------------------------------------------------------- public
+
+-- Where body position `t` (0 = snout, 1 = rattle) is right now, in world
+-- space. Blends rest -> swept for the tail, rest -> slumped for the head.
+function BrinejawPath.pointAt(state, t: number): Vector3
+	t = math.clamp(t, 0, 1)
+	local point = restPoint(state, t)
+
+	local unwind = state.unwind or 0
+	if unwind > 0 then
+		-- The higher the unwind, the further UP the body the peel reaches, so
+		-- the tail visibly comes off the tower turn by turn.
+		local blendStart = 1.0 - 0.40 * unwind
+		local w = smoothstep((t - blendStart) / 0.14) * unwind
+		if w > 0 then
+			point = point:Lerp(sweptPoint(state, t, blendStart), w)
+		end
+	end
+
+	local slump = state.slump or 0
+	if slump > 0 and t < 0.34 then
+		local w = smoothstep((0.34 - t) / 0.34) * slump
+		point = point:Lerp(slumpPoint(state, t), w)
+	end
+
+	-- Ambient: a slow bulge travelling down the body, so it breathes even
+	-- when nothing is happening. Small enough that the server's analytic
+	-- hit bands do not need to know about it.
+	local time = state.time or 0
+	local breath = math.sin(t * 9.0 - time * 1.7) * 0.45
+	point += Vector3.new(0, breath, 0)
+
+	return (state.center or Vector3.zero) + point
+end
+
+-- The direction "up-body" (toward the head) at `t` - what a piece's +X axis
+-- points along (the pack's forward convention, assets/boss_gen.py).
+function BrinejawPath.tangentAt(state, t: number): Vector3
+	local step = 0.004
+	local ahead = BrinejawPath.pointAt(state, math.max(t - step, 0))
+	local behind = BrinejawPath.pointAt(state, math.min(t + step, 1))
+	local delta = ahead - behind
+	return if delta.Magnitude > 1e-4 then delta.Unit else Vector3.new(1, 0, 0)
+end
+
+-- The head's world position - all the server needs to stand its model on.
+function BrinejawPath.headPosition(state): Vector3
+	return BrinejawPath.pointAt(state, 0)
+end
+
+-- Is `position` caught by the sweep the state describes? Pure geometry: the
+-- arm is radial, so a hit is "on this bearing, out on the sand, at the wrong
+-- height". A LOW sweep is jumped (get above it); a HIGH one is stood under.
+function BrinejawPath.sweepHits(state, position: Vector3, girth: number): boolean
+	local center = state.center or Vector3.zero
+	local dx, dz = position.X - center.X, position.Z - center.Z
+	local r = math.sqrt(dx * dx + dz * dz)
+	if r < BrinejawPath.SWEEP_INNER or r > BrinejawPath.SWEEP_REACH then
+		return false
+	end
+	-- Angular half-width shrinks with radius so the arm's real thickness is
+	-- constant - being far out must not mean being easier to clip.
+	local half = math.atan2(girth, math.max(r, 1))
+	local delta = math.abs((math.atan2(dz, dx) - (state.sweepAngle or 0)) % TAU)
+	if delta > math.pi then
+		delta = TAU - delta
+	end
+	if delta > half then
+		return false
+	end
+	local armY = center.Y + BrinejawPath.sandY(r) + (state.sweepHeight or BrinejawPath.SWEEP_LOW)
+	return math.abs(position.Y - armY) <= girth
+end
+
+return BrinejawPath
