@@ -88,7 +88,11 @@ local function placeAuthored(parent: Instance, arena, template: Instance)
 			-- NON_COLLIDE idea, by the arena naming convention (arena_gen.py):
 			-- surf foam (which OceanController also rides on the tide),
 			-- coral, plant tufts, and hanging cloth stay visual-only.
-			for _, tag in { "Foam", "Coral", "Seaweed", "Kelp", "SailRag", "Starfish" } do
+			-- `Deco` is the general form of the same rule (the Rootmere and
+			-- every arena after it): an author marks a scatter object visual-
+			-- only in its NAME, so it needs no import-time collision care and
+			-- can never grow an invisible wall out of a convex hull.
+			for _, tag in { "Deco", "Foam", "Coral", "Seaweed", "Kelp", "SailRag", "Starfish" } do
 				if string.find(descendant.Name, tag, 1, true) then
 					descendant.CanCollide = false
 					descendant.CanQuery = false
