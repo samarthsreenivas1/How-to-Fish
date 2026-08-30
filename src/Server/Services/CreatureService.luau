@@ -4100,6 +4100,13 @@ local function updateBossCollapse(creature, def, now: number)
 		state.coil = from.coil - COLLAPSE_COILS * e
 		state.slump = from.slump + (1 - from.slump) * e
 		state.unwind = from.unwind + (1 - from.unwind) * e
+		-- `fall` is the one term the collapse can rely on, because the others
+		-- are already AT their targets when it starts: a boss can only be
+		-- killed inside a stagger, and by then slump, unwind and sweepHeight
+		-- have all been pinned for seconds. Easing x toward x animates
+		-- nothing, so the head sat motionless through its own death. This
+		-- slides it out onto the sand and settles it as the grip goes.
+		state.fall = e
 		state.sweepHeight = from.sweepHeight + (BrinejawPath.SWEEP_LOW - from.sweepHeight) * e
 	end
 	-- No `root`: a dying boss does not track anybody, so the face angle it
@@ -4328,11 +4335,17 @@ ATTACK_HANDLERS.orbitsweep = {
 			end
 		end
 	end,
+	recover = function(creature, def, _p, u, _sub)
+		-- The re-grip plays DURING the recovery, not after it. Without this
+		-- the arm hung frozen on its last bearing for the whole recover -
+		-- every part of the body under 1.1 studs of travel for a full second,
+		-- a photograph between two bursts of violence - and only then did the
+		-- entrenched branch start winding it back.
+		colossusState(creature, def).unwind = 1 - u
+	end,
 	finish = function(creature, def, _p, _now)
-		-- The arm stays out; the entrenched branch winds it back onto the
-		-- tower, so the recovery reads as the serpent re-gripping.
 		local state = colossusState(creature, def)
-		state.unwind = math.min(state.unwind or 1, 1)
+		state.unwind = math.clamp(state.unwind or 0, 0, 1)
 	end,
 }
 

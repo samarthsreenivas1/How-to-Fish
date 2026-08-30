@@ -106,6 +106,13 @@ local function makePiece(name: string, parent: Instance): BasePart
 		part.Color = FALLBACK_COLOR[name] or Color3.fromRGB(33, 66, 77)
 		part.Material = Enum.Material.SmoothPlastic
 	end
+	-- The pack's glTF round trip drops materials, and the boss path clones
+	-- pack parts with no Neon-by-name rule (boss_gen's own HANDOFF warns
+	-- about it), so the amber eyes arrive matte and unlit. Two sibling
+	-- controllers already assert this for the same reason.
+	if name == "Eyes" then
+		part.Material = Enum.Material.Neon
+	end
 	part.Name = "Brinejaw_" .. name
 	part.Anchored = true
 	part.CanCollide = false
@@ -241,8 +248,15 @@ local function drawBody(model: Model, body, dt: number, now: number)
 	-- slow idle working of the jaw, opening as the tail comes off the tower
 	-- (it is winding up to something), and wide when the head is down - the
 	-- roar of a serpent that has just lost its grip.
+	-- Never allowed to saturate. The first version peaked at 1.06 whenever
+	-- unwind and slump were both pinned - which is the whole punish window -
+	-- so `clamp` ate the only varying term and the jaw hung welded OPEN at
+	-- max for 45% of it: the mirror image of the welded-shut bug it replaced.
+	-- The working now GROWS when the head is down instead of being replaced
+	-- by a constant, and the total stays under 1.
+	local slump = state.slump or 0
 	local gape = math.clamp(
-		0.10 + 0.16 * (math.sin(state.time * 0.9) * 0.5 + 0.5) + 0.30 * (state.unwind or 0) + 0.50 * (state.slump or 0),
+		0.05 + 0.20 * (1 + slump) * (math.sin(state.time * 2.2) * 0.5 + 0.5) + 0.20 * (state.unwind or 0) + 0.34 * slump,
 		0,
 		1
 	)
@@ -250,8 +264,19 @@ local function drawBody(model: Model, body, dt: number, now: number)
 	local hinge = JAW_HINGE * HEAD_SCALE
 	local swing = CFrame.new(hinge) * CFrame.Angles(0, 0, -gape * JAW_MAX) * CFrame.new(-hinge)
 
+	-- The frill is ten raked blades per side, authored to flare. Riding the
+	-- skull's frame rigidly made it a fixed collar - same defect as the jaw
+	-- hinge, one piece over. It opens with whatever the body is doing.
+	local flare = math.max(state.unwind or 0, slump)
+	local frillFrame = headFrame * CFrame.Angles(0, 0, flare * math.rad(22))
 	for _, name in HEAD_PIECES do
-		applyPiece(body.head[name], if JAW_PIECES[name] then headFrame * swing else headFrame, HEAD_SCALE)
+		local frame = headFrame
+		if JAW_PIECES[name] then
+			frame = headFrame * swing
+		elseif name == "Frill" then
+			frame = frillFrame
+		end
+		applyPiece(body.head[name], frame, HEAD_SCALE)
 	end
 
 	-- Rattle: on the tail's tip, trailing off the end of the chain.

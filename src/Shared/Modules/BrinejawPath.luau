@@ -120,7 +120,11 @@ BrinejawPath.SWEEP_HIGH = 8.5
 
 -- How far off the coil's bearing the head can swing to watch someone. A
 -- cone, not free rotation: the neck is anchored to the top coil.
-BrinejawPath.HEAD_TURN = math.rad(75)
+-- 75 degrees left 58% of the arena unlookable, including the reef stone at
+-- bearing 105 - a party baiting slams there got a serpent permanently
+-- staring at a fixed patch of sea. The coil is allowed to slide a little on
+-- the drum, so the head can reach most of the ring.
+BrinejawPath.HEAD_TURN = math.rad(125)
 
 local function wrapAngle(a: number): number
 	return (a + math.pi) % (math.pi * 2) - math.pi
@@ -160,7 +164,11 @@ local function restPoint(state, t: number): Vector3
 	local function helix(k: number): Vector3
 		local y = topY + (bottomY - topY) * k
 		local theta = rest.BEARING + rest.TURNS * TAU * k
-		local r = BrinejawPath.spireRadius(y) + rest.CLEARANCE
+		-- The coils TIGHTEN as the tail comes off the tower. Without this the
+		-- 33 vertebrae on the drum move ~1 stud while the tail tip does 156
+		-- studs/second - two thirds of the visible body inert during its own
+		-- attack. It is also mechanically honest: it is holding on harder.
+		local r = BrinejawPath.spireRadius(y) + rest.CLEARANCE * (1 - 0.10 * (state.unwind or 0))
 		return Vector3.new(math.cos(theta) * r, y, math.sin(theta) * r)
 	end
 
@@ -169,7 +177,6 @@ local function restPoint(state, t: number): Vector3
 		-- control point sets the head's carry angle, so the skull looks out
 		-- over the sand instead of at the sky.
 		local u = t / rest.NECK_END
-		local time = state.time or 0
 		-- IT WATCHES YOU. `faceAngle` tracks the nearest player (turn-rated
 		-- by the server), but the neck is still wrapped round a lighthouse,
 		-- so the swing is clamped to a cone off the coil's own bearing -
@@ -180,8 +187,8 @@ local function restPoint(state, t: number): Vector3
 		local anchor = rest.BEARING - 0.8
 		local swing =
 			math.clamp(wrapAngle((state.faceAngle or anchor) - anchor), -BrinejawPath.HEAD_TURN, BrinejawPath.HEAD_TURN)
-		local theta = anchor + swing + math.sin(time * 0.55) * math.rad(7)
-		local headY = rest.HEAD_Y - drop + math.sin(time * 0.83) * 1.2
+		local theta = anchor + swing
+		local headY = rest.HEAD_Y - drop
 		local r = BrinejawPath.spireRadius(headY) + rest.CLEARANCE + rest.HEAD_OUT
 		local top = Vector3.new(math.cos(theta) * r, headY, math.sin(theta) * r)
 		local control = top - Vector3.new(math.cos(theta) * 11.0, 2.5, math.sin(theta) * 11.0)
@@ -219,11 +226,16 @@ local function slumpPoint(state, t: number): Vector3
 	-- It slumps toward whoever it was facing, so the punish window opens
 	-- where the party already is instead of across the ring.
 	local theta = state.faceAngle or (rest.BEARING - 0.8)
-	local reach = 26.0
+	-- `fall` is written only by the death collapse: the head slides further
+	-- out and settles lower as the grip finally goes. Without it the collapse
+	-- eases four values that are all already at their targets, and the killer
+	-- watches a motionless skull for 2.5 seconds.
+	local fall = math.clamp(state.fall or 0, 0, 1)
+	local reach = 26.0 + 8.0 * fall
 	local k = math.clamp(t / 0.30, 0, 1) -- the front 30% of the body comes down
 	local bottomY = rest.BOTTOM_Y - coilOffset(state)
 	local r = reach - (reach - (BrinejawPath.spireRadius(bottomY) + rest.CLEARANCE)) * k
-	local y = BrinejawPath.sandY(r) + 2.6 + 9.0 * k ^ 1.5
+	local y = BrinejawPath.sandY(r) + 2.6 - 1.8 * fall + 9.0 * k ^ 1.5
 	return Vector3.new(math.cos(theta) * r, y, math.sin(theta) * r)
 end
 
@@ -259,6 +271,22 @@ function BrinejawPath.pointAt(state, t: number): Vector3
 	local time = state.time or 0
 	local breath = math.sin(t * 9.0 - time * 1.7) * (0.45 + 1.05 * t * t)
 	point += Vector3.new(0, breath, 0)
+
+	-- The head's sway and bob live HERE, outside every blend, not inside the
+	-- neck's own branch. Folded into one side of a lerp they were annihilated
+	-- exactly when `slump` reached 1 - so the punish window, the state players
+	-- stare at longest, was the deadest in the fight: 0.9 studs and 0.7
+	-- degrees of yaw over eight seconds. This is the idiom ChainPose's header
+	-- prescribes, and the bug it warns about, committed by the person who
+	-- wrote the warning.
+	local neckEnd = BrinejawPath.REST.NECK_END
+	if t <= neckEnd then
+		local k = 1 - t / neckEnd -- full at the snout, gone by the top coil
+		local flat = Vector3.new(point.X, 0, point.Z)
+		local side = if flat.Magnitude > 0.01 then Vector3.new(-flat.Z, 0, flat.X).Unit else Vector3.new(0, 0, 1)
+		point += side * (math.sin(time * 0.55) * 2.1 * k)
+		point += Vector3.new(0, math.sin(time * 0.83) * 1.25 * k, 0)
+	end
 
 	-- The last tenth flicks sideways: the rattle twitches. This is not
 	-- decoration - it is the only part of the fight you are ever allowed to
