@@ -3725,7 +3725,22 @@ local function colossusState(creature, def)
 	if not state then
 		creature.poseKind = def.pose
 		if def.pose == "brinejaw" then
-			state = BrinejawPath.newState(creature.anchor or creature.pos)
+			-- SNAPPED TO THE WATERLINE, for the same reason Noctyss is just
+			-- below. `spawn` lifts a creature by half its own thickness -
+			-- 3.47 studs at the leviathan body's 1.5 scale - but every height
+			-- this fight reasons about is measured from the BEACH: `sandY`,
+			-- both sweep bands, the coil clearance. Inheriting the spawn lift
+			-- floated the whole serpent off its own ground reference, and
+			-- since the low band is only 3.4 studs thick, 3.47 was enough to
+			-- carry the LOW sweep clean over a standing player while dropping
+			-- the HIGH one to where a jump no longer cleared it. Measured
+			-- against the real `sandY` profile: the fight's central read -
+			-- stand under the high one, jump the low one - was inverted or
+			-- entirely dead across 79% of the standable floor. It is 0% now,
+			-- with at least 2.3 studs of margin on every one of the four
+			-- calls, comfortably past the stud this module's header asks for.
+			local anchor = creature.anchor or creature.pos
+			state = BrinejawPath.newState(Vector3.new(anchor.X, World.WATER_Y, anchor.Z))
 		elseif def.pose == "noctyss" then
 			state = NoctyssPath.newState(creature.anchor or creature.pos)
 		elseif def.pose == "kraken" then
@@ -4269,6 +4284,10 @@ local function aimSweep(creature, def, p)
 		reach = BrinejawPath.SWEEP_REACH,
 		height = if a.high then BrinejawPath.SWEEP_HIGH else BrinejawPath.SWEEP_LOW,
 		high = a.high,
+		-- The arm's real half-thickness, because the marker has no business
+		-- guessing it. It is per-attack (3.4 low, 3.6 high, 3.8 constrict) and
+		-- the client was drawing every one of them at a hardcoded 3.4.
+		girth = p.girth or 3.2,
 		-- BOTH halves, because they are not interchangeable: the arm holds
 		-- still on the start bearing for `windup` and only travels the arc
 		-- during `duration`. A marker that spreads the arc over the sum runs
@@ -4286,7 +4305,13 @@ ATTACK_HANDLERS.orbitsweep = {
 		-- The tail peels off the tower during the windup - the telegraph is
 		-- the body itself, so a player who reads the serpent reads the attack.
 		-- It swings to the START bearing as it peels, which is now known.
-		state.unwind = u
+		-- MONOTONIC, never a stomp: `sweeppair` and `constrict` chain a second
+		-- sweep straight onto the first, and that follow-up begins its windup
+		-- with the tail already fully out. Assigning `u` sent it from 1 back
+		-- to 0 in one frame - the tail crossed 21.6 studs between two frames,
+		-- about 1300 studs/second. The tail may only ever peel further off
+		-- the tower during a windup; the recover is what puts it back.
+		state.unwind = math.max(state.unwind or 0, u)
 		state.sweepHeight = if p.high then BrinejawPath.SWEEP_HIGH else BrinejawPath.SWEEP_LOW
 		state.sweepAngle = creature.attack.startAngle or state.sweepAngle
 	end,
@@ -4358,6 +4383,11 @@ ATTACK_HANDLERS.orbitsweep = {
 -- just a coin toss. The impact is locked on the first windup frame and the
 -- marker is fired at it, so "be standing at a stone when it lands" is a
 -- decision the arena actually shows you.
+-- How far into the strike the rattle actually connects. Shared, because the
+-- marker's countdown and the tail's descent have to agree on it or the fight
+-- lies about its own timing in one direction or the other.
+local SLAM_IMPACT = 0.62
+
 local function aimSlam(creature, def, p)
 	local a = creature.attack
 	if a.aimed then
@@ -4378,7 +4408,12 @@ local function aimSlam(creature, def, p)
 	a.impact = Vector3.new(at.X, state.center.Y + BrinejawPath.sandY(r), at.Z)
 	fireEvent("serpentSlam", a.impact, {
 		radius = p.radius or 13,
-		duration = p.windup,
+		-- THROUGH the blow, not up to the swing. The rings used to close at
+		-- the end of the windup, but the rattle only starts falling then and
+		-- the damage resolves at SLAM_IMPACT of the strike - so the countdown
+		-- finished 0.53s before anything happened, and a player who read it
+		-- correctly stepped back into the circle and died to it.
+		duration = p.windup + (p.duration or 0) * SLAM_IMPACT,
 		-- Whether this landing is ON rock: the client tints the marker, so a
 		-- correct bait is legible before the tail comes down, not after.
 		stoneNear = stoneNear(creature, def, a.impact, p.stoneReach or 11),
@@ -4403,13 +4438,25 @@ ATTACK_HANDLERS.tailslam = {
 		local a = creature.attack
 		local state = colossusState(creature, def)
 		state.unwind = 1
-		-- Down it comes.
-		state.sweepHeight = BrinejawPath.SWEEP_HIGH + (p.lift or 9) * (1 - u) ^ 2
-		if a.fired or u < 0.62 then
+		-- Down it comes - and STAYS down. This used to read the arc off `u`
+		-- unconditionally, so the frame after impact recomputed a height of
+		-- 9.3 studs and put the rattle straight back in the air: dust, damage
+		-- and a shockwave at ground level while the tail that supposedly
+		-- caused them hovered three body-widths above it, never once touching
+		-- the sand. Clamping the fall at the impact fraction lands it and
+		-- keeps it landed. Squaring the fraction also matters - it makes the
+		-- drop accelerate like a falling weight instead of easing out like a
+		-- lift, and it means the height arrives at SWEEP_LOW continuously
+		-- rather than as an 8.2-stud jump the client then has to smooth over
+		-- a third of a second, which is what put the visible impact after the
+		-- damage that it was supposed to explain.
+		local fall = math.min(u / SLAM_IMPACT, 1)
+		local top = BrinejawPath.SWEEP_HIGH + (p.lift or 9)
+		state.sweepHeight = top + (BrinejawPath.SWEEP_LOW - top) * fall * fall
+		if a.fired or u < SLAM_IMPACT then
 			return
 		end
 		a.fired = true
-		state.sweepHeight = BrinejawPath.SWEEP_LOW
 		local lo, hi = bossRoll(creature, def, p.damage)
 		damagePlayersInCone(a.impact, Vector3.new(1, 0, 0), p.radius or 13, math.pi, false, lo, hi, creature)
 		fireEvent("slam", a.impact, { radius = p.radius or 13, skin = p.skin })

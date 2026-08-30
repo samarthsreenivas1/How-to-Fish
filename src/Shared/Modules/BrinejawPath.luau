@@ -151,7 +151,14 @@ end
 
 -- How far the whole stack has slid down the tower, in studs.
 local function coilOffset(state): number
-	return (BrinejawPath.MAX_COIL - (state.coil or BrinejawPath.MAX_COIL)) * BrinejawPath.COIL_DROP
+	local drop = (BrinejawPath.MAX_COIL - (state.coil or BrinejawPath.MAX_COIL)) * BrinejawPath.COIL_DROP
+	-- CLAMPED to the beach. Unclamped, the third stance put 43% of the body
+	-- underground (deepest 11.7 studs) and the death collapse buried two
+	-- thirds of it 22 studs into the sand - for the last third of every
+	-- fight. The stack can only slide as far as the bottom coil resting on
+	-- the ground; past that it would be digging, not slipping.
+	local floor = BrinejawPath.REST.BOTTOM_Y - BrinejawPath.sandY(0) - BrinejawPath.REST.CLEARANCE
+	return math.clamp(drop, 0, math.max(floor, 0))
 end
 
 -- The coiled-on-the-lighthouse pose, arena-local.

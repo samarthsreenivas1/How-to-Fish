@@ -35,7 +35,11 @@ local PACK_NAME = "BrinejawPack"
 local FOLDER_NAME = "BrinejawBody"
 
 -- Studs between vertebra centres at full scale, from the pack's HANDOFF.
-local SPACING = 3.4
+-- One vertebra per 1% of the body, however long the body currently is.
+local BODY_LINKS = 100
+-- Each link runs a little longer than its share of the curve so neighbours
+-- interpenetrate at the joints instead of gapping on the outside of a bend.
+local OVERLAP = 1.35
 -- Every Nth vertebra is the finned variant, for silhouette.
 local FIN_EVERY = 4
 -- The head sits this far up-body of the chain's start (the mesh is centred
@@ -47,7 +51,14 @@ local TAPER = 0.62
 
 -- How fast the drawn pose chases the replicated one. The server steps these
 -- values; easing is what makes a step look like a serpent moving.
-local EASE = { unwind = 6.0, sweepAngle = 14.0, sweepHeight = 7.0, slump = 5.0, faceAngle = 5.0, coil = 1.6 }
+-- sweepAngle EARNS its outlier. The lag of a first-order filter chasing a
+-- RAMP is speed/rate, and that is framerate-independent: at 14 the drawn arm
+-- trailed the damaging one by 130.8/14 = 9.3 degrees, which at the 66-stud
+-- tip is 10.8 studs against a lane only 6.8 wide - the arm you SAW was
+-- entirely outside the arm that KILLED you past r=41. At 55 the lag is 2.4
+-- degrees / 2.7 studs, inside the lane at every radius. The others chase
+-- steps rather than ramps, so their rates are about how soft a move looks.
+local EASE = { unwind = 6.0, sweepAngle = 55.0, sweepHeight = 7.0, slump = 5.0, faceAngle = 5.0, coil = 1.6 }
 
 local HEAD_PIECES = { "Head", "HeadBone", "Eyes", "Frill", "Jaw", "JawBone" }
 -- The two pieces that hinge, and where. boss_gen prints the pivot in its
@@ -146,15 +157,19 @@ local function readTarget(model: Model, target)
 	return target
 end
 
+-- EXPONENTIAL, not `rate * dt`. The linear form closes a fixed FRACTION of
+-- the gap per second only while dt is small; on a hitch it races toward 1 and
+-- the body SNAPS - precisely when a snap is most visible. `1 - e^-rt` is the
+-- same curve sampled correctly at any step, and it cannot overshoot.
 local function approach(current: number, goal: number, rate: number, dt: number): number
-	return current + (goal - current) * math.clamp(rate * dt, 0, 1)
+	return current + (goal - current) * (1 - math.exp(-rate * dt))
 end
 
 -- Angles have to take the short way round, or a sweep crossing north
 -- unwinds the whole body backwards through the arena.
 local function approachAngle(current: number, goal: number, rate: number, dt: number): number
 	local delta = (goal - current + math.pi) % (math.pi * 2) - math.pi
-	return current + delta * math.clamp(rate * dt, 0, 1)
+	return current + delta * (1 - math.exp(-rate * dt))
 end
 
 -- ---------------------------------------------------------------- lifecycle
@@ -224,21 +239,36 @@ local function drawBody(model: Model, body, dt: number, now: number)
 	chain:update(state)
 
 	-- Body: one CFrame per vertebra, tapering toward the tail.
-	local used = 0
-	chain:each(SPACING, function(index, cframe, u)
-		used = index
+	-- A FIXED LINK COUNT, not a fixed spacing. Dividing the curve by SPACING
+	-- meant the part count changed with the curve's length every frame, and
+	-- three separate artifacts fell out of that: the tip flickered a
+	-- 3.4-stud hole on and off around 16 Hz as the count quantized, two
+	-- dozen vertebrae resampled their taper and visibly shrank by up to a
+	-- third mid-sweep, and the spares had to be parked under the map. A
+	-- constant count gives every vertebra a stable identity and a stable
+	-- girth for the whole fight; only its LENGTH breathes, which is what a
+	-- real spine does anyway.
+	chain:eachN(BODY_LINKS, function(index, cframe, u, spacing)
 		local segment = body.segments[index]
 		if not segment then
 			segment = makePiece(if index % FIN_EVERY == 2 then "SegFin" else "Seg", body.folder)
 			body.segments[index] = segment
 		end
-		applyPiece(segment, cframe, 1 - TAPER * u ^ 1.3)
+		local base = segment:GetAttribute("BaseSize")
+		if not base then
+			base = segment.Size
+			segment:SetAttribute("BaseSize", base)
+		end
+		-- Taper touches GIRTH only. Scaling length by it as well is what
+		-- turned the back half into a dotted line: 1.75-stud beads with
+		-- 1.65-stud gaps between them. Length covers this link's share of
+		-- the curve with enough overlap that the joints never open.
+		local girth = 1 - TAPER * u ^ 1.3
+		segment.CFrame = cframe
+		segment.Size = Vector3.new(math.max(spacing * OVERLAP, 0.2), base.Y * girth, base.Z * girth)
 	end)
-	-- The chain shortens as the tail winds back onto the tower; park the
-	-- spares rather than churning parts every frame.
-	for index = used + 1, #body.segments do
-		body.segments[index].CFrame = CFrame.new(0, -5000, 0)
-	end
+	-- No parking loop any more: the count is constant, so there is never a
+	-- spare to hide.
 
 	-- Head cluster: every piece shares the neck joint's frame, ahead of the
 	-- chain's start so the skull reaches out past it.

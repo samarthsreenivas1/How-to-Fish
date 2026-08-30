@@ -47,7 +47,15 @@ ChainPose.__index = ChainPose
 -- forward convention (assets/boss_gen.py, creatures_gen.py). Guarded for the
 -- straight-up case, which a reared neck really does hit.
 local function alongX(position: Vector3, forward: Vector3): CFrame
-	local up = if math.abs(forward.Y) > 0.99 then Vector3.new(0, 0, 1) else Vector3.new(0, 1, 0)
+	-- BLENDED, not switched. This used to flip the reference the instant
+	-- |forward.Y| crossed 0.99, which rotates the resulting frame by up to
+	-- 160 degrees in ONE frame - and a reared neck sits right on that
+	-- threshold, so an idle bob alone tripped it three times every ten
+	-- seconds, spinning the finned vertebra at the crossing. Easing the
+	-- reference across a band turns a snap into a roll nobody notices.
+	local blend = math.clamp((math.abs(forward.Y) - 0.90) / 0.09, 0, 1)
+	blend = blend * blend * (3 - 2 * blend)
+	local up = Vector3.new(0, 1, 0):Lerp(Vector3.new(0, 0, 1), blend)
 	local right = forward:Cross(up)
 	if right.Magnitude < 1e-4 then
 		right = Vector3.new(1, 0, 0)

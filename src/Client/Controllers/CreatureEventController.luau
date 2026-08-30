@@ -1343,9 +1343,16 @@ local BRINE_CULL = 240 -- the flat range for the whole-arena moments
 local SWEEP_SLOTS = 2 -- constrict chases a slow high sweep with a fast low one
 local SWEEP_RUNGS = 16
 local SWEEP_LEAD = 0.5 -- seconds the marker runs AHEAD of the arm
-local SWEEP_WIDTH = 6.8 -- the arm's drawn thickness, across the bearing
+local SWEEP_GIRTH = 3.4 -- fallback half-thickness if a row sends none
 local SWEEP_LOW_TOP = 3.2 -- a low wall stands this far above the arm's line
-local SWEEP_HIGH_RAIL = 1.4 -- a high rail is this thin, and that is the point
+-- A HIGH RAIL IS DRAWN AT ITS TRUE THICKNESS. It used to be 1.4 studs -
+-- deliberately slim, so the shape alone said "this one passes overhead" - but
+-- the band that actually hurts you is `girth * 2`, which is 7.2. That is 2.9
+-- studs of invisible hazard above the rail and 2.9 below it, and at the top of
+-- a jump a player's root sits exactly in that margin: you watch yourself clear
+-- the rail by a hair and take the hit anyway. The read survives the honest
+-- thickness, because what sells "stand still" is the clear air underneath it
+-- rather than how thin the rail is.
 local SWEEP_SHADOW_THICK = 0.1
 local SWEEP_FADE = 0.3 -- how long the marker takes to leave once the arm is done
 local SWEEP_DUST_INTERVAL = 0.07 -- sand thrown by a low arm ploughing through it
@@ -1444,6 +1451,7 @@ local function drawSweep(s, pool, now: number): boolean
 	local base = (if s.high then 0.1 else 0.2) + 0.16 * pulse
 	local alpha = base + (1 - base) * fade
 	local tall = s.height + SWEEP_LOW_TOP
+	local band = s.girth * 2
 
 	for i = 1, SWEEP_RUNGS do
 		local r = s.inner + span * (i - 0.5)
@@ -1452,16 +1460,16 @@ local function drawSweep(s, pool, now: number): boolean
 		local rung = pool.rungs[i]
 		if s.high then
 			-- A rail at the arm's own height, and clear air all the way down.
-			rung.Size = Vector3.new(length, SWEEP_HIGH_RAIL, SWEEP_WIDTH)
+			rung.Size = Vector3.new(length, band, band)
 			rung.CFrame = CFrame.new(x, ground + s.height, z) * facing
 			local shade = pool.shadows[i]
-			shade.Size = Vector3.new(length, SWEEP_SHADOW_THICK, SWEEP_WIDTH * 0.9)
+			shade.Size = Vector3.new(length, SWEEP_SHADOW_THICK, band * 0.9)
 			shade.CFrame = CFrame.new(x, ground + 0.06, z) * facing
 			shade.Transparency = 0.42 + 0.58 * fade
 		else
 			-- A wall planted ON the sand: bottom flush with the ground, top
 			-- just under a jump. Nothing to read here but "get above it".
-			rung.Size = Vector3.new(length, tall, SWEEP_WIDTH)
+			rung.Size = Vector3.new(length, tall, band)
 			rung.CFrame = CFrame.new(x, ground + tall * 0.5, z) * facing
 		end
 		rung.Transparency = alpha
@@ -1505,10 +1513,12 @@ EVENTS.serpentSweep = function(position: Vector3, extra)
 		return
 	end
 	local high = extra.high == true
+	local girth = math.clamp(tonumber(extra.girth) or SWEEP_GIRTH, 0.5, 12)
 	local angle = tonumber(extra.angle) or 0
 	local s = {
 		center = position,
 		angle = angle,
+		girth = girth,
 		arc = tonumber(extra.arc) or 0,
 		inner = inner,
 		reach = reach,
