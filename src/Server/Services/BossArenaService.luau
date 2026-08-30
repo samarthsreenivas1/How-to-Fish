@@ -11,12 +11,20 @@
 --     with its authored bottom pinned to `meshBottom`, exactly like
 --     placeIsland does for islands. Importing an arena mesh later flips this
 --     path on with no code change.
---   * PROCEDURAL (the fallback, and everything this pass ships with): a flat
---     themed disc a hair above the waterline, ringed by a low palisade wall
+--   * PROCEDURAL (the fallback, and everything this pass ships with): a
+--     themed floor a hair above the waterline, ringed by a low palisade wall
 --     so the fight can't casually spill onto open water. The wall is
 --     CanQuery = false so casts and creature raycasts pass through it (the
 --     island rim-wall precedent); anyone who does glitch past lands on the
 --     collidable ocean surface, which is safe.
+--
+--     The floor is NOT a flat disc, and the difference is mechanical rather
+--     than decorative. A colossus measures its attacks against its arena's
+--     ground profile, so a flat fallback silently shifts every one of those
+--     heights - see POSE_ARENA below. The fallback builds to the pose's own
+--     profile, and raises whatever furniture the fight is unplayable or
+--     nonsensical without: Brinejaw's reef stones to bait slams onto, and the
+--     lighthouse its entire body is wrapped around.
 --
 -- The fight itself never touches this service: the boss engine anchors to
 -- wherever the boss rose (CreatureService.updateBoss takes its arena centre
@@ -29,12 +37,39 @@ local Workspace = game:GetService("Workspace")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local BossArenas = require(Shared.Config.BossArenas)
 local Bosses = require(Shared.Data.Bosses)
+local BrinejawPath = require(Shared.Modules.BrinejawPath)
 local World = require(Shared.Config.World)
 
 local BossArenaService = {}
 
 local FOLDER_NAME = "BossArenas"
 
+-- THE POSE MODULE OWNS THE GROUND, and the procedural arena builds to it.
+--
+-- A colossus that stands on its arena reasons about heights in that arena's
+-- frame: Brinejaw's two sweep bands, its coil clearance and its slam impacts
+-- are all measured from `sandY`, the authored beach's profile. When the
+-- procedural fallback was a flat disc, every one of those numbers was quietly
+-- wrong by up to 2.8 studs - and the low band is only 3.4 thick, so "wrong by
+-- 2.8" is most of the mechanic. Reading the profile off the pose module means
+-- the fallback arena and the authored mesh present the SAME ground, so the
+-- fight plays identically before and after the import.
+--
+-- `reach` is here for a related reason: a boss whose attacks travel further
+-- than its roam disc needs floor under them, or the outer third of every
+-- telegraph is drawn over open water.
+local POSE_ARENA = {
+	brinejaw = {
+		ground = BrinejawPath.sandY,
+		reach = BrinejawPath.SWEEP_REACH,
+		drums = BrinejawPath.SPIRE_DRUMS,
+		spireTop = BrinejawPath.SPIRE_TOP,
+	},
+}
+
+-- How many nested discs approximate a ground profile. 14 puts Brinejaw's
+-- 2.8-stud dome in 0.2-stud steps, which reads as a beach rather than stairs.
+local FLOOR_STEPS = 14
 -- How far past the boss's roam disc the floor runs, and the wall past that.
 local FLOOR_MARGIN = 20
 local FLOOR_THICKNESS = 4
@@ -158,18 +193,70 @@ end
 
 -- ============================================================ procedural path
 
-local function buildFloor(parent: Instance, arena, radius: number)
-	local floor = Instance.new("Part")
-	floor.Name = arena.model .. "_Floor"
-	floor.Shape = Enum.PartType.Cylinder
-	-- A cylinder part's axis is X; stand it upright.
-	floor.Size = Vector3.new(FLOOR_THICKNESS, radius * 2, radius * 2)
-	floor.CFrame = CFrame.new(arena.center.X, World.WATER_Y + FLOOR_LIP - FLOOR_THICKNESS / 2, arena.center.Z)
-		* CFrame.Angles(0, 0, math.rad(90))
-	floor.Anchored = true
-	floor.Color = arena.palette.floor
-	floor.Material = Enum.Material.SmoothPlastic
-	floor.Parent = parent
+-- One upright disc. A cylinder part's axis is X, so it gets stood on end.
+local function disc(parent: Instance, name: string, center: Vector3, radius: number, top: number, color: Color3)
+	local part = Instance.new("Part")
+	part.Name = name
+	part.Shape = Enum.PartType.Cylinder
+	part.Size = Vector3.new(FLOOR_THICKNESS, radius * 2, radius * 2)
+	part.CFrame = CFrame.new(center.X, top - FLOOR_THICKNESS / 2, center.Z) * CFrame.Angles(0, 0, math.rad(90))
+	part.Anchored = true
+	part.Color = color
+	part.Material = Enum.Material.SmoothPlastic
+	part.Parent = parent
+	return part
+end
+
+-- The floor. Flat when the pose has no opinion, otherwise a stack of nested
+-- discs whose tops follow the pose's ground profile - each disc's top is the
+-- profile's height at that disc's own radius, so the smaller (higher) ones
+-- pile up inward into a shallow dome. They interpenetrate by design; every
+-- one is thick enough to reach below the waterline, so nothing floats.
+local function buildFloor(parent: Instance, arena, radius: number, ground)
+	if not ground then
+		disc(parent, arena.model .. "_Floor", arena.center, radius, World.WATER_Y + FLOOR_LIP, arena.palette.floor)
+		return
+	end
+	for step = FLOOR_STEPS, 1, -1 do
+		local r = radius * (step / FLOOR_STEPS)
+		disc(parent, arena.model .. "_Floor", arena.center, r, World.WATER_Y + ground(r), arena.palette.floor)
+	end
+end
+
+-- The perch. Brinejaw spends the whole fight wrapped around a lighthouse, and
+-- without the authored mesh there was nothing there: the coils described a
+-- helix in open air, and the inner 13 studs the sweeps deliberately leave
+-- alone - documented as "hugging the tower is a real, if dangerous, answer" -
+-- was just free ground. Built from the same drum table the coils wrap, so the
+-- stand-in cannot disagree with the body posed against it.
+local function buildSpire(parent: Instance, arena, pose)
+	if not pose.drums then
+		return
+	end
+	local color = arena.palette.spire or arena.palette.rim
+	for _, drum in pose.drums do
+		local y0, y1, r0, r1 = drum[1], drum[2], drum[3], drum[4]
+		local slices = math.max(math.floor((y1 - y0) / 4), 1)
+		for i = 1, slices do
+			local a, b = y0 + (y1 - y0) * ((i - 1) / slices), y0 + (y1 - y0) * (i / slices)
+			local part = Instance.new("Part")
+			part.Name = arena.model .. "_Spire"
+			part.Shape = Enum.PartType.Cylinder
+			local r = r0 + (r1 - r0) * ((i - 0.5) / slices)
+			part.Size = Vector3.new(b - a, r * 2, r * 2)
+			part.CFrame = CFrame.new(arena.center.X, World.WATER_Y + (a + b) / 2, arena.center.Z)
+				* CFrame.Angles(0, 0, math.rad(90))
+			part.Anchored = true
+			part.Color = color
+			part.Material = Enum.Material.Slate
+			part.Parent = parent
+		end
+	end
+	-- The gallery the head leans out over, so the silhouette reads as a
+	-- lighthouse and not a chimney.
+	local top = pose.spireTop or 54
+	local lip = disc(parent, arena.model .. "_Gallery", arena.center, 7.6, World.WATER_Y + top + 2.2, color)
+	lip.Material = Enum.Material.Slate
 end
 
 local function buildRim(parent: Instance, arena, radius: number)
@@ -248,14 +335,20 @@ function BossArenaService.init()
 	for islandId, arena in BossArenas.items do
 		local boss = Bosses.byIsland[islandId]
 		local roam = if boss then boss.arena.radius else 36
-		local radius = roam + FLOOR_MARGIN
+		local pose = (if boss then POSE_ARENA[boss.pose] else nil) or {}
+		-- Floor out to whichever is further: the roam disc, or the furthest an
+		-- attack actually travels. Brinejaw's sweeps reach 66 against a 28-stud
+		-- roam, so the old roam-only rule left the outer 18 studs of every
+		-- sweep marker hanging over open water.
+		local radius = math.max(roam, pose.reach or 0) + FLOOR_MARGIN
 
 		local template = arenaTemplate(arena)
 		if template then
 			placeAuthored(folder, arena, template)
 		else
-			buildFloor(folder, arena, radius)
+			buildFloor(folder, arena, radius, pose.ground)
 			buildRim(folder, arena, radius)
+			buildSpire(folder, arena, pose)
 			buildStones(folder, arena)
 		end
 	end

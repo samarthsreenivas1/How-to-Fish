@@ -39,8 +39,15 @@ local TAU = math.pi * 2
 -- ---------------------------------------------------------------- the tower
 
 -- The lighthouse's radius at height y - arena_gen's three tapering drums.
+-- EXPORTED, because two things build against it: the coils wrap this profile,
+-- and until the authored mesh lands BossArenaService raises a stand-in tower
+-- from the same table. A serpent coiled around a lighthouse that isn't there
+-- is what the procedural arena shipped as.
+BrinejawPath.SPIRE_DRUMS = { { 3.5, 20.0, 8.5, 7.4 }, { 20.0, 38.0, 7.2, 6.2 }, { 38.0, 54.0, 6.0, 5.2 } }
+BrinejawPath.SPIRE_TOP = 54.0
+
 function BrinejawPath.spireRadius(y: number): number
-	local drums = { { 3.5, 20.0, 8.5, 7.4 }, { 20.0, 38.0, 7.2, 6.2 }, { 38.0, 54.0, 6.0, 5.2 } }
+	local drums = BrinejawPath.SPIRE_DRUMS
 	for _, drum in drums do
 		local y0, y1, r0, r1 = drum[1], drum[2], drum[3], drum[4]
 		if y <= y1 then
