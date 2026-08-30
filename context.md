@@ -2822,13 +2822,21 @@ fallback, so a fight is never invisible before its import lands.
   makes `str.replace` prepend at position 0, forever, with no error); and
   assert on the extracted TEXT (no peer `build_*` in it), not just on the
   anchors that matched.
-- **Neon-by-name is an ARENA rule, not a boss-pack rule (2026-08-30).** A part
-  whose name carries `Glow` is switched to Neon by `BossArenaService.
-  placeAuthored` - for arena meshes only. Boss packs are cloned by their
-  `<Boss>BodyController`, which has no such rule, so an emissive boss part
-  relies entirely on the material being set at IMPORT time in Studio. Any boss
-  with a glowing core or seams needs that in its import-checklist row with the
-  reason attached (`Gnashroot_Core`, `Pyrelisk_Core`).
+- **Assert what the fight depends on in CODE; do not request it at import
+  (2026-08-30).** The `Glow`-in-the-name -> Neon rule belongs to
+  `BossArenaService.placeAuthored` and covers ARENA meshes only, so it is
+  tempting to conclude that every emissive BOSS-pack part must have its
+  material set by hand in Studio. That conclusion is wrong, and it was
+  broadcast to this fleet for an hour before the volcano lane enumerated
+  instead of sampling: `GnashrootBodyController` and `PyreliskBodyController`
+  both set their cores to Neon after the clone, unconditionally, whichever
+  branch built the piece. An import step is a human remembering; a line in the
+  clone path is not, and it survives a re-export that drops materials. So the
+  rule is the general one - if the fight depends on it visually, the
+  controller asserts it. It stays load-bearing ONLY for a boss with no body
+  controller at all (a type-B single model on the ordinary spawn path, e.g.
+  Wrack), and that is an argument for giving it one rather than for writing a
+  Studio step.
 - **Concurrent sessions.** At least **three** Claude sessions edited this
   project at once on 2026-08-22 (this one on fishing / viewmodels / species;
   `roblox-game-2f` on creature physics, combat, pufferfish, player health;
