@@ -8808,6 +8808,446 @@ def build_islet_rookery():
     ]
 
 
+# ================================================================ THE DROWNED CHAPEL (islet)
+# Only a bell tower and a slice of steep roof stand above the water; the nave
+# is down there, and you fish INTO it through the hole in the roof. The shoal
+# is deliberately just under the surface so the building, not the rock, is the
+# island.
+
+
+def build_islet_chapel():
+    rng = random.Random(5503)
+    state = random.getstate()
+    base = build_island_base("Chapel_Base", ["M_ChapShoal", "M_ChapSilt", "M_ChapWet"])
+    stone, roof, drowned = bmesh.new(), bmesh.new(), bmesh.new()
+
+    # The tower: four courses of dressed stone, arched openings near the top,
+    # a small bell inside, and a leaning cross on the cap.
+    TOWER_X, TOWER_Y = -6.0, 4.0
+    foot = height_at(TOWER_X, TOWER_Y)
+    for k in range(7):
+        w = 9.4 - k * 0.22
+        add_box(stone, (TOWER_X, TOWER_Y, foot + 2.4 + k * 4.4), (w, w, 4.4))
+    # add_box takes a CENTRE, so the top of the last course is its centre plus
+    # half its height - not one whole course beyond it. Getting that wrong put
+    # the cap slab floating 2.2 studs above the tower.
+    cap = foot + 2.4 + 6 * 4.4 + 2.2
+    # Belfry openings: leave the corners, cut the faces, by building piers.
+    for dx, dy in ((-3.4, 0.0), (3.4, 0.0), (0.0, -3.4), (0.0, 3.4)):
+        add_box(stone, (TOWER_X + dx, TOWER_Y + dy, cap - 5.2), (2.4, 2.4, 5.2))
+    add_box(stone, (TOWER_X, TOWER_Y, cap + 0.7), (10.6, 10.6, 1.4))
+    # The bell still hanging in it.
+    add_cone(stone, (TOWER_X, TOWER_Y, cap - 4.6), 1.5, 2.2, 2.6, sides=8)
+    # The cross, leaning.
+    add_box(stone, (TOWER_X, TOWER_Y, cap + 3.6), (0.5, 0.5, 4.6), yaw=0.2)
+    add_box(stone, (TOWER_X, TOWER_Y, cap + 4.4), (2.8, 0.45, 0.45), yaw=0.2)
+
+    # The nave roof: a steep ridge running away from the tower and INTO the
+    # water, with a hole torn in it - the hole is the whole point, you drop a
+    # line through it.
+    for k in range(9):
+        t = k / 8.0
+        rx = TOWER_X + 6.0 + k * 5.4
+        rz = 5.6 - t * 11.0  # the ridge walks down under the surface
+        if k in (3, 4):
+            continue  # the torn hole
+        add_cone(roof, (rx, TOWER_Y, rz), 6.2, 6.2, 0.9, sides=4, tilt=(0.0, 0.0), yaw=0.785)
+        add_box(roof, (rx, TOWER_Y, rz - 1.4), (0.9, 8.8, 2.6))  # the ridge beam under it
+
+    # The drowned nave: columns and pew blocks on the silt, all below z=0.
+    for k in range(7):
+        cx = TOWER_X + 8.0 + k * 5.2
+        for side in (-5.0, 5.0):
+            add_cone(drowned, (cx, TOWER_Y + side, -7.5), 1.05, 0.85, 6.0, sides=7)
+        if k % 2 == 0:
+            add_box(drowned, (cx, TOWER_Y, -7.0), (3.6, 7.4, 0.9))
+
+    # Odd's landing: a slab of fallen masonry beside the tower, above water.
+    add_box(stone, (TOWER_X + 7.5, TOWER_Y - 7.0, foot + 1.6), (11.0, 11.0, 3.2))
+    stand_x, stand_y = TOWER_X + 7.5, TOWER_Y - 7.0
+
+    print(
+        f"[island_gen] HANDOFF chapel (The Drowned Chapel): tower cap Y={cap + 1.4:.1f}, roof hole at "
+        f"(Roblox rel) X={TOWER_X + 6.0 + 3.5 * 5.4:.0f} Z={-TOWER_Y:.0f}; "
+        f"NPC stand (Roblox rel) X={stand_x:.0f} Z={-stand_y:.0f} slab top Y={foot + 3.2:.1f}"
+    )
+    random.setstate(state)
+    return [
+        base,
+        object_from_bmesh("Chapel_Stone", stone, ["M_ChapStone"]),
+        object_from_bmesh("Chapel_Roof", roof, ["M_ChapSlate"]),
+        object_from_bmesh("Chapel_Nave", drowned, ["M_ChapDrowned"]),
+    ]
+
+
+# ================================================================ THE WHALE FALL (islet)
+# A whale skeleton half-buried on a sandbar: a spine, a ribcage you can walk
+# THROUGH, and a skull sunk in the sand. The ribs are the silhouette.
+
+
+def build_islet_whalefall():
+    rng = random.Random(5504)
+    state = random.getstate()
+    base = build_island_base("Whalefall_Base", ["M_WhaleSand", "M_WhaleDark", "M_WhaleWet"])
+    bone, life = bmesh.new(), bmesh.new()
+
+    # The spine runs across the bar; the ribcage arches over its middle.
+    AX, AY = -26.0, -6.0  # skull end
+    BX, BY = 30.0, 6.0  # tail end
+    # One CONTINUOUS spine: each vertebra is drawn from its own point to the
+    # next, not as an isolated stub at each station - separate stubs read as a
+    # row of dropped blocks rather than a backbone.
+    n = 16
+    spine_pts = []
+    for k in range(n + 1):
+        t = k / n
+        x = AX + (BX - AX) * t
+        y = AY + (BY - AY) * t
+        z = height_at(x, y) + 1.6 + math.sin(t * math.pi) * 1.1
+        spine_pts.append((x, y, z))
+    for k in range(n):
+        p0, p1 = spine_pts[k], spine_pts[k + 1]
+        d = (p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2])
+        ln = math.sqrt(d[0] ** 2 + d[1] ** 2 + d[2] ** 2)
+        r = 1.45 - 0.85 * (k / n)
+        add_cone(bone, p0, r, r * 0.94, ln, sides=6, tilt=_tilt_toward(Vector(d).normalized()))
+
+    # Ribs: paired arcs off the spine, tallest amidships. Each rib is a chain of
+    # segments swung out and up, so the pair meets high enough to walk under.
+    for k in range(7):
+        t = 0.16 + k * 0.085
+        sx = AX + (BX - AX) * t
+        sy = AY + (BY - AY) * t
+        sz = height_at(sx, sy) + 1.6
+        span = 6.2 * math.sin(t * math.pi) + 2.4  # amidships ribs are the big ones
+        for side in (-1, 1):
+            segs = 7
+            for i in range(segs):
+                f0, f1 = i / segs, (i + 1) / segs
+                # Sweep past 90 degrees so each rib comes back IN over the
+                # spine: a rib that stops at 90 stands straight up and the pair
+                # never closes, which reads as a fence, not a ribcage.
+                a0, a1 = f0 * (math.pi * 0.80), f1 * (math.pi * 0.80)
+                p0 = (sx, sy + side * math.sin(a0) * span, sz + (1 - math.cos(a0)) * span * 0.95)
+                p1 = (sx, sy + side * math.sin(a1) * span, sz + (1 - math.cos(a1)) * span * 0.95)
+                d = (p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2])
+                ln = math.sqrt(d[0] ** 2 + d[1] ** 2 + d[2] ** 2)
+                add_cone(bone, p0, 0.62 - 0.05 * i, 0.55 - 0.05 * i, ln, sides=5, tilt=_tilt_toward(Vector(d).normalized()))
+
+    # The skull: a long wedge of jaw sunk nose-first into the sand.
+    add_cone(bone, (AX, AY, height_at(AX, AY) + 0.6), 3.4, 1.1, 12.0, sides=7, tilt=(0.0, -1.15))
+    add_box(bone, (AX + 3.0, AY, height_at(AX + 3.0, AY) + 1.1), (9.0, 4.6, 1.1), yaw=0.2)
+
+    # Scavengers: small crabs and tube worms clustered on the bones.
+    for _ in range(22):
+        t = rng.uniform(0.1, 0.95)
+        x = AX + (BX - AX) * t + rng.uniform(-2.5, 2.5)
+        y = AY + (BY - AY) * t + rng.uniform(-6.0, 6.0)
+        z = height_at(x, y)
+        if rng.random() < 0.5:
+            add_cone(life, (x, y, z + 0.05), 0.5, 0.34, 0.42, sides=6)
+            for leg in range(4):
+                la = leg * 1.57 + 0.4
+                add_box(life, (x + math.cos(la) * 0.55, y + math.sin(la) * 0.55, z + 0.2), (0.7, 0.16, 0.14), yaw=la)
+        else:
+            add_cone(life, (x, y, z), 0.22, 0.14, rng.uniform(0.7, 1.6), sides=5)
+
+    stand_x, stand_y = 4.0, -16.0
+    print(
+        f"[island_gen] HANDOFF whalefall (The Whale Fall): spine runs (Roblox rel) X={AX:.0f} Z={-AY:.0f} "
+        f"to X={BX:.0f} Z={-BY:.0f}; NPC stand X={stand_x:.0f} Z={-stand_y:.0f} ground Y={height_at(stand_x, stand_y):.1f}"
+    )
+    random.setstate(state)
+    return [
+        base,
+        object_from_bmesh("Whalefall_Bones", bone, ["M_WhaleBone"]),
+        object_from_bmesh("Whalefall_Life", life, ["M_WhaleLife"]),
+    ]
+
+
+# ================================================================ THE ANCHOR GARDEN (islet)
+# A shallow reef where two dozen anchors stand upright in the sand like a
+# sculpture garden, chains swagged between them. ONE chain is taut and runs off
+# into deep water - something is still on the other end.
+
+
+def build_islet_anchorage():
+    rng = random.Random(5505)
+    state = random.getstate()
+    base = build_island_base("Anchorage_Base", ["M_AnchSand", "M_AnchReef", "M_AnchWet"])
+    iron = bmesh.new()
+
+    def anchor(bm, x, y, scale, yaw):
+        g = height_at(x, y)
+        shank = 7.0 * scale
+        add_cone(bm, (x, y, g - 0.6), 0.52 * scale, 0.38 * scale, shank, sides=6)
+        # The stock across the top, and the ring above it.
+        add_box(bm, (x, y, g + shank * 0.86), (5.4 * scale, 0.44 * scale, 0.44 * scale), yaw=yaw + 1.57)
+        add_cone(bm, (x, y, g + shank * 0.94), 0.6 * scale, 0.5 * scale, 0.9 * scale, sides=7)
+        # Two arms sweeping up off the crown, each ending in a fluke.
+        for side in (-1, 1):
+            for i in range(4):
+                f0, f1 = i / 4.0, (i + 1) / 4.0
+                a0, a1 = f0 * 1.15, f1 * 1.15
+                p0 = (x + side * math.sin(a0) * 2.6 * scale * math.cos(yaw), y + side * math.sin(a0) * 2.6 * scale * math.sin(yaw), g - 0.4 + (1 - math.cos(a0)) * 2.4 * scale)
+                p1 = (x + side * math.sin(a1) * 2.6 * scale * math.cos(yaw), y + side * math.sin(a1) * 2.6 * scale * math.sin(yaw), g - 0.4 + (1 - math.cos(a1)) * 2.4 * scale)
+                d = (p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2])
+                ln = math.sqrt(d[0] ** 2 + d[1] ** 2 + d[2] ** 2)
+                add_cone(bm, p0, 0.46 * scale, 0.4 * scale, ln, sides=5, tilt=_tilt_toward(Vector(d).normalized()))
+            tipx = x + side * math.sin(1.15) * 2.6 * scale * math.cos(yaw)
+            tipy = y + side * math.sin(1.15) * 2.6 * scale * math.sin(yaw)
+            add_cone(bm, (tipx, tipy, g - 0.4 + (1 - math.cos(1.15)) * 2.4 * scale), 1.15 * scale, 0.1, 2.0 * scale, sides=5, tilt=(0.0, side * 0.5))
+
+    placed = []
+    for _ in range(24):
+        for _try in range(30):
+            a = rng.uniform(0.0, math.tau)
+            rr = rng.uniform(0.10, 0.78) * ISLAND_RADIUS
+            x, y = math.cos(a) * rr, math.sin(a) * rr
+            if all((x - px) ** 2 + (y - py) ** 2 > 121.0 for px, py, _ in placed):
+                sc = rng.uniform(0.72, 1.35)
+                anchor(iron, x, y, sc, rng.uniform(0.0, math.tau))
+                placed.append((x, y, sc))
+                break
+
+    # Chains swagged between neighbours: a catenary of short links, both ends
+    # buried in the anchor stocks they hang from.
+    def chain(bm, p, q, sag, links=9):
+        for i in range(links):
+            f0, f1 = i / links, (i + 1) / links
+            def at(f):
+                return (
+                    p[0] + (q[0] - p[0]) * f,
+                    p[1] + (q[1] - p[1]) * f,
+                    p[2] + (q[2] - p[2]) * f - math.sin(f * math.pi) * sag,
+                )
+            a0, a1 = at(f0), at(f1)
+            d = (a1[0] - a0[0], a1[1] - a0[1], a1[2] - a0[2])
+            ln = math.sqrt(d[0] ** 2 + d[1] ** 2 + d[2] ** 2)
+            add_cone(bm, a0, 0.3, 0.28, ln, sides=4, tilt=_tilt_toward(Vector(d).normalized()))
+
+    placed.sort(key=lambda t: math.atan2(t[1], t[0]))
+    for i in range(len(placed) - 1):
+        x0, y0, s0 = placed[i]
+        x1, y1, s1 = placed[i + 1]
+        if (x0 - x1) ** 2 + (y0 - y1) ** 2 < 900.0 and rng.random() < 0.75:
+            chain(iron, (x0, y0, height_at(x0, y0) + 6.0 * s0), (x1, y1, height_at(x1, y1) + 6.0 * s1), rng.uniform(1.6, 3.4))
+
+    # THE taut one: dead straight, no sag, running off the reef into deep water.
+    tx, ty, ts = placed[0]
+    chain(iron, (tx, ty, height_at(tx, ty) + 6.0 * ts), (math.cos(0.6) * ISLAND_RADIUS * 1.45, math.sin(0.6) * ISLAND_RADIUS * 1.45, -6.0), 0.0, links=16)
+
+    stand_x, stand_y = 0.0, 0.0
+    print(
+        f"[island_gen] HANDOFF anchorage (The Anchor Garden): {len(placed)} anchors; the TAUT chain leaves from "
+        f"(Roblox rel) X={tx:.0f} Z={-ty:.0f}; NPC stand X={stand_x:.0f} Z={-stand_y:.0f} ground Y={height_at(stand_x, stand_y):.1f}"
+    )
+    random.setstate(state)
+    return [base, object_from_bmesh("Anchorage_Iron", iron, ["M_AnchIron"])]
+
+
+# ================================================================ THE BOILING SHOAL (islet)
+# A vent islet: black glass underfoot, water too hot to swim, vent cones
+# bubbling, mineral crusts in sulphur yellow and rust red. Steam is geometry.
+
+
+def build_islet_boilshoal():
+    rng = random.Random(5506)
+    state = random.getstate()
+    base = build_island_base("Boilshoal_Base", ["M_ShoalGlass", "M_ShoalCrust", "M_ShoalWet"])
+    vents, steam, glow = bmesh.new(), bmesh.new(), bmesh.new()
+
+    pools = []
+    for _ in range(9):
+        for _try in range(30):
+            a = rng.uniform(0.0, math.tau)
+            rr = rng.uniform(0.12, 0.74) * ISLAND_RADIUS
+            x, y = math.cos(a) * rr, math.sin(a) * rr
+            if all((x - px) ** 2 + (y - py) ** 2 > 190.0 for px, py, _ in pools):
+                pr = rng.uniform(3.0, 6.4)
+                pools.append((x, y, pr))
+                break
+
+    for x, y, pr in pools:
+        g = height_at(x, y)
+        # The cone the vent has built for itself, and the lit pool inside it.
+        add_cone(vents, (x, y, g - 0.5), pr + 1.5, pr * 0.72, rng.uniform(1.6, 3.2), sides=9)
+        add_cone(glow, (x, y, g + 0.6), pr * 0.66, pr * 0.6, 0.35, sides=9)
+        # Mineral crust ringing it.
+        for k in range(rng.randint(5, 9)):
+            ca = rng.uniform(0.0, math.tau)
+            cr = pr + rng.uniform(1.6, 3.6)
+            cx, cy = x + math.cos(ca) * cr, y + math.sin(ca) * cr
+            add_cone(vents, (cx, cy, height_at(cx, cy) - 0.1), rng.uniform(0.6, 1.5), rng.uniform(0.2, 0.6), rng.uniform(0.3, 0.8), sides=6)
+        # A plume standing over the hottest pools.
+        if pr > 4.4:
+            z = g + 1.0
+            r = pr * 0.5
+            for k in range(5):
+                add_cone(steam, (x + rng.uniform(-0.7, 0.7), y + rng.uniform(-0.7, 0.7), z), r, r * 0.86, 3.4, sides=7)
+                z += 3.2
+                r *= 0.88
+
+    stand_x, stand_y = 0.0, -ISLAND_RADIUS * 0.80
+    print(
+        f"[island_gen] HANDOFF boilshoal (The Boiling Shoal): {len(pools)} vent pools; NPC stand (Roblox rel) "
+        f"X={stand_x:.0f} Z={-stand_y:.0f} ground Y={height_at(stand_x, stand_y):.1f} - a cool patch off the vents"
+    )
+    random.setstate(state)
+    return [
+        base,
+        object_from_bmesh("Boilshoal_Vents", vents, ["M_ShoalMineral"]),
+        object_from_bmesh("Boilshoal_Steam", steam, ["M_ShoalSteam"]),
+        object_from_bmesh("Boilshoal_Glow", glow, ["M_ShoalHeat"]),
+    ]
+
+
+# ================================================================ THE FERRYMAN'S RAFT (islet)
+# Not an island: a raft somebody LIVES on, moored in the emptiest water on the
+# map. Lashed logs and barrels under a plank deck, a lean-to, a trading counter,
+# and a mooring chain going down into the dark.
+
+
+def build_islet_ferryraft():
+    rng = random.Random(5507)
+    state = random.getstate()
+    base = build_island_base("Ferryraft_Base", ["M_RaftBar", "M_RaftShallow", "M_RaftWet"])
+    hull, shack, rope, glow = bmesh.new(), bmesh.new(), bmesh.new(), bmesh.new()
+
+    DECK = 2.6  # deck top, just clear of the water
+    HALF = 15.0
+
+    # Buoyancy under the deck: logs across, barrels wedged between them. They
+    # sit AT the waterline - half under, half proud - so it reads as floating.
+    for k in range(7):
+        y = -HALF + 1.5 + k * (2 * (HALF - 1.5) / 6)
+        add_cone(hull, (-HALF, y, 0.55), 1.35, 1.35, 2 * HALF, sides=7, tilt=(0.0, 1.5708))
+    for _ in range(9):
+        bx = rng.uniform(-HALF + 3.0, HALF - 3.0)
+        by = rng.uniform(-HALF + 3.0, HALF - 3.0)
+        add_cone(hull, (bx, by, -0.3), 1.5, 1.5, 3.0, sides=8)
+
+    # The deck: planks running the other way, over the logs.
+    for k in range(11):
+        x = -HALF + 1.4 + k * (2 * (HALF - 1.4) / 10)
+        add_box(hull, (x, 0.0, DECK - 0.3), (2.6, 2 * HALF, 0.6))
+
+    # The lean-to: three walls, a canvas roof, a stove pipe.
+    add_box(shack, (-6.0, 6.0, DECK + 3.0), (11.0, 0.5, 6.0))
+    add_box(shack, (-11.2, 1.0, DECK + 3.0), (0.5, 10.5, 6.0))
+    add_box(shack, (-0.8, 1.0, DECK + 3.0), (0.5, 10.5, 6.0))
+    add_box(shack, (-6.0, 1.0, DECK + 6.4), (11.6, 11.0, 0.5), yaw=0.0)
+    add_cone(shack, (-9.0, 4.0, DECK + 6.6), 0.5, 0.42, 3.4, sides=6)
+
+    # The trading counter on the open side - this is where the Ferryman stands.
+    add_box(shack, (5.0, 0.0, DECK + 1.5), (4.0, 9.0, 0.6))
+    for cy in (-3.8, 3.8):
+        add_box(shack, (5.0, cy, DECK + 0.6), (3.2, 0.6, 1.8))
+    # Crates and a coil of rope on the deck.
+    for _ in range(5):
+        cx, cy = rng.uniform(0.0, HALF - 3.0), rng.uniform(-HALF + 3.0, HALF - 3.0)
+        sz = rng.uniform(1.4, 2.3)
+        add_box(shack, (cx, cy, DECK + sz * 0.5), (sz * 2, sz * 2, sz), yaw=rng.uniform(0, 1.5))
+    add_cone(rope, (10.0, -8.0, DECK), 1.9, 1.6, 0.9, sides=9)
+
+    # Fish drying on a line between two poles, and a lantern on each pole.
+    for px in (-1.0, 11.0):
+        add_cone(shack, (px, -11.0, DECK), 0.34, 0.28, 7.0, sides=5)
+        add_cone(glow, (px, -11.0, DECK + 7.2), 0.55, 0.45, 0.9, sides=6)
+    add_box(rope, (5.0, -11.0, DECK + 6.4), (12.0, 0.16, 0.16))
+    for k in range(6):
+        fx = -0.2 + k * 2.1
+        add_cone(rope, (fx, -11.0, DECK + 4.9), 0.42, 0.16, 1.5, sides=5)
+
+    # The mooring chain: windlass on deck, chain straight down into the water.
+    add_cone(shack, (12.0, 6.0, DECK), 1.2, 1.2, 1.8, sides=8, tilt=(1.5708, 0.0))
+    for k in range(7):
+        add_cone(rope, (12.6, 6.0, DECK - k * 1.6), 0.26, 0.24, 1.6, sides=4)
+
+    # The steering oar, shipped along the stern.
+    add_cone(shack, (-HALF + 2.0, -13.0, DECK + 1.2), 0.42, 0.3, 17.0, sides=5, tilt=(0.0, 1.42))
+
+    print(
+        f"[island_gen] HANDOFF ferryraft (The Ferryman's Raft): deck top Y={DECK:.1f}, counter at (Roblox rel) "
+        f"X=5 Z=0 top Y={DECK + 1.8:.1f}; NPC stand X=8 Z=0 deck Y={DECK:.1f}; mooring chain at X=13 Z=-6"
+    )
+    random.setstate(state)
+    return [
+        base,
+        object_from_bmesh("Ferryraft_Hull", hull, ["M_RaftLog"]),
+        object_from_bmesh("Ferryraft_Shack", shack, ["M_RaftPlank"]),
+        object_from_bmesh("Ferryraft_Rope", rope, ["M_RaftRope"]),
+        object_from_bmesh("Ferryraft_Glow", glow, ["M_RaftLantern"]),
+    ]
+
+
+# ================================================================ THE LOADSTONE SPIRE (islet)
+# A black magnetite needle that pulls lightning onto itself. Scorched and fused
+# where it has been struck, iron scrap welded to it by the strikes, filings
+# standing on end around the base.
+
+
+def build_islet_loadstone():
+    rng = random.Random(5508)
+    state = random.getstate()
+    base = build_island_base("Loadstone_Base", ["M_LoadRock", "M_LoadScorch", "M_LoadWet"])
+    spire, iron, glow = bmesh.new(), bmesh.new(), bmesh.new()
+
+    # The needle: a tall faceted taper, leaning very slightly, built as stacked
+    # sections so the facets break the light like fused glass.
+    SEGS = 11
+    z = height_at(0.0, 0.0) - 1.0
+    r = 7.4
+    lean = 0.035
+    x = y = 0.0
+    for k in range(SEGS):
+        h = 7.6 - k * 0.28
+        r1 = r * 0.80
+        add_cone(spire, (x, y, z), r, r1, h, sides=7 if k % 2 else 6, tilt=(lean * 0.4, lean), yaw=k * 0.42)
+        x += math.sin(lean) * h * 0.5
+        z += h
+        r = r1
+    TOP = z
+
+    # Iron scrap welded on by the strikes: plates and old anchor shanks fused
+    # flat to the rock, thickest low down where the scrap has piled up.
+    for _ in range(22):
+        t = rng.random() ** 1.7
+        zz = height_at(0.0, 0.0) + t * (TOP - height_at(0.0, 0.0)) * 0.92
+        a = rng.uniform(0.0, math.tau)
+        rr = (7.4 - 6.0 * t) * 0.92
+        px, py = math.cos(a) * rr, math.sin(a) * rr
+        add_box(iron, (px, py, zz), (rng.uniform(1.4, 3.4), rng.uniform(0.5, 1.1), rng.uniform(0.8, 2.4)), yaw=a)
+
+    # Fused seams still holding heat, running up the struck face.
+    for k in range(7):
+        t0 = 0.10 + k * 0.115
+        zz = height_at(0.0, 0.0) + t0 * (TOP - height_at(0.0, 0.0))
+        a = 0.8 + rng.uniform(-0.5, 0.5)
+        rr = (7.4 - 6.0 * t0) * 0.86
+        add_box(glow, (math.cos(a) * rr, math.sin(a) * rr, zz), (0.5, 0.22, rng.uniform(2.0, 4.5)), yaw=a)
+
+    # Iron filings standing on end in rings around the foot.
+    for _ in range(70):
+        a = rng.uniform(0.0, math.tau)
+        rr = rng.uniform(9.0, ISLAND_RADIUS * 0.78)
+        fx, fy = math.cos(a) * rr, math.sin(a) * rr
+        add_cone(iron, (fx, fy, height_at(fx, fy)), 0.16, 0.05, rng.uniform(0.5, 1.4), sides=4, tilt=(rng.uniform(-0.2, 0.2), rng.uniform(-0.2, 0.2)))
+
+    stand_x, stand_y = 14.0, 0.0
+    print(
+        f"[island_gen] HANDOFF loadstone (The Loadstone Spire): spire top Y={TOP:.1f}; NPC stand (Roblox rel) "
+        f"X={stand_x:.0f} Z={-stand_y:.0f} ground Y={height_at(stand_x, stand_y):.1f}"
+    )
+    random.setstate(state)
+    return [
+        base,
+        object_from_bmesh("Loadstone_Spire", spire, ["M_LoadGlass"]),
+        object_from_bmesh("Loadstone_Iron", iron, ["M_LoadIron"]),
+        object_from_bmesh("Loadstone_Glow", glow, ["M_LoadHeat"]),
+    ]
+
+
 ISLAND_ORDER = [
     "tropical",
     "volcano",
@@ -8822,6 +9262,12 @@ ISLAND_ORDER = [
     "lampwork",
     "bellbuoy",
     "rookery",
+    "chapel",
+    "whalefall",
+    "anchorage",
+    "boilshoal",
+    "ferryraft",
+    "loadstone",
 ]
 
 ISLANDS = {
@@ -9488,6 +9934,298 @@ ISLANDS = {
             },
         },
         "build": build_islet_rookery,
+    },
+    "chapel": {
+        "model": "Chapel",
+        "overrides": {
+            "SEED": 7,
+            "ISLAND_RADIUS": 55,
+            "SEGMENTS": 40,
+            "GRASS_U": 0.55,
+            "RINGS": [0.0, 0.20, 0.40, 0.58, 0.74, 0.88, 1.0, 1.09, 1.28],
+            # A SHOAL, not an island: the rock barely breaks the surface, so
+            # the BUILDING is what stands above water. Everything past u=0.55
+            # is already under it.
+            "PROFILE": [
+                (0.00, 1.6),
+                (0.20, 1.3),
+                (0.40, 0.6),
+                (0.58, -1.2),
+                (0.74, -3.4),
+                (0.88, -5.6),
+                (1.00, -7.0),
+                (1.09, -8.0),
+                (1.28, SKIRT_BOTTOM),
+            ],
+            "COAST_TERMS": [(2, 2.4, 0.10), (4, 1.2, 0.06)],
+            "GRASS_TERMS": [(3, 0.6, 0.04)],
+            "CRAG": 0.9,
+            "CRAG_FREQ": 0.05,
+            "CRAG_RADIAL": 0.04,
+            "CRAG_RADIAL_FREQS": (5.0, 3.0),
+            "CRAG_CALM": None,
+            "RIM_FLAT": (0.0, 0.50),
+            "NOTCHES": [],
+            "NOTCH_BAND": None,
+            "PEAK_JAG": 0.0,
+            "PEAK_TERMS": [],
+            "PREVIEW_SHOTS": [
+                ("approach", (70.0, -70.0, 26.0), (0.0, -4.0, 16.0), 30),
+                ("tower", (54.0, -58.0, 34.0), (-6.0, -4.0, 20.0), 34),
+                ("hole", (18.0, -26.0, 20.0), (13.0, -4.0, 2.0), 42),
+            ],
+            "COLORS": {
+                "M_ChapShoal": (0.416, 0.427, 0.400),
+                "M_ChapSilt": (0.353, 0.365, 0.341),
+                "M_ChapWet": (0.267, 0.286, 0.278),
+                "M_ChapStone": (0.545, 0.541, 0.502),  # dressed, pale, weathered
+                "M_ChapSlate": (0.318, 0.337, 0.361),
+                # The drowned nave reads through the water, so it is DARKER and
+                # bluer than the tower above it - depth doing the work.
+                "M_ChapDrowned": (0.271, 0.318, 0.325),
+            },
+        },
+        "build": build_islet_chapel,
+    },
+    "whalefall": {
+        "model": "Whalefall",
+        "overrides": {
+            "SEED": 7,
+            "ISLAND_RADIUS": 65,
+            "SEGMENTS": 44,
+            "GRASS_U": 0.62,
+            "RINGS": [0.0, 0.22, 0.42, 0.62, 0.78, 0.90, 1.0, 1.09, 1.28],
+            # A SANDBAR: almost flat, barely above the sea, so the skeleton is
+            # the only silhouette. Nothing here should compete with the ribs.
+            "PROFILE": [
+                (0.00, 3.1),
+                (0.22, 3.0),
+                (0.42, 2.6),
+                (0.62, 1.9),
+                (0.78, 1.0),
+                (0.90, 0.4),
+                (1.00, 0.0),
+                (1.09, -2.4),
+                (1.28, SKIRT_BOTTOM),
+            ],
+            "COAST_TERMS": [(2, 3.2, 0.12), (3, 1.8, 0.08), (5, 0.9, 0.05)],
+            "GRASS_TERMS": [(2, 1.4, 0.05)],
+            "CRAG": 0.4,
+            "CRAG_FREQ": 0.04,
+            "CRAG_RADIAL": 0.03,
+            "CRAG_RADIAL_FREQS": (4.0, 3.0),
+            "CRAG_CALM": None,
+            "RIM_FLAT": (0.0, 0.72),
+            "NOTCHES": [],
+            "NOTCH_BAND": None,
+            "PEAK_JAG": 0.0,
+            "PEAK_TERMS": [],
+            "PREVIEW_SHOTS": [
+                ("approach", (72.0, -78.0, 22.0), (0.0, 0.0, 8.0), 30),
+                ("ribs", (44.0, -52.0, 16.0), (2.0, 0.0, 7.0), 34),
+            ],
+            "COLORS": {
+                # Dark, rich sand - a whale fall feeds the ground it lands on.
+                "M_WhaleSand": (0.408, 0.376, 0.322),
+                "M_WhaleDark": (0.310, 0.278, 0.239),
+                "M_WhaleWet": (0.243, 0.224, 0.196),
+                "M_WhaleBone": (0.851, 0.827, 0.761),
+                "M_WhaleLife": (0.612, 0.322, 0.290),
+            },
+        },
+        "build": build_islet_whalefall,
+    },
+    "anchorage": {
+        "model": "Anchorage",
+        "overrides": {
+            "SEED": 7,
+            "ISLAND_RADIUS": 70,
+            "SEGMENTS": 46,
+            "GRASS_U": 0.60,
+            "RINGS": [0.0, 0.22, 0.44, 0.64, 0.80, 0.92, 1.0, 1.09, 1.28],
+            # A REEF: it barely clears the water, which is the point - the
+            # anchors stand in ankle-deep sand and read as a garden, not as
+            # wreckage piled on a hill.
+            "PROFILE": [
+                (0.00, 2.2),
+                (0.22, 2.0),
+                (0.44, 1.6),
+                (0.64, 1.0),
+                (0.80, 0.4),
+                (0.92, 0.0),
+                (1.00, -0.6),
+                (1.09, -3.0),
+                (1.28, SKIRT_BOTTOM),
+            ],
+            "COAST_TERMS": [(2, 4.0, 0.12), (3, 2.2, 0.08), (5, 1.1, 0.05)],
+            "GRASS_TERMS": [(2, 1.2, 0.05)],
+            "CRAG": 0.5,
+            "CRAG_FREQ": 0.04,
+            "CRAG_RADIAL": 0.04,
+            "CRAG_RADIAL_FREQS": (4.0, 3.0),
+            "CRAG_CALM": None,
+            "RIM_FLAT": (0.0, 0.78),
+            "NOTCHES": [],
+            "NOTCH_BAND": None,
+            "PEAK_JAG": 0.0,
+            "PEAK_TERMS": [],
+            "PREVIEW_SHOTS": [
+                ("approach", (92.0, -96.0, 26.0), (0.0, 0.0, 6.0), 30),
+                ("garden", (34.0, -40.0, 16.0), (0.0, 0.0, 5.0), 40),
+            ],
+            "COLORS": {
+                "M_AnchSand": (0.788, 0.745, 0.635),
+                "M_AnchReef": (0.573, 0.588, 0.529),
+                "M_AnchWet": (0.475, 0.478, 0.427),
+                "M_AnchIron": (0.325, 0.263, 0.216),  # rusted through, every one
+            },
+        },
+        "build": build_islet_anchorage,
+    },
+    "boilshoal": {
+        "model": "Boilshoal",
+        "overrides": {
+            "SEED": 7,
+            "ISLAND_RADIUS": 60,
+            "SEGMENTS": 42,
+            "GRASS_U": 0.64,
+            "RINGS": [0.0, 0.20, 0.40, 0.58, 0.74, 0.88, 1.0, 1.09, 1.28],
+            "PROFILE": [
+                (0.00, 5.4),
+                (0.20, 5.0),
+                (0.40, 4.2),
+                (0.58, 3.0),
+                (0.74, 1.6),
+                (0.88, 0.6),
+                (1.00, 0.0),
+                (1.09, -2.6),
+                (1.28, SKIRT_BOTTOM),
+            ],
+            "COAST_TERMS": [(2, 2.6, 0.13), (4, 1.4, 0.07)],
+            "GRASS_TERMS": [(3, 1.0, 0.05)],
+            # Broken glassy rock: crag hard, so it reads as something that
+            # cooled fast rather than as a beach.
+            "CRAG": 2.0,
+            "CRAG_FREQ": 0.08,
+            "CRAG_RADIAL": 0.06,
+            "CRAG_RADIAL_FREQS": (6.0, 4.0),
+            "CRAG_CALM": None,
+            "RIM_FLAT": (0.0, 0.30),
+            "NOTCHES": [],
+            "NOTCH_BAND": None,
+            "PEAK_JAG": 0.0,
+            "PEAK_TERMS": [],
+            "PREVIEW_SHOTS": [
+                ("approach", (82.0, -86.0, 26.0), (0.0, 0.0, 8.0), 30),
+                ("vents", (30.0, -36.0, 18.0), (0.0, 0.0, 6.0), 40),
+            ],
+            "COLORS": {
+                "M_ShoalGlass": (0.129, 0.122, 0.133),  # black volcanic glass
+                "M_ShoalCrust": (0.451, 0.376, 0.208),  # sulphur yellow crust
+                "M_ShoalWet": (0.176, 0.157, 0.145),
+                "M_ShoalMineral": (0.475, 0.286, 0.204),  # rust red around the vents
+                "M_ShoalSteam": (0.839, 0.855, 0.867),
+                "M_ShoalHeat": (1.000, 0.514, 0.220),  # the pools, Neon in game
+            },
+        },
+        "build": build_islet_boilshoal,
+    },
+    "ferryraft": {
+        "model": "Ferryraft",
+        "overrides": {
+            "SEED": 7,
+            "ISLAND_RADIUS": 40,
+            "SEGMENTS": 30,
+            "GRASS_U": 0.50,
+            "RINGS": [0.0, 0.26, 0.50, 0.72, 0.88, 1.0, 1.09, 1.28],
+            # There is no island here. The bar sits ENTIRELY under the water so
+            # the raft is what you see; it exists only to give the deck ground
+            # to be anchored and probed against.
+            "PROFILE": [
+                (0.00, -1.4),
+                (0.26, -1.7),
+                (0.50, -2.4),
+                (0.72, -3.6),
+                (0.88, -5.0),
+                (1.00, -6.2),
+                (1.09, -7.4),
+                (1.28, SKIRT_BOTTOM),
+            ],
+            "COAST_TERMS": [(2, 1.4, 0.10)],
+            "GRASS_TERMS": [(3, 0.5, 0.04)],
+            "CRAG": 0.3,
+            "CRAG_FREQ": 0.04,
+            "CRAG_RADIAL": 0.02,
+            "CRAG_RADIAL_FREQS": (4.0, 3.0),
+            "CRAG_CALM": None,
+            "RIM_FLAT": (0.0, 0.60),
+            "NOTCHES": [],
+            "NOTCH_BAND": None,
+            "PEAK_JAG": 0.0,
+            "PEAK_TERMS": [],
+            "PREVIEW_SHOTS": [
+                ("approach", (52.0, -56.0, 22.0), (0.0, 0.0, 4.0), 32),
+                ("deck", (24.0, -26.0, 14.0), (0.0, 0.0, 4.0), 42),
+            ],
+            "COLORS": {
+                "M_RaftBar": (0.298, 0.322, 0.318),
+                "M_RaftShallow": (0.263, 0.286, 0.286),
+                "M_RaftWet": (0.216, 0.235, 0.239),
+                "M_RaftLog": (0.376, 0.298, 0.216),
+                "M_RaftPlank": (0.475, 0.396, 0.294),
+                "M_RaftRope": (0.639, 0.588, 0.451),
+                "M_RaftLantern": (1.000, 0.827, 0.478),  # the only warm thing for 6,000 studs
+            },
+        },
+        "build": build_islet_ferryraft,
+    },
+    "loadstone": {
+        "model": "Loadstone",
+        "overrides": {
+            "SEED": 7,
+            "ISLAND_RADIUS": 45,
+            "SEGMENTS": 34,
+            "GRASS_U": 0.68,
+            "RINGS": [0.0, 0.18, 0.38, 0.56, 0.74, 0.88, 1.0, 1.09, 1.28],
+            # A low scorched base - all the height is in the spire the builder
+            # puts on top of it, so the profile stays out of its way.
+            "PROFILE": [
+                (0.00, 4.6),
+                (0.18, 4.4),
+                (0.38, 3.8),
+                (0.56, 2.8),
+                (0.74, 1.6),
+                (0.88, 0.6),
+                (1.00, 0.0),
+                (1.09, -2.6),
+                (1.28, SKIRT_BOTTOM),
+            ],
+            "COAST_TERMS": [(2, 2.0, 0.13), (5, 1.0, 0.06)],
+            "GRASS_TERMS": [(3, 0.9, 0.05)],
+            "CRAG": 1.8,
+            "CRAG_FREQ": 0.07,
+            "CRAG_RADIAL": 0.05,
+            "CRAG_RADIAL_FREQS": (6.0, 4.0),
+            "CRAG_CALM": None,
+            "RIM_FLAT": (0.0, 0.34),
+            "NOTCHES": [],
+            "NOTCH_BAND": None,
+            "PEAK_JAG": 0.0,
+            "PEAK_TERMS": [],
+            "PREVIEW_SHOTS": [
+                ("approach", (96.0, -104.0, 40.0), (0.0, 0.0, 34.0), 28),
+                ("foot", (34.0, -38.0, 16.0), (0.0, 0.0, 12.0), 40),
+            ],
+            "COLORS": {
+                "M_LoadRock": (0.161, 0.153, 0.169),
+                "M_LoadScorch": (0.106, 0.098, 0.110),
+                "M_LoadWet": (0.129, 0.125, 0.141),
+                "M_LoadGlass": (0.129, 0.129, 0.157),  # fused, near-black, faintly metallic
+                "M_LoadIron": (0.302, 0.259, 0.235),
+                "M_LoadHeat": (1.000, 0.596, 0.278),  # heat still in the seams
+            },
+        },
+        "build": build_islet_loadstone,
     },
     "lampwork": {
         "model": "Lampwork",
