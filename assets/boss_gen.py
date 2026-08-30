@@ -1800,29 +1800,30 @@ PY_OBSIDIAN = (0.075, 0.072, 0.088)  # the shell: cooled volcanic glass
 PY_BASALT = (0.130, 0.118, 0.130)  # crown columns, claws
 PY_MOLTEN = (1.00, 0.28, 0.03)  # the interior, and every broken seam
 PY_EMBER = (1.00, 0.62, 0.12)  # eyes
-PY_SLAG = (0.185, 0.165, 0.170)  # the walkable decks - matte, so they read as footing
+PY_SLAG = (0.095, 0.088, 0.100)  # the walkable decks: near-obsidian, so the climb route is FOOTING, not a plank bolted on
 
 # The rig, and the HANDOFF contract the client's poser is written against.
 # Everything below is in boss space: z=0 is the lake surface.
 PY_RIG = {
-    "shoulder": (0.0, 58.0, 238.0),  # mirrored in y
-    "upper_arm": 118.0,
-    "forearm": 132.0,
-    "hand": 42.0,
-    "neck": (6.0, 0.0, 250.0),
-    "height": 400.0,
+    "shoulder": (0.0, 118.0, 186.0),  # mirrored in y - wide and LOW; the first pass stood them on a column
+    "upper_arm": 90.0,
+    "forearm": 102.0,
+    "hand": 36.0,
+    "neck": (20.0, 0.0, 214.0),  # PROUD of the shoulder line: it reads as a head or it reads as more rubble
+    "height": 300.0,
 }
 
 # Torso cross-sections: (z, radius fore-aft, radius across). A hunched mass -
 # broad at the waterline, pinched at the waist, flaring into the shoulders.
 PY_TORSO = [
-    (0.0, 50.0, 46.0),
-    (46.0, 47.0, 43.0),
-    (96.0, 42.0, 39.0),
-    (146.0, 38.0, 36.0),
-    (188.0, 40.0, 37.0),
-    (224.0, 45.0, 40.0),
-    (250.0, 42.0, 36.0),
+    (-40.0, 52.0, 48.0),
+    (0.0, 62.0, 56.0),
+    (40.0, 64.0, 58.0),
+    (78.0, 60.0, 55.0),
+    (112.0, 62.0, 56.0),
+    (146.0, 68.0, 60.0),
+    (178.0, 72.0, 62.0),
+    (202.0, 64.0, 55.0),
 ]
 
 
@@ -1842,7 +1843,7 @@ def build_py_core(rng):
     # inset ~5 studs inside the plating, running the full height.
     rings = []
     for z, rx, ry in PY_TORSO:
-        rings.append(_py_ring(bm, z, rx - 6.0, ry - 6.0, 9, 0.0, 0.02, rng))
+        rings.append(_py_ring(bm, z, rx - 9.0, ry - 9.0, 9, 0.0, 0.02, rng))
     for a, b in zip(rings, rings[1:]):
         for i in range(9):
             j = (i + 1) % 9
@@ -1851,170 +1852,182 @@ def build_py_core(rng):
     # Neck and head core: the throat glow the jaw opens onto.
     top = rings[-1]
     bm.faces.new(top)
-    ellipsoid(bm, (2.0, 0.0, 254.0), (18.0, 17.0, 16.0), subdiv=1)  # the throat, and nothing above it
+    ellipsoid(bm, (12.0, 0.0, 196.0), (21.0, 20.0, 19.0), subdiv=1)  # the throat: molten light AT THE NECK, so a dark head reads against it
     return finish("Pyrelisk_Core", bm, PY_MOLTEN)
+
+
+def _py_chunk(bm, center, radii, rng, jitter=0.30, rot=None):
+    """A jittered low-poly boulder - the reference art's whole shape language.
+
+    The first pass built this colossus out of neat rectangular slabs and it
+    read as masonry. The references are BROKEN ROCK: irregular convex chunks
+    with lava in the gaps between them, so every mass here is one of these.
+    """
+    verts = []
+    mat = Matrix.Translation(Vector(center))
+    if rot is not None:
+        mat = mat @ rot.to_4x4()
+    mat = mat @ Matrix.Diagonal(Vector(radii)).to_4x4()
+    result = bmesh.ops.create_icosphere(bm, subdivisions=1, radius=1.0, matrix=mat)
+    smallest = min(radii)
+    for vert in result["verts"]:
+        offset = Vector((rng.uniform(-1, 1), rng.uniform(-1, 1), rng.uniform(-1, 1)))
+        vert.co += offset * jitter * smallest
+        verts.append(vert)
+    return verts
 
 
 def build_py_torso(rng):
     bm = bmesh.new()
-    # THE SHELL: bands of big angular slabs with gaps between them, not a
-    # closed body. The gaps are the design - they are where the core shows,
-    # and they are where seams open when it winds up an attack.
-    for index, (z, rx, ry) in enumerate(PY_TORSO[:-1]):
-        z1, rx1, ry1 = PY_TORSO[index + 1]
-        span = z1 - z
-        plates = 7 if index % 2 == 0 else 8
-        for k in range(plates):
-            a = (k / plates) * TAU + index * 0.31
-            mid_rx, mid_ry = (rx + rx1) / 2, (ry + ry1) / 2
-            r = (mid_rx + mid_ry) / 2
-            cx, cy = math.cos(a) * mid_rx * 0.86, math.sin(a) * mid_ry * 0.86
-            width = (TAU * r / plates) * rng.uniform(0.62, 0.78)  # the gap IS the leftover
-            tilt = math.radians(rng.uniform(-9, 9))
-            box(
+    # THE SHELL, as broken rock: rings of boulders stacked into a hunched
+    # golem - heavy hips at the lake, a pinched waist, and a chest that
+    # widens into shoulder mass twice the head's width. The GAPS between
+    # chunks are the design; `Pyrelisk_Core` burns through every one.
+    for z, radius, count, size in (
+        (-34.0, 50.0, 8, 25.0),  # submerged: the hips, so the body enters the lake instead of ending at it
+        (-6.0, 57.0, 9, 27.0),
+        (26.0, 59.0, 9, 28.0),
+        (60.0, 57.0, 9, 27.0),
+        (94.0, 56.0, 9, 27.0),
+        (128.0, 59.0, 9, 28.0),
+        (158.0, 64.0, 9, 30.0),
+        (184.0, 66.0, 9, 30.0),
+    ):
+        for k in range(count):
+            a = (k / count) * TAU + z * 0.021
+            _py_chunk(
                 bm,
-                (cx, cy, z + span * 0.5),
-                (rng.uniform(9.0, 15.0), width, span * rng.uniform(0.86, 1.02)),
-                Matrix.Rotation(a, 3, "Z") @ Matrix.Rotation(tilt, 3, "Y"),
+                (math.cos(a) * radius, math.sin(a) * radius, z + rng.uniform(-3.0, 3.0)),
+                (size * rng.uniform(0.85, 1.2), size * rng.uniform(0.85, 1.2), size * rng.uniform(0.9, 1.25)),
+                rng,
             )
-    # Shoulder shelf: the flat mass the arms hang off and the deck sits on.
+    # The shoulder mass: the golem's whole silhouette. Big boulders piled
+    # wide and high, so the head sits DOWN IN a shoulder line rather than on
+    # top of a neck - the single strongest read in both references.
     for side in (-1, 1):
-        box(bm, (0.0, side * 52.0, 240.0), (86.0, 42.0, 30.0), Matrix.Rotation(math.radians(side * -9), 3, "X"))
-    # Spine ridge: a run of raked slabs up the back, the colossus's skyline.
-    for i in range(7):
-        t = i / 6
-        box(
-            bm,
-            (-38.0 + t * 6.0, 0.0, 60.0 + t * 178.0),
-            (16.0 + t * 8.0, 12.0, 26.0 - t * 6.0),
-            Matrix.Rotation(math.radians(-24 + t * 10), 3, "Y"),
-        )
+        for index, (y, z, size) in enumerate(((62.0, 178.0, 32.0), (86.0, 190.0, 32.0), (104.0, 182.0, 26.0), (80.0, 206.0, 26.0))):
+            _py_chunk(
+                bm,
+                (rng.uniform(-8, 8), side * y, z),
+                (size * rng.uniform(0.9, 1.15), size * rng.uniform(0.9, 1.15), size * rng.uniform(0.75, 1.0)),
+                rng,
+            )
+            _ = index
+    # A low back ridge of smaller rubble, no spines - the references have no
+    # dorsal fin, just more rock.
+    for i in range(6):
+        t = i / 5
+        _py_chunk(bm, (-52.0 + t * 6.0, rng.uniform(-12, 12), 40.0 + t * 130.0), (18.0, 16.0, 15.0), rng)
     return finish("Pyrelisk_Torso", bm, PY_OBSIDIAN)
 
 
 def build_py_head(rng):
     bm = bmesh.new()
-    # A wedge of glass. Centred on the NECK JOINT, snout at +X - the same
-    # head convention as every other boss here.
-    skull = [
-        (-30.0, 2.0, 26.0, 25.0),
-        (-9.0, 4.0, 35.0, 31.0),
-        (14.0, 2.0, 33.0, 27.0),
-        (39.0, -1.0, 25.0, 19.0),
-        (60.0, -4.0, 16.0, 12.0),
-        (74.0, -5.0, 8.0, 6.0),
-    ]
-    loft(bm, [ring_pts(x, cz, hw, hh, sides=7, floor_z=-8.0) for x, cz, hw, hh in skull])
-    # Brow shelf, heavy and squared, so the face reads at 300 studs.
+    # A ROCK, not a skull - but ONE rock. The first version was a cluster of
+    # chunks the same size as the shoulder rubble around it, so at any real
+    # distance the head simply vanished into the body. This is a single
+    # dominant mass with a flat face plane and a hard brow over it, sized to
+    # beat everything near it.
+    _py_chunk(bm, (0.0, 0.0, 2.0), (34.0, 33.0, 31.0), rng, jitter=0.16)
+    # Cranium: a lower dome behind, so the profile has a back to it.
+    _py_chunk(bm, (-20.0, 0.0, 8.0), (18.0, 22.0, 18.0), rng, jitter=0.20)
+    # The brow: a heavy slab thrown forward over the eyes. This is the
+    # silhouette line that says "face" from 200 studs out.
+    box(bm, (23.0, 0.0, 15.0), (24.0, 52.0, 12.0), Matrix.Rotation(math.radians(-14), 3, "Y"))
+    # Jaw corners, squared off, framing a recessed face.
     for side in (-1, 1):
-        box(bm, (2.0, side * 22.0, 18.0), (54.0, 12.0, 10.0), Matrix.Rotation(math.radians(side * -8), 3, "X"))
-    _ = rng
+        _py_chunk(bm, (10.0, side * 23.0, -6.0), (15.0, 12.0, 14.0), rng, jitter=0.18)
+    # A short thick neck stub - the head sits ON something now.
+    _py_chunk(bm, (-6.0, 0.0, -24.0), (16.0, 17.0, 12.0), rng, jitter=0.2)
     return finish("Pyrelisk_Head", bm, PY_OBSIDIAN)
 
 
-def build_py_jaw():
+def build_py_jaw(rng):
     bm = bmesh.new()
-    jaw = [
-        (-25.0, -18.0, 22.0, 10.0),
-        (-5.0, -19.0, 27.0, 11.0),
-        (21.0, -19.0, 23.0, 10.0),
-        (46.0, -18.0, 16.0, 8.0),
-        (67.0, -17.0, 8.0, 4.5),
-    ]
-    loft(bm, [ring_pts(x, cz, hw, hh, sides=6, ceil_z=-7.0) for x, cz, hw, hh in jaw])
+    # A blunt rock underjaw - it hinges open for the vent-breath and shows
+    # the throat. No teeth: these things are broken stone, not animals.
+    _py_chunk(bm, (8.0, 0.0, -16.0), (20.0, 20.0, 9.0), rng, jitter=0.22)
+    _py_chunk(bm, (20.0, 0.0, -14.0), (13.0, 15.0, 7.0), rng, jitter=0.22)
     return finish("Pyrelisk_Jaw", bm, PY_OBSIDIAN)
 
 
 def build_py_crown(rng):
     bm = bmesh.new()
-    # THE SIGNATURE: a fan of broken basalt columns raked back off the skull.
-    # Hexagonal prisms at different lengths - the one shape that says volcano
-    # before anything else on the model does.
-    for i in range(9):
-        t = i / 8
+    # Short, thick shards standing off the crown and the shoulder line - the
+    # reference's pointed head and spiked shoulders. Stubby and rock-like,
+    # NOT the raked basalt colonnade this model had first.
+    for i in range(3):
+        t = i / 2
         side = -1 if i % 2 else 1
-        lean = math.radians(-52 - rng.uniform(0, 16))
-        base = Vector((-12.0 - t * 6.0, side * (2.0 + t * 19.0), 27.0 + math.sin(t * math.pi) * 9.0))
-        length = rng.uniform(38.0, 74.0) * (1.0 - abs(t - 0.5) * 0.5)
-        direction = Vector((math.cos(lean), side * 0.22 * t, -math.sin(lean))).normalized()
-        spike(bm, tuple(base), tuple(base + direction * length), rng.uniform(4.0, 7.0), sides=6)
+        base = Vector((-8.0 - t * 6.0, side * t * 9.0, 22.0))
+        spike(bm, tuple(base), tuple(base + Vector((-4.0, side * 3.0, 20.0 + rng.uniform(-5, 7)))), rng.uniform(5.0, 8.0), sides=5)
     return finish("Pyrelisk_Crown", bm, PY_BASALT)
 
 
 def build_py_eyes():
     bm = bmesh.new()
+    # Two slits under the brow. Small - they are the only bright thing on the
+    # head, and the references keep them mean.
     for side in (-1, 1):
-        ellipsoid(bm, (20.0, side * 17.0, 8.0), (6.5, 5.0, 4.2), subdiv=1)
+        box(bm, (19.0, side * 11.0, 3.0), (6.0, 13.0, 5.5), Matrix.Rotation(math.radians(side * 8), 3, "X"))
     return finish("Pyrelisk_Eyes", bm, PY_EMBER)
 
 
 def build_py_shoulder(rng):
     bm = bmesh.new()
-    # A pauldron of stacked slabs, centred on the shoulder joint.
-    for i in range(4):
-        t = i / 3
-        box(
-            bm,
-            (-4.0 + t * 4.0, t * 16.0, 14.0 - t * 20.0),
-            (54.0 - t * 10.0, 22.0 - t * 4.0, 20.0 - t * 5.0),
-            Matrix.Rotation(math.radians(-14 - t * 22), 3, "X") @ Matrix.Rotation(math.radians(rng.uniform(-5, 5)), 3, "Y"),
-        )
+    # The pauldron: a boulder cap over the joint, with a short spike off it.
+    _py_chunk(bm, (0.0, 0.0, 4.0), (28.0, 26.0, 24.0), rng, jitter=0.22)
+    _py_chunk(bm, (-14.0, 0.0, 10.0), (17.0, 17.0, 15.0), rng, jitter=0.2)
+    spike(bm, (-8.0, 0.0, 14.0), (-20.0, 0.0, 40.0), 8.0, sides=5)
     return finish("Pyrelisk_Shoulder", bm, PY_OBSIDIAN)
 
 
-def _py_limb(bm, length, r0, r1, sides, rng, plates):
-    """A tapered limb along +X from its joint at the origin, plated."""
-    loft(
-        bm,
-        [
-            ring_pts(0.0, 0.0, r0, r0 * 0.92, sides=sides),
-            ring_pts(length * 0.35, 0.0, (r0 + r1) * 0.52, (r0 + r1) * 0.48, sides=sides),
-            ring_pts(length * 0.75, 0.0, r1 * 1.06, r1 * 0.98, sides=sides),
-            ring_pts(length, 0.0, r1, r1 * 0.9, sides=sides),
-        ],
-    )
-    for i in range(plates):
-        t = (i + 0.5) / plates
+def _py_limb(bm, length, r0, r1, rng, links):
+    """A limb along +X from its joint: a run of boulders, tapering.
+
+    Every chunk is CENTRED ON THE AXIS with symmetric radii. The first pass
+    jittered them sideways, which made the left and right arms read as two
+    different limbs and made the piece's roll matter to the rig; this way an
+    arm looks the same from either side and animating it is one rotation per
+    joint.
+    """
+    for i in range(links):
+        t = i / (links - 1)
         r = r0 + (r1 - r0) * t
-        for k in range(3):
-            a = (k / 3) * TAU + t * 1.4
-            box(
-                bm,
-                (t * length, math.cos(a) * r * 0.8, math.sin(a) * r * 0.8),
-                (length / plates * rng.uniform(0.7, 0.92), r * 0.75, r * 0.55),
-                Matrix.Rotation(a, 3, "X"),
-            )
+        _py_chunk(
+            bm,
+            (t * length, 0.0, 0.0),
+            (length / links * 0.80, r, r),
+            rng,
+            jitter=0.20,
+        )
 
 
 def build_py_upper_arm(rng):
+    # Slimmer: the first pass was as thick as the torso. The references hang
+    # arms roughly a third of the body's width.
     bm = bmesh.new()
-    _py_limb(bm, PY_RIG["upper_arm"], 26.0, 20.0, 7, rng, 4)
+    _py_limb(bm, PY_RIG["upper_arm"], 28.0, 24.0, rng, 4)
     return finish("Pyrelisk_UpperArm", bm, PY_OBSIDIAN)
 
 
 def build_py_forearm(rng):
     bm = bmesh.new()
-    _py_limb(bm, PY_RIG["forearm"], 22.0, 17.0, 7, rng, 5)
+    _py_limb(bm, PY_RIG["forearm"], 25.0, 20.0, rng, 4)
     return finish("Pyrelisk_Forearm", bm, PY_OBSIDIAN)
 
 
 def build_py_hand(rng):
     bm = bmesh.new()
-    # The hand is a PLATFORM as much as a weapon: a broad flat palm slab, then
-    # four claws. When this plants on the rim path it is 60 studs of standable
-    # rock and the only way onto the boss.
-    box(bm, (16.0, 0.0, -2.0), (44.0, 46.0, 13.0))
-    box(bm, (2.0, 0.0, 2.0), (18.0, 34.0, 18.0))
-    for i in range(4):
-        t = i / 3
-        y = -18.0 + t * 36.0
-        spike(bm, (36.0, y, -4.0), (72.0 - abs(t - 0.5) * 16.0, y * 1.25, -14.0), 5.5, sides=5)
-    # A thumb claw, so it reads as a hand and not a paddle.
-    spike(bm, (16.0, -22.0, -2.0), (44.0, -44.0, -10.0), 5.0, sides=5)
-    _ = rng
+    # A blunt rock FIST, not a claw: the references have mitts. It still has
+    # to be a platform when it plants - a 46-stud knuckle deck is what you
+    # run up - so the mass goes into the fist rather than into talons.
+    _py_chunk(bm, (14.0, 0.0, 0.0), (25.0, 26.0, 21.0), rng, jitter=0.22)
+    for i in range(3):
+        y = -13.0 + i * 13.0
+        _py_chunk(bm, (32.0, y, -3.0), (11.0, 7.0, 9.0), rng, jitter=0.2)
+    _py_chunk(bm, (14.0, -20.0, -6.0), (10.0, 9.0, 9.0), rng, jitter=0.2)
     return finish("Pyrelisk_Hand", bm, PY_BASALT)
-
-
 def build_py_seam():
     bm = bmesh.new()
     # THE WEAK POINT, and it has to read as one from 200 studs away across a
@@ -2058,7 +2071,7 @@ def build_py_walk_arm():
     # THE RAMP. A plain slab matching the forearm's upper surface, because the
     # climb has to be walkable geometry a humanoid never trips on - and simple
     # boxes are exact where a convex hull of the plated arm would not be.
-    box(bm, (PY_RIG["forearm"] * 0.5, 0.0, 15.0), (PY_RIG["forearm"] + 20.0, 30.0, 4.0))
+    box(bm, (PY_RIG["forearm"] * 0.5, 0.0, 11.0), (PY_RIG["forearm"] + 16.0, 26.0, 4.0))
     return finish("Pyrelisk_WalkArm", bm, PY_SLAG)
 
 
@@ -2066,8 +2079,8 @@ def build_py_walk_deck():
     bm = bmesh.new()
     # The shoulder deck and the spine walk between them: where the mounted
     # phase actually happens.
-    box(bm, (0.0, 0.0, 252.0), (74.0, 118.0, 4.0))
-    box(bm, (-30.0, 0.0, 236.0), (30.0, 60.0, 4.0))
+    box(bm, (-26.0, 0.0, 196.0), (54.0, 170.0, 4.0))
+    box(bm, (-48.0, 0.0, 172.0), (32.0, 88.0, 4.0))
     return finish("Pyrelisk_WalkDeck", bm, PY_SLAG)
 
 
@@ -2077,7 +2090,7 @@ def build_pyrelisk():
         build_py_core(rng),
         build_py_torso(rng),
         build_py_head(rng),
-        build_py_jaw(),
+        build_py_jaw(rng),
         build_py_crown(rng),
         build_py_eyes(),
         build_py_shoulder(rng),
@@ -2109,19 +2122,19 @@ def build_pyrelisk():
 # opens a subset per attack and closes them on recovery; the rig reads this
 # table, so the art and the hitboxes can never drift apart.
 PY_SEAM_SITES = [
-    ((44.0, 0.0, 214.0), (1.0, 0.0, 0.2)),  # chest, dead centre - the phase-3 core
-    ((30.0, 34.0, 176.0), (0.7, 0.7, 0.1)),
-    ((30.0, -34.0, 176.0), (0.7, -0.7, 0.1)),
-    ((-6.0, 44.0, 120.0), (0.0, 1.0, 0.1)),
-    ((-6.0, -44.0, 120.0), (0.0, -1.0, 0.1)),
-    ((10.0, 40.0, 62.0), (0.4, 0.9, 0.0)),
-    ((10.0, -40.0, 62.0), (0.4, -0.9, 0.0)),
+    ((62.0, 0.0, 156.0), (1.0, 0.0, 0.2)),  # chest, dead centre - the phase-3 core
+    ((46.0, 44.0, 128.0), (0.7, 0.7, 0.1)),
+    ((46.0, -44.0, 128.0), (0.7, -0.7, 0.1)),
+    ((-6.0, 58.0, 92.0), (0.0, 1.0, 0.1)),
+    ((-6.0, -58.0, 92.0), (0.0, -1.0, 0.1)),
+    ((16.0, 56.0, 40.0), (0.4, 0.9, 0.0)),
+    ((16.0, -56.0, 40.0), (0.4, -0.9, 0.0)),
 ]
 # Vent shafts on the back and shoulders: the mounted breakables.
 PY_VENT_SITES = [
-    ((-24.0, 0.0, 244.0), (0.0, 0.0, 1.0)),
-    ((-16.0, 40.0, 236.0), (-0.3, 0.6, 0.75)),
-    ((-16.0, -40.0, 236.0), (-0.3, -0.6, 0.75)),
+    ((-30.0, 0.0, 200.0), (0.0, 0.0, 1.0)),
+    ((-16.0, 66.0, 198.0), (-0.3, 0.6, 0.75)),
+    ((-16.0, -66.0, 198.0), (-0.3, -0.6, 0.75)),
 ]
 
 
@@ -2179,18 +2192,18 @@ def _place_pyrelisk(objects, planted_side=None, head_yaw=0.0):
         if planted_side == side:
             # Planted: the forearm lies along the ground as the ramp, and the
             # walk slab rides with it.
-            _py_arm(parts, made, side, (0.32, 0.86, -0.40), (0.30, 0.52, -0.80), (0.55, 0.35, -0.06), walk=True)
+            _py_arm(parts, made, side, (0.28, 0.62, -0.73), (0.24, 0.40, -0.88), (0.62, 0.20, -0.12), walk=True)
         else:
-            _py_arm(parts, made, side, (0.18, 0.80, -0.57), (0.42, 0.42, -0.80), (0.60, 0.10, -0.36))
+            _py_arm(parts, made, side, (0.34, 0.24, -0.91), (0.30, 0.10, -0.95), (0.45, 0.05, -0.89))
     # The maw: the same Seam module, seated in the throat behind the jaw, so
     # an open mouth glows without the core ever poking through the skull.
-    made.append(_py_copy(parts["Seam"], head @ _py_surface((26.0, 0.0, -6.0), (1.0, 0.0, -0.25))))
+    made.append(_py_copy(parts["Seam"], head @ _py_surface((18.0, 0.0, -10.0), (1.0, 0.0, -0.3))))
     for position, normal in PY_SEAM_SITES:
         made.append(_py_copy(parts["Seam"], _py_surface(position, normal)))
     for position, normal in PY_VENT_SITES:
         made.append(_py_copy(parts["Vent"], _py_surface(position, normal)))
         made.append(_py_copy(parts["Seam"], _py_surface(
-            (position[0] + normal[0] * 30.0, position[1] + normal[1] * 30.0, position[2] + normal[2] * 30.0), normal)))
+            (position[0] + normal[0] * 21.0, position[1] + normal[1] * 21.0, position[2] + normal[2] * 21.0), normal)))
     print("POSE: %d parts placed (%d seams, %d vents)" % (len(made), len(PY_SEAM_SITES) + len(PY_VENT_SITES), len(PY_VENT_SITES)))
     return made
 
@@ -2246,11 +2259,13 @@ def _stage_pyrelisk(path_out, objects):
 
     for suffix, location, target, lens in (
         # The whole thing in its arena, from outside the crater.
-        ("", (690.0, -880.0, 300.0), (0.0, 0.0, 150.0), 40),
+        ("", (620.0, -790.0, 250.0), (0.0, 0.0, 110.0), 40),
         # THE PLAYER'S ANGLE: the fight camera on the rim path, 22 up, looking
         # at what it is standing under. The planted arm comes down on this
         # side - this is the shot that has to sell "climb that".
-        ("_fight", (-186.0, -196.0, 26.0), (-20.0, -30.0, 165.0), 24),
+        ("_fight", (-186.0, -196.0, 26.0), (-20.0, -30.0, 130.0), 24),
+        # The head, close: it either reads as a head here or it does not.
+        ("_head", (176.0, -108.0, 238.0), (12.0, 0.0, 208.0), 52),
     ):
         cam_data = bpy.data.cameras.new("Cam" + suffix)
         cam_data.lens = lens
@@ -2444,8 +2459,18 @@ def bj_pose_path(state):
         if slump > 0 and t < 0.34:
             point = point.lerp(_bj_slump_point(state, t), _smoothstep((0.34 - t) / 0.34) * slump)
 
-        breath = math.sin(t * 9.0 - state["time"] * 1.7) * 0.45
-        return point + Vector((0, 0, breath))
+        # Mirrors BrinejawPath: amplitude grows toward the tail so the body
+        # whips rather than wobbling, and the last tenth flicks sideways so
+        # the rattle - the only hittable part - draws the eye.
+        breath = math.sin(t * 9.0 - state["time"] * 1.7) * (0.45 + 1.05 * t * t)
+        point = point + Vector((0, 0, breath))
+        if t > 0.86:
+            k = (t - 0.86) / 0.14
+            flat = Vector((point.x, point.y, 0.0))
+            if flat.length > 0.01:
+                side = Vector((-flat.y, flat.x, 0.0)).normalized()
+                point = point + side * (math.sin(state["time"] * 5.1 + t * 3.0) * 1.7 * k * k)
+        return point
 
     return path
 
@@ -2696,6 +2721,11 @@ NC_SOCKETS = [(NC_SOCKET_R, 12.0 + i * (360.0 / 7.0)) for i in range(7)]
 # stalk you could have shot.
 NC_LEAN_REACH = 9.0
 
+# NoctyssPath.SWAY / .IMPULSE, mirrored. There is no rig in this game: the
+# choir's ambient life and every recoil in the fight are these numbers.
+NC_SWAY = {"period": 5.2, "amplitude": 2.4, "breath_period": 3.4, "breath": 0.9}
+NC_IMPULSE = {"decay": 5.5, "freq": 13.0, "reach": 3.4, "duration": 1.6}
+
 NC_REST = {
     "height": 33.0,  # root to the top of the rise
     "crook": 11.0,  # studs the top arcs INWARD over the pit - the angler's illicium
@@ -2738,8 +2768,28 @@ def nc_state(**overrides):
     """
     stalks = []
     for i in range(len(NC_SOCKETS)):
-        stalks.append({"alive": True, "lean": 0.0, "beam": math.radians(NC_SOCKETS[i][1]), "douse": 0.0, "fall": 0.0})
-    state = {"stalks": stalks, "true_lure": 1, "maw_rise": 0.0, "maw_gape": 0.0, "time": 0.0}
+        stalks.append(
+        {
+        "alive": True,
+        "lean": 0.0,
+        "beam": math.radians(NC_SOCKETS[i][1]),
+        "douse": 0.0,
+        "fall": 0.0,
+        "kick": 0.0,  # flinch strength, as NoctyssPath.flinch sets it
+        "kick_age": 0.0,  # seconds since it landed
+        }
+    )
+    state = {
+        "stalks": stalks,
+        "true_lure": 1,
+        "maw_rise": 0.0,
+        "maw_gape": 0.0,
+        # `time` drives the ambient sway and breath, and `kick`/`kick_dir` the
+        # flinch - all three mirror NoctyssPath's motion layer. At time 0 with
+        # no kick the ambient terms are exactly zero, which is why every pose
+        # render below is still a faithful picture of the rest shape.
+        "time": 0.0,
+    }
     state.update(overrides)
     return state
 
@@ -2763,6 +2813,22 @@ def _nc_stalk_path(index, t, state=None):
     height = NC_REST["height"] * (1 - 0.82 * fall)
     bow = NC_REST["bow"] if index % 2 else -NC_REST["bow"]
 
+    # Ambient + flinch, mirroring NoctyssPath's motion layer line for line.
+    clock = state.get("time", 0.0)
+    phase = index * 1.7
+    calm = (1 - fall) * (1 - 0.7 * _nc_smoothstep(stalk["lean"]))
+    sway = math.sin(clock / NC_SWAY["period"] * TAU + phase) * NC_SWAY["amplitude"] * calm
+    breath = math.sin(clock / NC_SWAY["breath_period"] * TAU + phase * 0.6) * NC_SWAY["breath"] * calm
+    kick = 0.0
+    age = stalk.get("kick_age", 0.0)
+    if stalk.get("kick") and 0 <= age < NC_IMPULSE["duration"]:
+        kick = (
+            stalk["kick"]
+            * math.exp(-age * NC_IMPULSE["decay"])
+            * math.sin(age * NC_IMPULSE["freq"])
+            * NC_IMPULSE["reach"]
+        )
+
     rest_tip = inward * NC_REST["crook"] + lateral * (bow * 0.6)
     aim = Vector((math.cos(stalk["beam"]), math.sin(stalk["beam"]), 0.0))
     lean_tip = aim * (NC_REST["crook"] + NC_LEAN_REACH)
@@ -2770,8 +2836,8 @@ def _nc_stalk_path(index, t, state=None):
     tip = rest_tip.lerp(lean_tip, lean) + aim * (28.0 * fall)
 
     p0 = root
-    p1 = root + Vector((0, 0, height)) + lateral * bow
-    p2 = root + Vector((0, 0, height * 0.93 - 26.0 * fall)) + tip
+    p1 = root + Vector((0, 0, height + breath * 0.4)) + lateral * (bow + sway * 0.35)
+    p2 = root + Vector((0, 0, height * 0.93 - 26.0 * fall + breath)) + tip + lateral * sway + aim * kick
     inv = 1 - t
     return p0 * (inv * inv) + p1 * (2 * inv * t) + p2 * (t * t)
 
@@ -3206,7 +3272,7 @@ def render_preview(path_out, objects, boss="brinejaw"):
     # A 3/4 angle suits a long body, but a boss whose whole point is the FACE
     # gets judged from nearer the front - side-on you see one eye and cannot
     # tell whether the other one is even there.
-    offset = Vector(PREVIEW_CAMS.get(boss, (0.30, -1.0, 0.42))).normalized() * span * 1.28
+    offset = Vector(PREVIEW_CAMS.get(boss, (0.30, -1.0, 0.42))).normalized() * span * (1.85 if boss == "pyrelisk" else 1.28)
     cam.location = center + offset
     cam.rotation_euler = (center - cam.location).to_track_quat("-Z", "Y").to_euler()
     bpy.context.collection.objects.link(cam)
@@ -3461,7 +3527,25 @@ def _nc_pose_bite():
     return state
 
 
+def _nc_pose_flinch():
+    # A lantern has just been shot. The stalk whips back along the bearing the
+    # shot came from and rings down - the fight's only "you hit me" in a boss
+    # that is otherwise unreachable, which is why it has to be legible.
+    state = nc_state()
+    state["stalks"][2]["kick"] = 1.0
+    state["stalks"][2]["kick_age"] = 0.10
+    state["stalks"][2]["beam"] = math.radians(150.0)
+    state["time"] = 1.3
+    return state
+
+
 NC_POSES = {
+    "flinch": (
+        "HIT REACTION - the lantern is shot and the stalk whips back",
+        _nc_pose_flinch,
+        (52, -66, 34),
+        (-8, 6, 26),
+    ),
     "lightsweep": (
         "LIGHTSWEEP - the lit wedge is the hitbox; the dark behind a fin is the answer",
         _nc_pose_sweep,
