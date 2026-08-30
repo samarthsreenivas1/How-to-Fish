@@ -66,7 +66,7 @@ Npcs.items.morra = {
 		"Mind the roots, wanderer. The fen knows you're here - it told me before you stepped off the sand.",
 		"The murk gives to those who feed it. Leeches, mostly. Do something about the leeches.",
 	},
-	quests = { "leech_tithe", "murk_harvest" },
+	quests = { "leech_tithe", "murk_harvest", "a_skin_for_the_mire" },
 }
 
 -- Halvard, the frost hermit of the Reach.
@@ -116,7 +116,7 @@ Npcs.items.lumen = {
 		"You SEE it too, yes? The dark that leans in when the lamp gutters? Good. Then you're not mad. Or we both are.",
 		"Feed the lamp, feed the log, never trust a light that drifts. Now - work?",
 	},
-	quests = { "what_the_dark_eats", "gullet_census" },
+	quests = { "what_the_dark_eats", "gullet_census", "a_veil_against_the_dark" },
 }
 
 -- Quartermaster Hollow, the ghost fleet's bookkeeper.

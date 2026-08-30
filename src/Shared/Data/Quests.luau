@@ -127,7 +127,7 @@ Quests.items.a_skin_for_the_mire = {
 	requiresLevel = 9,
 	objectives = {
 		{ type = "catch", count = 6, waters = "swamp" },
-		{ type = "materials", materials = { mire_hide = 3 } },
+		{ type = "deliver", materials = { mire_hide = 3 } },
 	},
 	rewards = { coins = 420, xp = 340, items = { "mirewalker_helm" } },
 }
@@ -187,7 +187,7 @@ Quests.items.a_veil_against_the_dark = {
 	requiresLevel = 30,
 	objectives = {
 		{ type = "catch", count = 8, waters = "gloom" },
-		{ type = "materials", materials = { duskhide = 3 } },
+		{ type = "deliver", materials = { duskhide = 3 } },
 	},
 	rewards = { coins = 2400, xp = 1700, items = { "duskveil_helm" } },
 }
