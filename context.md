@@ -127,6 +127,7 @@ between sessions.
 | **Ocean tile grid** (2026-08-28) | done (c753737) | the 2048-stud part cap was real: the sea is a 32x32 grid of 2040-stud tiles now, span floored at ~65k (48c2733) |
 | **All-hostile pivot + kit engine + boss lairs** (2026-08-28) | built, **unreviewed** | every catch fights (b358837), per-row hostile movesets off the boss arsenal (f4417a5), boss fights move to lair arenas (c8b8f67) |
 | **ARMOR: full four-lane system** (2026-08-28) | built; `armor.glb` FIRST import owed | 10 sets / 30 pieces, set bonuses, shops+quest distribution, ArmorPack meshes + ArmorService welds — see "Armor" |
+| **SWAMP BOSS REBUILT: the Rootmere + the mud colossus** (2026-08-29/30) | built, **unreviewed**; `arena_gnashroot.glb` + `boss_gnashroot.glb` imports owed | the fen's boss redesigned from a half-gator to a hunched colossus of wet mud, its lair authored (eea5f84/fe3927c), its book renamed and re-skinned with a new `hammerfall` (1d87ea6/5ed44c7/563b4c1), its mesh swapped in (7ecbdf8) and its ChainPose rig written but INERT (a6241d9) — see "The swamp boss" |
 | More archetypes (charger/spitter), style/juggle, arena | not started | see Known gaps |
 
 ### Manual Studio steps — check these first
@@ -1188,6 +1189,50 @@ playbook applied to Ashfall Caldera — reviewed from PNG previews
   expected after the user's pack import. NOTE: several of this lane's
   hunks rode into adjacent swamp-lane commits (shared git index between
   concurrent sessions — 9a59de9/5a68a88; flagged in commit messages).
+
+### The swamp boss: the Rootmere and the mud colossus (2026-08-29/30)
+
+Old Gnashroot was a half-gator/half-drowned-oak. The user rejected it flat
+("its a crocodile but with like roots as arms thats stupid" - and they were
+right: it was two creatures glued together, roots bolted to an alligator
+because the lore text said so). It is now ONE idea: **the fen standing up.**
+
+- **The creature.** A hunched colossus of wet mud - top-heavy mass, arms long
+  enough to drag, a low head that is mostly gape, dark wet eyes scattered
+  across its flanks, bog stone set into its back, everything dripping. The
+  GNASHROOT is the root-knot burning in its chest: the only part that is
+  actually alive, and the fight's punish target. That reading also saves every
+  existing loot string - the Mireheart rod is still "cut in the presence of
+  its still-beating heart", and now you can see the heart.
+  `assets/boss_gen.py`, 13 objects, body-as-one-CFrame + two chain pieces.
+- **A blob has no silhouette**, which is the failure mode the build had to
+  beat. Three rules, and every builder obeys them: the READ comes from what is
+  set INTO the mud (stones, splinters, the maw's rim), never the mud itself;
+  the eyes and the core are the only high-contrast things, so the shape is
+  told by a constellation rather than an outline; everything sags DOWNWARD so
+  a still pose still has direction.
+- **The Rootmere** (`assets/arena_gen.py`, 16 objects): a wide black mere it
+  stands in, a BARE peat bank r 29-70 (the Tidebreak "clean floor" call), four
+  stump platforms at r 44, and a drowned cypress grove boundary ported from
+  `island_gen.build_swamp_trees` - crowns sit ON forked branch tips, because
+  blobs floating over straight trunks read as parasols on sticks.
+- **The book** (`Bosses.luau`): gnash / wallow / disgorge / heave / mire, all
+  renamed and re-skinned onto the mud, plus **hammerfall** (`slam`, the new
+  one) - both arms up and down together, and planting them opens the core via
+  the `expose` field. Numbers are the shipped tuned ones.
+- **The rig** (`GnashrootPath` + `GnashrootBodyController`, ChainPose's third
+  consumer) is written, linted and REGISTERED but draws nothing yet: it adopts
+  on `Pose == "gnashroot"` and the row has no `pose` field. That is deliberate
+  - see the gotcha below - and the server still has to publish the new
+  vocabulary (Attack/AttackBlend/Strike/AimAngle/AimSide) from `publishPose`.
+- **Open, and the user's call:** does it hold the mere's centre like the
+  Kraken, or walk? That decides whether `pose` goes on the row.
+- **Known lie, written down rather than left in a design doc:** `mire`'s
+  comment used to promise the stump platforms were footing it could not reach.
+  They are not - `snaretrap` marks each player's own root and the strike
+  height tolerance (14) dwarfs the stumps' ~5-stud lift. Making it true needs
+  a safe-geometry concept in the handler plus a `stumps` list on the swamp
+  BossArenas row.
 
 ### The kit engine: per-row hostile movesets (2026-08-28, engine slice)
 
@@ -2753,6 +2798,37 @@ fallback, so a fight is never invisible before its import lands.
   boss rises in the wrong place — keep the two in step.
 
 
+- **A control that cannot run looks exactly like a control that passed
+  (2026-08-30).** The fleet's verification recipe is "perturb something,
+  confirm the check FIRES, revert, re-run". Twice tonight the perturbation
+  silently never happened - the anchor string had rotted, so the perturbed
+  file was never written, `diff` compared against a MISSING file, and it
+  printed a confident FIRES. That is worse than the two instruments already
+  discarded (preview-PNG hashes, bbox diffs): those were blind quietly, this
+  one reports success. **Assert the anchor matched AND that the build produced
+  output before trusting either the control or the real comparison.** Related:
+  an empty B-side digest diffed against a populated A-side reads as "every
+  boss MOVED" - assert the B-side executed.
+- **A string-replace whose target does not exist SILENTLY SKIPS
+  (2026-08-30).** Three lanes hit this in one evening in three costumes: a
+  region cut that swallowed a peer's `PLACERS` registry (two registries, one
+  referencing a function 200 lines before its definition); a splice anchored
+  on the text being INSERTED, which by definition is not in HEAD, so the hunk
+  no-opped while its siblings applied and the commit looked clean; and an
+  ORDER-line anchor that had not been committed yet. The structural answers,
+  in preference order: treat registry dicts (`PLACERS`/`STAGERS`/`BOSSES`/
+  `CAMERAS`/`SCENE`) as extraction end-markers; INSERT at an anchor rather
+  than replace in place; assert `count == 1` and `assert old` (an empty needle
+  makes `str.replace` prepend at position 0, forever, with no error); and
+  assert on the extracted TEXT (no peer `build_*` in it), not just on the
+  anchors that matched.
+- **Neon-by-name is an ARENA rule, not a boss-pack rule (2026-08-30).** A part
+  whose name carries `Glow` is switched to Neon by `BossArenaService.
+  placeAuthored` - for arena meshes only. Boss packs are cloned by their
+  `<Boss>BodyController`, which has no such rule, so an emissive boss part
+  relies entirely on the material being set at IMPORT time in Studio. Any boss
+  with a glowing core or seams needs that in its import-checklist row with the
+  reason attached (`Gnashroot_Core`, `Pyrelisk_Core`).
 - **Concurrent sessions.** At least **three** Claude sessions edited this
   project at once on 2026-08-22 (this one on fishing / viewmodels / species;
   `roblox-game-2f` on creature physics, combat, pufferfish, player health;
