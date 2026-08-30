@@ -1472,11 +1472,11 @@ Creatures.items.old_gnashroot = {
 	body = {
 		model = "CreaturePack",
 		species = "Gnashroot",
-		shape = "leviathan", -- pre-import stand-in: the boss silhouette, moss-dark
+		shape = "leviathan", -- pre-import stand-in: the boss silhouette, mud-dark
 		stance = "upright",
 		scale = 1.5,
-		color = Color3.fromRGB(107, 71, 43), -- wet peat-mud (assets/boss_gen.py GN_MUD)
-		finColor = Color3.fromRGB(94, 92, 85), -- the bog stone set into its back
+		color = Color3.fromRGB(107, 71, 43), -- wet peat-mud
+		finColor = Color3.fromRGB(94, 92, 85), -- the bog stone hauled up in its back
 		markColor = Color3.fromRGB(150, 235, 200), -- the gnashroot burning in its chest (neon)
 	},
 }

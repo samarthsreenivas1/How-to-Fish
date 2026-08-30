@@ -414,11 +414,10 @@ Bosses.items.old_gnashroot = {
 	islandId = "swamp",
 	-- The bait is the gate, as always: level only, the fen band's end.
 	gate = { level = 14 },
-	-- The fen's interior boss mere: the swamp-restart marsh step authors its
-	-- biggest pool AT this arena spot (step-3 HANDOFF: mere rel X=0 Z=74
-	-- r=26 - the roam disc reaches a few studs onto the banks by design).
-	-- It rises out of the peat murk in the island's heart, fought from the
-	-- banks. Re-key from the swamp HANDOFF line after any marsh relayout.
+	-- `offset` is the IN-PLACE FALLBACK only: the swamp has a BossArenas row
+	-- (model "GnashrootArena"), so the real fight is at the Rootmere lair out
+	-- in open water and BossService.arenaPosition never reads this offset.
+	-- `radius` is still live - it is the roam disc the fight actually uses.
 	arena = { offset = Vector3.new(0, 0, 74), radius = 36 },
 	aggro = 90,
 	standoff = 14,
