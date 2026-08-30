@@ -2372,8 +2372,19 @@ Creatures.items.admiral_wrack = {
 	rarity = "Boss",
 	archetype = "boss",
 	boss = "admiral_wrack",
-	health = 85000,
+	-- 58,000, not 85,000. The bullet-hell redesign GATES this bar: he can only
+	-- be hurt inside the burst window his four gun decks open, which is
+	-- roughly two thirds of the fight's clock rather than all of it, so a bar
+	-- sized for an ungated boss reads as half again the intended fight. Same
+	-- correction, same reason, as Noctyss's 60,000 -> 46,000 above.
+	health = 58000,
 	waters = "wreck",
+	-- The hull only opens when every gun deck is silent. The Bosses entry's
+	-- `parts` ring plants four wrack_battery emplacements on his gun deck;
+	-- CreatureService.damage refuses the boss while partsAlive > 0, kill()
+	-- counts them down, and updateBoss re-plants them `parts.regrow` seconds
+	-- after the last one falls. Same machinery as the Kraken's tentacle ring.
+	vulnerableWhen = "partsDown",
 	rewards = { coins = { 40000, 55000 }, xp = 30000 },
 	drops = { materials = { wraith_essence = { 3, 4 }, spectral_sailcloth = { 5, 7 }, tarnished_doubloon = { 8, 12 } } },
 	body = {
@@ -2385,6 +2396,34 @@ Creatures.items.admiral_wrack = {
 		color = Color3.fromRGB(96, 116, 108),
 		finColor = Color3.fromRGB(70, 86, 82),
 		markColor = Color3.fromRGB(160, 255, 210), -- the ghost-fire riding the bow
+	},
+}
+
+-- Admiral Wrack's four gun-deck batteries: the way into him. Planted by the
+-- Bosses entry's `parts` ring on his gun-deck rail, never spawned by a cast
+-- (rarity "Boss"). They do not attack on their own - Wrack's patterns ARE
+-- these guns firing, which is why every one of them you silence visibly
+-- thins the screen - so they carry the choirstalk no-op updater rather than
+-- an archetype of their own: planted, inert, and there to be broken.
+Creatures.items.wrack_battery = {
+	id = "wrack_battery",
+	name = "Gun-Deck Battery",
+	rarity = "Boss",
+	archetype = "choirstalk",
+	health = 2800,
+	waters = "wreck",
+	rewards = { coins = { 120, 200 }, xp = 350 },
+	-- Authority only, like the tentacles: a chunk of the flagship at gun-deck
+	-- scale, so it reads as part of the hull it is bolted to.
+	body = {
+		model = "CreaturePack",
+		species = "AdmiralWrack",
+		shape = "leviathan",
+		stance = "upright",
+		scale = 0.5,
+		color = Color3.fromRGB(96, 116, 108),
+		finColor = Color3.fromRGB(70, 86, 82),
+		markColor = Color3.fromRGB(255, 190, 120), -- the muzzle glow, lit until it is broken
 	},
 }
 

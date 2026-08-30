@@ -4685,6 +4685,16 @@ local function wrackEmit(pattern: string, creature, def, p, now: number, gap: nu
 	end
 	local centre = creature.anchor or creature.pos
 	local lo, hi = bossRoll(creature, def, p.damage)
+	-- Registers him for the closing beat on his first volley. A plain boss
+	-- gets no collapse (that is the perch-holding colossus's death), so the
+	-- gun decks going up one at a time is the fight's own ending.
+	ProjectileService.watch(
+		creature,
+		centre,
+		(def.parts and def.parts.ring) or 20,
+		(def.parts and def.parts.count) or 4,
+		"cannon"
+	)
 	return ProjectileService.emit(pattern, {
 		owner = creature,
 		centre = centre,
@@ -4698,6 +4708,74 @@ local function wrackEmit(pattern: string, creature, def, p, now: number, gap: nu
 		min = lo,
 		max = hi,
 	}, p)
+end
+
+-- THE TELL, AND WHY IT IS SHAPED LIKE THIS. The client implements exactly
+-- ten telegraph kinds (CreatureEventController.EVENTS.telegraph): slam, tail,
+-- burst, pull, dive, snap, mark, ringTell, coneTell, gustTell - and anything
+-- else falls through to a 3-stud flash at the point given. A bullet hell
+-- warned by a 3-stud flash is not a bullet hell, it is a slot machine, so
+-- every Wrack pattern is confined to a kind the client actually draws:
+--   broadside -> "mark"     a pulsing disc out on the sand where the gap opens
+--   slewfire  -> "ringTell" the annulus the spiral is about to stream out of
+--   wisps     -> "mark"     the ring they are born from
+--   the aimed patterns -> "coneTell", which marches rings out along `facing`.
+-- An aimed pattern wider than a wedge draws SEVERAL coneTells across its arc,
+-- because that is the only directional shape the client has.
+--
+-- THE SOUND IS WHY THE WEDGE COUNT IS SMALL. Sfx.play("bossTell", position)
+-- sits at the TOP of EVENTS.telegraph, before any kind branch, so every
+-- telegraph event plays the boss-tell one-shot - which is the whole reason
+-- `tell = false` costs Wrack no audio here: he is not going silent, he is
+-- re-emitting the same event at a position that is actually true. But it also
+-- means N wedges is N simultaneous one-shots, and Sfx.play has no throttle
+-- (it spawns a part per call). Three is the ceiling that still reads as one
+-- thicker cue rather than a clipping mess. A `silent = true` flag on the
+-- telegraph event - or a real arc/wall tell kind - would let a wide telegraph
+-- be drawn properly; both are client-lane gaps, named rather than worked
+-- around.
+-- The loud layer (ProjectileFxController). `wrackTell` is Wrack's own tell
+-- event and the only one that draws at full weight; `shape` picks the form.
+-- A RING is the one that survives the camera's rear blind spot - at 34 deg
+-- pitch nothing directly behind the player is on screen and bullets have no
+-- off-screen indicator, so the patterns that can arrive from behind announce
+-- themselves with a ring the player is standing inside rather than a wedge
+-- they may be facing away from.
+local function wrackRingTell(creature, p, radius: number)
+	fireEvent("wrackTell", creature.anchor or creature.pos, {
+		shape = "ring",
+		radius = radius,
+		duration = p.windup,
+		skin = p.skin,
+	})
+end
+
+local function wrackLaneTell(creature, p, aim: Vector3, width: number, length: number)
+	fireEvent("wrackTell", creature.model:GetPivot().Position, {
+		shape = "lane",
+		aim = aim,
+		width = width,
+		length = length,
+		duration = p.windup,
+		skin = p.skin,
+	})
+end
+
+local function wrackConeTell(creature, p, aim: Vector3, arcDeg: number, wedges: number)
+	local at = creature.model:GetPivot().Position
+	local base = wrackAngle(aim)
+	local arc = math.rad(arcDeg)
+	local step = if wedges > 1 then arc / (wedges - 1) else 0
+	for i = 0, wedges - 1 do
+		local a = base - arc * 0.5 + step * i
+		fireEvent("telegraph", at, {
+			kind = "coneTell",
+			duration = p.windup,
+			radius = p.tellRange or 70,
+			facing = Vector3.new(math.cos(a), 0, math.sin(a)),
+			skin = p.skin,
+		})
+	end
 end
 
 -- Broadside: a ring of slow cannonballs with exactly ONE gap, fired `volleys`
@@ -4714,6 +4792,9 @@ ATTACK_HANDLERS.broadside = {
 			creature.wrackGap = (creature.wrackGap or math.random() * math.pi * 2)
 				+ math.rad(p.gapStep or 46) * (0.5 + math.random())
 			a.wrackGapAt = creature.wrackGap
+			-- Two cues, because a ring with a hole in it needs both: the ring
+			-- itself (loud, and readable from any facing), then the gap.
+			wrackRingTell(creature, p, (p.spawnAt or 16) + (p.markAt or 22))
 			-- THE ANSWER, DRAWN: a disc out on the sand where the gap opens.
 			local centre = creature.anchor or creature.pos
 			local mark = (p.spawnAt or 16) + (p.markAt or 22)
@@ -4758,14 +4839,8 @@ ATTACK_HANDLERS.grapeshot = {
 		local a = creature.attack
 		if not a.wrackTold then
 			a.wrackTold = true
-			local aim = wrackAim(creature)
-			fireEvent("telegraph", creature.model:GetPivot().Position, {
-				kind = "sweep",
-				duration = p.windup,
-				radius = p.tellRange or 70,
-				facing = aim,
-				skin = p.skin,
-			})
+			-- One wedge: the fan is 30-38 degrees, which IS a wedge.
+			wrackConeTell(creature, p, wrackAim(creature), 0, 1)
 		end
 		creature.model:PivotTo(poseCFrame(creature, sub, 0, math.rad(-9) * u))
 	end,
@@ -4795,14 +4870,9 @@ ATTACK_HANDLERS.chainshot = {
 		local a = creature.attack
 		if not a.wrackTold then
 			a.wrackTold = true
-			local aim = wrackAim(creature)
-			fireEvent("telegraph", creature.model:GetPivot().Position, {
-				kind = "sweep",
-				duration = p.windup,
-				radius = p.tellRange or 60,
-				facing = aim,
-				skin = p.skin,
-			})
+			-- One wedge per pair, so the tell shows where the PAIRS go and
+			-- the lanes between them read as the lanes they are.
+			wrackConeTell(creature, p, wrackAim(creature), p.fanDeg or 120, p.pairs or 3)
 		end
 		creature.model:PivotTo(
 			poseCFrame(creature, sub + 0.3 * u, math.sin(u * 22) * math.rad(3) * u, math.rad(11) * u)
@@ -4890,14 +4960,13 @@ ATTACK_HANDLERS.anchorsweep = {
 		local a = creature.attack
 		if not a.wrackTold then
 			a.wrackTold = true
+			-- THE ONE BIG TELEGRAPH, and the one pattern that can arrive from
+			-- the camera's rear blind spot. So it gets a RING first - drawn
+			-- around the player's own ground, legible whichever way they face
+			-- - and then a lane naming the half about to become a wall.
 			local aim = wrackAim(creature)
-			fireEvent("telegraph", creature.model:GetPivot().Position, {
-				kind = "sweep",
-				duration = p.windup,
-				radius = p.tellRange or 90,
-				facing = aim,
-				skin = p.skin,
-			})
+			wrackRingTell(creature, p, (p.spawnAt or 16) + (p.tellReach or 30))
+			wrackLaneTell(creature, p, aim, p.tellWidth or 96, p.tellRange or 90)
 		end
 		local e = smoothstep(u)
 		creature.model:PivotTo(poseCFrame(creature, sub + 0.9 * e, 0, math.rad(-24) * e))

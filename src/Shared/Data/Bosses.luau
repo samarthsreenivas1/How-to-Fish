@@ -1076,13 +1076,25 @@ Bosses.items.admiral_wrack = {
 			},
 		},
 	},
-	-- Every row carries `tell = false`: these handlers draw their own
-	-- telegraph from the bearing they LATCHED at windup start, because the
-	-- stock one is drawn at the boss's pivot before a target is picked, which
-	-- is wrong for a shot that lands eighty studs away.
+	-- EVERY ROW CARRIES `tell = false`, the engine's documented opt-out, and
+	-- every handler draws its own telegraph instead. The stock tell is drawn
+	-- at the boss's PIVOT before a target is picked - which for Wrack is the
+	-- middle of the hull, while the wall of cannonballs forms sixteen studs
+	-- out on a rotating deck and lands eighty studs away. A telegraph that
+	-- points somewhere wrong is worse than none.
+	--
+	-- `tell = false` does NOT cost the audio cue: Sfx.play("bossTell", pos)
+	-- runs at the top of the client's EVENTS.telegraph for every telegraph
+	-- event, so each handler's own event still announces itself - and does it
+	-- from the position that is actually true.
+	--
+	-- The client implements exactly ten telegraph kinds and falls through to a
+	-- 3-stud pivot sparkle for anything else, so each row names the branch it
+	-- lands on. Change a `kind` in the handler, change the note here.
 	attacks = {
 		-- Bread and butter, and the shortest cooldown, so it is also the
 		-- phase list's fallback pick.
+		-- TELL: one "coneTell" wedge along the latched bearing.
 		grapeshot = {
 			handler = "grapeshot",
 			tell = false,
@@ -1091,10 +1103,13 @@ Bosses.items.admiral_wrack = {
 			duration = 0.45,
 			recover = 0.5,
 			cooldown = 6.0,
-			pellets = 7,
-			fanDeg = 30,
+			-- Six across 48 degrees born at r14: ~2.4 studs between pellet
+			-- centres. The GAP is what the player dodges, and under ~2 studs
+			-- the pellets merge into a texture you cannot read a lane through.
+			pellets = 6,
+			fanDeg = 48,
 			speed = 62,
-			spawnAt = 10,
+			spawnAt = 14,
 			radius = 1.6,
 			lifetime = 2.4,
 			tellRange = 70,
@@ -1102,6 +1117,7 @@ Bosses.items.admiral_wrack = {
 		},
 		-- Phase 3: wider, and a second burst offset half a pellet so the
 		-- lanes of the first one are exactly where the second one lands.
+		-- TELL: one "coneTell" wedge along the latched bearing.
 		grapeshotTwin = {
 			handler = "grapeshot",
 			tell = false,
@@ -1110,10 +1126,13 @@ Bosses.items.admiral_wrack = {
 			duration = 0.9,
 			recover = 0.45,
 			cooldown = 6.5,
-			pellets = 9,
-			fanDeg = 38,
+			-- Seven across 58 degrees at r14: ~2.4 studs between centres, the
+			-- same readable floor. The second burst fills these lanes 0.4s
+			-- later - two waves you can read, not one wall you cannot.
+			pellets = 7,
+			fanDeg = 58,
 			speed = 66,
-			spawnAt = 10,
+			spawnAt = 14,
 			radius = 1.6,
 			lifetime = 2.4,
 			bursts = 2,
@@ -1124,6 +1143,8 @@ Bosses.items.admiral_wrack = {
 		-- The signature. Three rings, one gap, the gap walking 46 degrees
 		-- between each - never a divisor of 360, so it never returns to where
 		-- it just was and pre-standing in it cannot work.
+		-- TELL: a "mark" disc out on the sand where the gap will open - drawn
+		-- at the GAP, not at the boss, because the gap is the whole answer.
 		broadside = {
 			handler = "broadside",
 			tell = false,
@@ -1146,6 +1167,7 @@ Bosses.items.admiral_wrack = {
 		},
 		-- Phase 3: four rings, more balls, a gap two thirds the width moving
 		-- further and faster.
+		-- TELL: a "mark" disc at the gap, as above.
 		broadsideHeavy = {
 			handler = "broadside",
 			tell = false,
@@ -1169,6 +1191,8 @@ Bosses.items.admiral_wrack = {
 		-- The trap. Three pairs across a 120-degree fan, each pair chained
 		-- twelve studs apart and spinning at 126 deg/s - a full turn every
 		-- 2.9 seconds, slow enough to count.
+		-- TELL: three "coneTell" wedges, one per pair, so the lanes BETWEEN
+		-- the wedges read as the lanes they actually are.
 		chainshot = {
 			handler = "chainshot",
 			tell = false,
@@ -1190,6 +1214,8 @@ Bosses.items.admiral_wrack = {
 			damage = { 54, 72 },
 		},
 		-- The sustained one: five seconds of two arms laying spiral lanes.
+		-- TELL: a "ringTell" annulus on the deck radius the spiral streams
+		-- from - the origin, which is not the pivot.
 		slewfire = {
 			handler = "slewfire",
 			tell = false,
@@ -1209,6 +1235,7 @@ Bosses.items.admiral_wrack = {
 		},
 		-- Phase 3: three arms, tighter cadence, and the spin REVERSED - the
 		-- direction you learned to walk is now the wrong one.
+		-- TELL: a "ringTell" annulus on the deck radius, as above.
 		slewfireFast = {
 			handler = "slewfire",
 			tell = false,
@@ -1229,6 +1256,9 @@ Bosses.items.admiral_wrack = {
 		-- The one big telegraph. Fifteen heavy balls overlapping across 180
 		-- degrees: a wall, not a pattern - you do not thread it, you leave.
 		-- Nearly two seconds of windup, because the answer is a long walk.
+		-- TELL: three "coneTell" wedges fanned across the whole 180 degrees,
+		-- so the telegraph names the HALF about to become a wall. Capped at
+		-- three because each wedge is another bossTell one-shot.
 		anchorsweep = {
 			handler = "anchorsweep",
 			tell = false,
@@ -1245,10 +1275,13 @@ Bosses.items.admiral_wrack = {
 			lifetime = 5.0,
 			ripple = 0.05,
 			tellRange = 90,
+			tellWidth = 96, -- the lane tell's width: the half it is about to wall off
+			tellReach = 30, -- ring tell radius = spawnAt + this
 			damage = { 78, 104 },
 		},
 		-- Three slow lights that follow you. They barely hurt; what they do
 		-- is take standing still off the table for the next nine seconds.
+		-- TELL: a "mark" ring at the radius they are born from.
 		wisps = {
 			handler = "wisps",
 			tell = false,
