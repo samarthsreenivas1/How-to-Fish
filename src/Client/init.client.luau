@@ -49,6 +49,7 @@ local ORDER = {
 	"CollectionsController", -- after Progression (toast): the fishing bestiary snapshot + New-species pop; the browse modal arrives with B2
 	"MenuButtonsController", -- after Inventory + Crafting + Admin + Islands + Quest: bottom-left menu buttons, ALT frees the cursor
 	"CreatureEventController", -- after CombatVfx (camera kick) + Progression (coin pop): enemy states off creature attributes, moments off the CreatureEvent remote
+	"ProjectileFxController", -- no dependencies; Wrack's bullet hell off the same CreatureEvent channel (its own kinds), pooled and drawn on the render step
 	"BossHudController", -- no dependencies; the boss health bar off a creature's BossName/Health attributes + rise/down banners off CreatureEvent
 	"RaidHudController", -- no dependencies; raid countdown/wave line + cards off the RaidState remote, filtered to the local island
 	"WeatherController", -- no dependencies; blizzard fog / event ambience off the WorldEvent remote + own-position checks

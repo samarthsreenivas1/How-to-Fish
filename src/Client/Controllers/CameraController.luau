@@ -12,9 +12,11 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Islands = require(Shared.Config.Islands)
+local BossArenas = require(Shared.Config.BossArenas)
 
 local Viewmodel = require(script.Parent.Parent.Modules.Viewmodel)
 
@@ -34,6 +36,85 @@ local THIRD_PERSON_DISTANCE = 26
 
 local thirdPerson = false
 
+-- BIRDSEYE IN THE CAREENAGE (Wrack's bullet-hell pass, 2026-08-29). Wrack is
+-- a static gun platform: the fight is not the boss, it is the pattern on the
+-- ground between you and it, and over-the-shoulder third person hides the
+-- half of that field you are not facing. This is the SAME machinery one step
+-- further - Classic camera, zoom pinned so the mode is what the game says it
+-- is - with the camera lifted and pitched down so a rank of broadside fire is
+-- on screen while there is still time to walk out of it.
+--
+-- Keyed to the ARENA's centre (BossArenas), not to an island: the Careenage
+-- is a lair arena 24k studs out in open water, so Islands.islandAt is nil
+-- there and the island test above can never fire for it.
+local BIRDSEYE_ARENAS = { wreck = true }
+
+-- How far from the arena centre the mode holds. The Careenage's shoal is
+-- walkable to r 78 inside a palisade of half-sunk hulls at r 80-88, so 130
+-- covers the whole fight and the water you get blown into. The nearest other
+-- content is thousands of studs away, so this only has to be bigger than the
+-- arena - it never has to be precise.
+local BIRDSEYE_REACH = 130
+
+-- The orbit. At 58 studs and the default 70 FOV roughly one arena width of
+-- ground crosses the frame, so a rank entering from the far side is visible
+-- while it is still a shape rather than a wall. Much closer and a full-width
+-- rank runs off the screen edges; much further and the character (5 studs)
+-- falls under ~5% of screen height, which is where you stop being able to
+-- judge your own body against a gap.
+local BIRDSEYE_DISTANCE = 58
+
+-- ...pitched down 34 degrees from wherever the player is looking. That is the
+-- angle where the flat opens into a readable field while the hull and its gun
+-- decks still sit in the top third of the frame - a horizon to aim at, which
+-- a true top-down camera throws away. At rest the camera floats
+-- 58*sin(34) = 32 studs up and 48 studs back.
+local BIRDSEYE_PITCH = math.rad(34)
+
+-- The player keeps pitch authority inside a band. They can pull 16 degrees
+-- above the horizon to put the crosshair on a gun-deck battery (the camera is
+-- already 32 studs up, so from there it looks DOWN onto a high deck), or push
+-- to 62 below for a near-plan read of the pattern - never to true top-down,
+-- which would take the boss off the screen entirely.
+local BIRDSEYE_PITCH_CEIL = math.rad(16)
+local BIRDSEYE_PITCH_FLOOR = -math.rad(62)
+
+-- The aim point rides above the character so they sit low in frame and the
+-- ground ahead of them gets the rest of it.
+local BIRDSEYE_FOCUS_LIFT = 4.5
+
+-- Both transitions ease on an exponential approach rather than a tween: the
+-- mode can flip while the player is running, and an approach is frame-rate
+-- independent and can reverse mid-flight without a jump. tau 0.28 settles in
+-- about eight tenths of a second.
+local BIRDSEYE_EASE_TAU = 0.28
+local BIRDSEYE_SETTLED = 0.002
+
+-- If world geometry (a mast, one of the palisade hulls when you fight at the
+-- rim) comes between the camera and the player, the camera comes in front of
+-- it. A blocked frame in a bullet hell is a death.
+local BIRDSEYE_CLEARANCE = 1.6
+
+local birdseye = false
+local birdseyeBlend = 0 -- 0 = the camera as it is everywhere else, 1 = the raised orbit
+local birdseyeAt = 0 -- os.clock of the last frame, for the ease
+local birdseyeHiding = false -- holding the viewmodel hidden through the ease OUT
+
+-- Is `position` inside a birdseye arena's bowl?
+local function inBirdseyeArena(position: Vector3): boolean
+	for islandId in BIRDSEYE_ARENAS do
+		local arena = BossArenas.items[islandId]
+		local center = arena and arena.center
+		if center then
+			local d = Vector3.new(position.X - center.X, 0, position.Z - center.Z).Magnitude
+			if d <= BIRDSEYE_REACH then
+				return true
+			end
+		end
+	end
+	return false
+end
+
 -- Menus call this with true when they open and false when they close. The
 -- cursor appears and unlocks so buttons are clickable; the camera stops
 -- turning with the mouse for the same reason.
@@ -51,6 +132,13 @@ end
 
 function CameraController.isThirdPerson(): boolean
 	return thirdPerson
+end
+
+-- True in a bullet-hell arena's raised orbit (a third-person variant, so
+-- isThirdPerson is true there as well). For anything that has to lay out
+-- differently when the camera is looking down at the field.
+function CameraController.isBirdseye(): boolean
+	return birdseye
 end
 
 -- Forces the camera into first person. Called at boot, on every respawn,
@@ -83,6 +171,97 @@ local function lockThirdPerson()
 	end
 end
 
+-- What the camera should be blocked by on its way in: solid world geometry
+-- only. Everything the fight draws is CanQuery = false, so bullets, markers
+-- and the boss's own effects can never pull the camera in; the character
+-- itself is filtered because the orbit starts inside it.
+local occludeParams: RaycastParams? = nil
+local occludeFor: Model? = nil
+
+local function occlusionParams(character: Model): RaycastParams
+	if occludeParams and occludeFor == character then
+		return occludeParams :: RaycastParams
+	end
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = { character }
+	params.RespectCanCollide = true
+	occludeParams, occludeFor = params, character
+	return params
+end
+
+-- The raised orbit for one frame. Yaw is read back off the frame Roblox's own
+-- camera scripts just produced, so the mouse still turns the camera exactly
+-- as it does everywhere else in the game and the character still walks
+-- camera-relative; only the pitch and the height are the mode's.
+local function birdseyeFrame(root: BasePart, base: CFrame, character: Model): CFrame
+	local focus = root.Position + Vector3.new(0, BIRDSEYE_FOCUS_LIFT, 0)
+	local look = base.LookVector
+	local yaw = math.atan2(-look.X, -look.Z)
+	local pitch = math.asin(math.clamp(look.Y, -1, 1))
+	local aimed = math.clamp(pitch - BIRDSEYE_PITCH, BIRDSEYE_PITCH_FLOOR, BIRDSEYE_PITCH_CEIL)
+	local dir = CFrame.fromEulerAnglesYXZ(aimed, yaw, 0).LookVector
+	local distance = BIRDSEYE_DISTANCE
+	local blocked = Workspace:Raycast(focus, -dir * distance, occlusionParams(character))
+	if blocked then
+		distance = math.max((blocked.Position - focus).Magnitude - BIRDSEYE_CLEARANCE, 6)
+	end
+	return CFrame.lookAt(focus - dir * distance, focus)
+end
+
+-- Ease the orbit in and out. Like every other setting in this file it is
+-- re-asserted every frame rather than assigned once - Roblox's camera scripts
+-- rebuild the CFrame at RenderPriority.Camera and this runs one priority
+-- later, so the last word each frame is this one.
+--
+-- The ease OUT also holds the third-person rig up while it runs: updateMode
+-- hands the frame back to first person the instant the player crosses the
+-- arena's edge, and without this hold the camera would cut to the character's
+-- eyes while it was still thirty studs in the air.
+local function applyBirdseye()
+	local now = os.clock()
+	local dt = math.clamp(now - birdseyeAt, 0, 0.25)
+	birdseyeAt = now
+
+	local target = if birdseye then 1 else 0
+	birdseyeBlend += (target - birdseyeBlend) * (1 - math.exp(-dt / BIRDSEYE_EASE_TAU))
+	if math.abs(target - birdseyeBlend) < BIRDSEYE_SETTLED then
+		birdseyeBlend = target
+	end
+
+	if birdseyeBlend <= 0 then
+		if birdseyeHiding then
+			birdseyeHiding = false
+			Viewmodel.setHidden(thirdPerson)
+		end
+		return
+	end
+
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	local camera = Workspace.CurrentCamera
+	if not root or not root:IsA("BasePart") or not camera then
+		return
+	end
+
+	-- The zoom pin travels with the blend, so arriving dollies out from
+	-- wherever the camera was instead of cutting to a fixed distance, and
+	-- leaving reels it back in. Same pinned-range trick as lockThirdPerson:
+	-- the mode is what the game says it is, not what was last scrolled to.
+	if player.CameraMode ~= Enum.CameraMode.Classic then
+		player.CameraMode = Enum.CameraMode.Classic
+	end
+	local pinned = 0.5 + (BIRDSEYE_DISTANCE - 0.5) * birdseyeBlend
+	if player.CameraMaxZoomDistance ~= pinned then
+		player.CameraMinZoomDistance = pinned
+		player.CameraMaxZoomDistance = pinned
+	end
+	birdseyeHiding = true
+	Viewmodel.setHidden(true)
+
+	camera.CFrame = camera.CFrame:Lerp(birdseyeFrame(root, camera.CFrame, character :: Model), birdseyeBlend)
+end
+
 -- Which mode this place wants, from where the character is standing.
 local function updateMode()
 	local character = player.Character
@@ -91,6 +270,13 @@ local function updateMode()
 	if root then
 		local islandId = Islands.islandAt((root :: BasePart).Position)
 		wanted = islandId ~= nil and THIRD_PERSON_ISLANDS[islandId] == true
+	end
+	-- The birdseye arenas are third person too - a raised variant of it - so
+	-- they answer the same question, and everything third person already does
+	-- (the pinned rig, hiding the viewmodels) holds for them unchanged.
+	birdseye = root ~= nil and inBirdseyeArena((root :: BasePart).Position)
+	if birdseye then
+		wanted = true
 	end
 	if wanted ~= thirdPerson then
 		thirdPerson = wanted
@@ -107,6 +293,8 @@ local function onRenderStep()
 	else
 		lockFirstPerson()
 	end
+	-- ...and last, because it overrides both while it is easing.
+	applyBirdseye()
 	if cursorFree then
 		UserInputService.MouseBehavior = Enum.MouseBehavior.Default
 		UserInputService.MouseIconEnabled = true
