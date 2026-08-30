@@ -118,6 +118,14 @@ BrinejawPath.SWEEP_INNER = 13.0
 BrinejawPath.SWEEP_LOW = 1.6
 BrinejawPath.SWEEP_HIGH = 8.5
 
+-- How far off the coil's bearing the head can swing to watch someone. A
+-- cone, not free rotation: the neck is anchored to the top coil.
+BrinejawPath.HEAD_TURN = math.rad(75)
+
+local function wrapAngle(a: number): number
+	return (a + math.pi) % (math.pi * 2) - math.pi
+end
+
 local function smoothstep(x: number): number
 	x = math.clamp(x, 0, 1)
 	return x * x * (3 - 2 * x)
@@ -161,8 +169,19 @@ local function restPoint(state, t: number): Vector3
 		-- control point sets the head's carry angle, so the skull looks out
 		-- over the sand instead of at the sky.
 		local u = t / rest.NECK_END
-		local theta = rest.BEARING - 0.8
-		local headY = rest.HEAD_Y - drop
+		local time = state.time or 0
+		-- IT WATCHES YOU. `faceAngle` tracks the nearest player (turn-rated
+		-- by the server), but the neck is still wrapped round a lighthouse,
+		-- so the swing is clamped to a cone off the coil's own bearing -
+		-- beyond that it would have to tear off the tower. The slow sway and
+		-- bob on top are what stop an idle colossus reading as a prop: this
+		-- pose holds for most of the fight, and a serpent that never moves
+		-- its head is a statue with a health bar.
+		local anchor = rest.BEARING - 0.8
+		local swing =
+			math.clamp(wrapAngle((state.faceAngle or anchor) - anchor), -BrinejawPath.HEAD_TURN, BrinejawPath.HEAD_TURN)
+		local theta = anchor + swing + math.sin(time * 0.55) * math.rad(7)
+		local headY = rest.HEAD_Y - drop + math.sin(time * 0.83) * 1.2
 		local r = BrinejawPath.spireRadius(headY) + rest.CLEARANCE + rest.HEAD_OUT
 		local top = Vector3.new(math.cos(theta) * r, headY, math.sin(theta) * r)
 		local control = top - Vector3.new(math.cos(theta) * 11.0, 2.5, math.sin(theta) * 11.0)
@@ -233,12 +252,25 @@ function BrinejawPath.pointAt(state, t: number): Vector3
 		point = point:Lerp(slumpPoint(state, t), w)
 	end
 
-	-- Ambient: a slow bulge travelling down the body, so it breathes even
-	-- when nothing is happening. Small enough that the server's analytic
-	-- hit bands do not need to know about it.
+	-- Ambient: a bulge travelling down the body, so it breathes even when
+	-- nothing is happening. The amplitude GROWS toward the tail - a serpent
+	-- is whip-like, and a uniform ripple reads as a wobbling pipe - while
+	-- staying small enough that the server's analytic hit bands can ignore it.
 	local time = state.time or 0
-	local breath = math.sin(t * 9.0 - time * 1.7) * 0.45
+	local breath = math.sin(t * 9.0 - time * 1.7) * (0.45 + 1.05 * t * t)
 	point += Vector3.new(0, breath, 0)
+
+	-- The last tenth flicks sideways: the rattle twitches. This is not
+	-- decoration - it is the only part of the fight you are ever allowed to
+	-- hit, so it has to be the part your eye is drawn to.
+	if t > 0.86 then
+		local k = (t - 0.86) / 0.14
+		local flat = Vector3.new(point.X, 0, point.Z)
+		if flat.Magnitude > 0.01 then
+			local side = Vector3.new(-flat.Z, 0, flat.X).Unit
+			point += side * (math.sin(time * 5.1 + t * 3.0) * 1.7 * k * k)
+		end
+	end
 
 	return (state.center or Vector3.zero) + point
 end
