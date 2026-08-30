@@ -64,8 +64,14 @@ local HEAD_PIECES = { "Head", "Crown", "Crust", "Eyes", "Pupil", "Beak" }
 -- `hump` is doing the heavy lifting: the arch is most of an arm's visible
 -- length, and it is what makes the thing crest out of the water and come
 -- DOWN on the rock rather than poke at it.
-local BOUND = { hump = 26.0, wave = 0.22, breathe = 1.8 }
-local RESTING = { hump = 10.0, wave = 0.12, breathe = 1.2, reach = 36.0, tipY = -16.0 }
+-- `hump` is measured AGAINST THE RADIAL SPAN, not chosen for drama. A bound
+-- arm crosses 20.5 studs (socket 25.5 -> ring 46), and the authored render
+-- arches 0.63 of its span - so 13, not the 26 that was here. At 26 the arm
+-- climbed further than it travelled and read as a fountain, not a limb; it
+-- also spent 76% of its length past 64 degrees of pitch, where ChainPose's
+-- frame goes degenerate. Raise `parts.ring` and these rise with it.
+local BOUND = { hump = 13.0, wave = 0.22, breathe = 1.8 }
+local RESTING = { hump = 7.0, wave = 0.12, breathe = 1.2, reach = 36.0, tipY = -16.0 }
 -- How fast an arm chases its tentacle. TIGHT on the tip, because the tentacle
 -- is not decoration - it rears 13 studs and slams, and an arm that lags that
 -- by half a second is an arm hitting you somewhere it visibly is not. Loose

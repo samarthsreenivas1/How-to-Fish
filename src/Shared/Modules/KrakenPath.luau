@@ -33,7 +33,13 @@ KrakenPath.SEG_SPACING = 2.6 -- and the pitch they were authored to overlap at
 -- How far an arm drops as it leaves the socket, before it starts to climb.
 -- An arm has to come out from UNDER the mantle skirt; one that starts rising
 -- immediately grows out of the head's cheek instead.
-KrakenPath.SKIRT_DROP = 12.6
+--
+-- SCALED TO THE IN-GAME SPAN, which is the trap here. The authored pose in
+-- boss_gen.py reaches 82 studs from an 18-stud socket - 64 studs of radial
+-- room. In the fight the arm only has to get from the socket at 25.5 out to
+-- the tentacle ring at 46, which is TWENTY. Numbers copied across from the
+-- render without rescaling turn a sprawling arm into a vertical fountain.
+KrakenPath.SKIRT_DROP = 5.5
 
 -- How big it is drawn. The arena is 34 studs to the platforms, and the brief
 -- is that the head fills the middle of it: 19.8 x 1.4 = 27.7 studs of half-
