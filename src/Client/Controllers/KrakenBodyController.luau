@@ -66,9 +66,12 @@ local HEAD_PIECES = { "Head", "Crown", "Crust", "Eyes", "Pupil", "Beak" }
 -- DOWN on the rock rather than poke at it.
 local BOUND = { hump = 26.0, wave = 0.22, breathe = 1.8 }
 local RESTING = { hump = 10.0, wave = 0.12, breathe = 1.2, reach = 36.0, tipY = -16.0 }
--- How fast an arm's reach chases its tentacle. Slow enough that a regrown
--- ring sweeps back out instead of popping into place.
-local EASE = { reach = 3.5, tip = 3.5, rise = 2.2, face = 4.0, shape = 2.5 }
+-- How fast an arm chases its tentacle. TIGHT on the tip, because the tentacle
+-- is not decoration - it rears 13 studs and slams, and an arm that lags that
+-- by half a second is an arm hitting you somewhere it visibly is not. Loose
+-- on `shape`, so the arch and sway still ease and a regrown ring sweeps back
+-- out instead of popping into place.
+local EASE = { reach = 12.0, tip = 12.0, rise = 2.2, face = 4.0, shape = 2.5 }
 
 local FALLBACK_COLOR = {
 	Head = Color3.fromRGB(33, 20, 51),

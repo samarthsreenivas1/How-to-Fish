@@ -551,21 +551,23 @@ Bosses.items.rimefang = {
 	enrageBelow = 0.3,
 	enrageCooldownMult = 0.55,
 	enrageDamageMult = 1.4,
-	-- THE FIGHT: stay warm, stay moving. Chill stacks up from the breath and
-	-- the slicks its hunts leave on the surface; the punishes (bergfall,
-	-- shardnova) are generous to a full-speed player and lethal to a chilled
-	-- one. The undersheet hunt is weighted double from phase 2 - the island's
-	-- fishing holes, hunting back.
+	-- THE FIGHT: it hunts you the way orcas actually hunt seals on pack ice.
+	-- The spy-hop picks you out, the wash takes your footing, and the breach
+	-- is the one move that puts it ON the floe with you - beached and
+	-- thrashing for four seconds, which is the only window wide enough to
+	-- kill it in. Damage is not the pressure here; POSITION is: chill from
+	-- the slicks and the wash makes every later dodge slower, and the wash
+	-- itself shoves you toward the holes rather than hurting you.
 	phases = {
-		{ below = 1.0, attacks = { "bite", "frostbreath", "breach" } },
-		{ below = 0.65, attacks = { "bite", "frostbreath", "breach", "undersheet", "undersheet", "bergfall" } },
+		{ below = 1.0, attacks = { "bite", "spyhop", "breach", "wash" } },
+		{ below = 0.65, attacks = { "bite", "breach", "wash", "wash", "flukeslam", "carousel" } },
 		{
 			below = 0.3,
-			attacks = { "bite", "frostbreath", "undersheet", "undersheet", "bergfall", "shardnova", "shardnova" },
+			attacks = { "bite", "breach", "wash", "flukeslam", "carousel", "whiteout", "whiteout" },
 		},
 	},
 	attacks = {
-		-- The needle jaws.
+		-- The jaws, for anyone who stands on its head.
 		bite = {
 			handler = "snap",
 			tell = "snap",
@@ -579,88 +581,100 @@ Bosses.items.rimefang = {
 			cone = math.rad(65),
 			damage = { 58, 82 },
 		},
-		-- Rears up and breathes a freezing jet across an arc: modest damage,
-		-- but everything it touches is CHILLED - and slow is how you die to
-		-- the rest of the kit.
-		frostbreath = {
-			handler = "beam",
+		-- It rises out of the water and LOOKS at someone. No damage: the beat
+		-- where nothing is coming is what makes the rest readable, and the
+		-- mark tells the party who the next move opens on.
+		spyhop = {
+			handler = "spyhop",
 			skin = "frost",
-			windup = 0.9,
-			duration = 2.2,
-			recover = 0.6,
-			cooldown = 7.0,
-			sweep = 100,
-			cone = 18,
-			range = 26,
-			tick = 0.35,
-			damage = { 9, 13 },
-			chill = { mult = 0.55, duration = 1.4 },
+			windup = 1.0,
+			duration = 0.8,
+			recover = 0.7,
+			cooldown = 11.0,
+			rise = 11,
+			radius = 7,
+			hold = 1.1,
 		},
-		-- Launches clear of the water and arcs across the arena - airborne
-		-- mid-leap, then the crash-down ring; the wake it skids out is a
-		-- frost slick that chills anyone crossing it.
+		-- THE punish loop: it leaps clear of the sheet, lands flat on the floe,
+		-- and is BEACHED for four seconds working itself back to water. The
+		-- crash cracks the ice into a chilling slick behind it. `expose` is the
+		-- data field, deliberately - it stamps the cooldown before opening the
+		-- window, where a hand-rolled opener would skip it.
 		breach = {
 			handler = "charge",
 			skin = "frost",
-			windup = 1.1,
+			windup = 1.15,
 			duration = 1.0,
-			recover = 0.9,
-			cooldown = 7.5,
-			length = 40,
-			width = 9,
-			leap = 6,
-			slamRadius = 12,
-			damage = { 55, 78 },
-			trail = { every = 8, radius = 6, duration = 6, slow = 0.5, skin = "frost" },
+			recover = 1.0,
+			cooldown = 8.5,
+			length = 46,
+			width = 11,
+			leap = 9,
+			slamRadius = 15,
+			damage = { 62, 86 },
+			trail = { every = 9, radius = 7, duration = 6, slow = 0.55, skin = "frost" },
+			expose = 4.0,
 		},
-		-- THE signature: it hunts under the ice sheet after your live
-		-- position, bursts up through it, and the shattered surface stays
-		-- behind as a chilling slick. Weighted double from phase 2.
-		undersheet = {
-			handler = "dive",
-			tell = "dive",
-			skin = "frost",
-			windup = 0.6,
-			duration = 2.4,
-			lock = 0.8,
-			recover = 0.9,
-			cooldown = 6.0,
-			speed = 36,
-			radius = 13,
-			damage = { 58, 82 },
-			shatter = { radius = 9, duration = 5.5, slow = 0.5, skin = "frost" },
-		},
-		-- The glacier calves: bergs come down on marked rings around you -
-		-- a long fall you can read, unless you're chilled.
-		bergfall = {
-			handler = "barrage",
-			skin = "frost",
-			windup = 0.8,
-			duration = 2.0,
-			recover = 0.6,
-			cooldown = 8.0,
-			pattern = "scatter",
-			count = 5,
-			spread = 15,
-			arm = 1.3,
-			radius = 8,
-			damage = { 45, 62 },
-		},
-		-- Expanding rings of shattering ice detonate outward from its body:
-		-- cross each band before it blows.
-		shardnova = {
-			handler = "barrage",
+		-- The signature. A wall of slush shouldered across the floe: light
+		-- damage, heavy displacement, and the arena's bergs and frozen whaler
+		-- are cover - anything solid between you and it saves you.
+		wash = {
+			handler = "wash",
+			tell = "gustTell",
 			skin = "frost",
 			windup = 1.2,
-			duration = 2.0,
+			duration = 0.9,
+			recover = 0.8,
+			cooldown = 9.5,
+			radius = 34,
+			cone = math.rad(70),
+			push = 74,
+			damage = { 26, 38 },
+			slick = { radius = 12, duration = 7, slow = 0.6, skin = "frost" },
+		},
+		-- The tail comes up through a hole beside you and hammers down.
+		flukeslam = {
+			handler = "slam",
+			skin = "frost",
+			windup = 0.9,
+			duration = 0.5,
 			recover = 0.7,
-			cooldown = 9.0,
-			pattern = "rings",
-			rings = { 10, 18, 26 },
-			ringWidth = 5,
-			interval = 0.55,
-			arm = 0.55,
-			damage = { 40, 56 },
+			cooldown = 7.5,
+			radius = 24,
+			damage = { 55, 78 },
+		},
+		-- Orcas ring a bait ball and drive it inward. Here the current does
+		-- the driving while bergs of shattered sheet rain on the middle.
+		carousel = {
+			handler = "undertow",
+			skin = "frost",
+			windup = 1.0,
+			duration = 3.2,
+			recover = 0.9,
+			cooldown = 14.0,
+			radius = 30,
+			strength = 26,
+			globEvery = 0.8,
+			globRadius = 7,
+			damage = { 30, 44 },
+		},
+		-- Phase three: the storm closes and icicles come down on marked ground
+		-- under EVERY player at once. The blizzard visual is still owed - the
+		-- arenas render "clear" (WeatherController STANDING_MODES is keyed by
+		-- island), so this currently lands as the strikes alone.
+		whiteout = {
+			handler = "barrage",
+			skin = "frost",
+			windup = 1.1,
+			duration = 2.4,
+			recover = 0.8,
+			cooldown = 16.0,
+			pattern = "everyone",
+			arm = 1.25,
+			radius = 9,
+			extra = 1,
+			spread = 11,
+			damage = { 48, 66 },
 		},
 	},
 }
@@ -898,11 +912,48 @@ Bosses.items.noctyss = {
 
 -- ============================================================ Wreckwater
 -- Admiral Wrack, the Fleet-Eater: the drowned admiral fused into his
--- flagship's bow. His fight is a NAVAL ENGAGEMENT: ranked broadside walls
--- march across the bay, powder kegs drift after you, his dead crew boards
--- over YOUR rail (the island's raid mechanic pointed back at you) - and his
--- gimmick is the fouled anchor: it lands where you stand and CHAINS you to
--- the spot while the next broadside walks in.
+-- flagship's bow, careened on the tidal flat he died on. REDESIGNED
+-- 2026-08-29 from a chase into a BULLET HELL.
+--
+-- He is a STATIC GUN PLATFORM. He never approaches and never roams - `speed`
+-- is 0, which zeroes the only line in updateBoss's prowl branch that moves a
+-- boss, and `standoff` is past the whole shoal so that line is never reached
+-- anyway. Planting him with `speed` rather than with `pose` is deliberate: a
+-- posed boss RETURNS before the prowl branch and therefore never writes
+-- `yaw0`, which would leave bossFacing() frozen on his spawn bearing for the
+-- entire fight. He stays in prowl, so his heading is live and slews at
+-- `turnRate` - slow enough to read, which is the tell for where the guns
+-- point.
+--
+-- THE LOOP. Four gun-deck batteries (`parts`) ring his hull. While any of
+-- them stands he cannot be hurt (the creature row's vulnerableWhen =
+-- "partsDown"), and every pattern's ball count scales with how many are left,
+-- so silencing one visibly thins the screen. Silencing all four stops the
+-- guns dead AND cracks the hull open: a four-second stagger of true silence,
+-- then thin fire from a skeleton crew for the rest of `parts.regrow` while
+-- the hull stays hittable - the melee burst window - and then the decks grow
+-- back and the cycle repeats against a denser phase.
+--
+-- That window is NOT a bespoke opener. It is the shipped partsDown machinery
+-- (the Kraken's), which lives entirely in damage() + kill() + updateBoss's
+-- regrow clock and never touches the attack phase machine - so every pattern
+-- still runs windup -> strike -> recover -> endBossAttack and still writes
+-- its cooldown, silenced or not. A silenced volley emits nothing and changes
+-- nothing else, so the window cannot be farmed.
+--
+-- THE PATTERNS, and the answer to each:
+--   broadside   a ring of slow cannonballs with ONE gap - walk to the gap,
+--               and keep walking, because it rotates every volley.
+--   grapeshot   a fast aimed fan - step out of the cone DURING the tell.
+--   chainshot   spinning linked pairs - the gap inside a pair is the hitbox
+--               and a trap; the lane is between pairs, on the spin's beat.
+--   slewfire    a spiral off the turning deck - read the rotation, walk
+--               against it, cross the arms the short way.
+--   wisps       slow homing lights - keep moving, and orbit a breakwater
+--               hulk tight enough that their turn rate overshoots.
+--   anchorsweep the one big telegraph - a wall across half the arena. The
+--               answer is the other half, and the long windup is the time to
+--               get there.
 Bosses.items.admiral_wrack = {
 	id = "admiral_wrack",
 	name = "Admiral Wrack, the Fleet-Eater",
@@ -910,132 +961,258 @@ Bosses.items.admiral_wrack = {
 	creature = "admiral_wrack",
 	islandId = "wreck",
 	gate = { level = 42 },
-	-- The bay at the island's centre: a single stable water sheet (unlike
-	-- the shifting pools elsewhere), kept clear of the harbor channel that
-	-- opens toward +Z.
-	arena = { offset = Vector3.new(0, 0, -20), radius = 30 },
-	aggro = 95,
-	standoff = 15,
+	-- The Careenage (BossArenas.wreck, model "WrackArena"): he is planted at
+	-- its centre, sand walkable to r 78 around him, six breakwater hulks at
+	-- r 33-52 for cover. `offset` is dead for an arena'd island (BossService
+	-- spawns at the arena centre) and kept only for the shape. `radius` is the
+	-- roam disc - meaningless for a boss that does not roam, but it is also
+	-- what BossService rings the party in at (radius + 8), so 40 lands
+	-- challengers at 48: out among the outer hulks with a clean view of the
+	-- platform and a real approach to make.
+	arena = { offset = Vector3.new(0, 0, -20), radius = 40 },
+	-- THE FOUR GUN DECKS. Planted on an even ring 20 studs out - his hull is
+	-- 14 across, so they read as the gun-deck rail rather than as floating
+	-- targets, and reaching one means coming inside the densest part of every
+	-- pattern. `regrow` is the burst window: 16 seconds of silence and an open
+	-- hull before the decks come back.
+	parts = { row = "wrack_battery", count = 4, ring = 20, regrow = 20 },
+	-- The burst window's shape, read by the Wrack handlers in CreatureService
+	-- (not by the engine): `staggerFor` seconds of true silence the moment the
+	-- last deck falls, then a skeleton crew firing at `windowFire` of normal
+	-- density for the rest of it. The window is a burst you dodge inside, not
+	-- a free damage phase.
+	staggerFor = 4.0,
+	windowFire = 0.3,
+	-- Covers the whole shoal: he must keep firing at anyone still on the sand
+	-- (r 78) or the far edge becomes a rest area.
+	aggro = 110,
+	standoff = 200, -- unreachable on purpose; see the header
 	hitRadius = 7, -- x2.0 scale = 14: half ship, after all
 	submerge = 2.8,
 	riseDepth = 22,
 	riseTime = 4.2,
-	speed = 7,
-	turnRate = math.rad(70),
-	attackGapMin = 0.6,
-	attackGapMax = 1.2,
+	speed = 0, -- PLANTED. The gun platform never takes a step.
+	turnRate = math.rad(34), -- a slow deck slew you can read the guns off
+	attackGapMin = 0.5,
+	attackGapMax = 1.0,
 	enrageBelow = 0.3,
-	enrageCooldownMult = 0.55,
-	enrageDamageMult = 1.4,
-	-- THE FIGHT: position like a sailor. Broadsides come in ranked walls you
-	-- slip between, kegs herd you, the boarding party demands attention -
-	-- and the anchor is the killer: chained in place, every one of those
-	-- becomes unavoidable. Break line of the pattern before he throws it.
+	enrageCooldownMult = 0.6,
+	-- 1.15, not the usual 1.4: damage now arrives as a sustained stream of
+	-- small hits rather than a few big AoEs, and a multiplier on a stream
+	-- compounds far harder than one on a 10-second slam.
+	enrageDamageMult = 1.15,
+	-- THE FIGHT BUILDS. Phase 1 teaches the three readable shapes; phase 2
+	-- layers the trap, the spiral and the big telegraph on top; phase 3 swaps
+	-- three of them for denser variants - more balls, a narrower gap, a
+	-- REVERSED spiral, so the answer you learned has to be re-read.
 	phases = {
-		{ below = 1.0, attacks = { "anchorbite", "broadside", "keelrush" } },
+		{ below = 1.0, attacks = { "grapeshot", "broadside", "wisps" } },
 		{
-			below = 0.6,
-			attacks = { "anchorbite", "broadside", "keelrush", "anchortoss", "boarding", "boarding", "powderkeg" },
+			below = 0.66,
+			attacks = { "grapeshot", "broadside", "chainshot", "slewfire", "wisps", "anchorsweep" },
 		},
 		{
-			below = 0.3,
-			attacks = { "anchorbite", "broadside", "broadside", "anchortoss", "boarding", "powderkeg", "keelrush" },
+			below = 0.33,
+			attacks = {
+				"grapeshotTwin",
+				"broadsideHeavy",
+				"chainshot",
+				"slewfireFast",
+				"wisps",
+				"anchorsweep",
+				"chainshot",
+			},
 		},
 	},
+	-- Every row carries `tell = false`: these handlers draw their own
+	-- telegraph from the bearing they LATCHED at windup start, because the
+	-- stock one is drawn at the boss's pivot before a target is picked, which
+	-- is wrong for a shot that lands eighty studs away.
 	attacks = {
-		-- He swings the fouled anchor like a jaw: slow, huge, his melee.
-		anchorbite = {
-			handler = "snap",
-			tell = "snap",
-			skin = "wreck",
-			windup = 0.85,
-			duration = 0.4,
-			recover = 0.6,
-			cooldown = 2.0,
-			lunge = 14,
-			radius = 18,
-			cone = math.rad(65),
-			damage = { 66, 92 },
-		},
-		-- The signature: a full cannon broadside in RANKED WALLS that march
-		-- across the bay - each rank telegraphed, each a line you step
-		-- between, the whole pattern herding you.
-		broadside = {
-			handler = "barrage",
-			skin = "ember",
-			windup = 0.9,
-			duration = 2.2,
-			recover = 0.6,
-			cooldown = 8.0,
-			pattern = "wall",
-			ranks = 5,
-			width = 26,
-			rankSpacing = 7,
-			startAt = 10,
-			interval = 0.4,
-			arm = 0.55,
-			radius = 6,
+		-- Bread and butter, and the shortest cooldown, so it is also the
+		-- phase list's fallback pick.
+		grapeshot = {
+			handler = "grapeshot",
+			tell = false,
+			skin = "grape",
+			windup = 0.8,
+			duration = 0.45,
+			recover = 0.5,
+			cooldown = 6.0,
+			pellets = 7,
+			fanDeg = 30,
+			speed = 62,
+			spawnAt = 10,
+			radius = 1.6,
+			lifetime = 2.4,
+			tellRange = 70,
 			damage = { 40, 54 },
 		},
-		-- HIS gimmick: the anchor flies at where you stand, and whoever it
-		-- lands on is CHAINED to the spot - a short leash off the anchor
-		-- while the rest of the engagement keeps firing.
-		anchortoss = {
-			handler = "anchortoss",
-			skin = "wreck",
-			windup = 0.9,
-			duration = 0.6,
+		-- Phase 3: wider, and a second burst offset half a pellet so the
+		-- lanes of the first one are exactly where the second one lands.
+		grapeshotTwin = {
+			handler = "grapeshot",
+			tell = false,
+			skin = "grape",
+			windup = 0.7,
+			duration = 0.9,
+			recover = 0.45,
+			cooldown = 6.5,
+			pellets = 9,
+			fanDeg = 38,
+			speed = 66,
+			spawnAt = 10,
+			radius = 1.6,
+			lifetime = 2.4,
+			bursts = 2,
+			burstGap = 0.4,
+			tellRange = 70,
+			damage = { 42, 56 },
+		},
+		-- The signature. Three rings, one gap, the gap walking 46 degrees
+		-- between each - never a divisor of 360, so it never returns to where
+		-- it just was and pre-standing in it cannot work.
+		broadside = {
+			handler = "broadside",
+			tell = false,
+			skin = "cannon",
+			windup = 1.15,
+			duration = 2.5,
+			recover = 0.8,
+			cooldown = 9.0,
+			count = 22,
+			speed = 26,
+			radius = 2.4,
+			spawnAt = 16,
+			markAt = 22,
+			lifetime = 4.2,
+			gapDeg = 34,
+			gapStep = 46,
+			volleys = 3,
+			interval = 1.1,
+			damage = { 44, 58 },
+		},
+		-- Phase 3: four rings, more balls, a gap two thirds the width moving
+		-- further and faster.
+		broadsideHeavy = {
+			handler = "broadside",
+			tell = false,
+			skin = "cannon",
+			windup = 1.0,
+			duration = 3.4,
 			recover = 0.7,
 			cooldown = 10.0,
-			flight = 0.8,
-			radius = 8,
-			damage = { 50, 70 },
-			leash = 13,
-			chainDuration = 3.5,
+			count = 30,
+			speed = 28,
+			radius = 2.4,
+			spawnAt = 16,
+			markAt = 22,
+			lifetime = 4.0,
+			gapDeg = 26,
+			gapStep = 58,
+			volleys = 4,
+			interval = 0.85,
+			damage = { 48, 64 },
 		},
-		-- The boarding party - the island's raids pointed back at you: his
-		-- dead crew comes over YOUR rail. Weighted double in phase 2.
-		boarding = {
-			handler = "brood",
-			tell = "brood",
-			skin = "wreck",
-			windup = 0.8,
-			duration = 0.4,
-			recover = 0.6,
-			cooldown = 9.0,
-			count = 4,
-			rows = { "drowned_boatswain", "cannonball_crab", "wailing_gunner" },
-		},
-		-- Powder kegs roll off the hull and DRIFT AFTER YOU, fuses lit -
-		-- shoot them, outrun them, or feed them to the boarding party.
-		powderkeg = {
-			handler = "decoys",
-			skin = "ember",
-			windup = 0.8,
+		-- The trap. Three pairs across a 120-degree fan, each pair chained
+		-- twelve studs apart and spinning at 126 deg/s - a full turn every
+		-- 2.9 seconds, slow enough to count.
+		chainshot = {
+			handler = "chainshot",
+			tell = false,
+			skin = "chain",
+			windup = 1.0,
 			duration = 0.5,
-			recover = 0.5,
+			recover = 0.7,
 			cooldown = 11.0,
-			count = 4,
-			spread = 16,
-			trigger = 6,
-			blast = 11,
-			lifetime = 14,
-			drift = 4.5,
-			damage = { 50, 68 },
+			pairs = 3,
+			fanDeg = 120,
+			chain = 12,
+			chainRadius = 1.8,
+			spinDeg = 126,
+			speed = 20,
+			radius = 2.4,
+			spawnAt = 14,
+			lifetime = 5.0,
+			tellRange = 60,
+			damage = { 54, 72 },
 		},
-		-- The flagship rams: he heels over and drives the bow through the
-		-- arena in a line, bowsprit first.
-		keelrush = {
-			handler = "charge",
-			skin = "wreck",
-			windup = 1.05,
-			duration = 1.0,
-			recover = 0.9,
-			cooldown = 7.0,
-			length = 42,
-			width = 12,
-			slamRadius = 10,
-			damage = { 62, 85 },
+		-- The sustained one: five seconds of two arms laying spiral lanes.
+		slewfire = {
+			handler = "slewfire",
+			tell = false,
+			skin = "cannon",
+			windup = 1.0,
+			duration = 5.0,
+			recover = 0.8,
+			cooldown = 13.0,
+			arms = 2,
+			every = 0.15,
+			spinDeg = 78,
+			speed = 22,
+			radius = 2.0,
+			spawnAt = 14,
+			lifetime = 4.5,
+			damage = { 32, 42 },
+		},
+		-- Phase 3: three arms, tighter cadence, and the spin REVERSED - the
+		-- direction you learned to walk is now the wrong one.
+		slewfireFast = {
+			handler = "slewfire",
+			tell = false,
+			skin = "cannon",
+			windup = 0.9,
+			duration = 5.6,
+			recover = 0.8,
+			cooldown = 14.0,
+			arms = 3,
+			every = 0.13,
+			spinDeg = -96,
+			speed = 24,
+			radius = 2.0,
+			spawnAt = 14,
+			lifetime = 4.3,
+			damage = { 34, 46 },
+		},
+		-- The one big telegraph. Fifteen heavy balls overlapping across 180
+		-- degrees: a wall, not a pattern - you do not thread it, you leave.
+		-- Nearly two seconds of windup, because the answer is a long walk.
+		anchorsweep = {
+			handler = "anchorsweep",
+			tell = false,
+			skin = "anchor",
+			windup = 1.9,
+			duration = 0.6,
+			recover = 1.1,
+			cooldown = 16.0,
+			count = 15,
+			arcDeg = 180,
+			speed = 18,
+			radius = 3.4,
+			spawnAt = 16,
+			lifetime = 5.0,
+			ripple = 0.05,
+			tellRange = 90,
+			damage = { 78, 104 },
+		},
+		-- Three slow lights that follow you. They barely hurt; what they do
+		-- is take standing still off the table for the next nine seconds.
+		wisps = {
+			handler = "wisps",
+			tell = false,
+			skin = "wisp",
+			windup = 0.7,
+			duration = 0.4,
+			recover = 0.5,
+			cooldown = 13.0,
+			count = 3,
+			speed = 19,
+			homingDeg = 70,
+			radius = 2.2,
+			spawnAt = 12,
+			lifetime = 9,
+			spreadDeg = 360,
+			damage = { 24, 32 },
 		},
 	},
 }
@@ -1102,14 +1279,56 @@ Bosses.items.kraken = {
 	-- whirlpool itself pulls while everything else keeps coming. The
 	-- tentacle-ring loop (parts, above) runs through all of it.
 	phases = {
-		{ below = 1.0, attacks = { "maw", "tentaclelash", "wreckhurl" } },
-		{ below = 0.65, attacks = { "maw", "tentaclelash", "wreckhurl", "stormcall", "inknova" } },
+		{ below = 1.0, attacks = { "maw", "ringwave", "wreckhurl" } },
+		{ below = 0.65, attacks = { "maw", "ringwave", "wreckhurl", "stormcall", "inknova", "tentaclelash" } },
 		{
 			below = 0.4,
-			attacks = { "maw", "tentaclelash", "stormcall", "inknova", "undertow", "wreckhurl" },
+			attacks = {
+				"maw",
+				"ringwave",
+				"closingfist",
+				"tentaclelash",
+				"stormcall",
+				"inknova",
+				"undertow",
+				"wreckhurl",
+			},
 		},
 	},
 	attacks = {
+		-- ARM ATTACKS. These are the only two moves that use the eight arms
+		-- as arms - the boss orders its own ring (CreatureService.commandArm)
+		-- instead of drawing markers on the floor, so what hits you is the
+		-- limb you can see rearing. Neither carries a `damage` field on
+		-- purpose: an arm hits with an arm's force, and the threat is how
+		-- many of them move at once.
+		--
+		-- The opener from full health, so the ring reads as one animal before
+		-- the storm half of the fight starts.
+		ringwave = {
+			handler = "armwave",
+			skin = "ink",
+			windup = 0.7,
+			duration = 2.9,
+			recover = 0.6,
+			cooldown = 9.0,
+			interval = 0.26, -- neighbour to neighbour: the wave's speed
+			windupEach = 0.8,
+			lift = 13,
+		},
+		-- Phase three only. Six arms up at once is the fight's loudest moment
+		-- and it should not be something you have seen twenty times by then.
+		closingfist = {
+			handler = "armgap",
+			skin = "ink",
+			windup = 0.6,
+			duration = 2.8,
+			recover = 0.8,
+			cooldown = 15.0,
+			gap = 3, -- seats left open; the tell is which arms stay down
+			windupEach = 2.0,
+			lift = 16,
+		},
 		-- The hooked beak, from a maw the size of a harbor mouth.
 		maw = {
 			handler = "snap",
@@ -1124,8 +1343,10 @@ Bosses.items.kraken = {
 			cone = math.rad(70),
 			damage = { 70, 95 },
 		},
-		-- The signature: an arm erupts under EVERY player at once - nobody
-		-- spectates the Kraken. The ring under your feet is yours alone.
+		-- Arms erupting out of the WATER under each player - not the eight on
+		-- the ring, which is `ringwave` above. Nobody spectates the Kraken:
+		-- the ring under your feet is yours alone. Held back to phase two now
+		-- that the real arms carry the opening.
 		tentaclelash = {
 			handler = "barrage",
 			skin = "ink",
