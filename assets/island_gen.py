@@ -8255,6 +8255,428 @@ def build_maelstrom():
     return objects
 
 
+# ------------------------------------------- islet: the Lampwright's Workshop
+#
+# LAMPWORK (quest islet; world (13100, -1200), r 55). A bare dark rock on the
+# run down to the trench, and the whole story is told without a word:
+#
+#   * a low stone-and-timber WORKSHOP, open down one side like a forge, so the
+#     benches, the racked lens blanks, the half-built lamp housings, the brass
+#     fittings and the tool rail all read from the water;
+#   * a YARD OF FINISHED LAMPS on posts, on a drying rail and under the eave -
+#     eighteen of them, every size he makes, and EVERY ONE OF THEM DARK;
+#   * THE GREAT LAMP, his masterwork, up on a short iron gantry: taller than a
+#     man, glass-panelled - the twin of the one now burning on Keeper Lumen's
+#     lighthouse, the one he gave away. Dark as well.
+#   * exactly ONE lit window: a single warm square on the seaward gable, the
+#     only light anywhere on this rock (Lampwork_Glow, one material, one box);
+#   * MOTHS thick around that window and dead ones on its sill and at the wall
+#     foot - the tell that something out in the dark came home with the light.
+#
+# NOTHING ON THIS ISLET FLOATS EXCEPT THE MOTHS. Every lamp meets its post,
+# hook or gantry; every bench leg meets the floor; the jetty's plank bottom is
+# set ON the real raycast rock at its root and its posts run to -6. The moths
+# are the ONE intentional exception and live alone in Lampwork_Moths so any
+# "nothing hovers" sweep can exempt exactly that object (and so WorldService
+# can drop it into NON_COLLIDE without touching anything structural).
+#
+# Five objects, exactly:
+#   Lampwork_Base   the rock (stone / splash band / wet) - THE ANCHOR PART
+#   Lampwork_Shop   workshop shell + roof + fittings, gantry, jetty, lamp posts
+#   Lampwork_Lamps  every lamp body, the great lamp, the glass stock
+#   Lampwork_Glow   the one lit window
+#   Lampwork_Moths  the moths (the float exemption)
+
+_ISLET_LAMP_SEED = 5507
+
+# The shop's frame. Local -y is the OPEN forge face and points at Roblox +Z -
+# the bearing you sail in on - so the boat sees straight into the workshop.
+# The one lit window is on the +x gable, which the same approach reads at a
+# three-quarter angle.
+_ISLET_LAMP_SX, _ISLET_LAMP_SY = -6.0, 12.0  # workshop centre (Blender)
+_ISLET_LAMP_HX, _ISLET_LAMP_HY = 10.0, 7.5  # half-extents
+_ISLET_LAMP_T = 0.8  # wall thickness
+_ISLET_LAMP_KNEE = 2.6  # height of the stone lower courses
+_ISLET_LAMP_WALL_H = 9.0  # floor -> wall top
+# The lit window (width along y, height). Deliberately BIG for a 20-stud
+# gable: at 3.4 x 2.8 it foreshortened to ~18px on the sail-in and lost the
+# read to the brass on the yard lamps. It is the only light on the islet and
+# has to win from a boat.
+_ISLET_LAMP_WIN = (4.4, 3.2)
+_ISLET_LAMP_WIN_Z = 3.7  # its sill above the floor
+# The gantry stands on the seaward LEFT quarter, not the right: on the right
+# it sat between the boat and the one lit window and hid it (round-1 preview).
+# From here the sail-in gets all three beats at once - the great lamp dark in
+# the foreground, the yard dark behind it, the window burning on the gable.
+_ISLET_LAMP_GANTRY = (-23.0, -18.0)  # the great lamp's gantry
+_ISLET_LAMP_STAND = (-6.0, -2.5)  # the Lampwright's clear 8x8 pad
+
+# (x, y, post height, lamp radius) - the yard. Hand-placed, not scattered, so
+# every one is provably clear of the shop footprint, the NPC pad, the gantry
+# and the jetty lane, and so the sizes step the way a lampwright's stock would.
+_ISLET_LAMP_YARD = [
+    (12.0, 2.0, 5.6, 0.85),
+    (16.5, 7.0, 4.0, 0.70),
+    (20.5, -2.5, 6.4, 0.95),
+    (6.5, -9.0, 3.4, 0.62),
+    (-2.5, -15.0, 5.9, 0.88),
+    (-9.5, -21.0, 4.6, 0.72),
+    (-22.5, -1.5, 6.1, 0.90),
+    (-24.5, 8.5, 3.8, 0.66),
+    (-20.0, 17.5, 5.2, 0.80),
+    (9.5, 20.5, 4.4, 0.74),
+    (20.0, 14.5, 5.7, 0.86),
+    (-11.5, 24.5, 3.2, 0.60),
+]
+
+
+def _islet_lamp_paint(bm, first, index):
+    """Give every face added since `first` a material slot - how one object
+    carries stone as well as timber, slate and iron (the importer splits it
+    into <Name> / <Name>2 / ..., which is what MESH_COLOR keys)."""
+    for f in list(bm.faces)[first:]:
+        f.material_index = index
+
+
+def _islet_lamp_lamp(bm, x, y, z0, height, radius, i_brass, i_glass):
+    """ONE FINISHED LAMP, standing on (or hung from) whatever is at z0: brass
+    foot, glass drum, brass cap. Built DARK, always - the drum is M_LampGlass,
+    the cold grey-green of an unlit pane, and no lamp on this islet ever gets
+    a face in the Glow object. That is the whole point of the yard."""
+    foot = height * 0.16
+    body = height * 0.58
+    first = len(bm.faces)
+    add_post(bm, x, y, z0, z0 + foot, radius * 0.92, sides=6)
+    _islet_lamp_paint(bm, first, i_brass)
+    first = len(bm.faces)
+    add_post(bm, x, y, z0 + foot - 0.03, z0 + foot + body, radius, sides=6)
+    _islet_lamp_paint(bm, first, i_glass)
+    first = len(bm.faces)
+    add_cone(bm, (x, y, z0 + foot + body - 0.05), radius * 1.2, radius * 0.24, height - foot - body, sides=6)
+    _islet_lamp_paint(bm, first, i_brass)
+
+
+def _islet_lamp_moth(bm, x, y, z, s, yaw, dihedral):
+    """One pale moth: a stubby body and two broad wings held in a V. The wings
+    are ORIENTED QUADS, not axis-aligned boxes - round 1 built them flat and
+    horizontal and the whole cloud read as paper darts seen edge-on from every
+    eye-level camera. `dihedral` is how far the wings are cocked up (0 = flat,
+    the pose the dead ones on the sill are in). THE ONE THING ON THIS ISLET
+    ALLOWED TO HOVER, and it only ever goes into Lampwork_Moths."""
+    add_box(bm, (x, y, z), (s * 0.55, s * 0.18, s * 0.18), yaw=yaw)
+    c = Vector((x, y, z))
+    fwd = Vector((math.cos(yaw), math.sin(yaw), 0.0))
+    side = Vector((-math.sin(yaw), math.cos(yaw), 0.0))
+    for k in (-1, 1):
+        out = (side * (k * math.cos(dihedral)) + Vector((0.0, 0.0, math.sin(dihedral)))) * s
+        root_f = c + fwd * (s * 0.30)
+        root_b = c - fwd * (s * 0.30)
+        _hut_maren_quad_slab(
+            bm,
+            [root_f, root_f + out * 0.95 + fwd * (s * 0.05), root_b + out * 0.80 - fwd * (s * 0.18), root_b],
+            s * 0.05,
+        )
+
+
+def build_islet_lampwork():
+    """The Lampwright's Workshop. Deterministic on its own Random(5507), and
+    the shared stream is saved and handed back exactly as found (the hut
+    builders' rule) so adding this islet cannot move one prop on any island
+    that builds after it."""
+    shared_state = random.getstate()
+    rng = random.Random(_ISLET_LAMP_SEED)
+
+    base = build_island_base("Lampwork_Base", ["M_LampStone", "M_LampShore", "M_LampWet"])
+    ground = _ground_bvh(base)
+
+    def gz(x, y):
+        """The REAL faceted rock under a point - raycast, never the smooth
+        profile, so the crag on the shoulder can't leave the jetty in the air."""
+        g = _drop_to_ground(ground, x, y)
+        return g if g is not None else height_at(x, y)
+
+    shop, lamps, glow, moths = bmesh.new(), bmesh.new(), bmesh.new(), bmesh.new()
+    WALL, TIMBER, SLATE, IRON = 0, 1, 2, 3  # Lampwork_Shop slots
+    BRASS, GLASS = 0, 1  # Lampwork_Lamps slots
+
+    def box(bm, center, size, index=0, yaw=0.0):
+        first = len(bm.faces)
+        add_box(bm, center, size, yaw=yaw)
+        _islet_lamp_paint(bm, first, index)
+
+    def post(bm, x, y, z0, z1, r, index=0, sides=6):
+        first = len(bm.faces)
+        add_post(bm, x, y, z0, z1, r, sides=sides)
+        _islet_lamp_paint(bm, first, index)
+
+    def cone(bm, center, r0, r1, h, index=0, sides=6, tilt=(0.0, 0.0), yaw=0.0):
+        first = len(bm.faces)
+        add_cone(bm, center, r0, r1, h, sides=sides, tilt=tilt, yaw=yaw)
+        _islet_lamp_paint(bm, first, index)
+
+    def slab(bm, corners, thickness, index=0):
+        first = len(bm.faces)
+        _hut_maren_quad_slab(bm, corners, thickness)
+        _islet_lamp_paint(bm, first, index)
+
+    SX, SY = _ISLET_LAMP_SX, _ISLET_LAMP_SY
+    HX, HY = _ISLET_LAMP_HX, _ISLET_LAMP_HY
+    T, KNEE, WH = _ISLET_LAMP_T, _ISLET_LAMP_KNEE, _ISLET_LAMP_WALL_H
+    FRONT, BACK = SY - HY, SY + HY  # FRONT (-y) is the open forge face
+    LEFT, RIGHT = SX - HX, SX + HX  # RIGHT (+x) is the gable with the window
+
+    # The floor is LEVEL, and level at the HIGHEST rock under the footprint,
+    # so the ledge can never heave up through the boards; the plinth below
+    # swallows the fall to the low corner.
+    FLOOR = max(gz(SX + dx, SY + dy) for dx in (-HX, -HX / 2, 0.0, HX / 2, HX)
+                for dy in (-HY, -HY / 2, 0.0, HY / 2, HY)) + 0.10
+
+    # ---- shell: stone plinth, stone knee courses, timber boarding above ----
+    box(shop, (SX, SY, FLOOR - 0.75), (2 * HX + 1.8, 2 * HY + 1.8, 1.7), WALL)
+    box(shop, (SX, SY, FLOOR - 0.18), (2 * (HX - T), 2 * (HY - T), 0.42), TIMBER)
+
+    KZ, KM = FLOOR + (KNEE - 0.15) / 2, KNEE + 0.15  # walls foot 0.15 INTO the floor
+    box(shop, (SX, BACK - T / 2, KZ), (2 * HX, T, KM), WALL)
+    box(shop, (LEFT + T / 2, SY, KZ), (T, 2 * HY, KM), WALL)
+    box(shop, (RIGHT - T / 2, SY, KZ), (T, 2 * HY, KM), WALL)
+    for s in (-1, 1):  # short returns leave a 12-stud opening on the forge face
+        box(shop, (SX + s * (HX - 2.0), FRONT + T / 2, KZ), (4.0, T, KM), WALL)
+
+    UZ, UM = FLOOR + KNEE + (WH - KNEE) / 2, WH - KNEE
+    box(shop, (SX, BACK - T / 2, UZ), (2 * HX, T, UM), TIMBER)
+    box(shop, (LEFT + T / 2, SY, UZ), (T, 2 * HY, UM), TIMBER)
+
+    # The +x gable carries the ONE window: boards under it, over it and to
+    # each side, so the lit square is a real hole in a real wall.
+    WW, WHG = _ISLET_LAMP_WIN
+    W0, W1 = FLOOR + _ISLET_LAMP_WIN_Z, FLOOR + _ISLET_LAMP_WIN_Z + WHG
+    box(shop, (RIGHT - T / 2, SY, (FLOOR + KNEE + W0) / 2), (T, 2 * HY, W0 - FLOOR - KNEE), TIMBER)
+    box(shop, (RIGHT - T / 2, SY, (W1 + FLOOR + WH) / 2), (T, 2 * HY, FLOOR + WH - W1), TIMBER)
+    for s in (-1, 1):
+        y0, y1 = SY + s * WW / 2, SY + s * HY
+        box(shop, (RIGHT - T / 2, (y0 + y1) / 2, (W0 + W1) / 2), (T, abs(y1 - y0), WHG), TIMBER)
+
+    # Open face: three posts and a header, so the roof is genuinely carried.
+    for px in (LEFT + 0.45, SX - 4.0, RIGHT - 0.45):
+        box(shop, (px, FRONT + 0.45, FLOOR + WH / 2), (0.75, 0.75, WH), TIMBER)
+    box(shop, (SX, FRONT + 0.45, FLOOR + WH - 0.5), (2 * HX + 1.2, 0.85, 1.0), TIMBER)
+
+    # ---- slate roof: a shallow gable, five courses a side ----
+    RIDGE_Z, EAVE_Z, EAVE_Y = FLOOR + WH + 3.4, FLOOR + WH - 0.35, HY + 1.6
+    RX0, RX1 = LEFT - 1.2, RIGHT + 1.2
+    for s in (-1, 1):
+        for k in range(5):
+            t0 = k / 5.0
+            t1 = (k + 1) / 5.0 + (0.0 if k == 4 else 0.06)
+            ya, za = SY + s * EAVE_Y * t0, RIDGE_Z + (EAVE_Z - RIDGE_Z) * t0
+            yb, zb = SY + s * EAVE_Y * t1, RIDGE_Z + (EAVE_Z - RIDGE_Z) * t1
+            slab(shop, [(RX0, ya, za), (RX1, ya, za), (RX1, yb, zb), (RX0, yb, zb)], 0.34, SLATE)
+    box(shop, (SX, SY, RIDGE_Z + 0.18), (2 * HX + 1.6, 1.5, 0.55), SLATE)
+    for gx in (LEFT + 0.4, RIGHT - 0.4):  # gable tie beams, stopped inside the eaves
+        box(shop, (gx, SY, FLOOR + WH + 0.6), (0.5, 2 * HY - 0.4, 0.5), TIMBER)
+
+    # ---- the annealing kiln, COLD: no ember, no glow. Only the window burns.
+    KX, KY = LEFT + 2.6, BACK - 2.4
+    box(shop, (KX, KY, FLOOR + 1.75), (3.6, 3.0, 3.5), WALL)
+    box(shop, (KX, KY - 1.55, FLOOR + 1.5), (2.0, 0.35, 2.0), IRON)
+    post(shop, KX, KY, FLOOR + 3.3, RIDGE_Z + 2.6, 0.85, WALL)
+
+    # ---- benches, shelf, tool rail, stool (every leg down to the boards) ----
+    BENCH_TOP = FLOOR + 3.0
+    box(shop, (-3.9, BACK - T - 1.6, BENCH_TOP - 0.25), (14.2, 3.0, 0.5), TIMBER)
+    for lx in (-10.2, -3.9, 2.4):
+        box(shop, (lx, BACK - T - 1.6, FLOOR + 1.28), (0.55, 2.6, 2.55), TIMBER)
+    box(shop, (LEFT + T + 1.4, SY - 2.2, BENCH_TOP - 0.25), (2.8, 9.0, 0.5), TIMBER)
+    for ly in (SY - 6.2, SY - 2.2, SY + 1.8):
+        box(shop, (LEFT + T + 1.4, ly, FLOOR + 1.28), (2.4, 0.55, 2.55), TIMBER)
+    box(shop, (RIGHT - T - 1.5, SY - 0.5, BENCH_TOP - 0.25), (3.0, 9.0, 0.5), TIMBER)
+    for ly in (SY - 4.2, SY + 3.2):
+        box(shop, (RIGHT - T - 1.5, ly, FLOOR + 1.28), (2.6, 0.55, 2.55), TIMBER)
+
+    box(shop, (-3.9, BACK - T - 0.8, FLOOR + 6.3), (13.0, 1.4, 0.32), TIMBER)
+    for bx in (-9.5, -3.9, 1.7):
+        box(shop, (bx, BACK - T - 0.5, FLOOR + 5.6), (0.4, 0.8, 1.4), TIMBER)
+    box(shop, (-3.9, BACK - T - 0.35, FLOOR + 5.05), (12.0, 0.24, 0.24), IRON)
+    for k in range(8):  # tools hanging off the rail
+        ln = 0.9 + (k % 4) * 0.42
+        box(shop, (-9.2 + k * 1.55, BACK - T - 0.35, FLOOR + 5.05 - ln / 2), (0.18, 0.18, ln), IRON)
+    box(shop, (RIGHT - 4.6, SY - 0.5, FLOOR + 2.05), (1.6, 1.6, 0.3), TIMBER)
+    for ox, oy in ((-0.55, -0.55), (0.55, -0.55), (-0.55, 0.55), (0.55, 0.55)):
+        box(shop, (RIGHT - 4.6 + ox, SY - 0.5 + oy, FLOOR + 1.0), (0.24, 0.24, 2.0), TIMBER)
+
+    # ---- the one window: frame, projecting sill, iron muntins, and the pane
+    box(shop, (RIGHT + 0.12, SY, W0 - 0.28), (0.5, WW + 1.1, 0.55), TIMBER)
+    box(shop, (RIGHT + 0.12, SY, W1 + 0.28), (0.5, WW + 1.1, 0.55), TIMBER)
+    for s in (-1, 1):
+        box(shop, (RIGHT + 0.12, SY + s * (WW / 2 + 0.28), (W0 + W1) / 2), (0.5, 0.55, WHG + 1.1), TIMBER)
+    SILL_TOP = W0 - 0.26  # the ledge the dead moths lie on
+    box(shop, (RIGHT + 0.75, SY, SILL_TOP - 0.16), (1.9, WW + 1.6, 0.32), TIMBER)
+    box(shop, (RIGHT + 0.36, SY, (W0 + W1) / 2), (0.22, 0.2, WHG), IRON)
+    box(shop, (RIGHT + 0.36, SY, (W0 + W1) / 2), (0.22, WW, 0.2), IRON)
+    for bz_ in (FLOOR + KNEE + 0.5, FLOOR + WH - 0.9):  # battens, so the gable isn't one blank board
+        box(shop, (RIGHT + 0.08, SY, bz_), (0.4, 2 * HY - 0.6, 0.34), TIMBER)
+    add_box(glow, (RIGHT - T / 2, SY, (W0 + W1) / 2), (T + 0.5, WW, WHG))
+
+    # ---- the gantry, and THE GREAT LAMP on top of it ----
+    GX, GY = _ISLET_LAMP_GANTRY
+    BZ0 = gz(GX, GY) - 0.4
+    PLAT = max(gz(GX + dx, GY + dy) for dx in (-3.2, 0.0, 3.2) for dy in (-3.2, 0.0, 3.2)) + 8.2
+    for sx_, sy_ in ((-1, -1), (1, -1), (-1, 1), (1, 1)):
+        bx, by = GX + sx_ * 3.2, GY + sy_ * 3.2
+        bz = gz(bx, by) - 0.4  # every leg foots INTO the rock
+        d = Vector((GX + sx_ * 1.7 - bx, GY + sy_ * 1.7 - by, PLAT - bz))
+        cone(shop, (bx, by, bz), 0.34, 0.26, d.length, IRON, sides=4, tilt=_tilt_toward(d.normalized()))
+    box(shop, (GX, GY, PLAT + 0.35), (5.4, 5.4, 0.7), IRON)
+    for k in range(6):  # the ladder he climbs to service it, on the seaward face
+        f = 0.14 + k * 0.14
+        w = 3.2 - 1.5 * f
+        box(shop, (GX, GY - w, BZ0 + (PLAT - BZ0) * f), (2 * w * 0.92, 0.22, 0.22), IRON)
+    for ang in (0.0, math.pi / 2, math.pi):  # girth braces on the other three faces
+        w = 3.2 - 1.5 * 0.55
+        box(shop, (GX + math.cos(ang) * w, GY + math.sin(ang) * w, BZ0 + (PLAT - BZ0) * 0.55),
+            (0.3 if abs(math.cos(ang)) > 0.5 else 2 * w, 2 * w if abs(math.cos(ang)) > 0.5 else 0.3, 0.3), IRON)
+
+    LZ = PLAT + 0.7  # the platform's top face - the great lamp SITS on it
+    post(lamps, GX, GY, LZ - 0.05, LZ + 1.0, 2.3, BRASS, sides=8)
+    post(lamps, GX, GY, LZ + 0.95, LZ + 5.4, 2.0, GLASS, sides=8)
+    for k in range(4):
+        aa = k * math.pi / 2 + math.pi / 4
+        box(lamps, (GX + math.cos(aa) * 1.95, GY + math.sin(aa) * 1.95, LZ + 3.15), (0.34, 0.34, 4.5), BRASS, yaw=aa)
+    post(lamps, GX, GY, LZ + 2.9, LZ + 3.4, 2.14, BRASS, sides=8)
+    cone(lamps, (GX, GY, LZ + 5.3), 2.5, 0.45, 1.7, BRASS, sides=8)
+    post(lamps, GX, GY, LZ + 6.9, LZ + 7.8, 0.28, BRASS, sides=4)
+
+    # ---- the yard: twelve lamps on posts, three on a drying rail, three
+    # under the eave. Eighteen finished lamps, and not one of them is lit.
+    for lx, ly, ph, lr in _ISLET_LAMP_YARD:
+        g = gz(lx, ly)
+        post(shop, lx, ly, g - 0.35, g + ph, 0.3, TIMBER, sides=4)
+        _islet_lamp_lamp(lamps, lx, ly, g + ph - 0.06, lr * 3.2, lr, BRASS, GLASS)
+
+    RAIL_Y = -5.0
+    RAIL_Z = max(gz(-21.0, RAIL_Y), gz(-13.0, RAIL_Y)) + 6.2
+    for rx in (-21.0, -13.0):
+        post(shop, rx, RAIL_Y, gz(rx, RAIL_Y) - 0.35, RAIL_Z, 0.32, TIMBER, sides=4)
+    box(shop, (-17.0, RAIL_Y, RAIL_Z - 0.18), (8.6, 0.35, 0.35), TIMBER)
+    for hx, hl, hr in ((-19.4, 1.5, 0.66), (-17.0, 2.3, 0.82), (-14.6, 1.1, 0.56)):
+        box(shop, (hx, RAIL_Y, RAIL_Z - 0.35 - hl / 2), (0.2, 0.2, hl), IRON)
+        _islet_lamp_lamp(lamps, hx, RAIL_Y, RAIL_Z - 0.35 - hl - hr * 3.2 + 0.06, hr * 3.2, hr, BRASS, GLASS)
+
+    EAVE_HOOK_Z = FLOOR + WH - 1.0
+    for hx, hl, hr in ((-13.5, 1.9, 0.62), (-7.5, 2.7, 0.78), (-1.0, 1.4, 0.54)):
+        box(shop, (hx, FRONT + 0.45, EAVE_HOOK_Z - hl / 2), (0.2, 0.2, hl), IRON)
+        _islet_lamp_lamp(lamps, hx, FRONT + 0.45, EAVE_HOOK_Z - hl - hr * 3.2 + 0.06, hr * 3.2, hr, BRASS, GLASS)
+
+    # ---- glass stock: lens blanks racked ON EDGE along the back bench, and a
+    # crate of rounds out in the yard, delivered and never fitted. Both read as
+    # discs face-on from the open side (round 1 spaced them too tight and the
+    # bench rack fused into a ridge, the outside stack into a boulder).
+    for k in range(5):
+        cone(lamps, (-8.2 + k * 1.5, BACK - T - 0.7, BENCH_TOP + 0.88), 0.88, 0.85, 0.24, GLASS,
+             sides=8, tilt=(math.pi / 2, 0.0))
+    CX_, CY_ = 2.6, 0.5
+    cg = gz(CX_, CY_)
+    box(shop, (CX_, CY_, cg + 0.18), (3.4, 2.4, 0.36), TIMBER)
+    for sy_ in (-1, 1):
+        box(shop, (CX_, CY_ + sy_ * 1.1, cg + 0.9), (3.4, 0.24, 1.3), TIMBER)
+    for sx_ in (-1, 1):
+        box(shop, (CX_ + sx_ * 1.6, CY_, cg + 0.9), (0.24, 2.4, 1.3), TIMBER)
+    for k in range(3):
+        cone(lamps, (CX_ - 0.95 + k * 0.95, CY_ + 0.55, cg + 0.36 + 0.76), 0.76, 0.74, 0.22, GLASS,
+             sides=8, tilt=(math.pi / 2, 0.0))
+
+    # ---- half-built lamp housings on the bench under the window: brass
+    # frames with the panes not yet fitted. The work he is still doing.
+    for hy_, hs in ((SY - 3.2, 0.95), (SY + 0.6, 1.2), (SY + 3.6, 0.8)):
+        bx = RIGHT - T - 1.5
+        post(lamps, bx, hy_, BENCH_TOP, BENCH_TOP + 0.28, hs * 0.9, BRASS, sides=6)
+        for k in range(4):
+            aa = k * math.pi / 2 + math.pi / 4
+            box(lamps, (bx + math.cos(aa) * hs * 0.85, hy_ + math.sin(aa) * hs * 0.85, BENCH_TOP + 0.28 + hs * 1.1),
+                (0.2, 0.2, hs * 2.2), BRASS, yaw=aa)
+        box(lamps, (bx + hs * 0.6, hy_, BENCH_TOP + 0.28 + hs * 1.1), (0.12, hs * 1.2, hs * 1.9), GLASS)
+
+    # ---- brass fittings loose on the back bench ----
+    for k in range(8):
+        box(lamps, (rng.uniform(-9.0, 2.0), BACK - T - 1.6 + rng.uniform(-1.0, 1.0), BENCH_TOP + 0.22),
+            (rng.uniform(0.3, 0.6), rng.uniform(0.3, 0.6), 0.44), BRASS, yaw=rng.uniform(0, math.tau))
+
+    # ---- the jetty. Root plank bottom is set ON the real raycast rock, the
+    # deck runs 4 studs INLAND of that so it bites in, and every post runs to
+    # -6 through the water. Nothing here is height_at-guessed.
+    lane = -math.pi / 2  # Blender -y = Roblox +Z, the bearing home lies on
+
+    def lane_pt(u):
+        r = ring_radius(u, lane)
+        return math.cos(lane) * r, math.sin(lane) * r
+
+    u_root = 0.84
+    while u_root < 1.06 and gz(*lane_pt(u_root)) > 3.4:
+        u_root += 0.01
+    jx0, jy0 = lane_pt(u_root)
+    DECK_Z = gz(jx0, jy0) + 0.56
+    jy_in = jy0 + 4.0
+    jy1 = -(ring_radius(1.0, lane) + 15.0)
+    box(shop, (0.0, (jy_in + jy1) / 2, DECK_Z - 0.28), (5.2, jy_in - jy1, 0.56), TIMBER)
+    for sx_ in (-2.1, 2.1):
+        box(shop, (sx_, (jy_in + jy1) / 2, DECK_Z - 0.85), (0.5, jy_in - jy1, 0.6), TIMBER)
+    span = (jy0 - 1.0) - (jy1 + 1.2)
+    for k in range(4):
+        py = (jy0 - 1.0) - span * k / 3.0
+        for sx_ in (-2.1, 2.1):
+            post(shop, sx_, py, -6.0, DECK_Z - 0.45, 0.42, TIMBER)
+    post(shop, 0.0, jy1 + 1.6, DECK_Z - 0.4, DECK_Z + 2.2, 0.45, TIMBER)  # the bollard
+    for sx_ in (-2.3, 2.3):  # mooring cleats
+        box(shop, (sx_, jy1 + 6.0, DECK_Z + 0.34), (0.55, 1.6, 0.45), IRON)
+
+    # ---- MOTHS. Thick at the pane, thinning outward; six dead on the sill
+    # and three more at the wall foot. The only things on this rock that hover.
+    wx, wy, wz = RIGHT + 0.5, SY, (W0 + W1) / 2
+    for k in range(26):
+        mx = wx + 0.28 + (rng.random() ** 1.9) * 3.6
+        my = wy + max(-2.4, min(2.4, rng.gauss(0.0, 1.15)))
+        mz = wz + max(-2.3, min(2.3, rng.gauss(0.0, 1.05)))
+        _islet_lamp_moth(moths, mx, my, mz, rng.uniform(0.46, 0.78), rng.uniform(0, math.tau), rng.uniform(0.35, 1.15))
+    for k in range(6):  # dead on the sill, wings flat
+        s = rng.uniform(0.44, 0.66)
+        _islet_lamp_moth(moths, RIGHT + rng.uniform(0.3, 1.4), SY + rng.uniform(-2.1, 2.1),
+                         SILL_TOP + s * 0.10, s, rng.uniform(0, math.tau), rng.uniform(0.0, 0.22))
+    for k in range(4):  # and more at the foot of the wall
+        s = rng.uniform(0.42, 0.62)
+        gx_, gy_ = RIGHT + rng.uniform(0.9, 3.0), SY + rng.uniform(-3.0, 3.0)
+        _islet_lamp_moth(moths, gx_, gy_, gz(gx_, gy_) + s * 0.10, s, rng.uniform(0, math.tau), rng.uniform(0.0, 0.22))
+
+    objects = [
+        base,
+        object_from_bmesh("Lampwork_Shop", shop, ["M_LampWall", "M_LampTimber", "M_LampSlate", "M_LampIron"]),
+        object_from_bmesh("Lampwork_Lamps", lamps, ["M_LampBrass", "M_LampGlass"]),
+        object_from_bmesh("Lampwork_Glow", glow, ["M_LampWindow"]),
+        object_from_bmesh("Lampwork_Moths", moths, ["M_LampMoth"]),
+    ]
+
+    stand = _ISLET_LAMP_STAND
+    pad = [gz(stand[0] + dx, stand[1] + dy) for dx in (-4.0, 0.0, 4.0) for dy in (-4.0, 0.0, 4.0)]
+    print(
+        f"[island_gen] HANDOFF lampwork (the Lampwright's Workshop): floor Y={FLOOR:.1f}, "
+        f"open forge face at (Roblox rel) X={SX:.0f} Z={-FRONT:.0f}; "
+        f"NPC stand (Roblox rel) X={stand[0]:.0f} Z={-stand[1]:.0f} ground Y={gz(*stand):.1f} "
+        f"- 8x8 pad, fall {max(pad) - min(pad):.2f} studs corner to corner, 2.1 studs off the plinth, "
+        f"nearest yard lamp {min(math.hypot(lx - stand[0], ly - stand[1]) for lx, ly, _p, _r in _ISLET_LAMP_YARD):.1f} studs"
+    )
+    print(
+        f"[island_gen] HANDOFF lampwork: jetty head (Roblox rel) X=0 Z={-jy1:.0f}, deck top Y={DECK_Z:.1f}; "
+        f"great lamp on its gantry at X={GX:.0f} Z={-GY:.0f}, glass base Y={LZ:.1f}, finial Y={LZ + 7.8:.1f} - DARK; "
+        f"18 yard lamps, all dark; ONE lit window at X={RIGHT:.0f} Z={-SY:.0f} centre Y={(W0 + W1) / 2:.1f}"
+    )
+    low = min(min(v.co.z for v in o.data.vertices) for o in objects if o.data.vertices)
+    keyed = "" if abs(low - SKIRT_BOTTOM) < 0.01 else "  <-- set Islands.luau meshBottom to this"
+    print(f"[island_gen] HANDOFF lampwork: mesh bottom z {low:.2f}{keyed}")
+    print("[island_gen] HANDOFF lampwork: Lampwork_Moths is the ONE intended floating object (moths at the lit window)")
+
+    random.setstate(shared_state)  # hand the shared stream back untouched
+    return objects
+
+
 # ---------------------------------------------------------------- island config
 #
 # Each entry overrides the shape-state globals for its island (an empty
@@ -8264,7 +8686,143 @@ def build_maelstrom():
 # Islands to bundle into the one importable pack (assets/island_pack.glb), in
 # order. Adding an island: give it an ISLANDS entry (with a "model" name) and
 # add its id here.
-ISLAND_ORDER = ["tropical", "volcano", "swamp", "ice", "gloom", "wreck", "maelstrom"]
+# ================================================================ THE BELLBUOY (islet)
+# A single iron sea-bell the size of a room bolted to a rock barely wider than
+# itself, rung by the swell. The bell IS the islet: it has to read as "a bell
+# on a rock" from 300 studs, so it is deliberately oversized against its plinth.
+
+
+def build_islet_bellbuoy():
+    rng = random.Random(5501)
+    state = random.getstate()
+    base = build_island_base("Bellbuoy_Base", ["M_BellRock", "M_BellSplash", "M_BellWet"])
+    bronze, iron = bmesh.new(), bmesh.new()
+
+    # The plinth: a squat dressed block the yoke is bolted through.
+    top = height_at(0.0, 0.0)
+    add_box(bronze if False else iron, (0.0, 0.0, top + 0.8), (11.0, 11.0, 1.6))
+
+    # Two iron standards and the crossbeam the bell swings from.
+    for sx in (-4.2, 4.2):
+        add_box(iron, (sx, 0.0, top + 6.4), (1.5, 1.5, 11.0))
+    add_box(iron, (0.0, 0.0, top + 12.2), (10.6, 1.7, 1.7))
+
+    # The bell itself - a stack of rings flaring to the mouth, then the lip.
+    # Hung HIGH enough that daylight shows under the mouth: a bell resting on
+    # its plinth is a sculpture, a bell with a gap under it is a bell.
+    BELL_TOP = top + 12.0
+    rings = [(0.9, 1.7), (1.7, 2.5), (2.5, 3.2), (3.2, 3.8), (3.8, 4.25), (4.25, 4.55)]
+    z = BELL_TOP
+    for r0, r1 in rings:
+        add_cone(bronze, (0.0, 0.0, z - 1.25), r0, r1, 1.25, sides=12)
+        z -= 1.25
+    add_cone(bronze, (0.0, 0.0, z - 0.9), 4.55, 5.1, 0.9, sides=12)  # the flared lip
+    add_cone(bronze, (0.0, 0.0, BELL_TOP), 0.9, 0.55, 1.6, sides=8)  # the crown
+
+    # Clapper on its chain, hanging inside the mouth.
+    for k in range(5):
+        add_box(iron, (0.0, 0.0, BELL_TOP - 1.1 - k * 1.15), (0.5, 0.5, 1.15))
+    add_cone(iron, (0.0, 0.0, z + 0.4), 1.15, 0.7, 2.0, sides=7)
+
+    # Barnacle crust at the waterline, thickest on the weather side.
+    for _ in range(26):
+        a = rng.uniform(0.0, math.tau)
+        rr = rng.uniform(0.86, 1.0) * ISLAND_RADIUS
+        bx, by = math.cos(a) * rr, math.sin(a) * rr
+        add_cone(iron, (bx, by, height_at(bx, by) + 0.1), rng.uniform(0.3, 0.7), 0.12, rng.uniform(0.3, 0.7), sides=5)
+
+    stand_x, stand_z = 9.0, 0.0
+    print(
+        f"[island_gen] HANDOFF bellbuoy (The Bellbuoy): plinth top Y={top + 1.6:.1f}, bell mouth Y={z:.1f}; "
+        f"NPC stand (Roblox rel) X={stand_x:.0f} Z={-stand_z:.0f} ground Y={height_at(stand_x, stand_z):.1f}"
+    )
+    random.setstate(state)
+    return [
+        base,
+        object_from_bmesh("Bellbuoy_Bell", bronze, ["M_BellBronze"]),
+        object_from_bmesh("Bellbuoy_Iron", iron, ["M_BellIron"]),
+    ]
+
+
+# ================================================================ THE ROOKERY STACK (islet)
+# A guano-white sea stack, every ledge crowded with nesting gulls. The read is
+# CROWDED: dozens of birds, white streaking down the seaward face, nests jammed
+# into every step of the rock.
+
+
+def build_islet_rookery():
+    rng = random.Random(5502)
+    state = random.getstate()
+    base = build_island_base("Rookery_Base", ["M_RookRock", "M_RookGuano", "M_RookWet"])
+    birds, nests = bmesh.new(), bmesh.new()
+
+    def gull(bm, x, y, z, yaw, flying=False):
+        add_cone(bm, (x, y, z), 0.62, 0.24, 1.5, sides=6, tilt=(0.0, 1.3 if flying else 0.25), yaw=yaw)
+        add_cone(bm, (x, y, z + 0.5), 0.34, 0.16, 0.7, sides=5, yaw=yaw)  # head
+        for side in (-1, 1):
+            add_box(
+                bm,
+                (x + math.cos(yaw + side * 1.57) * 0.6, y + math.sin(yaw + side * 1.57) * 0.6, z + 0.45),
+                (1.5 if flying else 0.9, 0.32, 0.16),
+                yaw=yaw,
+            )
+
+    # Birds on every ledge band of the stack, thickest low where the rock is wide.
+    for band, (u, count) in enumerate(((0.30, 9), (0.48, 11), (0.66, 13), (0.82, 10))):
+        for k in range(count):
+            a = rng.uniform(0.0, math.tau)
+            rr = u * ISLAND_RADIUS
+            bx, by = math.cos(a) * rr, math.sin(a) * rr
+            bz = height_at(bx, by)
+            gull(birds, bx, by, bz + 0.4, a + math.pi + rng.uniform(-0.5, 0.5))
+            if rng.random() < 0.45:
+                add_cone(nests, (bx, by, bz + 0.05), 1.0, 0.75, 0.45, sides=7)
+                for e in range(rng.randint(1, 3)):
+                    ea = rng.uniform(0.0, math.tau)
+                    add_cone(
+                        nests,
+                        (bx + math.cos(ea) * 0.3, by + math.sin(ea) * 0.3, bz + 0.4),
+                        0.2,
+                        0.16,
+                        0.3,
+                        sides=5,
+                    )
+
+    # A few in the air off the seaward face, so the stack reads as busy.
+    for k in range(7):
+        a = rng.uniform(0.0, math.tau)
+        rr = rng.uniform(1.05, 1.5) * ISLAND_RADIUS
+        gull(birds, math.cos(a) * rr, math.sin(a) * rr, 26.0 + rng.uniform(-7.0, 9.0), rng.uniform(0, math.tau), flying=True)
+
+    stand_x, stand_z = 0.0, 16.0
+    print(
+        f"[island_gen] HANDOFF rookery (The Rookery Stack): NPC stand (Roblox rel) X={stand_x:.0f} "
+        f"Z={-stand_z:.0f} ground Y={height_at(stand_x, stand_z):.1f}; "
+        f"Rookery_Birds carries 7 gulls in flight - the ONE intended floating object"
+    )
+    random.setstate(state)
+    return [
+        base,
+        object_from_bmesh("Rookery_Nests", nests, ["M_RookNest"]),
+        object_from_bmesh("Rookery_Birds", birds, ["M_RookGull"]),
+    ]
+
+
+ISLAND_ORDER = [
+    "tropical",
+    "volcano",
+    "swamp",
+    "ice",
+    "gloom",
+    "wreck",
+    "maelstrom",
+    # The islets (2026-08-29). APPENDED, never inserted: configure() does not
+    # reset, so every island inherits the previous one's globals and putting a
+    # new id mid-list would reseed every downstream island's scatter.
+    "lampwork",
+    "bellbuoy",
+    "rookery",
+]
 
 ISLANDS = {
     "tropical": {"model": "Island", "overrides": {}, "build": build_tropical},
@@ -8813,6 +9371,204 @@ ISLANDS = {
             },
         },
         "build": build_maelstrom,
+    },
+    # ---- LAMPWORK, the Lampwright's Workshop (quest islet; world
+    # (13100, -1200), r 55). See build_islet_lampwork. APPENDED at the END of
+    # ISLAND_ORDER, never inserted: configure() does NOT reset, so an islet
+    # dropped mid-list would reseed every downstream island's scatter (the
+    # volcano entry's SEED note). For the same reason EVERY shape key this
+    # islet cares about is pinned here explicitly - maelstrom builds just
+    # before it and would otherwise leak its SEED 46, its drowned PROFILE and
+    # its crag settings straight in. SEED goes back to the module default 7,
+    # which is what a standalone `-- out.glb lampwork` build gets, so this
+    # islet is byte-identical alone and in the pack - and so is anything a
+    # later islet appends after it.
+    "bellbuoy": {
+        "model": "Bellbuoy",
+        "overrides": {
+            "SEED": 7,
+            "ISLAND_RADIUS": 45,
+            "SEGMENTS": 36,
+            "GRASS_U": 0.70,
+            "RINGS": [0.0, 0.16, 0.34, 0.52, 0.70, 0.82, 0.92, 1.0, 1.09, 1.28],
+            # A bare knuckle of rock: flat enough on top to bolt a bell to,
+            # then straight down to the sea. Standard -9 skirt.
+            "PROFILE": [
+                (0.00, 6.2),
+                (0.34, 6.0),
+                (0.52, 5.6),
+                (0.70, 4.6),
+                (0.82, 2.6),
+                (0.92, 1.0),
+                (1.00, 0.4),
+                (1.09, -2.0),
+                (1.28, SKIRT_BOTTOM),
+            ],
+            "COAST_TERMS": [(2, 1.6, 0.14), (3, 0.9, 0.08)],
+            "GRASS_TERMS": [(3, 0.8, 0.05)],
+            "CRAG": 1.6,
+            "CRAG_FREQ": 0.07,
+            "CRAG_RADIAL": 0.05,
+            "CRAG_RADIAL_FREQS": (5.0, 3.0),
+            "CRAG_CALM": None,
+            "RIM_FLAT": (0.0, 0.62),
+            "NOTCHES": [],
+            "NOTCH_BAND": None,
+            "PEAK_JAG": 0.0,
+            "PEAK_TERMS": [],
+            "PREVIEW_SHOTS": [
+                ("approach", (58.0, -64.0, 20.0), (0.0, 0.0, 12.0), 32),
+                ("bell", (22.0, -24.0, 14.0), (0.0, 0.0, 11.0), 40),
+            ],
+            "COLORS": {
+                "M_BellRock": (0.278, 0.286, 0.310),
+                "M_BellSplash": (0.376, 0.384, 0.408),
+                "M_BellWet": (0.212, 0.220, 0.243),
+                # Weathered, unpolished: verdigris over old bronze, so the bell
+                # reads as something that has hung here a very long time.
+                "M_BellBronze": (0.404, 0.478, 0.404),
+                "M_BellIron": (0.176, 0.180, 0.196),
+            },
+        },
+        "build": build_islet_bellbuoy,
+    },
+    "rookery": {
+        "model": "Rookery",
+        "overrides": {
+            "SEED": 7,
+            # A STACK is TALL AGAINST ITS FOOTPRINT. The first pass ran 34 studs
+            # high on a 50-stud radius and rendered as a broad dome - a hill
+            # with birds on it. Half the radius, half again the height: now it
+            # stands up out of the water like a column.
+            "ISLAND_RADIUS": 32,
+            "SEGMENTS": 34,
+            "GRASS_U": 0.72,
+            "RINGS": [0.0, 0.12, 0.24, 0.36, 0.48, 0.58, 0.68, 0.78, 0.88, 0.96, 1.0, 1.09, 1.28],
+            # Ledges, not a smooth fall: every RINGS step is a shelf the colony
+            # nests on, so the sides go step / drop / step rather than sloping.
+            "PROFILE": [
+                (0.00, 54.0),
+                (0.12, 53.0),
+                (0.24, 47.0),
+                (0.36, 45.5),
+                (0.48, 36.0),
+                (0.58, 34.5),
+                (0.68, 22.0),
+                (0.78, 20.5),
+                (0.88, 9.0),
+                (0.96, 3.0),
+                (1.00, 1.0),
+                (1.09, -2.2),
+                (1.28, SKIRT_BOTTOM),
+            ],
+            "COAST_TERMS": [(2, 2.2, 0.12), (5, 1.1, 0.07)],
+            "GRASS_TERMS": [(3, 1.6, 0.06)],
+            "CRAG": 2.2,
+            "CRAG_FREQ": 0.06,
+            "CRAG_RADIAL": 0.07,
+            "CRAG_RADIAL_FREQS": (7.0, 4.0),
+            "CRAG_CALM": None,
+            "RIM_FLAT": None,
+            "NOTCHES": [],
+            "NOTCH_BAND": None,
+            "PEAK_JAG": 0.0,
+            "PEAK_TERMS": [],
+            "PREVIEW_SHOTS": [
+                ("approach", (86.0, -96.0, 34.0), (0.0, 0.0, 28.0), 28),
+                ("ledges", (40.0, -44.0, 40.0), (0.0, 0.0, 34.0), 38),
+            ],
+            "COLORS": {
+                "M_RookRock": (0.400, 0.392, 0.376),
+                # The guano band IS the island's colour story: the upper rock
+                # is bleached near-white where the colony sits.
+                "M_RookGuano": (0.878, 0.871, 0.839),
+                "M_RookWet": (0.286, 0.286, 0.278),
+                "M_RookNest": (0.478, 0.404, 0.267),
+                "M_RookGull": (0.925, 0.925, 0.910),
+            },
+        },
+        "build": build_islet_rookery,
+    },
+    "lampwork": {
+        "model": "Lampwork",
+        "overrides": {
+            "SEED": 7,
+            "ISLAND_RADIUS": 55,
+            "SEGMENTS": 44,  # ~8-stud facets on a 55-stud rock: low-poly, still round
+            "GRASS_U": 0.72,  # dark stone above, splash band below - the break IS a ring
+            "RINGS": [0.0, 0.14, 0.30, 0.46, 0.62, 0.72, 0.84, 0.93, 1.0, 1.09, 1.28],
+            # A blunt dark rock with a level top: the whole workshop yard sits
+            # on a ~0.7-stud fall across 40 studs of radius, then the shoulder
+            # drops hard to the waterline. Standard -9 skirt.
+            "PROFILE": [
+                (0.00, 10.2),  # the shelf the workshop and the lamp yard stand on
+                (0.30, 10.0),
+                (0.62, 9.5),
+                (0.72, 8.8),
+                (0.84, 5.4),  # the shoulder falls away
+                (0.93, 2.2),
+                (1.00, 0.7),
+                (1.09, -1.8),
+                (1.28, SKIRT_BOTTOM),
+            ],
+            "COAST_TERMS": [(2, 1.9, 0.13), (3, 0.4, 0.09), (5, 2.7, 0.06)],
+            "GRASS_TERMS": [(2, 1.2, 0.05), (4, 2.4, 0.035)],
+            # Crag ONLY on the shoulder (RIM_FLAT holds u < 0.80 dead level for
+            # the yard), so the rock reads broken from the water while every
+            # prop inland sits on ground height_at describes exactly. The
+            # jetty, which DOES cross the craggy band, raycasts instead.
+            "CRAG": 2.4,
+            "CRAG_FREQ": 0.055,
+            "CRAG_RADIAL": 0.06,
+            "CRAG_RADIAL_FREQS": (6.0, 4.0),
+            "CRAG_CALM": None,
+            "RIM_FLAT": (0.0, 0.80),
+            "NOTCHES": [],
+            "NOTCH_BAND": None,
+            "PEAK_JAG": 0.0,
+            "PEAK_TERMS": [],
+            "PREVIEW_SHOTS": [
+                # The sail-in down the +Z lane (the read that has to land: a
+                # dark rock covered in lamps that are all switched off, and one
+                # window somebody is still working behind), then straight into
+                # the open forge face, then close on the window and its moths.
+                # The sail-in is a THREE-QUARTER off the +x/-y quarter, not a
+                # head-on: that bearing is the only one that puts the great
+                # lamp (dark), the yard (dark) and the ONE lit window in the
+                # same frame, which is the whole read.
+                ("approach", (64.0, -82.0, 17.0), (-6.0, 2.0, 12.0), 30),
+                ("shop", (9.0, -29.0, 15.0), (-6.0, 12.0, 13.5), 34),
+                ("window", (24.0, 1.0, 16.5), (4.2, 12.0, 15.4), 46),
+                ("jetty", (34.0, -66.0, 9.0), (0.0, -44.0, 3.0), 34),
+            ],
+            "COLORS": {
+                # A rock on the run down to the trench: near-black wet basalt,
+                # a paler splash band, and one worked-brass note so the yard of
+                # lamps reads at all against it.
+                "M_LampStone": (0.129, 0.137, 0.169),
+                "M_LampShore": (0.239, 0.239, 0.271),
+                "M_LampWet": (0.169, 0.176, 0.208),
+                "M_LampWall": (0.318, 0.306, 0.306),  # the workshop's dressed stone
+                "M_LampTimber": (0.325, 0.259, 0.204),  # tarred timber: frame, benches, jetty
+                "M_LampSlate": (0.204, 0.212, 0.239),
+                "M_LampIron": (0.157, 0.161, 0.180),  # gantry, hooks, muntins, tools
+                # TARNISHED brass, not polished. Round 1 of the preview had it
+                # at 0.68/0.53/0.26 and every lamp in the yard read as LIT from
+                # the water - the whole point of the islet inverted by one
+                # colour. Dim enough to say "off", warm enough to still pick
+                # the lamps out against the black rock.
+                "M_LampBrass": (0.510, 0.396, 0.208),
+                # DEAD glass. Dark cold grey-green, deliberately nowhere near
+                # the window's warm - a lamp here must never look lit.
+                "M_LampGlass": (0.298, 0.361, 0.376),
+                # THE one light, and the brightest thing on the islet by a
+                # wide margin so nothing else can be mistaken for it (Neon
+                # in-game). Everything above is tuned to lose to this.
+                "M_LampWindow": (1.000, 0.886, 0.588),
+                "M_LampMoth": (0.847, 0.824, 0.757),
+            },
+        },
+        "build": build_islet_lampwork,
     },
 }
 
