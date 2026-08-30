@@ -50,10 +50,14 @@
 --   wrackPop     balls retired this frame. extra = { id, hit = { sid },
 --                gone = { sid } }: `hit` struck someone (burst + sound),
 --                `gone` expired (vanish quietly).
---   wrackTell    a windup. Not yet sent by the server: the tell layer below
---                is written and pooled, and also picks up the boss arsenal's
---                existing `telegraph` kind when it carries one of Wrack's
---                skins, so it lights up either way. See adaptEvent. An
+--   wrackTell    a windup. LIVE since f57abfa: CreatureService fires it once
+--                per pattern from the `windup` hook (guarded by `a.wrackTold`)
+--                in both forms below - wrackRingTell sends shape = "ring",
+--                wrackLaneTell sends shape = "lane" - alongside `coneTell`,
+--                `ringTell` and `mark`, all of which this file handles. The
+--                tell layer also still picks up the boss arsenal's existing
+--                `telegraph` kind when it carries one of Wrack's skins, so it
+--                lights up either way. See adaptEvent. An
 --                optional `id` on it is remembered, so a windup that is
 --                interrupted before it fires can be retracted rather than
 --                left to expire into an attack that never comes

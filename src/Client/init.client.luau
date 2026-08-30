@@ -26,6 +26,7 @@ local ORDER = {
 	"BrinejawBodyController", -- no dependencies; draws the cove serpent's ~100-part body from its replicated pose attributes
 	"KrakenBodyController", -- no dependencies; draws the maelstrom octopus: one head at the arena centre + an arm to each live tentacle
 	"GnashrootBodyController", -- no dependencies; draws the swamp mire-colossus: one body cluster + an arm chain off each shoulder
+	"WrackBodyController", -- no dependencies; places the wreck island's careened flagship as ONE static assembly (no rig, no path module - he never moves)
 	"CreatureVfxController", -- no dependencies; splashes / drips / puffs driven by creature attributes
 	"EquipController", -- no dependencies; 1/2 hotkeys that ask the server to swap hands
 	"CombatController", -- after both melee viewmodels: click/tap swings the equipped weapon (and asks the server to resolve the hit)
