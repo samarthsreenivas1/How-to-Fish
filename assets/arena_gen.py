@@ -477,7 +477,7 @@ def build_brinejaw():
         *build_bj_dressing(rng),
         *build_bj_edge_detail(rng),
     ]
-    print("HANDOFF brinejaw: mesh bottom z %.1f  <-- BossArenas meshBottom (default -9 fits)" % (SKIRT_BOTTOM - 0.5))
+    print("HANDOFF brinejaw: mesh bottom z %.1f  <-- SET BossArenas meshBottom TO THIS (the -9 default lands the arena 0.5 high)" % (SKIRT_BOTTOM - 0.5))
     print(
         "HANDOFF brinejaw: spire base r %.1f (z2..16), waist r ~7.3, top r %.1f at z %.1f"
         " (gallery +2.2, lantern posts to +7.6) - coil stack (boss pass) wraps r ~9.5-12" % (BJ_SPIRE_BASE_R, BJ_SPIRE_TOP_R, BJ_SPIRE_TOP_Z)
@@ -943,7 +943,7 @@ def build_gnashroot():
         build_gn_wisps(rng),
         build_gn_foam(rng),
     ]
-    print("HANDOFF gnashroot: mesh bottom z %.1f  <-- BossArenas meshBottom (default -9 fits)" % (SKIRT_BOTTOM - 0.5))
+    print("HANDOFF gnashroot: mesh bottom z %.1f  <-- SET BossArenas meshBottom TO THIS (the -9 default lands the arena 0.5 high)" % (SKIRT_BOTTOM - 0.5))
     print(
         "HANDOFF gnashroot: mere r %.1f, water z %.1f, bed z %.1f (waded, not swum) - it lies here and rises from it"
         % (GN_MERE_R, GN_MERE_Z, GN_PROFILE[0][1])
@@ -2120,7 +2120,7 @@ def build_wrack():
     ]
     head = math.radians(WK_HEAD_DEG)
     cradle_x, cradle_y = math.cos(head) * WK_CRADLE_R, math.sin(head) * WK_CRADLE_R
-    print("HANDOFF wrack: mesh bottom z %.1f  <-- BossArenas meshBottom (default -9 fits)" % (SKIRT_BOTTOM - 0.5))
+    print("HANDOFF wrack: mesh bottom z %.1f  <-- SET BossArenas meshBottom TO THIS (the -9 default lands the arena 0.5 high)" % (SKIRT_BOTTOM - 0.5))
     print("HANDOFF wrack: walkable sand r 0-%.0f (wet ribbed flat, dished; z ~0.7-1.5), awash flat to r 88" % WK_SAND_R)
     print("HANDOFF wrack: boundary GROUNDED FLEET r %.0f-%.0f, 15 hulls, ring open %.0f deg at the head" % (WK_FLEET_R[0], WK_FLEET_R[1], WK_FLEET_GAP_DEG))
     print("HANDOFF wrack: foam ring r %.0f-%.0f (*_Foam: OceanController rides it), skirt to r 99" % WK_FOAM_R)

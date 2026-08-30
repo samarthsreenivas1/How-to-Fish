@@ -58,6 +58,15 @@ BossArenas.items = {
 		islandId = "tropical",
 		center = Vector3.new(-24000, 0, 0),
 		model = "BrinejawArena",
+		-- arena_gen's HANDOFF prints this as SKIRT_BOTTOM - 0.5. Leaving it to
+		-- the -9 default landed the whole arena 0.5 studs high, which used to
+		-- be shrugged off as cosmetic - it is not. Every height this fight
+		-- reasons about is measured from `sandY`, so a lifted floor shifts the
+		-- sweep bands against the players standing on it, and the procedural
+		-- fallback now builds that profile exactly. Half a stud of daylight
+		-- between the two would put the authored arena and the stand-in back
+		-- to playing differently, which is the whole thing this pass removed.
+		meshBottom = -9.5,
 		palette = {
 			floor = Color3.fromRGB(230, 207, 160), -- sun-bleached sand bar
 			rim = Color3.fromRGB(124, 94, 62), -- driftwood palisade
