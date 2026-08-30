@@ -2128,6 +2128,36 @@ end
 -- A handler without a pose hook just sits at its submerged rest pose.
 local ATTACK_HANDLERS = {}
 
+-- HOW FAR INTO THE STRIKE EACH OF THESE LANDS ITS BLOW.
+--
+-- Named, and read by BOTH the handler that deals the damage and the telegraph
+-- that announces it, because those two were disagreeing and the telegraph was
+-- the one telling the truth about the wrong moment. The stock tell is fired
+-- with `duration = p.windup`, so a client's countdown completes when the
+-- WINDUP ends - but these three handlers deal their damage part-way into the
+-- STRIKE, which happens afterwards. The marker finishes, the player reads it
+-- as over, steps back in, and takes the hit.
+--
+-- Measured on the rows that use them: `ringpulse` at 0.95 of a 1.6s strike
+-- finishes its countdown 1.52 SECONDS before the blow, against a windup of
+-- only 1.8s - so nearly half the time between "warning starts" and "damage
+-- lands" happens after the warning says it is finished. `phantom` is 0.72s
+-- early, the four `lunge` rows 0.22 to 0.32s.
+--
+-- Brinejaw's tail slam had this exact defect and its own constant for it
+-- (`SLAM_IMPACT`); it is not on this table only because its row opts out of
+-- the stock tell and fires its own marker. Any handler added here that
+-- damages mid-strike belongs on this table, or its tell will lie by
+-- construction.
+local PHANTOM_IMPACT = 0.80
+local LUNGE_IMPACT = 0.72
+local RINGPULSE_IMPACT = 0.95
+local HANDLER_IMPACT = {
+	phantom = PHANTOM_IMPACT,
+	lunge = LUNGE_IMPACT,
+	ringpulse = RINGPULSE_IMPACT,
+}
+
 -- ------------------------------------------------------- conducting a ring
 --
 -- A boss with a `parts` ring (the Kraken) does not need a second system to
@@ -2862,7 +2892,7 @@ ATTACK_HANDLERS.phantom = {
 			return
 		end
 		creature.model:PivotTo(poseCFrame(creature, sub + 0.5, 0, math.rad(-12)))
-		if not a.fired and u >= 0.8 then
+		if not a.fired and u >= PHANTOM_IMPACT then
 			a.fired = true
 			local lo, hi = bossRoll(creature, def, p.damage)
 			damagePlayersInCone(creature.pos, bossFacing(creature), p.radius, math.rad(p.cone), false, lo, hi, creature)
@@ -3003,7 +3033,13 @@ local function beginBossAttack(creature, def, name: string, now: number)
 	if p.tell ~= false then
 		fireEvent("telegraph", creature.model:GetPivot().Position, {
 			kind = p.tell or name,
-			duration = p.windup,
+			-- THROUGH the blow, not up to the swing. Most handlers strike the
+			-- instant the windup expires, and for those this is exactly
+			-- `p.windup` as before. The ones that damage part-way into the
+			-- strike are listed in HANDLER_IMPACT, and for them a countdown
+			-- that ended at the windup was inviting the player back in - by up
+			-- to 1.52 seconds. See the note on that table.
+			duration = p.windup + (p.duration or 0) * (HANDLER_IMPACT[p.handler] or 0),
 			radius = p.radius,
 			facing = bossFacing(creature),
 			skin = p.skin,
@@ -3136,7 +3172,7 @@ ATTACK_HANDLERS.lunge = {
 		creature.pos = resolveHorizontal(creature, a.dir * (a.leap / math.max(p.duration, 1e-3)) * dt)
 		local hop = (p.hop or 3) * 4 * u * (1 - u)
 		creature.model:PivotTo(poseCFrame(creature, sub + hop, 0, math.rad(18) * (1 - u)))
-		if not a.fired and u >= 0.72 then
+		if not a.fired and u >= LUNGE_IMPACT then
 			a.fired = true
 			local lo, hi = bossRoll(creature, def, p.damage)
 			damagePlayersInCone(creature.pos, a.dir, p.radius or 6, p.cone or math.rad(60), false, lo, hi, creature)
@@ -3205,7 +3241,7 @@ ATTACK_HANDLERS.ringpulse = {
 		local a = creature.attack
 		creature.model:PivotTo(poseCFrame(creature, sub + 0.9 * (1 - u), 0, 0))
 		if p.invert then
-			if not a.fired and u >= 0.95 then
+			if not a.fired and u >= RINGPULSE_IMPACT then
 				a.fired = true
 				local lo, hi = bossRoll(creature, def, p.damage)
 				damagePlayersInAnnulus(creature.pos, p.safeRadius or 6, p.radius, lo, hi, creature)
