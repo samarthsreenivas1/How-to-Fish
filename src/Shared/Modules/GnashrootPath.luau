@@ -33,6 +33,41 @@
 --
 -- Coordinates are Roblox's (Y up), body-local until `bodyCFrame` places them.
 --
+-- ------------------------------------------- BEFORE THE SERVER HALF LANDS
+--
+-- Three rules from the Brinejaw lane's animation audit (2026-08-30), written
+-- here because this is the file that will be tempted to break them, and the
+-- argument against each is easier to win before anyone is attached to a
+-- prettier version.
+--
+--   * EVERY NUMBER THE HITBOX USES MUST BE A VALUE THE RENDERER ALSO
+--     CONSUMES, NOT ONE IT RECOMPUTES. Send the girth, send the ground
+--     reference, send both clocks. Their drawn arm lagged the damaging arm by
+--     9.3 degrees - 10.8 studs at the tip against a 6.8-stud lane, so past
+--     r=41 the two did not overlap at all.
+--
+--   * NAME THE FRACTION, DO NOT REPEAT IT. Any number the damage code knows
+--     and the drawing code needs is a named constant both read. Their worst
+--     telegraph bug was a bare 0.62 living in a strike handler and simply
+--     ABSENT from the tell - nothing links a literal in one place to an
+--     absence in another, so "which of these two is wrong" was unanswerable.
+--
+--   * THE HONEST DRAWING IS THE ONE THAT LOOKS WORSE. `hammerfall` is a
+--     `slam`, and slam damages in a ring centred on creature.pos - the BODY,
+--     not the fist (CreatureService ATTACK_HANDLERS.slam.fire, verified). The
+--     fist lands off-centre inside that ring. Draw the ring on the body
+--     anyway, with the fist wherever the pose puts it: the fight is the
+--     ground shaking, not the fist punching. Drawing it at the fist because
+--     it reads better is a CONSTANT offset - no jitter, no framerate
+--     dependence, ~25 studs wrong every single time - and a constant offset
+--     survives review as art direction where a varying one gets measured.
+--
+--     (Checked while writing this: slam's `fire` runs at the instant the
+--     windup expires, so hammerfall's `tell = "slam"` marker completes on the
+--     same frame the damage lands. Handlers that fire PART WAY into the
+--     strike - phantom 0.80, lunge 0.72, ringpulse 0.95 - are the ones whose
+--     stock tell finishes early; none of them is in this boss's book.)
+--
 -- ---------------------------------------------------------- THE CONTRACT
 --
 -- AIM IS LATCHED ONCE, AT WINDUP, AND HELD FOR THE WHOLE ATTACK.
