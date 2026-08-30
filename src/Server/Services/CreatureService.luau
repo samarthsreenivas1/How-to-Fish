@@ -550,12 +550,53 @@ function CreatureService.findByPart(part: Instance?): any?
 	return nil
 end
 
+-- ONE ANSWER TO "CAN THIS BE PICKED AS A TARGET", read by everything that
+-- picks one.
+--
+-- A creature can be un-hittable for two unrelated reasons, and until now only
+-- one of them reached the code that CHOOSES what to shoot. `untargetable` is
+-- the imperative flag - a dive, a burrow, a shut lid - and every consumer
+-- honoured it. `vulnerableWhen` is the declarative one, written on the row,
+-- and only `damage()` honoured it. So `raycastNearest` would happily select an
+-- immune boss body, `damage()` would then return nil, and the shot did nothing
+-- whatsoever with no feedback - which reads as a broken weapon, not a miss.
+--
+-- That is not a small gap, because an immune boss body is the largest capture
+-- cylinder in its own arena. `raycastNearest` takes anything within
+-- `shotRadius + hitRadius` of the ray and keeps the nearest ALONG it: measured
+-- at 38.5 studs for the Kraken's head against an arm ring at 46, so five of
+-- its eight arms could not be shot from any bearing; Wrack's hull at 23.4
+-- against a 20-stud battery ring shadows two or three of the four. Both are
+-- fights whose whole premise is "shoot the parts". Melee escaped it only
+-- because `inRange` is called with `skipRangedOnly` and both rows are ranged.
+--
+-- `creature.untargetable` keeps its writers and its meaning exactly as they
+-- are. This adds a second input to the READ, so there is no second owner of
+-- the flag and no mode transition to race against.
+local function unaimable(creature): boolean
+	if creature.untargetable then
+		return true
+	end
+	local when = creature.row and creature.row.vulnerableWhen
+	if when == "partsDown" then
+		-- The Kraken's head, Wrack's hull: immune while any of the ring stands.
+		return (creature.partsAlive or 0) > 0
+	elseif when == "markedDown" then
+		-- Noctyss is under the shelf until the true lure breaks.
+		return not creature.mawOpen
+	end
+	return false
+end
+
 -- Every live creature whose centre is within `radius` of `position`, nearest
 -- first. For attacks that check reach rather than raycast.
 -- `opts.skipRangedOnly` drops rows flagged `rangedOnly` (the Kraken's head):
 -- the MELEE target pick passes it, so swings reach past the head to the
--- tentacles, while ranged fire (raycastNearest / the arc re-check) still
--- connects.
+-- tentacles. Ranged fire does not pass it, and no longer needs to - the head
+-- is skipped by `unaimable` above while it is immune, which is the general
+-- form of the same idea and applies to every consumer rather than just this
+-- one. (`rangedOnly` remains a separate statement: it says which WEAPONS a
+-- row answers to at all, not whether it can be hurt right now.)
 function CreatureService.inRange(position: Vector3, radius: number, opts: { skipRangedOnly: boolean? }?): { any }
 	local skipRangedOnly = opts ~= nil and opts.skipRangedOnly == true
 	local hits = {}
@@ -569,7 +610,7 @@ function CreatureService.inRange(position: Vector3, radius: number, opts: { skip
 		-- untargetable by the player, not invulnerable.
 		if
 			not creature.dead
-			and not creature.untargetable
+			and not unaimable(creature)
 			and not creature.friendly
 			and not (skipRangedOnly and creature.row.rangedOnly)
 		then
@@ -606,7 +647,7 @@ function CreatureService.raycastNearest(origin: Vector3, direction: Vector3, max
 	local dir = direction.Unit
 	local best, bestT = nil, maxDistance
 	for _, creature in creatures do
-		if not creature.dead and not creature.untargetable and not creature.friendly then
+		if not creature.dead and not unaimable(creature) and not creature.friendly then
 			local pivot = creature.model:GetPivot().Position
 			local to = pivot - origin
 			local t = to:Dot(dir)
@@ -734,6 +775,14 @@ local function kill(creature, killer: Player?)
 		-- banner there would be a promise the fight does not keep.
 		if owner.partsAlive == 0 and owner.row.vulnerableWhen ~= "markedDown" then
 			owner.partsDownAt = os.clock()
+			-- LEVEL-TRIGGERED, beside the edge-triggered event. `exposed` is a
+			-- positional VFX broadcast carrying no model and no duration, so a
+			-- client that adopts the model mid-window sees nothing and has no
+			-- way to recover the state. This attribute is what a body
+			-- controller reads to open a hull's shell plates and KEEP them
+			-- open. It is the same attribute the stagger path already writes,
+			-- so a renderer needs one rule for both ways a boss opens up.
+			owner.model:SetAttribute(ATTR_EXPOSED, true)
 			fireCreatureEvent("exposed", owner.pos, {
 				name = owner.model:GetAttribute(ATTR_BOSS_NAME),
 			})
@@ -857,29 +906,12 @@ function CreatureService.damage(creature, amount: number, attacker: Player?, opt
 	if type(creature) ~= "table" or creature.dead or amount ~= amount then
 		return nil
 	end
-	if creature.untargetable and not (opts and opts.ignoreUntargetable) then
-		return nil
-	end
-	-- The Kraken's head: invulnerable while any of its tentacle ring stands
-	-- (row.vulnerableWhen = "partsDown"; updateBoss maintains partsAlive).
-	-- Brine Rot's ignoreUntargetable burns through here too - the poison is
-	-- already in the wound, same ruling as a boss's dive.
-	if
-		creature.row.vulnerableWhen == "partsDown"
-		and (creature.partsAlive or 0) > 0
-		and not (opts and opts.ignoreUntargetable)
-	then
-		return nil
-	end
-	-- Noctyss: she is under the shelf, and the only thing that brings her up
-	-- is the true lure breaking (row.vulnerableWhen = "markedDown"). Outside
-	-- the maw window there is nothing to hit, which is what makes this fight
-	-- about finding the right light instead of out-damaging a health bar.
-	if
-		creature.row.vulnerableWhen == "markedDown"
-		and not creature.mawOpen
-		and not (opts and opts.ignoreUntargetable)
-	then
+	-- Every reason a thing cannot be hit, in one place - see `unaimable`. All
+	-- three were spelled out here and ONLY here, which is precisely why the two
+	-- functions that pick targets never learned the last two of them. Brine
+	-- Rot's `ignoreUntargetable` burns through all three: the poison is already
+	-- in the wound, the same ruling as a boss's dive.
+	if unaimable(creature) and not (opts and opts.ignoreUntargetable) then
 		return nil
 	end
 	amount = math.max(0, amount)
@@ -4166,7 +4198,15 @@ local function colossusStones(creature, def)
 			-- restoreStones would faithfully put it back underground. The
 			-- config position is the only thing that stays true across
 			-- fights, and the bait test already reads from there.
-			restCFrame = part and CFrame.new(part.Position.X, World.WATER_Y + 1.6, part.Position.Z) or nil,
+			-- Config POSITION, but the part's own ROTATION. Building a bare
+			-- CFrame.new here threw the rotation away, and since this is
+			-- applied unconditionally on the first entrenched frame, all three
+			-- rocks visibly snapped up to 63 degrees straight round the moment
+			-- the fight began. Sinking a stone is a pure translation, so the
+			-- live rotation is always the authored one and is safe to keep.
+			restCFrame = part
+					and (CFrame.new(part.Position.X, World.WATER_Y + 1.6, part.Position.Z) * part.CFrame.Rotation)
+				or nil,
 		})
 		-- A new fight starts with every stone standing, so raise anything the
 		-- last party sank. Nothing else does this: the previous boss's table
@@ -4183,9 +4223,15 @@ end
 -- Every stance it loses, the grinding coils shed fresh masonry: the spent
 -- stones come back. Without this a party that misread three baits would be
 -- left with no way to open a window at all.
--- Raise every spent stone: on a stance change (the coils shed fresh rock)
--- and again when the fight ends, so the NEXT summon finds a full arena
--- rather than three holes left by the last party.
+-- Raise every spent stone on a stance change: the coils shed fresh rock.
+--
+-- This used to claim it also ran at the end of a fight. It does not, and it
+-- cannot from here - `beginBossCollapse` is assigned above this line, so this
+-- local is not in scope for it. What actually cleans up is `colossusStones`,
+-- which raises anything the last party sank while building the next fight's
+-- table (see the comment at its `restCFrame`). Spent stones therefore sit in
+-- the ground BETWEEN fights and stand again on the next summon, which is
+-- correct but is not what this comment said.
 local function restoreStones(creature, def)
 	for _, stone in colossusStones(creature, def) do
 		if not stone.standing then
@@ -5093,6 +5139,8 @@ local function spawnBossParts(creature, def)
 	end
 	creature.partsAlive = count
 	creature.partsDownAt = nil
+	-- The ring is back up, so the window is shut again.
+	creature.model:SetAttribute(ATTR_EXPOSED, nil)
 	creature.choir = parts.mark == true
 	creature.trueLure = marked
 	if creature.choir and creature.pose then
