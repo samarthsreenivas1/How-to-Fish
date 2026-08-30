@@ -145,6 +145,107 @@ local function setZoom(on: boolean, ranged)
 	TweenService:Create(camera, ZOOM_TWEEN, { FieldOfView = fov }):Play()
 end
 
+-- ---------------------------------------------------------------- aim
+-- WHERE A SHOT COMES FROM (2026-08-30). This used to send the CAMERA's
+-- position as the shot's origin, which the server refuses: CombatService runs
+-- ShotAim.originOk, and an origin further than Tuning.Ranged.ORIGIN_SLACK (6
+-- studs) from the character's root is dropped without a word. That check is
+-- the thing stopping a hacked client shooting from across the map, so it is
+-- not the part that gives - the client is.
+--
+-- In first person the camera sits at the head and the claim passed by luck.
+-- In third person it does not: the boss arenas pin the camera 26 studs back
+-- (58 in the Careenage's raised orbit), so EVERY ranged shot in a boss arena
+-- was being discarded server-side. That is fatal where guns are the only
+-- answer - the Kraken's head and the gloom lantern are `rangedOnly`, melee is
+-- routed past them on purpose, so a boss with no reachable weapon simply
+-- never loses health.
+--
+-- The fix is parallax, not slack. Resolve the point the crosshair is actually
+-- over down the camera ray, then shoot from the CHARACTER toward that point:
+-- the origin is one the server will accept, and the shot still goes where the
+-- player is looking. First person is unchanged in practice (the origin lands
+-- within a stud of the lens), and an arc weapon gains as well - its flight
+-- time is measured from the origin, so a bow that used to lob from the
+-- camera's nose now measures the distance the arrow really travels.
+local ORIGIN_LIFT = 1.5 -- chest height above the root: the shot leaves the shooter, not the lens
+local MIN_AIM_DISTANCE = 2 -- closer than this gives no stable direction; the camera's look stands
+local CREATURES_FOLDER = "Creatures"
+
+-- Cached per model, dropped with it (the model is the weak key).
+local aimRadius: { [Model]: number } = setmetatable({}, { __mode = "k" }) :: any
+
+-- How far down the camera ray the thing being aimed at is. Solid world first,
+-- then creatures - creature parts are CanQuery = false (targeting has always
+-- been proximity, not raycast: ShotAim's header), so they cannot be raycast
+-- and are swept the same generous way CreatureService.raycastNearest sweeps
+-- them server-side. Resolving the DEPTH is the whole point: aiming at open
+-- range while the target is close is exactly where parallax misses.
+local function aimDistance(camCf: CFrame, range: number): number
+	local best = range
+	local ignore = {}
+	local character = player.Character
+	if character then
+		table.insert(ignore, character)
+	end
+	for _, name in { "ClientVfx", "CreatureFx", "WrackShot", "RangedFx" } do
+		local other = Workspace:FindFirstChild(name)
+		if other then
+			table.insert(ignore, other)
+		end
+	end
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = ignore
+	params.RespectCanCollide = true
+
+	local origin, dir = camCf.Position, camCf.LookVector
+	local hit = Workspace:Raycast(origin, dir * range, params)
+	if hit then
+		best = (hit.Position - origin).Magnitude
+	end
+
+	local creatures = Workspace:FindFirstChild(CREATURES_FOLDER)
+	if creatures then
+		for _, model in creatures:GetChildren() do
+			if model:IsA("Model") then
+				local to = model:GetPivot().Position - origin
+				local along = to:Dot(dir)
+				if along > 0 and along < best then
+					local radius = aimRadius[model]
+					if not radius then
+						local _, size = model:GetBoundingBox()
+						radius = math.max(1.4, size.Magnitude * 0.3)
+						aimRadius[model] = radius
+					end
+					if (to - dir * along).Magnitude <= radius then
+						best = along
+					end
+				end
+			end
+		end
+	end
+	return best
+end
+
+-- The ray the server is asked to resolve: an origin it will accept, aimed at
+-- what the crosshair is over.
+local function shotRay(camera: Camera, ranged): (Vector3, Vector3)
+	local camCf = camera.CFrame
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if not root or not root:IsA("BasePart") then
+		return camCf.Position, camCf.LookVector -- no body to shoot from; first person's old behaviour
+	end
+	local origin = (root :: BasePart).Position + Vector3.new(0, ORIGIN_LIFT, 0)
+	local aimAt = camCf.Position + camCf.LookVector * aimDistance(camCf, ranged.range or 100)
+	local to = aimAt - origin
+	if to.Magnitude < MIN_AIM_DISTANCE then
+		return origin, camCf.LookVector
+	end
+	return origin, to.Unit
+end
+
 -- ---------------------------------------------------------------- firing
 
 -- One predicted shot: gate on the mirrored cooldown/magazine, kick, sound,
@@ -187,8 +288,9 @@ local function tryFire()
 	if not camera then
 		return
 	end
-	local origin = camera.CFrame.Position
-	local look = camera.CFrame.LookVector
+	-- Anchored to the character (the server checks it against the root) and
+	-- aimed where the player is looking. See the aim section above.
+	local origin, look = shotRay(camera, ranged)
 
 	-- Instant local feel; the tracer itself arrives on ShotFired.
 	WeaponViewmodelController.kick(if ranged.pellets then 1.6 elseif ranged.fireMode == "auto" then 0.55 else 1)
