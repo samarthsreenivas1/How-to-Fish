@@ -136,4 +136,145 @@ Npcs.items.hollow = {
 	quests = { "ledger_of_teeth", "salvage_rights" },
 }
 
+-- ============================================================ the islet folk
+-- One resident per islet. They are the only people out here, and every one of
+-- them lives off the water: the story's moral is carried by what they DO, and
+-- none of them ever says it. Their `spawnOffset` is zero because each islet's
+-- `spawn` is already the flat pad its builder measured and reserved.
+
+Npcs.items.nettle = {
+	id = "nettle",
+	name = "Nettle",
+	title = "Of the Bell Rock",
+	island = "bellbuoy",
+	spawnOffset = Vector3.new(0, 0, 0),
+	facing = 250, -- back to the bell, watching the water it drives things out of
+	body = { model = "CreaturePack", species = "PlunderSprite", scale = 1.1 },
+	greeting = {
+		"It rings itself, that. Nobody hung it and nobody minds it. Things come to see what the noise is, and I'm here when they do.",
+		"You get used to it. You stop hearing it about a week in, and that's when you know you've been out here too long.",
+	},
+	quests = { "what_the_bell_brings" },
+}
+
+Npcs.items.bellkeeper_odd = {
+	id = "bellkeeper_odd",
+	name = "Bellkeeper Odd",
+	title = "Of the Drowned Chapel",
+	island = "chapel",
+	spawnOffset = Vector3.new(0, 0, 0),
+	facing = 300, -- facing the tower he climbs, back to the open water
+	body = { model = "CreaturePack", species = "DrownedBoatswain", scale = 1.0 },
+	greeting = {
+		"The bell wants ringing. Not for anyone - there's nobody left down there to hear it. It just wants ringing, and it's quieter after.",
+		"There was a village. You're standing over the nave. Mind the hole in the roof; it's the only way in and it's the only way out.",
+	},
+	quests = { "odds_toll", "the_tollmaw_hunt", "the_bellringer" },
+}
+
+Npcs.items.pip = {
+	id = "pip",
+	name = "Pip",
+	title = "Egg-Picker",
+	island = "rookery",
+	spawnOffset = Vector3.new(0, 0, 0),
+	facing = 180,
+	body = { model = "CreaturePack", species = "Deckhand", scale = 0.95 },
+	greeting = {
+		"Don't look up with your mouth open. That's the whole of my advice and it's better than most.",
+		"They were here first, I know it, they know it. Doesn't stop either of us.",
+	},
+	quests = { "the_parliament" },
+}
+
+Npcs.items.cinder = {
+	id = "cinder",
+	name = "Cinder",
+	title = "Of the Boiling Shoal",
+	island = "boilshoal",
+	spawnOffset = Vector3.new(0, 0, 0),
+	facing = 180, -- looking back over the vents
+	body = { model = "CreaturePack", species = "CinderDjinn", scale = 0.9 },
+	greeting = {
+		"Cold water's got nothing in it worth having. Everything interesting lives where it hurts.",
+		"Stand where I'm standing. The glass looks the same either side of the line and it very much is not.",
+	},
+	quests = { "what_bites_in_boiling_water" },
+}
+
+Npcs.items.lampwright = {
+	id = "lampwright",
+	name = "The Lampwright",
+	title = "Who Made the Trench Lamp",
+	island = "lampwork",
+	spawnOffset = Vector3.new(0, 0, 0),
+	facing = 90, -- at his bench, the open forge side toward the water
+	body = { model = "CreaturePack", species = "Deckhand", scale = 1.0 },
+	greeting = {
+		"I made the one on the tower. Best thing these hands ever did. I'd take it back if he'd let me.",
+		"Eighteen out there and not one of them lit. You'll notice I keep the shutters closed on all but the one.",
+	},
+	quests = { "every_lamp_dark", "the_moth_hunt", "the_lampwrights_line" },
+}
+
+Npcs.items.coil = {
+	id = "coil",
+	name = "Coil",
+	title = "Salvor",
+	island = "anchorage",
+	spawnOffset = Vector3.new(0, 0, 0),
+	facing = 210,
+	body = { model = "CreaturePack", species = "RiggingWraith", scale = 1.0 },
+	greeting = {
+		"Every one of these was somebody's last good idea. Dropped in a blow, cut when the blow won.",
+		"Twenty-three of them hang slack. Count them yourself. Then find the one that doesn't and tell me what you think is holding it.",
+	},
+	quests = { "the_taut_chain" },
+}
+
+Npcs.items.saltmother_vess = {
+	id = "saltmother_vess",
+	name = "Saltmother Vess",
+	title = "Of the Whale Fall",
+	island = "whalefall",
+	spawnOffset = Vector3.new(0, 0, 0),
+	facing = 200, -- at the carcass, working
+	body = { model = "CreaturePack", species = "SunkenTrapper", scale = 1.0 },
+	greeting = {
+		"They know what I do here. Of course they're angry. Wouldn't you be?",
+		"Forty years of gutting and the smell never leaves the stone. It's in the stone, not in me. That's what I tell myself.",
+	},
+	quests = { "the_gutting_stone", "the_ribbonjaw_hunt", "the_ribboncutter" },
+}
+
+Npcs.items.ferryman = {
+	id = "ferryman",
+	name = "The Ferryman",
+	title = "Of No Harbour",
+	island = "ferryraft",
+	spawnOffset = Vector3.new(0, 0, 0),
+	facing = 270, -- behind his counter, facing whoever ties up
+	body = { model = "CreaturePack", species = "Deckhand", scale = 1.05 },
+	greeting = {
+		"Six thousand studs to the nearest anything. That's not a hardship, that's the selling point.",
+		"You came all this way, so you'll want something. Everyone who gets here wants something.",
+	},
+	quests = { "the_long_way_round" },
+}
+
+Npcs.items.ansel = {
+	id = "ansel",
+	name = "Ansel",
+	title = "Struck Twice",
+	island = "loadstone",
+	spawnOffset = Vector3.new(0, 0, 0),
+	facing = 270, -- back to the spire, which he does not look at
+	body = { model = "CreaturePack", species = "StormcallerDjinn", scale = 0.9 },
+	greeting = {
+		"Twice! Same rock, eleven years apart. The second one I felt coming - the hair goes up, you get about a breath.",
+		"Don't touch the iron. Don't touch anything with iron on it. Don't stand near ME, come to think of it.",
+	},
+	quests = { "struck_twice" },
+}
+
 return Npcs

@@ -234,4 +234,187 @@ Quests.items.salvage_rights = {
 	rewards = { coins = 800, xp = 520 },
 }
 
+-- ============================================================ the islet quests
+-- One errand each for the six unclaimed islets, and three multi-chapter sagas
+-- for the hermits: meet them, kill the thing that took what they lost, bring
+-- it back, and they build you the rod they have been meaning to build. The
+-- rods are the point and every one of them makes the taking easier - which is
+-- the whole story, said by nobody.
+--
+-- NOTE ON `waters`: an islet sits in the OPEN SEA. A creature `waters` roster
+-- ("wreck", "volcano"...) is that ISLAND's interior water, so a waters filter
+-- on an islet errand sends the player back across the map, and there is no
+-- "ocean" roster to filter on instead - open-sea species simply omit the
+-- field, so filtering on it would match nothing at all. These take no waters
+-- filter, or a rarity one. The single exception is `every_lamp_dark`, which
+-- deliberately sends you to fish the trench itself.
+
+Quests.items.what_the_bell_brings = {
+	id = "what_the_bell_brings",
+	name = "What the Bell Brings",
+	giver = "nettle",
+	blurb = "The noise carries. Things come up to see what it is, and some of them come ashore. Four of them, and I'll not ask which.",
+	requiresLevel = 10,
+	objectives = { { type = "kill", count = 4, species = "drowned_deckhand" } },
+	rewards = { coins = 500, xp = 420 },
+}
+
+Quests.items.the_parliament = {
+	id = "the_parliament",
+	name = "The Parliament",
+	giver = "pip",
+	blurb = "They've voted on me and it went badly. Thin the loudest five and they'll go back to arguing among themselves.",
+	requiresLevel = 16,
+	objectives = { { type = "kill", count = 5, species = "bog_gull" } },
+	rewards = { coins = 900, xp = 700, materials = { fish_scale = 4 } },
+}
+
+Quests.items.what_bites_in_boiling_water = {
+	id = "what_bites_in_boiling_water",
+	name = "What Bites in Boiling Water",
+	giver = "cinder",
+	blurb = "Anything worth catching out here is already half-cooked and furious about it. Six of the good ones.",
+	requiresLevel = 22,
+	objectives = { { type = "catch", count = 6, rarity = "Uncommon" } },
+	rewards = { coins = 1300, xp = 1000 },
+}
+
+Quests.items.the_taut_chain = {
+	id = "the_taut_chain",
+	name = "The Taut Chain",
+	giver = "coil",
+	blurb = "I'm not hauling on it and neither are you. Fish the reef a while - whatever is on the end has been patient this long.",
+	requiresLevel = 34,
+	objectives = { { type = "catch", count = 6 } },
+	rewards = { coins = 2000, xp = 1500 },
+}
+
+Quests.items.the_long_way_round = {
+	id = "the_long_way_round",
+	name = "The Long Way Round",
+	giver = "ferryman",
+	blurb = "I trade with sailors, not with tourists. Show me you've made the crossings and my counter is open.",
+	requiresLevel = 20,
+	objectives = {
+		{ type = "visit", island = "swamp" },
+		{ type = "visit", island = "ice" },
+	},
+	rewards = { coins = 1200, xp = 1000 },
+}
+
+Quests.items.struck_twice = {
+	id = "struck_twice",
+	name = "Struck Twice",
+	giver = "ansel",
+	blurb = "Things live in the strike-water. They like it. I do not like that they like it - four of them, please.",
+	requiresLevel = 38,
+	objectives = { { type = "kill", count = 4, species = "tempest_revenant" } },
+	rewards = { coins = 2600, xp = 1900 },
+}
+
+-- ---------------------------------------------------------------- Bellkeeper Odd
+Quests.items.odds_toll = {
+	id = "odds_toll",
+	name = "Odd's Toll",
+	giver = "bellkeeper_odd",
+	blurb = "The bell wants ringing on the hour and I've only the two hands. Fish the chapel while I climb, and mind the roof.",
+	requiresLevel = 12,
+	objectives = { { type = "catch", count = 6 } },
+	rewards = { coins = 600, xp = 500 },
+}
+
+Quests.items.the_tollmaw_hunt = {
+	id = "the_tollmaw_hunt",
+	name = "The Tollmaw",
+	giver = "bellkeeper_odd",
+	blurb = "It swallowed the clapper. I have been ringing a bell with a stone tied to a rope for two years. Get it back.",
+	prereq = "odds_toll",
+	requiresLevel = 14,
+	objectives = {
+		{ type = "kill", count = 1, species = "tollmaw" },
+		{ type = "deliver", materials = { bell_clapper = 1 } },
+	},
+	rewards = { coins = 1800, xp = 1200 },
+}
+
+Quests.items.the_bellringer = {
+	id = "the_bellringer",
+	name = "The Bellringer",
+	giver = "bellkeeper_odd",
+	blurb = "Hang it at the tip instead of in the tower and they come up senseless. Kinder, I tell myself. Go and have it made.",
+	prereq = "the_tollmaw_hunt",
+	objectives = { { type = "craft", itemId = "bellringer_rod" } },
+	rewards = { coins = 900, xp = 900 },
+}
+
+-- ---------------------------------------------------------------- Saltmother Vess
+Quests.items.the_gutting_stone = {
+	id = "the_gutting_stone",
+	name = "The Gutting Stone",
+	giver = "saltmother_vess",
+	blurb = "Something's been at my stone in the night. Bring me work to do while I watch for it - eight will do.",
+	requiresLevel = 26,
+	objectives = { { type = "catch", count = 8 } },
+	rewards = { coins = 1400, xp = 1100 },
+}
+
+Quests.items.the_ribbonjaw_hunt = {
+	id = "the_ribbonjaw_hunt",
+	name = "Old Ribbonjaw",
+	giver = "saltmother_vess",
+	blurb = "It took the whetstone out of the middle of my stone. Not the fish, mind. The whetstone. It knew which part mattered.",
+	prereq = "the_gutting_stone",
+	requiresLevel = 28,
+	objectives = {
+		{ type = "kill", count = 1, species = "old_ribbonjaw" },
+		{ type = "deliver", materials = { whetstone_heart = 1 } },
+	},
+	rewards = { coins = 2600, xp = 1800 },
+}
+
+Quests.items.the_ribboncutter = {
+	id = "the_ribboncutter",
+	name = "The Ribboncutter",
+	giver = "saltmother_vess",
+	blurb = "Set it in a blade and nothing goes to waste. Nothing wasted is a mercy, of a kind. Have it made and don't argue with me.",
+	prereq = "the_ribbonjaw_hunt",
+	objectives = { { type = "craft", itemId = "ribboncutter_rod" } },
+	rewards = { coins = 1200, xp = 1200 },
+}
+
+-- ---------------------------------------------------------------- the Lampwright
+Quests.items.every_lamp_dark = {
+	id = "every_lamp_dark",
+	name = "Every Lamp Dark",
+	giver = "lampwright",
+	blurb = "I don't light them any more and I won't be talked round. Fish the trench if you want to see what I'm not lighting them for.",
+	requiresLevel = 30,
+	objectives = { { type = "catch", count = 8, waters = "gloom" } },
+	rewards = { coins = 1600, xp = 1300 },
+}
+
+Quests.items.the_moth_hunt = {
+	id = "the_moth_hunt",
+	name = "The Moth of the Deep",
+	giver = "lampwright",
+	blurb = "It came for the lamp I gave away, found the man who made it instead, and it has been circling ever since. Put it out.",
+	prereq = "every_lamp_dark",
+	requiresLevel = 32,
+	objectives = {
+		{ type = "kill", count = 1, species = "moth_of_the_deep" },
+		{ type = "deliver", materials = { unburnt_wick = 1 } },
+	},
+	rewards = { coins = 3000, xp = 2000 },
+}
+
+Quests.items.the_lampwrights_line = {
+	id = "the_lampwrights_line",
+	name = "The Lampwright's Line",
+	giver = "lampwright",
+	blurb = "It never burned. Forty years of wicks and that one never burned. Hang it at the tip and the deep will show you what it keeps.",
+	prereq = "the_moth_hunt",
+	objectives = { { type = "craft", itemId = "lampwrights_line_rod" } },
+	rewards = { coins = 1400, xp = 1400 },
+}
+
 return Quests

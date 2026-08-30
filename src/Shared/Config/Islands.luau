@@ -65,6 +65,13 @@ Islands.order = { "tropical", "swamp", "ice", "volcano", "gloom", "wreck" }
 --                   (Ocean.COLOR etc.) - the starter cove stays tropical
 --                   blue by omission. Any field left out falls back to the
 --                   matching Ocean/LAYERS base value.
+--   islet         - OPTIONAL. Marks a tiny off-route islet (2026-08-29): a
+--                   real mesh, placed exactly like an island, but deliberately
+--                   ABSENT from Islands.order - so nothing gates it, the
+--                   travel menu never lists it, and the only way to reach one
+--                   is to sail there. WorldService has a separate pass for
+--                   these; without the flag an islet would build in Blender
+--                   and never appear in the world.
 --   radius        - nominal shoreline radius (the generator's ISLAND_RADIUS);
 --                   used to space islands and to size the ocean around them.
 --   spawn         - world position a teleport drops the player on. Only X/Z
@@ -445,6 +452,108 @@ Islands.items = {
 		spawn = Vector3.new(4800, 6, -13456), -- the spawn stack on +Z (authored top Y=6.0; the procedural platform matches)
 		unlockLevel = 43,
 		boss = "kraken",
+	},
+
+	-- ============================================================ THE ISLETS
+	-- Nine tiny places scattered BETWEEN the six islands on the voyage arc.
+	-- Every one carries `islet = true`: they are deliberately absent from
+	-- Islands.order, so nothing gates them, the travel menu never lists them,
+	-- and the only way to reach one is to sail there. Each holds a single NPC
+	-- and their quests. None needs a `meshBottom` - all nine sit on the
+	-- standard -9 skirt (the pack build's HANDOFF lines confirm it).
+	--
+	-- `spawn` on an islet is NOT a teleport destination (there is no teleport
+	-- to them); it is the anchor NpcService measures its resident from, so it
+	-- is set to the flat pad each islet's builder reserved and measured.
+
+	bellbuoy = {
+		name = "The Bellbuoy",
+		blurb = "A sea-bell the size of a room, bolted to a rock and rung by the swell.",
+		model = "Bellbuoy",
+		islet = true,
+		worldPosition = Vector3.new(1900, 0, 500),
+		radius = 45,
+		spawn = Vector3.new(1909, 6, 500),
+	},
+
+	chapel = {
+		name = "The Drowned Chapel",
+		blurb = "A bell tower standing in open water. The rest of the church is underneath it.",
+		model = "Chapel",
+		islet = true,
+		worldPosition = Vector3.new(5100, 0, 3600),
+		radius = 55,
+		spawn = Vector3.new(5102, 5, 3603),
+	},
+
+	rookery = {
+		name = "The Rookery Stack",
+		blurb = "A white stack of rock and a colony that was here first.",
+		model = "Rookery",
+		islet = true,
+		worldPosition = Vector3.new(9500, 0, 4200),
+		radius = 32,
+		spawn = Vector3.new(9500, 36, 4184),
+	},
+
+	boilshoal = {
+		name = "The Boiling Shoal",
+		blurb = "Black glass and water too hot to swim. Some things only bite here.",
+		model = "Boilshoal",
+		islet = true,
+		worldPosition = Vector3.new(13400, 0, 300),
+		radius = 60,
+		spawn = Vector3.new(13400, 2, 348),
+	},
+
+	lampwork = {
+		name = "The Lampwright's Workshop",
+		blurb = "A yard full of lamps, every one of them dark, and one lit window.",
+		model = "Lampwork",
+		islet = true,
+		worldPosition = Vector3.new(13100, 0, -1200),
+		radius = 55,
+		spawn = Vector3.new(13094, 10, -1198),
+	},
+
+	anchorage = {
+		name = "The Anchor Garden",
+		blurb = "Two dozen anchors standing in the sand, and one chain still pulling.",
+		model = "Anchorage",
+		islet = true,
+		worldPosition = Vector3.new(14200, 0, -6000),
+		radius = 70,
+		spawn = Vector3.new(14200, 2, -6000),
+	},
+
+	whalefall = {
+		name = "The Whale Fall",
+		blurb = "A skeleton on a sandbar, and the best fishing on the leg because of it.",
+		model = "Whalefall",
+		islet = true,
+		worldPosition = Vector3.new(8400, 0, -11300),
+		radius = 65,
+		spawn = Vector3.new(8404, 3, -11284),
+	},
+
+	ferryraft = {
+		name = "The Ferryman's Raft",
+		blurb = "Someone lives out here on purpose, and will trade with whoever gets this far.",
+		model = "Ferryraft",
+		islet = true,
+		worldPosition = Vector3.new(7000, 0, -5000),
+		radius = 40,
+		spawn = Vector3.new(7008, 3, -5000),
+	},
+
+	loadstone = {
+		name = "The Loadstone Spire",
+		blurb = "A black needle that pulls the storm onto itself. Your compass gives up here.",
+		model = "Loadstone",
+		islet = true,
+		worldPosition = Vector3.new(3000, 0, -8000),
+		radius = 45,
+		spawn = Vector3.new(3014, 4, -8000),
 	},
 }
 
