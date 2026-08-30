@@ -39,7 +39,11 @@
 --   wrackVolley  a volley was born. position = the muzzle.
 --                extra = { id, skin, y, life, accel?, sync?, spin?,
 --                          shots = { { sid, x, z, vx, vz, r } },
---                          links = { { sidA, sidB } }? }
+--                          links = { { sidA, sidB, chainRadius? } }? }
+--                The third number on a link row is optional and read
+--                defensively: without it the chain is drawn at the server's
+--                own 1.8 default, so the two lanes can land in either order
+--                without a window where the bar drawn is not the hitbox.
 --   wrackShots   truth stream for `sync` volleys, ~4.5/s.
 --                extra = { id, shots = { { sid, x, z } } }. A ball missing
 --                from the stream has been retired - drop it.
@@ -49,7 +53,12 @@
 --   wrackTell    a windup. Not yet sent by the server: the tell layer below
 --                is written and pooled, and also picks up the boss arsenal's
 --                existing `telegraph` kind when it carries one of Wrack's
---                skins, so it lights up either way. See adaptEvent.
+--                skins, so it lights up either way. See adaptEvent. An
+--                optional `id` on it is remembered, so a windup that is
+--                interrupted before it fires can be retracted rather than
+--                left to expire into an attack that never comes
+--                (ProjectileFxController.retireTell; the wire kind that
+--                would call it is the server lane's to propose).
 --
 -- WHICH TELLS ACTUALLY DRAW (the server lane picks `tell` per pattern, and an
 -- unmatched tell name falls through the arsenal to a 3-stud flash at the
@@ -171,6 +180,9 @@ local function adaptEvent(kind: string, position: Vector3, extra): any?
 	elseif kind == "wrackTell" then
 		return {
 			what = "tell",
+			-- Optional, and read defensively: a tell that carries an id can be
+			-- retracted before it expires (ProjectileFxController.retireTell).
+			id = tonumber(extra.id),
 			skin = tostring(extra.skin or "cannon"),
 			at = position,
 			shape = tostring(extra.shape or "lane"),
@@ -611,7 +623,11 @@ local function onVolley(v)
 			local a = volley.shots[tonumber(pair[1]) or -1]
 			local b = volley.shots[tonumber(pair[2]) or -1]
 			if a and b then
-				local link = { a = a, b = b, sep = 0 }
+				-- The chain's own hit radius if the wire carries it, else the
+				-- server's default. Read defensively so this lane and the
+				-- server's can land in either order without a window where
+				-- the bar drawn here is not the capsule being tested.
+				local link = { a = a, b = b, sep = 0, radius = tonumber(pair[3]) or CHAIN_RADIUS }
 				local rig = takeChain(link)
 				link.rig = rig
 				rig.bar.Color = CHAIN_COLOR
@@ -744,8 +760,9 @@ local function stepVolleys(now: number)
 						if sep > 0.05 then
 							if math.abs(sep - link.sep) > 0.25 then
 								link.sep = sep
-								rig.bar.Size = Vector3.new(CHAIN_RADIUS * 2, CHAIN_RADIUS * 2, sep)
-								rig.mark.Size = Vector3.new(CHAIN_RADIUS * 2, SHADOW_THICKNESS, sep)
+								local thick = link.radius * 2
+								rig.bar.Size = Vector3.new(thick, thick, sep)
+								rig.mark.Size = Vector3.new(thick, SHADOW_THICKNESS, sep)
 							end
 							local mid = (pa + pb) * 0.5
 							local aim = CFrame.lookAt(mid, pb)
@@ -802,6 +819,14 @@ end
 -- last third of a windup is the loudest thing on screen.
 local TELL_LIFT = 0.12 -- clear of the sand, so it never fights it for depth
 
+local function hideTell(tell)
+	tell.active = false
+	tell.id = nil
+	tell.lane.Transparency = 1
+	tell.edge.Transparency = 1
+	tell.ring.Transparency = 1
+end
+
 local function takeTell()
 	local oldest, oldestAt = nil, math.huge
 	for _, tell in tells do
@@ -826,6 +851,7 @@ local function onTell(t)
 	local skin = skinOf(t.skin)
 	local now = os.clock()
 	tell.active = true
+	tell.id = t.id -- may be nil; see retireTell
 	tell.startAt = now
 	tell.endsAt = now + math.clamp(t.duration, 0.15, 6)
 	tell.shape = t.shape
@@ -864,10 +890,7 @@ local function stepTells(now: number)
 			local span = math.max(tell.endsAt - tell.startAt, 1e-3)
 			local u = (now - tell.startAt) / span
 			if u >= 1 then
-				tell.active = false
-				tell.lane.Transparency = 1
-				tell.edge.Transparency = 1
-				tell.ring.Transparency = 1
+				hideTell(tell)
 			else
 				-- 0.72 -> 0.3: present from the first frame, loudest at the end.
 				local alpha = 0.72 - 0.42 * u
@@ -969,11 +992,29 @@ local function clearAll()
 		releaseVolley(volley)
 	end
 	for _, tell in tells do
-		tell.active = false
-		tell.lane.Transparency = 1
-		tell.edge.Transparency = 1
-		tell.ring.Transparency = 1
+		hideTell(tell)
 	end
+end
+
+-- Clears a drawn windup before its own clock runs out, by the id it arrived
+-- with (or every live one, if called with nil).
+--
+-- Interrupting a boss mid-windup is a designed counter in this engine, and a
+-- telegraph whose attack never comes is worse than a late one: players who
+-- see a tell resolve into nothing stop trusting tells. So a marker keeps the
+-- id of the tell that drew it and can be found again - what a retraction
+-- would need. Nothing calls this yet: the wire kind that carries a
+-- retraction is the server lane's to propose, and when it lands it maps to
+-- this in one line of adaptEvent.
+function ProjectileFxController.retireTell(id): number
+	local cleared = 0
+	for _, tell in tells do
+		if tell.active and (id == nil or tell.id == id) then
+			hideTell(tell)
+			cleared += 1
+		end
+	end
+	return cleared
 end
 
 function ProjectileFxController.init()
