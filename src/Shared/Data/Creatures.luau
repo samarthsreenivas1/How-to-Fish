@@ -1439,25 +1439,26 @@ Creatures.items.golden_gar = {
 	},
 }
 
--- Old Gnashroot, the Fen Tyrant - Blackmire Fen's boss (Bosses.luau). A
--- moss-backed snapping horror, half gator half drowned oak, summoned by
--- casting Tyrant's Call. Rarity "Boss" keeps it out of every roll; its heart
--- is the Heart_old_gnashroot attribute, never a drop.
+-- Old Gnashroot, the Drowned Mire - Blackmire Fen's boss (Bosses.luau). A
+-- hunched colossus of wet mud with the fen's black root-knot burning in its
+-- chest, summoned by casting Tyrant's Call. Rarity "Boss" keeps it out of
+-- every roll; its heart is the Heart_old_gnashroot attribute, never a drop.
 Creatures.items.old_gnashroot = {
 	id = "old_gnashroot",
-	name = "Old Gnashroot, the Fen Tyrant",
+	name = "Old Gnashroot, the Drowned Mire",
 	rarity = "Boss",
 	archetype = "boss",
 	boss = "old_gnashroot",
 	waters = "swamp",
 	-- A wall for L8-14 gear (~120-170 dps): a longer fight than Brinejaw
-	-- because the brood (toads, gulls) keeps interrupting it.
+	-- because the sludge, the mire snares and the wallow lane keep taking
+	-- your footing away rather than because it out-heals you.
 	health = 16000,
 	rewards = { coins = { 1800, 2600 }, xp = 5200 },
 	drops = {
 		materials = {
 			bog_iron = { 6, 10 },
-			gator_scute = { 4, 6 },
+			mire_hide = { 4, 6 },
 			wisp_light = { 3, 5 },
 			fen_venom = { 2, 4 },
 		},
@@ -1468,9 +1469,9 @@ Creatures.items.old_gnashroot = {
 		shape = "leviathan", -- pre-import stand-in: the boss silhouette, moss-dark
 		stance = "upright",
 		scale = 1.5,
-		color = Color3.fromRGB(58, 66, 46), -- moss-backed hide
-		finColor = Color3.fromRGB(88, 76, 52), -- root-bark plates
-		markColor = Color3.fromRGB(150, 235, 200), -- wisp-lit eyes and maw (neon)
+		color = Color3.fromRGB(107, 71, 43), -- wet peat-mud (assets/boss_gen.py GN_MUD)
+		finColor = Color3.fromRGB(94, 92, 85), -- the bog stone set into its back
+		markColor = Color3.fromRGB(150, 235, 200), -- the gnashroot burning in its chest (neon)
 	},
 }
 

@@ -394,15 +394,21 @@ Bosses.items.pyrelisk = {
 }
 
 -- ============================================================ Blackmire Fen
--- Old Gnashroot, the Fen Tyrant: a moss-backed snapping horror - half gator,
--- half drowned oak - that heaves out of the arena pond in the fen's heart.
--- Summoned by casting Tyrant's Call (Bait.luau). Its fight is THE FEN
--- GRABBING YOU: root snares spring under your feet, its death-roll churns
--- the peat into clinging sludge, and root-spear waves march the banks - the
--- whole island is its body, and standing still is what kills you.
+-- Old Gnashroot: the fen itself standing up. A hunched colossus of wet mud
+-- that hauls out of the mere - eyes scattered across its mass, bog stone set
+-- into its back, arms long enough to drag, everything running off it. The
+-- GNASHROOT is the black root-knot burning in its chest: the thing that is
+-- actually alive, and the only part of it that can be hurt properly.
+-- Summoned by casting Tyrant's Call (Bait.luau).
+--
+-- THE FIGHT is the ground turning against you. Everything it does either
+-- takes footing away (sludge, snares, the wallow's lane) or punishes you for
+-- having none. It is a slow, heavy boss with one earned opening: when it
+-- plants both arms to hammer, its chest comes forward and the core is open.
+-- Survive the reach, punish the plant.
 Bosses.items.old_gnashroot = {
 	id = "old_gnashroot",
-	name = "Old Gnashroot, the Fen Tyrant",
+	name = "Old Gnashroot, the Drowned Mire",
 	shortName = "Old Gnashroot",
 	creature = "old_gnashroot",
 	islandId = "swamp",
@@ -416,7 +422,7 @@ Bosses.items.old_gnashroot = {
 	arena = { offset = Vector3.new(0, 0, 74), radius = 36 },
 	aggro = 90,
 	standoff = 14,
-	hitRadius = 6, -- at scale 1, pivot to the jaws; x1.5 = 9, the Brinejaw frame
+	hitRadius = 6, -- at scale 1, pivot to the core; x1.5 = 9, the Brinejaw frame
 	submerge = 2.4,
 	riseDepth = 18,
 	riseTime = 3.8,
@@ -427,17 +433,17 @@ Bosses.items.old_gnashroot = {
 	enrageBelow = 0.3,
 	enrageCooldownMult = 0.55,
 	enrageDamageMult = 1.4,
-	-- THE FIGHT: mobility denial. The snares root you, the sludge slows you,
-	-- and everything that actually hurts - the death-roll, the root wave -
-	-- is dodged by moving. Get grabbed at the wrong beat and the next thing
-	-- through is what kills you.
+	-- THE FIGHT: mobility denial, then a plant you punish. Numbers are the
+	-- shipped, tuned ones - this pass renamed and re-skinned the book onto
+	-- the mud colossus and added `hammerfall`; it did not re-balance it.
 	phases = {
-		{ below = 1.0, attacks = { "gnash", "deathroll", "bogspit" } },
-		{ below = 0.65, attacks = { "gnash", "deathroll", "bogspit", "rootwave", "snaretrap" } },
-		{ below = 0.3, attacks = { "gnash", "deathroll", "rootwave", "rootwave", "snaretrap", "bogspit" } },
+		{ below = 1.0, attacks = { "gnash", "wallow", "disgorge" } },
+		{ below = 0.65, attacks = { "gnash", "wallow", "disgorge", "heave", "mire", "hammerfall" } },
+		{ below = 0.3, attacks = { "gnash", "wallow", "heave", "heave", "mire", "hammerfall", "disgorge" } },
 	},
 	attacks = {
-		-- The old jaws: its close-range punish.
+		-- The gape. It drops the head and takes a bite out of the bank in
+		-- front of it - the close-range punish for standing under the mass.
 		gnash = {
 			handler = "snap",
 			tell = "snap",
@@ -451,10 +457,10 @@ Bosses.items.old_gnashroot = {
 			cone = math.rad(65),
 			damage = { 58, 82 },
 		},
-		-- The gator classic, island-sized: it throws itself into a rolling
-		-- charge across the pond, and the churned peat it leaves behind is a
-		-- clinging sludge lane that slows anyone wading it.
-		deathroll = {
+		-- It stops being a shape and becomes a WAVE: the whole mass surges
+		-- forward in a line and leaves half of itself behind as clinging
+		-- sludge. The lane it ploughs is the fight's slowest-to-clear hazard.
+		wallow = {
 			handler = "charge",
 			skin = "peat",
 			windup = 1.0,
@@ -466,8 +472,9 @@ Bosses.items.old_gnashroot = {
 			damage = { 55, 76 },
 			trail = { every = 7, radius = 6.5, duration = 6, min = 5, max = 8, slow = 0.55, skin = "peat" },
 		},
-		-- Lobbed gouts of peat that linger as sucking sludge pools.
-		bogspit = {
+		-- It brings up the mere and throws it: gobs of itself that keep
+		-- moving where they land.
+		disgorge = {
 			handler = "poolvolley",
 			skin = "peat",
 			windup = 0.7,
@@ -482,11 +489,12 @@ Bosses.items.old_gnashroot = {
 			damage = { 20, 30 },
 			pool = { radius = 7, duration = 6, min = 5, max = 9, slow = 0.5, skin = "peat" },
 		},
-		-- A rank of root-spears erupts from the murk and marches straight at
-		-- you - sidestep the line, don't outrun it.
-		rootwave = {
+		-- It sends itself UNDER the peat. A hump races out from where it
+		-- planted a hand and heaves up in a marching rank - sidestep the
+		-- line, do not try to outrun it.
+		heave = {
 			handler = "barrage",
-			skin = "root",
+			skin = "peat",
 			windup = 0.9,
 			duration = 1.6,
 			recover = 0.6,
@@ -500,12 +508,14 @@ Bosses.items.old_gnashroot = {
 			radius = 5,
 			damage = { 30, 44 },
 		},
-		-- ITS gimmick: grasping roots coil up under every player's feet -
-		-- the ring is the escape window; whoever is still inside when they
-		-- close is ROOTED to the spot while the fight keeps coming.
-		snaretrap = {
+		-- ITS GIMMICK, and the reason the stumps exist: the ground under
+		-- every player softens and closes. The ring is the escape window;
+		-- whoever is still standing in it when it shuts is held while the
+		-- rest of the fight keeps coming. The stump platforms are the only
+		-- footing it cannot reach.
+		mire = {
 			handler = "snaretrap",
-			skin = "root",
+			skin = "peat",
 			windup = 0.8,
 			duration = 0.5,
 			recover = 0.5,
@@ -514,6 +524,23 @@ Bosses.items.old_gnashroot = {
 			radius = 6,
 			damage = { 24, 34 },
 			snare = 1.7,
+		},
+		-- THE EARNED OPENING. Both arms go up and come down together, and
+		-- the shockwave is generous - but planting them pitches the chest
+		-- forward and the core is wide open for the window afterwards.
+		-- `expose` is the safe path for this (it writes the cooldown before
+		-- opening the window); a bespoke opener that returns early is the one
+		-- that degenerates into slam-window-slam-window.
+		hammerfall = {
+			handler = "slam",
+			skin = "peat",
+			windup = 1.15,
+			duration = 0.5,
+			recover = 1.0,
+			cooldown = 11.0,
+			radius = 22,
+			damage = { 60, 84 },
+			expose = 3.5,
 		},
 	},
 }
