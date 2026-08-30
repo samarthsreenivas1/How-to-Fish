@@ -27,9 +27,18 @@
 --       parts[i].Size = base * (1 - 0.6 * u)
 --   end)
 --
+-- THE IDIOM, once, because getting it wrong fails silently: build the POSE as
+-- a nest of `blend`s, then add always-on motion with `add` on the outside.
+-- Ambient folded into one side of a blend is annihilated the moment an attack
+-- pose reaches full weight, and nothing errors - the body just goes still at
+-- exactly the moment it should look most alive.
+--
 -- Sampling cost is `samples` shape calls per update plus a binary search per
 -- link, so a 100-link chain at 160 samples is a few thousand cheap ops - fine
--- every frame on either side.
+-- every frame on either side. Note the cost scales with SAMPLES, not with
+-- links: an expensive alpha is paid 160 times whether the chain has 100
+-- pieces or 6, so a short chain should drop `samples` rather than assume it
+-- is cheap because it is small.
 
 local ChainPose = {}
 ChainPose.__index = ChainPose
@@ -63,15 +72,26 @@ end
 -- a function(state, t) -> number, so a blend can reach only part of the body
 -- (Brinejaw's tail peels off the tower while its neck stays put).
 function ChainPose.blend(a, b, alpha)
-	return function(state, t)
-		local w = if type(alpha) == "function" then alpha(state, t) else alpha
+	return function(state, t, chain)
+		local w = if type(alpha) == "function" then alpha(state, t, chain) else alpha
 		w = math.clamp(w or 0, 0, 1)
 		if w <= 0 then
-			return a(state, t)
+			return a(state, t, chain)
 		elseif w >= 1 then
-			return b(state, t)
+			return b(state, t, chain)
 		end
-		return a(state, t):Lerp(b(state, t), w)
+		return a(state, t, chain):Lerp(b(state, t, chain), w)
+	end
+end
+
+-- An ALWAYS-ON layer: `offset(state, t, chain) -> Vector3`, added after the
+-- shape rather than mixed into it. Breath, sway, a grip shift - anything that
+-- should survive whatever pose is on top. It matters because `blend` is a
+-- lerp: fold an ambient term into one side and a full-weight attack pose
+-- annihilates it silently, which is a bug you feel rather than see.
+function ChainPose.add(shape, offset)
+	return function(state, t, chain)
+		return shape(state, t, chain) + offset(state, t, chain)
 	end
 end
 
@@ -81,7 +101,7 @@ function ChainPose:update(state)
 	local shape, count = self.shape, self.samples
 	local points, cumulative = self.points, self.cumulative
 	for i = 0, count do
-		points[i + 1] = shape(state, i / count)
+		points[i + 1] = shape(state, i / count, self)
 	end
 	cumulative[1] = 0
 	for i = 1, count do
@@ -140,6 +160,29 @@ function ChainPose:each(spacing: number, fn)
 		fn(i + 1, self:cframeAt(distance), if self.length > 0 then distance / self.length else 0, distance)
 	end
 	return count + 1
+end
+
+-- Walk the chain as a FIXED NUMBER of links, however long the curve is.
+--
+-- `each` is length-driven, which is right for a body whose length genuinely
+-- changes - a serpent that unwinds off a tower has more or fewer vertebrae
+-- showing. It is WRONG for fixed anatomy: a limb of five vertebrae with a
+-- knuckle on the third and a fist on the end must keep all seven pieces and
+-- keep them in the same order, and a curve that stretches from 20 to 25 studs
+-- across its poses would otherwise gain and lose a vertebra mid-swing and
+-- move which one is the knuckle.
+--
+-- `fn(index, cframe, u, spacing)` - links sit at the CENTRE of their share of
+-- the curve, and `spacing` comes back so a caller can stretch each part's
+-- length to keep the overlap as the curve grows.
+function ChainPose:eachN(count: number, fn)
+	count = math.max(math.floor(count), 1)
+	local spacing = self.length / count
+	for i = 1, count do
+		local u = (i - 0.5) / count
+		fn(i, self:cframeAt(u * self.length), u, spacing)
+	end
+	return count
 end
 
 -- How many links `spacing` will produce - for sizing a part pool up front.
