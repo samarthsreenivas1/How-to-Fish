@@ -195,11 +195,11 @@ Bait.items.dredge_lure = {
 
 Bait.items.tyrants_call = {
 	id = "tyrants_call",
-	name = "Tyrant's Call",
+	name = "Mire's Call",
 	description = "A snarl of root, scute and cold flame that smells like a challenge. Cast it, and Old Gnashroot answers. One use.",
 	rarity = "Legendary",
 	icon = "",
-	color = Color3.fromRGB(150, 235, 200), -- the Tyrant's wisp-lit glare
+	color = Color3.fromRGB(150, 235, 200), -- the gnashroot burning in its chest
 	effect = { summonsBoss = "old_gnashroot" },
 	recipe = {
 		requiresLevel = 14,

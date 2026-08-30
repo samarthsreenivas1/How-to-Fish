@@ -856,7 +856,7 @@ Rods.items.fenpiercer_rod = {
 Rods.items.mireheart_rod = {
 	id = "mireheart_rod",
 	name = "Mireheart Rod",
-	description = "Cut from Old Gnashroot's root-bark in the presence of its still-beating heart. The whole fen answers it.",
+	description = "Cut from the gnashroot itself - the black knot that burns in the mire's chest, still beating when they took it. The whole fen answers it.",
 	rarity = "Legendary",
 	icon = "rbxassetid://98774088490960", -- assets/icons/mireheart_rod.png
 	model = {
@@ -886,7 +886,7 @@ Rods.items.mireheart_rod = {
 		redWidth = 0.05,
 		greenWidth = 0.16,
 	},
-	-- The fen's capstone: gated on the Tyrant's heart (owned, never spent).
+	-- The fen's capstone: gated on the mire's heart (owned, never spent).
 	recipe = {
 		requiresLevel = 14,
 		coins = 3000,

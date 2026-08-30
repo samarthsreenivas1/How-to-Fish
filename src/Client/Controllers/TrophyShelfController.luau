@@ -36,7 +36,7 @@ local DIM_COLOR = Color3.fromRGB(70, 80, 90)
 -- Kept in step with TrophyController.HEART_COLORS.
 local HEART_COLORS: { [string]: Color3 } = {
 	brinejaw = Color3.fromRGB(64, 190, 200),
-	old_gnashroot = Color3.fromRGB(96, 160, 72),
+	old_gnashroot = Color3.fromRGB(150, 235, 200), -- the gnashroot core
 	rimefang = Color3.fromRGB(120, 190, 255),
 	pyrelisk = Color3.fromRGB(255, 128, 48),
 	noctyss = Color3.fromRGB(150, 110, 235),

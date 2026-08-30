@@ -42,7 +42,7 @@ local HEART_ATTRIBUTE_PREFIX = "Heart_"
 -- so a new boss never renders invisible-grey.
 local HEART_COLORS: { [string]: Color3 } = {
 	brinejaw = Color3.fromRGB(64, 190, 200), -- drowned teal
-	old_gnashroot = Color3.fromRGB(96, 160, 72), -- fen moss
+	old_gnashroot = Color3.fromRGB(150, 235, 200), -- the gnashroot core
 	rimefang = Color3.fromRGB(120, 190, 255), -- glacier blue
 	pyrelisk = Color3.fromRGB(255, 128, 48), -- caldera ember
 	noctyss = Color3.fromRGB(150, 110, 235), -- abyssal violet

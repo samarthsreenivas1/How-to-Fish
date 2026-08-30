@@ -1458,7 +1458,13 @@ Creatures.items.old_gnashroot = {
 	drops = {
 		materials = {
 			bog_iron = { 6, 10 },
-			mire_hide = { 4, 6 },
+			-- It drags up what the bog has SWALLOWED - including the gators.
+			-- (Swapping this to mire_hide when the design stopped being a
+			-- gator was a mistake: gator_scute is the fen's workhorse, wanted
+			-- by nine recipes including both capstones this kill unlocks -
+			-- Mireheart 10, Fenreaver 8 - while mire_hide's only sinks are
+			-- Mirewalker legs/chest at L9-11, five levels below this gate.)
+			gator_scute = { 4, 6 },
 			wisp_light = { 3, 5 },
 			fen_venom = { 2, 4 },
 		},

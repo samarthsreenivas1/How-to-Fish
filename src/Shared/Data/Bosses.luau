@@ -501,18 +501,24 @@ Bosses.items.old_gnashroot = {
 			cooldown = 6.5,
 			pattern = "line",
 			count = 7,
-			spacing = 5.5,
-			startAt = 8,
+			spacing = 5.0,
+			startAt = 6, -- 6 + 6*5 = 36 studs of rank; at the roam disc's edge
+			-- that still lands inside the walkable peat (bank ends at r 70)
 			interval = 0.16,
 			arm = 0.5,
 			radius = 5,
 			damage = { 30, 44 },
 		},
-		-- ITS GIMMICK, and the reason the stumps exist: the ground under
-		-- every player softens and closes. The ring is the escape window;
-		-- whoever is still standing in it when it shuts is held while the
-		-- rest of the fight keeps coming. The stump platforms are the only
-		-- footing it cannot reach.
+		-- ITS GIMMICK: the ground under every player softens and closes. The
+		-- ring is the escape window; whoever is still standing in it when it
+		-- shuts is held while the rest of the fight keeps coming.
+		-- NOT YET TRUE, do not write it into a design doc: the arena's stump
+		-- platforms are meant to be footing this cannot reach, but snaretrap
+		-- queues its strike at each player's own root and the strike height
+		-- tolerance (14) dwarfs the stumps' ~5-stud lift, so standing on one
+		-- changes nothing today. Making it real needs a safe-geometry concept
+		-- in the handler - the reason BossArenas rows carry `stones`/`sockets`
+		-- for other bosses - plus a `stumps` list on the swamp row.
 		mire = {
 			handler = "snaretrap",
 			skin = "peat",
@@ -528,15 +534,23 @@ Bosses.items.old_gnashroot = {
 		-- THE EARNED OPENING. Both arms go up and come down together, and
 		-- the shockwave is generous - but planting them pitches the chest
 		-- forward and the core is wide open for the window afterwards.
-		-- `expose` is the safe path for this (it writes the cooldown before
-		-- opening the window); a bespoke opener that returns early is the one
-		-- that degenerates into slam-window-slam-window.
+		-- `expose` is the RIGHT path here, and not for the reason it is easy
+		-- to assume: openStagger already writes its own cooldown, so the
+		-- slam-window-slam-window degeneration is closed on both paths. The
+		-- actual reason is that openStagger ends in setMode(..., "stagger"),
+		-- and the only code that ever LEAVES stagger mode lives inside
+		-- updateBoss's entrenched-colossus branch. Gnashroot is not
+		-- entrenched and has no `pose`, so a hand-rolled opener would drop it
+		-- into a mode with no exit and hang the fight outright.
 		hammerfall = {
 			handler = "slam",
 			skin = "peat",
 			windup = 1.15,
 			duration = 0.5,
 			recover = 1.0,
+			tell = "slam", -- draws the ring at `radius`; without it a 22-stud
+			-- AoE warns with a 3-stud flash at the boss's pivot, because the
+			-- client keys telegraphs on `tell or name` and knows no "hammerfall"
 			cooldown = 11.0,
 			radius = 22,
 			damage = { 60, 84 },
