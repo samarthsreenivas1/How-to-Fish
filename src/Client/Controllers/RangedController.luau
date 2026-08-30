@@ -168,21 +168,55 @@ end
 -- within a stud of the lens), and an arc weapon gains as well - its flight
 -- time is measured from the origin, so a bow that used to lob from the
 -- camera's nose now measures the distance the arrow really travels.
+--
+-- THE AIM POINT IS RESOLVED PAST THE SHOOTER, NOT PAST THE CAMERA (regression
+-- fix, 2026-08-30). That first pass bounded the depth search by the weapon's
+-- `range`, measured from the CAMERA - two different quantities wearing one
+-- name. `range` is the reach of the GUN: the server measures it from the shot
+-- origin (ShotAim.terrainLimit(rayOrigin, ...)), so it says nothing about how
+-- far down the camera ray the crosshair's target lies.
+--
+-- Where the camera stands well back, the shooter is already most of that
+-- number down the ray - 57 to 61 studs of it in the Careenage's raised orbit
+-- (BIRDSEYE_DISTANCE 58) - so any gun with a shorter reach resolved its aim
+-- point BEHIND the shooter and fired at the camera. The Grave Blunderbuss
+-- (range 55) did it at every pitch in the band, and the server took the shots:
+-- the origin is honest, only the direction was reversed. Anything at all
+-- between the camera and the shooter did the same to every gun.
+--
+-- So the search runs from the shooter OUT to their reach, and the answer is
+-- floored a little in front of them: nearer than that is behind their back,
+-- which is not a thing anyone can shoot at.
 local ORIGIN_LIFT = 1.5 -- chest height above the root: the shot leaves the shooter, not the lens
-local MIN_AIM_DISTANCE = 2 -- closer than this gives no stable direction; the camera's look stands
+-- How far in front of the shooter the aim point must land. The floor is the
+-- larger of a flat two studs and three times `side` - how far the shooter
+-- stands OFF the camera ray (3 studs of it in the raised orbit: the camera
+-- focuses BIRDSEYE_FOCUS_LIFT up, the shot leaves at ORIGIN_LIFT). The ratio
+-- is what actually matters: it holds the shot within atan(1/3) = 18 degrees
+-- of the camera ray however far off it the rig puts the body, so the worst
+-- direction this can ever return is still 0.95 forward.
+local MIN_AIM_LEAD = 2
+local AIM_LEAD_RATIO = 3
 local CREATURES_FOLDER = "Creatures"
 
 -- Cached per model, dropped with it (the model is the weak key).
 local aimRadius: { [Model]: number } = setmetatable({}, { __mode = "k" }) :: any
 
--- How far down the camera ray the thing being aimed at is. Solid world first,
--- then creatures - creature parts are CanQuery = false (targeting has always
--- been proximity, not raycast: ShotAim's header), so they cannot be raycast
--- and are swept the same generous way CreatureService.raycastNearest sweeps
--- them server-side. Resolving the DEPTH is the whole point: aiming at open
--- range while the target is close is exactly where parallax misses.
-local function aimDistance(camCf: CFrame, range: number): number
-	local best = range
+-- How far down the camera ray the thing being aimed at is, searched over the
+-- stretch of that ray between `near` and `far` and answering `far` when it is
+-- clear. Solid world first, then creatures - creature parts are CanQuery =
+-- false (targeting has always been proximity, not raycast: ShotAim's header),
+-- so they cannot be raycast and are swept the same generous way
+-- CreatureService.raycastNearest sweeps them server-side. Resolving the DEPTH
+-- is the whole point: aiming at open range while the target is close is
+-- exactly where parallax misses.
+--
+-- The window is half the point too. Everything nearer than `near` is behind
+-- the shooter's back - a hull the raised camera is looking over, a creature
+-- standing between the lens and the body - and picking one of those as the
+-- thing being aimed at is how a shot ends up pointing at the camera.
+local function aimDistance(camCf: CFrame, near: number, far: number): number
+	local best = far
 	local ignore = {}
 	local character = player.Character
 	if character then
@@ -200,9 +234,12 @@ local function aimDistance(camCf: CFrame, range: number): number
 	params.RespectCanCollide = true
 
 	local origin, dir = camCf.Position, camCf.LookVector
-	local hit = Workspace:Raycast(origin, dir * range, params)
+	local hit = Workspace:Raycast(origin, dir * far, params)
 	if hit then
-		best = (hit.Position - origin).Magnitude
+		local depth = (hit.Position - origin).Magnitude
+		if depth > near then
+			best = depth
+		end
 	end
 
 	local creatures = Workspace:FindFirstChild(CREATURES_FOLDER)
@@ -211,7 +248,7 @@ local function aimDistance(camCf: CFrame, range: number): number
 			if model:IsA("Model") then
 				local to = model:GetPivot().Position - origin
 				local along = to:Dot(dir)
-				if along > 0 and along < best then
+				if along > near and along < best then
 					local radius = aimRadius[model]
 					if not radius then
 						local _, size = model:GetBoundingBox()
@@ -238,12 +275,24 @@ local function shotRay(camera: Camera, ranged): (Vector3, Vector3)
 		return camCf.Position, camCf.LookVector -- no body to shoot from; first person's old behaviour
 	end
 	local origin = (root :: BasePart).Position + Vector3.new(0, ORIGIN_LIFT, 0)
-	local aimAt = camCf.Position + camCf.LookVector * aimDistance(camCf, ranged.range or 100)
-	local to = aimAt - origin
-	if to.Magnitude < MIN_AIM_DISTANCE then
-		return origin, camCf.LookVector
-	end
-	return origin, to.Unit
+
+	-- Where the shooter stands on the camera ray: `ahead` studs down it and
+	-- `side` studs off it. In first person both are fractions of a stud; the
+	-- further back the rig puts the camera, the more of the ray is spent just
+	-- getting to the body, and that stretch is not the weapon's to spend.
+	local toShooter = origin - camCf.Position
+	local ahead = math.max(toShooter:Dot(camCf.LookVector), 0)
+	local side = (toShooter - camCf.LookVector * ahead).Magnitude
+
+	-- So: search the ray from just in front of the shooter out to the end of
+	-- the weapon's reach, and hold the answer to that near edge. `to` can no
+	-- longer be short enough to give an unstable direction (it is at least
+	-- MIN_AIM_LEAD long by construction), so there is nothing left for the old
+	-- magnitude guard to catch.
+	local nearest = ahead + math.max(MIN_AIM_LEAD, side * AIM_LEAD_RATIO)
+	local depth = math.max(aimDistance(camCf, nearest, ahead + (ranged.range or 100)), nearest)
+	local aimAt = camCf.Position + camCf.LookVector * depth
+	return origin, (aimAt - origin).Unit
 end
 
 -- ---------------------------------------------------------------- firing
