@@ -626,6 +626,7 @@ Bosses.items.rimefang = {
 		-- mark tells the party who the next move opens on.
 		spyhop = {
 			handler = "spyhop",
+			tell = "mark",
 			skin = "frost",
 			windup = 1.0,
 			duration = 0.8,
@@ -642,6 +643,7 @@ Bosses.items.rimefang = {
 		-- window, where a hand-rolled opener would skip it.
 		breach = {
 			handler = "charge",
+			tell = "burst",
 			skin = "frost",
 			windup = 1.15,
 			duration = 1.0,
@@ -651,6 +653,8 @@ Bosses.items.rimefang = {
 			width = 11,
 			leap = 9,
 			slamRadius = 15,
+			radius = 15, -- tell only; `charge` never reads it
+
 			damage = { 62, 86 },
 			trail = { every = 9, radius = 7, duration = 6, slow = 0.55, skin = "frost" },
 			expose = 4.0,
@@ -675,6 +679,7 @@ Bosses.items.rimefang = {
 		-- The tail comes up through a hole beside you and hammers down.
 		flukeslam = {
 			handler = "slam",
+			tell = "burst",
 			skin = "frost",
 			windup = 0.9,
 			duration = 0.5,
@@ -687,6 +692,7 @@ Bosses.items.rimefang = {
 		-- the driving while bergs of shattered sheet rain on the middle.
 		carousel = {
 			handler = "undertow",
+			tell = "ringTell",
 			skin = "frost",
 			windup = 1.0,
 			duration = 3.2,
@@ -704,6 +710,7 @@ Bosses.items.rimefang = {
 		-- island), so this currently lands as the strikes alone.
 		whiteout = {
 			handler = "barrage",
+			tell = "mark",
 			skin = "frost",
 			windup = 1.1,
 			duration = 2.4,
@@ -767,8 +774,13 @@ Bosses.items.noctyss = {
 		ring = 34,
 		at = "sockets",
 		mark = true,
-		window = 12,
-		regrow = 5,
+		-- 14s of window, 4s of dark. Measured against the band's real DPS
+		-- (Voidglass Saber ~229, Gloomcaller DMR ~200): a party of three does
+		-- ~9,000 inside one window, so her 46,000 is about five punish cycles
+		-- - a capstone fight, not a twenty-minute grind. Solo is deliberately
+		-- much longer; this is the island's raid-tier fight.
+		window = 14,
+		regrow = 4,
 	},
 	aggro = 130,
 	standoff = 0,
@@ -821,7 +833,7 @@ Bosses.items.noctyss = {
 			arc = math.rad(155),
 			girth = 3.0,
 			tick = 0.45,
-			damage = { 32, 44 },
+			damage = { 18, 26 },
 		},
 		-- The whole choir flashes as one and each flash throws a ring
 		-- outward. It is also the only time the arena is fully lit: the
@@ -839,7 +851,7 @@ Bosses.items.noctyss = {
 			ringWidth = 5,
 			interval = 0.5,
 			arm = 0.5,
-			damage = { 38, 52 },
+			damage = { 30, 42 },
 		},
 		-- The true lure flares and hauls the arena toward the pit - toward
 		-- the hole she is under. Chased by a feeler, so being dragged into
@@ -870,7 +882,7 @@ Bosses.items.noctyss = {
 			spread = 9,
 			arm = 0.75,
 			radius = 8,
-			damage = { 46, 62 },
+			damage = { 38, 52 },
 			hitEvent = "emerge",
 		},
 		-- Ink bursts blot the water AND the screen of anyone caught in one:
@@ -944,7 +956,7 @@ Bosses.items.noctyss = {
 			spread = 7,
 			arm = 0.55,
 			radius = 9,
-			damage = { 54, 74 },
+			damage = { 44, 60 },
 			hitEvent = "emerge",
 		},
 	},
@@ -1343,9 +1355,18 @@ Bosses.items.kraken = {
 		-- purpose: an arm hits with an arm's force, and the threat is how
 		-- many of them move at once.
 		--
+		-- Both carry `tell = false`, which is not "no telegraph" - it is the
+		-- engine's opt-out for a move that draws a BETTER one from its
+		-- handler. Each arm fires its own 12-stud ring as it rears, at the
+		-- arm, which is where the danger is. The generic tell would have
+		-- flashed at the boss's pivot instead: the middle of the head, up to
+		-- 46 studs from anything that is about to hit you, on an animal whose
+		-- head is 55 studs wide. Worse than nothing, because it points.
+		--
 		-- The opener from full health, so the ring reads as one animal before
 		-- the storm half of the fight starts.
 		ringwave = {
+			tell = false, -- the ARMS telegraph; see below
 			handler = "armwave",
 			skin = "ink",
 			windup = 0.7,
@@ -1359,6 +1380,7 @@ Bosses.items.kraken = {
 		-- Phase three only. Six arms up at once is the fight's loudest moment
 		-- and it should not be something you have seen twenty times by then.
 		closingfist = {
+			tell = false, -- the ARMS telegraph; see below
 			handler = "armgap",
 			skin = "ink",
 			windup = 0.6,
