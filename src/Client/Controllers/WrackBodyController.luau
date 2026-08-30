@@ -12,18 +12,23 @@
 -- `speed = 0`: he is a planted gun platform and his fight is a bullet hell
 -- that happens in FRONT of him, not a body that swings.
 --
--- So there is no path module, no pose attributes, no interpolation and no
--- per-frame limb maths here, and none should be added. All 25 objects in
--- assets/boss_wrack.glb are authored in ONE shared space at their final
--- positions (boss_gen.py's build_wrack: "STATIC. One CFrame for the whole
--- model - he never moves, never turns"), so the entire ship places with a
--- single CFrame and a per-piece offset that is measured once at clone time
--- and never recomputed.
+-- So there is no path module, no pose attributes and no per-frame limb maths
+-- here, and none should be added. All 25 objects in assets/boss_wrack.glb are
+-- authored in ONE shared space at their final positions (boss_gen.py's
+-- build_wrack: "STATIC. One CFrame for the whole model - he never moves,
+-- never turns"), so the entire ship places with a single CFrame and a
+-- per-piece offset that is measured once at clone time and never recomputed.
 --
--- WHAT IS STILL PER-FRAME, and why this is not a one-shot placement: he
--- rises out of the shoal on spawn (`riseDepth = 22`, `riseTime = 4.2`) and
--- he slews (`turnRate = 34 deg/s` - "a slow deck slew you can read the guns
--- off"). Both move the server model's pivot, so the assembly follows it.
+-- WHAT IS STILL PER-FRAME, and why this is not a one-shot placement:
+--
+--   * he rises out of the shoal on spawn (`riseDepth = 22`, `riseTime = 4.2`)
+--     and he slews (`turnRate = 34 deg/s` - "a slow deck slew you can read
+--     the guns off"). Both move the server model's pivot, and the assembly
+--     rides it for free;
+--   * the hull SPLITS for the melee window - two plates off the keel hinge,
+--     eased on one scalar. See "the melee window" below. That scalar is the
+--     only thing in this file that is interpolated, and it should stay the
+--     only one: it is a door opening, not a body being animated.
 --
 -- Pieces come from ReplicatedStorage/Assets/WrackPack (assets/boss_wrack.glb,
 -- see docs/import-checklist.md row 7p). Until that import lands this draws
@@ -236,43 +241,62 @@ local AUTHORED = {
 -- lump, and the payoff of the fight's one opening reads as nothing.
 local GLOW_MARKER = "Glow"
 
--- THE HULL DOES NOT OPEN YET, AND THAT IS ON PURPOSE.
+-- ---------------------------------------------------------- the melee window
 --
--- The melee punish window is real authored geometry: silence all four gun
--- decks and `Wrack_ShellUpper` (+70 deg) and `Wrack_ShellLower` (-35 deg)
--- swing off the keel axis, leaving a 20-stud hole amidships with
--- `Wrack_HeartGlow` burning in the hold between them. Two CFrames - it is
--- the cheapest thing in this file to draw.
+-- THE HULL OPENS. Silence all four gun decks and the waist splits: the two
+-- shell plates swing off the keel and the colossus is visibly broken in half,
+-- bow and stern joined only by the keel and a bare ribcage, with the
+-- heart-lantern burning in the gap. It reads best from directly above, which
+-- is where the fight camera sits.
 --
--- What is missing is a signal to draw it FROM. The state exists only on the
--- server: `kill()` counts `owner.partsAlive` down and, on the last battery,
--- stamps `owner.partsDownAt` and fires a creature event. It writes no
--- attribute. So from here the window is invisible:
+-- THE SIGNAL. `Exposed` - CreatureService's ATTR_EXPOSED - written on the
+-- parts-down path since 7258b4c. It is LEVEL-triggered, and that is the whole
+-- reason this is drawable: it is a state to read, not an edge to catch. The
+-- server sets it in kill() when the last battery falls and clears it in
+-- spawnBossParts when the ring regrows, so "is the hull open" is answerable at
+-- any instant by anyone who can see the model.
 --
---   * `Exposed` (ATTR_EXPOSED) is never set on a `vulnerableWhen =
---     "partsDown"` boss. Only openStagger and Noctyss's openMaw write it.
---   * `partsAlive` / `partsDownAt` are plain server fields; nothing
---     replicates them and there is no PartsAlive attribute anywhere.
---   * The one client-visible trace is `fireCreatureEvent("exposed",
---     owner.pos, ...)`, and its counterpart on regrow. Both are POSITIONAL
---     broadcast VFX - no model, no duration, and edge-triggered, so a player
---     who arrives (or whose controller adopts the boss) mid-window sees
---     nothing and has no state to recover from. Opening the hull on a
---     position match and guessing when to close it would be inventing fight
---     state on the client, which is exactly what the other six refuse to do.
+-- It is also the same attribute the stagger and maw paths write, so this is
+-- one rule for every way a boss opens up rather than a Wrack special case -
+-- PyreliskBodyController reads exactly the same attribute for the same reason.
+local ATTR_EXPOSED = "Exposed"
+
+-- THE HINGE, in boss space: both plates turn about boss-local X through here.
 --
--- WHAT WOULD FIX IT, in the file's own idiom and without a new Remote: set
--- ATTR_EXPOSED on the boss model in the two places that already own this
--- state. In kill(), beside `owner.partsDownAt = os.clock()`, add
--- `owner.model:SetAttribute(ATTR_EXPOSED, true)`; in spawnBossParts, beside
--- `creature.partsDownAt = nil`, add `creature.model:SetAttribute(
--- ATTR_EXPOSED, nil)`. That is level-triggered, so it is correct for a late
--- joiner, and PyreliskBodyController already reads exactly this attribute
--- (`target.exposed = model:GetAttribute("Exposed")`). CreatureService is
--- being refactored by another lane, so that pair of lines is theirs to add.
+-- boss_gen prints this as `_wr_at(0, 0, 0)` - the ship-space origin, which is
+-- the keel rabbet - and its HANDOFF states it in BLENDER space as
+-- (0, -15.5, 3.2), being WR_SHIP_Y / WR_SHIP_Z. The export maps Blender
+-- (x, y, z) -> Roblox (x, z, -y), so in the space this controller works in it
+-- is (0, 3.2, 15.5). Taken from the handoff verbatim it would hinge about a
+-- point fifteen studs underground.
 --
--- Until it exists the shells stay shut. A static, correctly-placed, correctly
--- lit boss is the honest outcome; a hull that guesses when to open is not.
+-- Stated in boss space (origin = the boss origin at sand level) and converted
+-- to assembly-local at use, because `relative` is measured from Wrack_Base.
+local HINGE = Vector3.new(0, 3.2, 15.5)
+
+-- How far each plate swings at full open, from boss_gen's WR_OPEN_UPPER_DEG /
+-- WR_OPEN_LOWER_DEG. Opposite signs about the same axis is what makes it a
+-- ribcage splitting rather than a lid lifting.
+--
+-- The signs are the authored ones and they are load-bearing: swung the other
+-- way the lower plate closes ON the heart-lantern (its centre moves from 5.8
+-- studs away to 4.6) instead of clearing it, so the punish window would seal
+-- the very thing it exists to expose. As authored, the plates separate from
+-- 13.2 studs apart to 35.1, and both retreat from the heart (to 26.6 and
+-- 15.4) - the lantern is revealed by the geometry moving off it, which is why
+-- nothing here touches its transparency or its material.
+local SHELL_SWING = {
+	ShellUpper = math.rad(70),
+	ShellLower = math.rad(-35),
+}
+
+-- How fast the swing eases. Deliberately slow: this is thirty studs of hull
+-- plate, and PyreliskBodyController's note applies with more force here -
+-- something this big that snaps between states reads as a cut, not a swing.
+-- At this rate the hull is ~95% open in 1.2s, comfortably inside the 4.0s of
+-- true silence `staggerFor` buys, so the plates finish moving while the guns
+-- are still quiet and the opening is legible before the burst window starts.
+local OPEN_RATE = 2.6
 
 local warnedMissingPack = false
 
@@ -414,31 +438,61 @@ local function adoptBoss(model: Model)
 		else
 			relative = CFrame.new((if authored then authored.at else Vector3.zero) - AUTHORED_ANCHOR)
 		end
-		pieces[index] = { part = part, relative = relative }
+		-- A shell plate carries the angle it reaches at full open; every other
+		-- piece carries nil and is placed straight off `relative`.
+		pieces[index] = { part = part, relative = relative, swing = SHELL_SWING[name] }
 	end
 
 	bodies[model] = {
 		folder = folder,
 		pieces = pieces,
 		groundDrop = groundDrop,
+		-- ADOPTED AT THE STATE THE FIGHT IS ALREADY IN, not at closed.
+		--
+		-- This is the case the level-triggered attribute exists for. A player
+		-- who joins mid-window - or whose controller adopts the boss a frame
+		-- after the last battery fell, or who walks into streaming range with
+		-- the hull already split - has no edge to have missed, so the window
+		-- is read here and the plates START there rather than easing open from
+		-- shut. Easing in on adopt would animate an event that happened before
+		-- this client was watching, which is the same lie as missing it.
+		open = if model:GetAttribute(ATTR_EXPOSED) then 1 else 0,
+		-- Local, so a plate can never be left mid-swing by a dropped update:
+		-- the attribute is the truth and this only ever chases it.
+		hinge = CFrame.new(HINGE - AUTHORED_ANCHOR),
 	}
 end
 
 -- ---------------------------------------------------------------- the draw
 
--- The entire per-frame cost of this boss. There is nothing to blend toward
--- and nothing to solve: the pivot says where the hull is and which way the
--- guns point, and every piece is a fixed offset from it.
+-- The entire per-frame cost of this boss: one CFrame for the ship, and one
+-- number for how far the hull has split. The pivot says where the hull is and
+-- which way the guns point, and every piece is a fixed offset from it.
 --
 -- No yaw correction is applied and none is needed. The engine's creature
 -- convention puts a body's +X along its heading (yawToward swings "the
 -- flat-laid long axis (+X)" onto the bearing), and boss_gen authors Wrack
 -- "facing +X (bow at +X, stern at -X)". The two already agree.
-local function drawBody(model: Model, entry)
+local function drawBody(model: Model, entry, dt: number)
 	local pivot = model:GetPivot()
 	local base = CFrame.new(pivot.Position + Vector3.new(0, entry.groundDrop, 0)) * pivot.Rotation
+
+	-- Chase the window. Reading the attribute every frame rather than binding
+	-- a changed-signal is what makes the close as reliable as the open: the
+	-- hull follows whatever the server currently says, so a missed signal
+	-- costs a few frames of easing and never a plate stuck open.
+	local goal = if model:GetAttribute(ATTR_EXPOSED) then 1 else 0
+	entry.open += (goal - entry.open) * math.clamp(OPEN_RATE * dt, 0, 1)
+
 	for _, piece in entry.pieces do
-		piece.part.CFrame = base * piece.relative
+		local relative = piece.relative
+		if piece.swing then
+			-- Turn about boss-local X through the keel hinge, then place as
+			-- usual. Written out rather than folded into `relative` because
+			-- the angle changes every frame while `relative` never does.
+			relative = entry.hinge * CFrame.Angles(piece.swing * entry.open, 0, 0) * entry.hinge:Inverse() * relative
+		end
+		piece.part.CFrame = base * relative
 	end
 end
 
@@ -481,10 +535,10 @@ function WrackBodyController.init()
 end
 
 function WrackBodyController.start()
-	RunService.RenderStepped:Connect(function()
+	RunService.RenderStepped:Connect(function(dt)
 		for model, entry in bodies do
 			if model.Parent then
-				drawBody(model, entry)
+				drawBody(model, entry, dt)
 			else
 				destroyBody(model)
 			end
