@@ -117,6 +117,15 @@ BossArenas.items = {
 		islandId = "wreck",
 		center = Vector3.new(19100, 0, -14500),
 		model = "WrackArena",
+		-- MEASURED off the build (all 22 objects, minimum vertex z), not taken
+		-- on the HANDOFF's word: on a shoal whose whole boundary is half-sunk
+		-- hulls, "the skirt is still the lowest thing in the mesh" is exactly
+		-- the assumption worth checking. It holds - the grounded fleet bottoms
+		-- out at -7.9 and the drowned apron at -8.7, so the base's own skirt
+		-- cap at -9.5 is the bbox floor placeAuthored actually pins. Leaving
+		-- this to the -9 default would lift the whole Careenage half a stud
+		-- off the profile the procedural fallback builds from.
+		meshBottom = -9.5,
 		palette = {
 			floor = Color3.fromRGB(78, 64, 48), -- rotten deck timber
 			rim = Color3.fromRGB(60, 70, 62), -- barnacled gunwale
