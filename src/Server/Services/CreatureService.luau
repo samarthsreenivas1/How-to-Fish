@@ -5139,13 +5139,48 @@ local function spawnBossParts(creature, def)
 		local arena = def.islandId and BossArenas.items[def.islandId]
 		offsets = arena and arena.sockets
 	end
-	local count = if offsets then math.min(parts.count, #offsets) else parts.count
+	-- `at = "mounts"` is the THREE-DIMENSIONAL form, authored on the BOSS row
+	-- rather than the arena's. `sockets` cannot express what it is for: those
+	-- offsets live on the arena, are two-dimensional, and force `centre.Y`.
+	-- Wrack's four gun decks sit at four different bearings AND four different
+	-- heights - a 25-stud spread, deliberate, so that no position on the shoal
+	-- shows more than two of them, which is the whole reason to move. Flatten
+	-- that onto an even ring and you get four stand-ins orbiting a hull whose
+	-- brass is visibly somewhere else, in a fight whose premise is "shoot the
+	-- gun decks". Boss-LOCAL, so the offsets travel with the hull's authored
+	-- frame instead of the world's axes.
+	local mounts = if parts.at == "mounts" then parts.mounts else nil
+	local count = parts.count
+	if offsets then
+		count = math.min(count, #offsets)
+	elseif mounts then
+		count = math.min(count, #mounts)
+	end
 	-- THE TRUE LURE: one of them, redrawn every time the choir grows back, so
 	-- "which light is real" is never answered twice by the same socket.
 	local marked = if parts.mark then math.random(1, count) else nil
 	for i = 1, count do
 		local at
-		if offsets then
+		if mounts then
+			-- Resolved ONCE, against the heading the boss spawned with. That
+			-- is correct only for a boss that does not turn, which is exactly
+			-- what this mode is for - a hull careened on a shoal, a thing
+			-- wedged in rock. A colossus that slews needs its parts re-placed
+			-- as it turns, and should not use this mode until that exists.
+			--
+			-- The rotation is `CFrame.Angles(0, yaw0, 0)` written out, the
+			-- same one `poseCFrame` applies to the model, so a mount lands
+			-- where the artist put it on the drawn hull.
+			local m = mounts[i]
+			local cos, sin = math.cos(creature.yaw0 or 0), math.sin(creature.yaw0 or 0)
+			-- Heights are authored from the SAND, not from the pivot: `spawn`
+			-- lifts a creature by half its own thickness before it stands.
+			-- `halfThickness` is read off the record and never baked into the
+			-- data, because it is measured from the server's own pack model
+			-- and moves the day that pack is re-imported.
+			local sand = centre.Y - (creature.halfThickness or 0)
+			at = Vector3.new(centre.X + m.X * cos + m.Z * sin, sand + m.Y, centre.Z - m.X * sin + m.Z * cos)
+		elseif offsets then
 			at = Vector3.new(centre.X + offsets[i].X, centre.Y, centre.Z + offsets[i].Z)
 		else
 			local angle = (i / count) * math.pi * 2
