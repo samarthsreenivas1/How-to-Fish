@@ -5258,7 +5258,16 @@ local function updateBoss(creature, now: number, dt: number)
 		if def.entrenched then
 			-- It does not rise from the deep - it is already up there. The
 			-- wake is the head lifting out of its slump as the coils grind.
-			hideColossusModel(creature)
+			--
+			-- Hiding is gated on `pose`, NOT on `entrenched`: the server model
+			-- is hidden because a RIG draws the body instead, so an entrenched
+			-- boss without one would simply be invisible with nothing to
+			-- replace it. Identical today (Brinejaw is the only entrenched
+			-- boss and it has a rig), but "holds a perch" and "is drawn by a
+			-- rig" are different claims and only the second one earns this.
+			if def.pose then
+				hideColossusModel(creature)
+			end
 			local state = colossusState(creature, def)
 			state.slump = 1 - (1 - (1 - u) ^ 2)
 			placeColossus(creature, def, now, root)
