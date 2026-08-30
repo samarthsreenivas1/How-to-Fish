@@ -489,6 +489,45 @@ Materials.items.abyss_silk = {
 	color = Color3.fromRGB(96, 74, 140),
 }
 
+-- ============================================================ hermit-saga keys
+--
+-- The three quest KEY ITEMS (2026-08-29). Each drops guaranteed off one
+-- hermit saga's miniboss (Creatures.luau `drops`, a { 1, 1 } band) and is
+-- spent by exactly one rod recipe in Rods.luau. They exist to GATE that
+-- recipe and nothing else: no other recipe takes them, no shop sells them,
+-- and there is no second way to get one. Legendary-tier display so the
+-- inventory card reads as the trophy it is.
+
+Materials.items.bell_clapper = {
+	id = "bell_clapper",
+	name = "Bell Clapper",
+	description = "The tongue of a chapel bell, cut from the gullet that swallowed it. Still warm. Still, faintly, ringing.",
+	tier = "rare",
+	rarity = "Legendary",
+	icon = "",
+	color = Color3.fromRGB(150, 220, 186),
+}
+
+Materials.items.whetstone_heart = {
+	id = "whetstone_heart",
+	name = "Whetstone Heart",
+	description = "A grey stone worn smooth in the eel's belly by everything it ever stole. Draw a blade down it and the blade thanks you.",
+	tier = "rare",
+	rarity = "Legendary",
+	icon = "",
+	color = Color3.fromRGB(150, 172, 186),
+}
+
+Materials.items.unburnt_wick = {
+	id = "unburnt_wick",
+	name = "Unburnt Wick",
+	description = "Pulled from the moth's mouth, where it had been burning for years without ever going shorter. The Lampwright wants it back.",
+	tier = "rare",
+	rarity = "Legendary",
+	icon = "",
+	color = Color3.fromRGB(255, 214, 120),
+}
+
 Materials.order = {
 	"driftwood",
 	"kelp_fiber",
@@ -533,6 +572,10 @@ Materials.order = {
 	"basalt_weave",
 	"duskhide",
 	"abyss_silk",
+	-- hermit-saga keys (2026-08-29)
+	"whetstone_heart",
+	"unburnt_wick",
+	"bell_clapper",
 }
 
 return Materials

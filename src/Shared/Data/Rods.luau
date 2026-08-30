@@ -94,6 +94,12 @@ export type Recipe = {
 --                  (Rods.LOCKED_ARCHETYPES) and weights the roll toward it.
 --   streakLuck     extra luck per consecutive completed cast, capped at
 --                  streakMax; a cancelled cast resets the streak.
+--   stun           seconds the catch surfaces dazed for, unable to act (the
+--                  Bellringer). Rides the cast's spawn `extra` bag, exactly
+--                  where a stun BAIT puts it - FishingService.resolveCast.
+--   guaranteedDrop the catch pays the TOP of every material band instead of
+--                  a roll (the Ribboncutter). Same bag, same one place, the
+--                  flag Gilded Chum already sets.
 --
 -- Optional: most rods have no perk.
 export type Perk = {
@@ -107,6 +113,8 @@ export type Perk = {
 	callsArchetype: string?,
 	streakLuck: number?,
 	streakMax: number?,
+	stun: number?,
+	guaranteedDrop: boolean?,
 }
 
 -- Creature archetypes that only a rod with the matching `callsArchetype` perk
@@ -1644,6 +1652,139 @@ Rods.STARTER_ROD_ID = "twig_rod"
 
 -- Stable display order for the inventory / crafting menus (table iteration
 -- order isn't guaranteed). Starter first, then by island and level gate.
+-- ============================================================ hermit-saga rods
+--
+-- The three saga payoffs (2026-08-29). Each is crafted once, from the key
+-- item its miniboss drops plus that band's ordinary stock, and each carries
+-- a perk that is ONE field with ONE consumer - the house rule. Two of the
+-- three ride channels that already existed for BAIT: a rod perk is just a
+-- second source for the same `extra` bag FishingService hands the catch.
+--
+-- No RodPack variants exist for these yet, so they render on the fallback
+-- mesh until someone adds them - the project's established missing-mesh
+-- behavior. Colors below are written for the variants when they land.
+
+-- The Saltmother's Price. Ribbonjaw's whetstone heart, lashed to the shaft:
+-- an edge that opens a catch so cleanly nothing is wasted. `guaranteedDrop`
+-- is the Gilded Chum flag - the kill pays the TOP of every material band
+-- instead of a roll (MaterialService).
+Rods.items.ribboncutter_rod = {
+	id = "ribboncutter_rod",
+	name = "The Ribboncutter",
+	description = "Vess ground the eel's own whetstone heart into the ferrule. Whatever you land comes apart along a line you did not have to find - and nothing is left in the water.",
+	rarity = "Epic",
+	icon = "",
+	model = {
+		model = "RodPack",
+		variant = "Ribboncutter",
+		grip = 0.95,
+		length = 7.0,
+		colors = {
+			twig = Color3.fromRGB(198, 206, 210),
+			grip = Color3.fromRGB(96, 110, 120),
+			trim = Color3.fromRGB(96, 214, 236),
+			line = Color3.fromRGB(224, 240, 246),
+			bobberTop = Color3.fromRGB(96, 214, 236),
+			bobberBottom = Color3.fromRGB(150, 172, 186),
+		},
+		neon = { "Rod_Trim" },
+	},
+	stats = { luck = 1.90, power = 1.45, control = 1.35 },
+	reel = { clicksRequired = 3, barSpeed = 0.63, redWidth = 0.055, greenWidth = 0.17 },
+	recipe = {
+		requiresLevel = 20,
+		coins = 2400,
+		materials = { whetstone_heart = 1, everice = 6, rime_pelt = 10 },
+	},
+	perk = {
+		id = "nothing_wasted",
+		name = "Nothing Wasted",
+		description = "The cut finds the seam. Every catch gives up the most it had in it - never a roll, always the top.",
+		guaranteedDrop = true,
+	},
+}
+
+-- The Lampwright's Debt. The wick the moth kept burning, re-hung at the
+-- tip - so this rod JOINS THE LANTERN SET (WeatherController.LANTERN_RODS
+-- keys off the id; carrying it pushes the trench's dark back). Its perk is
+-- the existing rarity floor, and the deep-water luck is the `luck` stat:
+-- both already have consumers, so the lantern half needed no new field.
+Rods.items.lampwrights_line_rod = {
+	id = "lampwrights_line_rod",
+	name = "The Lampwright's Line",
+	description = "The debt, paid: the wick that would not burn down, hung where a bobber should be. It has been drawing things up out of the dark its whole life, and it does not intend to stop.",
+	rarity = "Epic",
+	icon = "",
+	model = {
+		model = "RodPack",
+		variant = "LampwrightsLine",
+		grip = 0.95,
+		length = 7.0,
+		colors = {
+			twig = Color3.fromRGB(64, 56, 74),
+			grip = Color3.fromRGB(44, 38, 54),
+			trim = Color3.fromRGB(255, 214, 120),
+			line = Color3.fromRGB(226, 214, 186),
+			bobberTop = Color3.fromRGB(255, 236, 176),
+			bobberBottom = Color3.fromRGB(76, 66, 88),
+		},
+		neon = { "Rod_Trim", "Rod_BobberTop" },
+	},
+	stats = { luck = 2.20, power = 1.50, control = 1.45 },
+	reel = { clicksRequired = 3, barSpeed = 0.62, redWidth = 0.05, greenWidth = 0.165 },
+	recipe = {
+		requiresLevel = 34,
+		coins = 9000,
+		materials = { unburnt_wick = 1, lantern_gland = 6, abyss_ichor = 3 },
+	},
+	perk = {
+		id = "the_debt_repaid",
+		name = "The Debt Repaid",
+		description = "The wick lights the water it is dropped into, and the trench answers with its better half - nothing under Rare takes this line.",
+		minRarity = "Rare",
+	},
+}
+
+-- The Drowned Bell. Tollmaw's clapper hung off the tip: it rings on the way
+-- down and whatever comes up is still ringing. `stun` is the Glowchum /
+-- Frostgrub channel - the catch surfaces dazed and cannot act for that many
+-- seconds (CreatureService reads `extra.stun` on spawn).
+Rods.items.bellringer_rod = {
+	id = "bellringer_rod",
+	name = "The Bellringer",
+	description = "Odd hung the clapper where the float goes, and swore it was a kindness. It rings once going in. Whatever hears it comes up with the sound still in its head, and stays down a good while.",
+	rarity = "Epic",
+	icon = "",
+	model = {
+		model = "RodPack",
+		variant = "Bellringer",
+		grip = 0.95,
+		length = 7.0,
+		colors = {
+			twig = Color3.fromRGB(70, 84, 76),
+			grip = Color3.fromRGB(48, 58, 54),
+			trim = Color3.fromRGB(150, 220, 186),
+			line = Color3.fromRGB(198, 214, 202),
+			bobberTop = Color3.fromRGB(196, 244, 218),
+			bobberBottom = Color3.fromRGB(58, 72, 66),
+		},
+		neon = { "Rod_Trim", "Rod_BobberTop" },
+	},
+	stats = { luck = 2.40, power = 1.60, control = 1.55 },
+	reel = { clicksRequired = 3, barSpeed = 0.61, redWidth = 0.05, greenWidth = 0.165 },
+	recipe = {
+		requiresLevel = 41,
+		coins = 18000,
+		materials = { bell_clapper = 1, ghost_plank = 12, tarnished_doubloon = 12 },
+	},
+	perk = {
+		id = "the_toll",
+		name = "The Toll",
+		description = "It rings on the cast. Whatever surfaces comes up stunned and stays down for five seconds - long enough to settle the argument first.",
+		stun = 5,
+	},
+}
+
 Rods.order = {
 	"twig_rod",
 	"bamboo_rod",
@@ -1661,6 +1802,7 @@ Rods.order = {
 	"silverscale_rod",
 	"aurora_rod",
 	"frostheart_rod",
+	"ribboncutter_rod", -- hermit saga: The Saltmother's Price
 	"cinderline_rod",
 	"obsidian_rod",
 	"cinderglass_rod",
@@ -1671,11 +1813,13 @@ Rods.order = {
 	"inkveil_rod",
 	"voidline_rod",
 	"gloomheart_rod",
+	"lampwrights_line_rod", -- hermit saga: The Lampwright's Debt
 	"ghostplank_rod",
 	"riggingline_rod",
 	"doubloon_rod",
 	"sailcloth_rod",
 	"wraithheart_rod",
+	"bellringer_rod", -- hermit saga: The Drowned Bell
 	"squallcaster_rod",
 	"riptide_rod",
 	"thunderhead_rod",

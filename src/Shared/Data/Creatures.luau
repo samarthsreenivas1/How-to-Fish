@@ -2702,6 +2702,352 @@ Creatures.items.kraken = {
 	},
 }
 
+-- ============================================================ hermit-saga minibosses
+--
+-- The three quest ELITES (2026-08-29). Each is the payoff of one hermit
+-- islet's multi-chapter saga: sail out, meet the hermit, kill the named
+-- thing, carry its key item home, craft the rod it unlocks.
+--
+-- They are NOT bosses: no `archetype = "boss"`, no Bosses.luau entry with an
+-- arena and a heart, no `rarity = "Boss"`. They are ordinary rows on the kit
+-- engine wound up hard - health above their band's Legendary chase fish and
+-- far under its island boss, a full four-or-five-move book, and a gimmick
+-- each. Health/rewards are keyed to the TTK re-curve in docs/revamp-plan.md,
+-- one saga per late stretch of the voyage: ice (L15-21), gloom (L29-35),
+-- wreck (L36-42).
+--
+-- Each carries `waters` so it stays in its own band's pool - a row without
+-- one is an OCEAN row and would roll off the starter cove, which would put a
+-- 14,000-HP gulper in front of a level-3 player.
+--
+-- Each DROPS its key item as { 1, 1 } - a range whose minimum is 1, which is
+-- how MaterialService expresses "guaranteed" (it rolls uniformly in the
+-- band, so a band of exactly one is a certainty). These are quest gates, not
+-- luck rolls.
+
+-- The Drowned Bell (hermit: bellkeeper_odd). It swallowed the clapper out of
+-- a chapel bell that went down with the bay, and it has been ringing ever
+-- since. Huge, slow, and patient: a devouring lunge that crosses half the
+-- beach, and a toll that comes out of it as a shockwave. `harden` is the
+-- lesson - swinging into those long windups does almost nothing, and the
+-- gulp's wide expose window is where the fight is actually won.
+Creatures.items.tollmaw = {
+	id = "tollmaw",
+	name = "Tollmaw",
+	rarity = "Epic",
+	archetype = "rusher",
+	health = 14000,
+	waters = "wreck",
+	rewards = { coins = { 5200, 7800 }, xp = 12000 },
+	drops = {
+		materials = {
+			bell_clapper = { 1, 1 }, -- the quest gate: guaranteed
+			ghost_plank = { 2, 4 },
+			tarnished_doubloon = { 3, 5 },
+		},
+	},
+	moves = {
+		{
+			name = "gulp",
+			handler = "lunge",
+			windup = 1.4, -- enormous tell; `harden` makes interrupting it a mistake
+			duration = 0.45,
+			recover = 1.0,
+			cooldown = 6.5,
+			damage = { 70, 110 },
+			reach = 18,
+			hop = 3.5,
+			radius = 9,
+			cone = math.rad(55),
+			range = 26,
+			expose = 1.4, -- the whole fight: bait the gulp, punish the miss
+			tell = "snap",
+			skin = "wreck",
+		},
+		{
+			name = "toll",
+			handler = "ringpulse",
+			windup = 1.8,
+			duration = 1.6,
+			recover = 1.2,
+			cooldown = 11.0,
+			damage = { 55, 85 },
+			radius = 34, -- the band sweeps outward; step across it or outrun it
+			ringWidth = 6,
+			tell = "burst",
+			skin = "wreck",
+		},
+		{
+			name = "swallow",
+			handler = "pull",
+			windup = 1.1,
+			duration = 0.9,
+			recover = 0.5,
+			cooldown = 12.0,
+			damage = { 0, 0 }, -- the drag itself doesn't bite; the gulp it feeds does
+			radius = 30,
+			strength = 34,
+			range = 34,
+			follow = "gulp", -- dragged into the maw, then swallowed
+			tell = "pull",
+			skin = "wreck",
+		},
+		{
+			name = "deadtoll",
+			handler = "ringpulse",
+			windup = 1.6,
+			duration = 0.9,
+			recover = 1.0,
+			cooldown = 14.0,
+			damage = { 75, 115 },
+			radius = 30,
+			safeRadius = 9,
+			invert = true, -- the SAFE spot is under it - the ringTell says so
+			below = 0.5, -- the bell's second half, once it is truly hurt
+			skin = "wreck",
+		},
+	},
+	gimmick = { kind = "harden", mult = 0.3 },
+	tuning = { SHAMBLE_SPEED = 6, STANDOFF = 9, TURN_RATE_DEG = 90 },
+	contactDamage = { 26, 40 },
+	attackGap = { 2.2, 3.2 }, -- ponderous: slower than the Epic default
+	body = {
+		model = "CreaturePack",
+		species = "GulperEel",
+		shape = "gulletcod",
+		stance = "upright",
+		scale = 3.2,
+		color = Color3.fromRGB(58, 72, 66), -- drowned bronze
+		finColor = Color3.fromRGB(96, 120, 104),
+		markColor = Color3.fromRGB(150, 220, 186), -- verdigris, where the bell rubbed
+	},
+}
+
+-- The Saltmother's Price (hermit: saltmother_vess). A ribbon of an eel that
+-- lives under the sheet and robs anything that walks over it. Its whole
+-- identity is theft, so it runs the THIEF archetype as its kit locomotion:
+-- it closes, takes coins off you on contact, and bolts. Killing it pays the
+-- haul back with THIEF_BONUS on top (ProgressionService) - that IS "make it
+-- give it back", already wired, no new code. `phasey` and a hit-and-run book
+-- make catching it the hard part.
+Creatures.items.old_ribbonjaw = {
+	id = "old_ribbonjaw",
+	name = "Old Ribbonjaw",
+	rarity = "Epic",
+	archetype = "thief",
+	health = 3800,
+	waters = "ice",
+	rewards = { coins = { 1100, 1700 }, xp = 2800 },
+	drops = {
+		materials = {
+			whetstone_heart = { 1, 1 }, -- the quest gate: guaranteed
+			everice = { 1, 2 },
+			rime_pelt = { 2, 4 },
+		},
+	},
+	-- The full thief updater walks it between moves: chase, pickpocket on
+	-- contact, zigzag away. Its built-in steal runs as part of the kit.
+	movement = "thief",
+	moves = {
+		{
+			name = "ribbonlash",
+			handler = "snap",
+			windup = 0.4,
+			duration = 0.25,
+			recover = 0.3,
+			cooldown = 2.4,
+			damage = { 26, 40 },
+			lunge = 7,
+			radius = 7,
+			cone = math.rad(75),
+			range = 14,
+			tell = "snap",
+			skin = "frost",
+		},
+		{
+			name = "cutandrun",
+			handler = "lunge",
+			windup = 0.5,
+			duration = 0.3,
+			recover = 0.35,
+			cooldown = 4.0,
+			damage = { 30, 46 },
+			reach = 20,
+			hop = 2.0,
+			radius = 6,
+			cone = math.rad(50),
+			range = 26,
+			follow = "vanish", -- cut, then gone before you can answer
+			tell = "snap",
+			skin = "frost",
+		},
+		{
+			name = "vanish",
+			handler = "phantom",
+			windup = 0.5,
+			duration = 0.9,
+			recover = 0.5,
+			cooldown = 7.0,
+			damage = { 34, 52 },
+			emergeAt = 6,
+			radius = 7,
+			cone = 70, -- phantom takes DEGREES, unlike snap/lunge
+			weight = 0, -- follow-only: the back half of cutandrun
+			skin = "frost",
+		},
+		{
+			name = "brinecoil",
+			handler = "snaretrap",
+			windup = 0.7,
+			duration = 0.3,
+			recover = 0.4,
+			cooldown = 9.0,
+			damage = { 18, 28 },
+			arm = 1.0, -- the window to step off the mark
+			radius = 6,
+			snare = 1.6, -- rooted: this is how it gets paid
+			tell = "mark",
+			skin = "frost",
+		},
+	},
+	gimmick = { kind = "phasey", hits = 3, gap = 0.8, hop = 14 },
+	tuning = { TURN_RATE_DEG = 320 },
+	contactDamage = { 14, 22 }, -- the contact is the robbery, not the wound
+	attackGap = { 0.9, 1.5 }, -- busier than the Epic default: it never settles
+	body = {
+		model = "CreaturePack",
+		species = "PhantomMoray",
+		shape = "skipper",
+		scale = 2.0,
+		color = Color3.fromRGB(198, 206, 210), -- salt-bleached hide
+		finColor = Color3.fromRGB(150, 172, 186),
+		markColor = Color3.fromRGB(96, 214, 236), -- the cold running down its ribbon
+	},
+}
+
+-- The Lampwright's Debt (hermit: lampwright). It comes for the lamp, every
+-- night, and one night it will take it. Fought in the ring of light the
+-- Lampwright keeps burning, so the whole book is a light motif: the glare it
+-- throws off its own wings, the burning scales it sheds, and the flight
+-- INTO the lamp that a moth cannot help. `drifter` locomotion gives it the
+-- hover-and-bob that reads as flight; `deathburst` is the scales going up
+-- all at once when it finally falls.
+Creatures.items.moth_of_the_deep = {
+	id = "moth_of_the_deep",
+	name = "Moth of the Deep",
+	rarity = "Epic",
+	archetype = "drifter",
+	health = 9500,
+	waters = "gloom",
+	rewards = { coins = { 3200, 4800 }, xp = 7500 },
+	drops = {
+		materials = {
+			unburnt_wick = { 1, 1 }, -- the quest gate: guaranteed
+			lantern_gland = { 2, 3 },
+			gloom_scale = { 4, 6 },
+		},
+	},
+	movement = "drifter", -- hovers, bobs, floats up when hit
+	moves = {
+		{
+			name = "wingbeat",
+			handler = "gustpush",
+			windup = 0.9,
+			duration = 0.35,
+			recover = 0.5,
+			cooldown = 5.5,
+			damage = { 40, 62 },
+			radius = 22,
+			cone = math.rad(60),
+			push = 78, -- shoved out of the light, which is the point
+			lift = 14,
+			range = 24,
+			tell = "gustTell",
+			skin = "lure",
+		},
+		{
+			name = "scalefall",
+			handler = "mortar",
+			windup = 1.0,
+			duration = 0.4,
+			recover = 0.6,
+			cooldown = 8.0,
+			damage = { 44, 68 },
+			count = 5,
+			spread = 12,
+			delay = 1.1, -- tell-to-hit: the scales drift down slowly
+			stagger = 0.22,
+			aim = "player",
+			radius = 6,
+			tell = "mark",
+			skin = "lure",
+		},
+		{
+			name = "lampglare",
+			handler = "beam",
+			windup = 1.1,
+			duration = 1.5,
+			recover = 0.9,
+			cooldown = 12.0,
+			damage = { 16, 24 }, -- per tick; standing in it hurts, it doesn't shred
+			sweep = 140, -- degrees swept over the strike
+			cone = 16, -- degrees, half-angle
+			range = 40,
+			tick = 0.3,
+			radius = 40, -- the coneTell's reach (the beam itself reads `range`)
+			tell = "coneTell",
+			skin = "lure",
+		},
+		{
+			name = "candleflight",
+			handler = "lunge",
+			windup = 0.6,
+			duration = 0.4,
+			recover = 0.7,
+			cooldown = 6.0,
+			damage = { 38, 58 },
+			reach = 26,
+			hop = 6.0,
+			radius = 7,
+			cone = math.rad(60),
+			range = 30,
+			expose = 1.1, -- it flies into the light and cannot stop itself
+			tell = "snap",
+			skin = "lure",
+		},
+		{
+			name = "mothstorm",
+			handler = "decoys",
+			windup = 1.0,
+			duration = 0.4,
+			recover = 0.6,
+			cooldown = 14.0,
+			damage = { 30, 46 },
+			count = 4,
+			spread = 16,
+			trigger = 5, -- drifting lights that go off when you come near
+			blast = 8,
+			lifetime = 9,
+			drift = 6,
+			below = 0.45, -- the last of its scales, thrown all at once
+			skin = "lure",
+		},
+	},
+	gimmick = { kind = "deathburst", radius = 16, damage = { 55, 85 } },
+	tuning = { TURN_RATE_DEG = 260 },
+	contactDamage = { 20, 32 },
+	attackGap = { 1.3, 2.1 },
+	body = {
+		model = "CreaturePack",
+		species = "DreadDragonfly",
+		shape = "ray",
+		scale = 2.6,
+		color = Color3.fromRGB(76, 66, 88), -- dust-grey body
+		finColor = Color3.fromRGB(206, 196, 172), -- pale, powdery wings
+		markColor = Color3.fromRGB(255, 214, 120), -- lantern-gold eyespots
+	},
+}
+
 -- Rarity -> list of rows, so a rarity roll can pick uniformly within the
 -- tier. Built once here rather than rescanned per cast.
 Creatures.byRarity = {} :: { [string]: { Creature } }

@@ -76,6 +76,10 @@ bait_text = read("Data/Bait.luau")
 armor_text = read("Data/Armor.luau")
 trinkets_text = read("Data/Trinkets.luau")
 bosses_text = read("Data/Bosses.luau")
+boats_text = read("Data/Boats.luau")
+quests_text = read("Data/Quests.luau")
+npcs_text = read("Data/Npcs.luau")
+shops_text = read("Data/Shops.luau")
 islands_text = read("Config/Islands.luau")
 tuning_text = read("Config/Tuning.luau")
 world_text = read("Config/World.luau")
@@ -88,10 +92,44 @@ baits = blocks(bait_text)
 armor_pieces = blocks(armor_text)
 trinkets = blocks(trinkets_text)
 bosses = blocks(bosses_text)
+quests = blocks(quests_text)
+npcs = blocks(npcs_text)
+shops = blocks(shops_text)
 islands = blocks(islands_text)
 # Islands.items is written as one literal table, not per-id assignments.
 m = re.search(r"Islands\.items\s*=\s*{(.*)^}", islands_text, re.S | re.M)
 island_ids = set(re.findall(r"^\t([A-Za-z_][A-Za-z0-9_]*)\s*=\s*{", m.group(1), re.M)) if m else set()
+# Boats.items is one literal table too.
+m = re.search(r"Boats\.items\s*=\s*{(.*?)^}", boats_text, re.S | re.M)
+boat_ids = set(re.findall(r"^\t([A-Za-z_][A-Za-z0-9_]*)\s*=\s*{", m.group(1), re.M)) if m else set()
+
+# The two reference DOMAINS the quest and shop checks below share.
+#   grantable - exactly what InventoryService.grantItem will hand over: rods,
+#     weapons, trinkets, armor. A quest reward `items` entry and a shop
+#     `kind = "item"` slot both end at that one function, so both resolve
+#     here. Bait and boats are deliberately OUT: they have their own grant
+#     paths, so an id from either would look fine and then grant nothing.
+#   craftable - what CraftingService can build (a `craft` objective's
+#     itemId): the grantable set plus bait and boats.
+grantable = set(rods) | set(weapons) | set(trinkets) | set(armor_pieces)
+craftable = grantable | set(baits) | boat_ids
+
+
+def entries(text):
+    """Each top-level `{...}` inside a Luau list, brace-matched - so an
+    objective's nested `materials = { ... }` stays with its own entry."""
+    out, depth, start = [], 0, None
+    for i, ch in enumerate(text or ""):
+        if ch == "{":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0 and start is not None:
+                out.append(text[start + 1:i])
+                start = None
+    return out
 
 # Droppable / grantable materials.
 droppable = set()
@@ -224,6 +262,117 @@ for part in waters_by_part:
     if part not in fishable_names:
         problem(f"World: WATERS_BY_PART part '{part}' missing from FISHABLE_NAMES")
 
+# 7. Quests: every id a quest row names resolves. NOTHING checked this before
+# (added 2026-08-29), which is why the bug class it catches is invisible: a
+# quest whose objective names a creature or a craftable that does not exist
+# is still offered and still accepted - it simply can never be turned in.
+# Same for a reward that grants nothing. Every message prints the quest id.
+#
+# `type` is checked against the matcher QuestService actually implements
+# (objectiveMatches handles catch/kill/craft/visit; objectiveDone handles
+# deliver). An objective of any other type matches no event, so its progress
+# never leaves 0 and allObjectivesDone never returns true - a dead quest.
+OBJECTIVE_TYPES = ("catch", "kill", "craft", "deliver", "visit")
+RARITIES = ("Common", "Uncommon", "Rare", "Epic", "Legendary")
+
+npc_quest_lists = {}
+for nid, block in npcs.items():
+    listed = re.findall(r'"([A-Za-z0-9_]+)"', braced(block, "quests") or "")
+    npc_quest_lists[nid] = listed
+    for qid in listed:
+        if qid not in quests:
+            problem(f"npc {nid}: quests list names unknown quest '{qid}'")
+    shop_ref = re.search(r'shop = "([A-Za-z0-9_]+)"', block)
+    if shop_ref and shop_ref.group(1) not in shops:
+        problem(f"npc {nid}: shop '{shop_ref.group(1)}' not in Shops.items")
+
+for qid, block in quests.items():
+    giver = re.search(r'giver = "([A-Za-z0-9_]+)"', block)
+    if not giver:
+        problem(f"quest {qid}: no giver")
+    elif giver.group(1) not in npcs:
+        problem(f"quest {qid}: giver '{giver.group(1)}' not in Npcs.items")
+    elif qid not in npc_quest_lists.get(giver.group(1), []):
+        # QuestService.offersFor only ever walks the NPC's own `quests` list,
+        # so a quest its giver does not list can never be offered to anyone.
+        problem(f"quest {qid}: giver '{giver.group(1)}' does not list it in `quests` - never offered")
+    prereq = re.search(r'prereq = "([A-Za-z0-9_]+)"', block)
+    if prereq and prereq.group(1) not in quests:
+        problem(f"quest {qid}: prereq '{prereq.group(1)}' is not a quest")
+
+    for objective in entries(braced(block, "objectives")):
+        kind = re.search(r'type = "([a-z]+)"', objective)
+        kind = kind.group(1) if kind else None
+        if kind not in OBJECTIVE_TYPES:
+            problem(f"quest {qid}: objective type '{kind}' has no matcher in QuestService - it can never complete")
+            continue
+        species = re.search(r'species = "([A-Za-z0-9_]+)"', objective)
+        if species and species.group(1) not in creatures:
+            problem(f"quest {qid}: objective species '{species.group(1)}' not in Creatures.items")
+        rarity = re.search(r'rarity = "([A-Za-z]+)"', objective)
+        if rarity and rarity.group(1) not in RARITIES:
+            problem(f"quest {qid}: objective rarity '{rarity.group(1)}' is not a rolled tier")
+        w = re.search(r'waters = "([a-z]+)"', objective)
+        if w and w.group(1) not in water_keys:
+            problem(f"quest {qid}: objective waters '{w.group(1)}' has no WATERS_BY_PART surface")
+        if kind == "craft":
+            item = re.search(r'itemId = "([A-Za-z0-9_]+)"', objective)
+            if not item:
+                problem(f"quest {qid}: craft objective has no itemId")
+            elif item.group(1) not in craftable:
+                problem(f"quest {qid}: craft objective itemId '{item.group(1)}' is not a craftable")
+        elif kind == "visit":
+            isl = re.search(r'island = "([A-Za-z0-9_]+)"', objective)
+            if not isl:
+                problem(f"quest {qid}: visit objective has no island")
+            elif isl.group(1) not in island_ids:
+                problem(f"quest {qid}: visit objective island '{isl.group(1)}' not in Islands.items")
+        elif kind == "deliver":
+            mats = braced(objective, "materials")
+            if mats is None:
+                problem(f"quest {qid}: deliver objective has no materials")
+            for mat in re.findall(r"([A-Za-z_][A-Za-z0-9_]*)\s*=\s*\d", mats or ""):
+                if mat not in materials:
+                    problem(f"quest {qid}: deliver objective wants unknown material '{mat}'")
+
+    rewards = braced(block, "rewards") or ""
+    for mat in re.findall(r"([A-Za-z_][A-Za-z0-9_]*)\s*=\s*\d", braced(rewards, "materials") or ""):
+        if mat not in materials:
+            problem(f"quest {qid}: reward material '{mat}' not in Materials.items")
+    for bid in re.findall(r"([A-Za-z_][A-Za-z0-9_]*)\s*=\s*\d", braced(rewards, "bait") or ""):
+        if bid not in baits:
+            problem(f"quest {qid}: reward bait '{bid}' not in Bait.items")
+    for iid in re.findall(r'"([A-Za-z0-9_]+)"', braced(rewards, "items") or ""):
+        if iid not in grantable:
+            problem(f"quest {qid}: reward item '{iid}' is not grantable (rod/weapon/trinket/armor)")
+
+# 8. Shops: every slot id resolves in the table its `kind` names. Same bug
+# class as the quests above and strictly worse: NpcService.buy SPENDS the
+# coins before it grants, so a typo'd slot takes the player's money and hands
+# back nothing, silently. `kind = "item"` resolves through the same grantable
+# domain as a quest reward item - both end at InventoryService.grantItem.
+SLOT_DOMAINS = {
+    "bait": (set(baits), "Bait.items"),
+    "material": (materials, "Materials.items"),
+    "item": (grantable, "the grantable set (rod/weapon/trinket/armor)"),
+}
+for sid, block in shops.items():
+    slots = entries(braced(block, "stock") or "")
+    slots += entries(braced(braced(block, "rotating") or "", "pool") or "")
+    if not slots:
+        problem(f"shop {sid}: no stock and no rotating pool - nothing to sell")
+    for slot in slots:
+        m = re.search(r'kind = "([a-z]+)"\s*,\s*id = "([A-Za-z0-9_]+)"', slot)
+        if not m:
+            problem(f"shop {sid}: slot has no kind/id pair ({' '.join(slot.split())[:48]})")
+            continue
+        kind, iid = m.group(1), m.group(2)
+        domain = SLOT_DOMAINS.get(kind)
+        if not domain:
+            problem(f"shop {sid}: slot kind '{kind}' has no branch in NpcService.buy")
+        elif iid not in domain[0]:
+            problem(f"shop {sid}: {kind} slot '{iid}' not in {domain[1]}")
+
 # ---------------------------------------------------------------- report
 if problems:
     print(f"CONTENT CHECK: {len(problems)} problem(s)")
@@ -233,5 +382,6 @@ if problems:
 print(
     f"CONTENT CHECK OK: {len(materials)} materials, {len(creatures)} creatures, {len(armor_pieces)} armor pieces in {len(armor_set_ids)} sets, {len(trinkets)} trinkets, "
     f"{len(rods)} rods, {len(weapons)} weapons, {len(baits)} baits, "
-    f"{len(bosses)} bosses, {len(island_ids)} islands"
+    f"{len(bosses)} bosses, {len(island_ids)} islands, "
+    f"{len(quests)} quests, {len(npcs)} npcs, {len(shops)} shops"
 )

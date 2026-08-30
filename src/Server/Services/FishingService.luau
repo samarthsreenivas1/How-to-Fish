@@ -402,6 +402,23 @@ local function resolveCast(player: Player, cast, reason: string?)
 			end
 		end
 
+		-- Rod perks that follow the catch out of the water (hermit sagas,
+		-- 2026-08-29). They ride the SAME bag as the baits above, so the
+		-- Bellringer's toll and the Ribboncutter's clean cut need no channel
+		-- of their own - this is the one place either field is read. Rod and
+		-- bait stack by taking the LONGER daze rather than overwriting, so
+		-- pairing the Bellringer with Frostgrub is never a downgrade.
+		local rodPerk = cast.rodData.perk
+		if rodPerk then
+			if rodPerk.stun then
+				local bagged = bag()
+				bagged.stun = math.max(bagged.stun or 0, rodPerk.stun)
+			end
+			if rodPerk.guaranteedDrop then
+				bag().guaranteedDrop = true
+			end
+		end
+
 		CreatureService.spawn(creature, cast.landing, target, grade, extra)
 		-- The quest funnel: one line, the whole hook (Beyond the Cast A2).
 		QuestService.notify("catch", {

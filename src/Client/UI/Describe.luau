@@ -79,6 +79,10 @@ local PERK_TOKENS = {
 	{ key = "noShrink", token = "HOLD", color = Describe.Color.forgive },
 	{ key = "freeMisses", token = "SLIP", color = Describe.Color.forgive },
 	{ key = "streakLuck", token = "CHUM", color = Describe.Color.luck },
+	-- Hermit-saga rods (2026-08-29): the same two effects the baits already
+	-- have chips for, so the card language matches wherever it comes from.
+	{ key = "stun", token = "DAZE", color = Describe.Color.stun },
+	{ key = "guaranteedDrop", token = "DROP", color = Describe.Color.drop },
 }
 
 -- What an ability card shows for a perk: { token, color, name, text }.
@@ -150,6 +154,19 @@ function Describe.perkFacts(perk): { { token: string, text: string, color: Color
 				math.floor((perk.streakMax or 0) * 100 + 0.5)
 			),
 		})
+	end
+	if perk.stun then
+		table.insert(facts, {
+			token = "DAZE",
+			color = Describe.Color.stun,
+			text = string.format("The catch lands stunned for %ds", perk.stun),
+		})
+	end
+	if perk.guaranteedDrop then
+		table.insert(
+			facts,
+			{ token = "DROP", color = Describe.Color.drop, text = "Every catch gives up its full materials" }
+		)
 	end
 	if perk.frenzy then
 		table.insert(facts, { token = "CHAIN", color = Describe.Color.damage, text = "Hits in a chain cut deeper" })

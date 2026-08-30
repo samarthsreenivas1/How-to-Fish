@@ -61,6 +61,9 @@ local LAMP_RANGE_LANTERN = 34
 local LANTERN_RODS: { [string]: boolean } = {
 	lanternline_rod = true,
 	gloomheart_rod = true,
+	-- The Lampwright's Debt (hermit saga, 2026-08-29): the moth's unburnt
+	-- wick, re-hung at the tip. It was a lamp before it was a rod.
+	lampwrights_line_rod = true,
 }
 
 -- The fen's standing mist (swamp restart, 2026-08-28): client-only like the
