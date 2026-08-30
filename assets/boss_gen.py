@@ -3826,18 +3826,34 @@ BJ_REST = {
     "head_out": 8.0,  # how far past the gallery the neck leans over the arena
     "bearing": math.radians(342.0),  # where the head leans out - toward the party's arrival ring
     "tail_out": 31.0,  # how far onto the sand the slack tail reaches
-    "tail_z": 3.4,
+    # No "tail_z" here on purpose: it was a hand-copy of the Luau's
+    # sandY(tail_out) + 1.2 and had drifted to 3.4 against its 2.79. The tail's
+    # resting height is computed from the beach profile now, at the one place
+    # that uses it, so there is nothing left to drift.
     "tail_turn": 0.85,
 }
 
 
+# THE TOWER STEPS; THE BODY DOES NOT. Each drum starts 0.2 studs narrower than
+# the one below it ends - a corbel, and correct masonry, which build_bj_spire
+# still builds. But reading the drums directly gave the coils a radius that
+# TELEPORTED 0.2 studs across zero height at z=20 and again at z=38, and the
+# helix crosses both. On a spiral this tight that was a 73-degree corner in the
+# body, twice - worse than either join the curve was actually designed around.
+# So the clearance curve is the drums' endpoints as one continuous polyline. It
+# sits at or outside the masonry everywhere, so the body rides over each ledge
+# instead of snapping across it. Mirrors BrinejawPath.SPIRE_PROFILE.
+BJ_SPIRE_PROFILE = ((3.5, 8.5), (20.0, 7.4), (38.0, 6.2), (54.0, 5.2))
+
+
 def _spire_radius(z):
-    """The lighthouse's radius at height z (arena_gen's three drums)."""
-    for z0, z1, r0, r1 in ((3.5, 20.0, 8.5, 7.4), (20.0, 38.0, 7.2, 6.2), (38.0, 54.0, 6.0, 5.2)):
+    """The radius the coils wrap at height z - continuous, unlike the drums."""
+    for i in range(len(BJ_SPIRE_PROFILE) - 1):
+        (z0, r0), (z1, r1) = BJ_SPIRE_PROFILE[i], BJ_SPIRE_PROFILE[i + 1]
         if z <= z1:
             t = max(0.0, min(1.0, (z - z0) / (z1 - z0)))
             return r0 + (r1 - r0) * t
-    return 5.2
+    return BJ_SPIRE_PROFILE[-1][1]
 
 
 # The rest of the pose vocabulary, ported from the SHIPPED math in
@@ -3899,8 +3915,13 @@ def _bj_rest_path(t, state=None):
     def helix(k):
         z = (rest["top_z"] - drop) + ((rest["bottom_z"] - drop) - (rest["top_z"] - drop)) * k
         theta = rest["bearing"] + rest["turns"] * TAU * k
-        r = _spire_radius(z) + rest["clearance"]
+        r = _spire_radius(z) + rest["clearance"] * (1 - 0.10 * state["unwind"])
         return Vector((math.cos(theta) * r, math.sin(theta) * r, z))
+
+    def helix_tangent(k):
+        """The coil's heading, by central difference - both joins leave on it."""
+        a, b = max(k - 1e-3, 0.0), min(k + 1e-3, 1.0)
+        return (helix(b) - helix(a)) / (b - a)
 
     if t <= neck_end:
         # A quadratic sweep from the reared neck down onto the top coil.
@@ -3915,18 +3936,41 @@ def _bj_rest_path(t, state=None):
         # lift gives the cobra look - reared over the gallery, watching the
         # sand - instead of a snout aimed at the sky.
         control = top - Vector((math.cos(theta) * 11.0, math.sin(theta) * 11.0, 2.5))
-        return top * (1 - u) ** 2 + control * (2 * (1 - u) * u) + start * u**2
+        # CUBIC, not quadratic. The single control point of a quadratic is
+        # already spent on the carry angle, so the far end arrived 64.5 degrees
+        # off the coil it joined - a visible corner in the neck, in the pose
+        # this boss holds most of the fight. The second control point buys the
+        # join: a third of the way down the helix's own entry tangent.
+        enter = helix_tangent(0.0) * (neck_end / (helix_end - neck_end))
+        guide = start - enter / 3.0
+        v = 1 - u
+        return top * v**3 + control * (3 * v * v * u) + guide * (3 * v * u * u) + start * u**3
 
     if t <= helix_end:
         return helix((t - neck_end) / (helix_end - neck_end))
 
     # Slack: the tail leaves the tower, spirals down and lies on the sand.
+    # A HERMITE, so the tail leaves on the coil's heading too. The old form put
+    # the radius on k**0.75 and the height on k**0.6, and both have an INFINITE
+    # derivative at k=0: the tail left the bottom coil at 85.8 degrees to it,
+    # the sharpest corner on the body. Starting from helix(1) also closes a
+    # smaller gap - the old `inner` ignored the coils' tightening, so the ends
+    # drifted up to a third of a stud apart whenever the tail was unwinding.
     k = (t - helix_end) / (1.0 - helix_end)
-    inner = _spire_radius(rest["bottom_z"] - drop) + rest["clearance"]
-    theta = rest["bearing"] + rest["turns"] * TAU + rest["tail_turn"] * TAU * k
-    r = inner + (rest["tail_out"] - inner) * k**0.75
-    z = (rest["bottom_z"] - drop) + (rest["tail_z"] - (rest["bottom_z"] - drop)) * k**0.6
-    return Vector((math.cos(theta) * r, math.sin(theta) * r, z))
+    k_scale = (1.0 - helix_end) / (helix_end - neck_end)
+    p0 = helix(1.0)
+    m0 = helix_tangent(1.0) * k_scale
+    end_theta = rest["bearing"] + rest["turns"] * TAU + rest["tail_turn"] * TAU
+    # Height from the SAME expression the Luau uses. `tail_z` was a copy of it
+    # and had already drifted 0.61 studs (3.4 against sandY(31) + 1.2 = 2.79),
+    # which is exactly the kind of silent divergence this port exists to avoid.
+    tail_top = _bj_sand_z(rest["tail_out"]) + 1.2
+    p1 = Vector((math.cos(end_theta) * rest["tail_out"], math.sin(end_theta) * rest["tail_out"], tail_top))
+    # The rattle still swings with the spiral as it settles, and lies flat.
+    swing = rest["tail_turn"] * TAU * rest["tail_out"] * 0.35
+    m1 = Vector((-math.sin(end_theta) * swing, math.cos(end_theta) * swing, 0.0))
+    k2, k3 = k * k, k * k * k
+    return p0 * (2 * k3 - 3 * k2 + 1) + m0 * (k3 - 2 * k2 + k) + p1 * (3 * k2 - 2 * k3) + m1 * (k3 - k2)
 
 
 def _bj_swept_point(state, t, blend_start):

@@ -46,16 +46,28 @@ local TAU = math.pi * 2
 BrinejawPath.SPIRE_DRUMS = { { 3.5, 20.0, 8.5, 7.4 }, { 20.0, 38.0, 7.2, 6.2 }, { 38.0, 54.0, 6.0, 5.2 } }
 BrinejawPath.SPIRE_TOP = 54.0
 
+-- THE TOWER STEPS; THE BODY DOES NOT. Each drum starts 0.2 studs narrower
+-- than the one below it ends - a corbel, and correct masonry. But reading the
+-- drums directly gave the coils a radius that TELEPORTED 0.2 studs across zero
+-- height at y=20 and again at y=38, and the helix crosses both. On a spiral
+-- this tight that showed up as a 73-degree corner in the body, twice, which is
+-- worse than either of the two joins the curve was designed around.
+--
+-- So the clearance curve is the drums' endpoints as one continuous polyline.
+-- It sits at or outside the masonry everywhere (equal at 3.5, 38 and 54, and
+-- 0.2 proud just above each ledge), so the body still never clips the tower -
+-- it rides over each step instead of snapping across it.
+local SPIRE_PROFILE = { { 3.5, 8.5 }, { 20.0, 7.4 }, { 38.0, 6.2 }, { 54.0, 5.2 } }
+
 function BrinejawPath.spireRadius(y: number): number
-	local drums = BrinejawPath.SPIRE_DRUMS
-	for _, drum in drums do
-		local y0, y1, r0, r1 = drum[1], drum[2], drum[3], drum[4]
-		if y <= y1 then
-			local t = math.clamp((y - y0) / (y1 - y0), 0, 1)
-			return r0 + (r1 - r0) * t
+	for i = 1, #SPIRE_PROFILE - 1 do
+		local a, b = SPIRE_PROFILE[i], SPIRE_PROFILE[i + 1]
+		if y <= b[1] then
+			local t = math.clamp((y - a[1]) / (b[1] - a[1]), 0, 1)
+			return a[2] + (b[2] - a[2]) * t
 		end
 	end
-	return 5.2
+	return SPIRE_PROFILE[#SPIRE_PROFILE][2]
 end
 
 -- The beach's height at radius r from the tower (arena_gen's BJ_PROFILE).
@@ -186,6 +198,15 @@ local function restPoint(state, t: number): Vector3
 		return Vector3.new(math.cos(theta) * r, y, math.sin(theta) * r)
 	end
 
+	-- The coil's own heading, by central difference. Both joins below have to
+	-- leave on exactly the heading the helix arrives with, and `spireRadius` is
+	-- a piecewise table - differentiating that by hand is how you get an
+	-- expression that looks right and is off by a few degrees forever.
+	local function helixTangent(k: number): Vector3
+		local a, b = math.max(k - 1e-3, 0), math.min(k + 1e-3, 1)
+		return (helix(b) - helix(a)) / (b - a)
+	end
+
 	if t <= rest.NECK_END then
 		-- The reared neck: a quadratic sweep down onto the top coil. The
 		-- control point sets the head's carry angle, so the skull looks out
@@ -207,7 +228,20 @@ local function restPoint(state, t: number): Vector3
 		local top = Vector3.new(math.cos(theta) * r, headY, math.sin(theta) * r)
 		local control = top - Vector3.new(math.cos(theta) * 11.0, 2.5, math.sin(theta) * 11.0)
 		local start = helix(0)
-		return top * (1 - u) ^ 2 + control * (2 * (1 - u) * u) + start * u ^ 2
+		-- CUBIC, not quadratic. A quadratic has exactly one free control
+		-- point, and it is already spent on the head's carry angle - so the
+		-- far end arrived on whatever heading fell out of that choice, which
+		-- was 64.5 degrees off the coil it was joining. A 64-degree corner in
+		-- the neck, in the pose this boss holds for most of the fight. The
+		-- second control point buys the join back: put it a third of the way
+		-- down the helix's own entry tangent and the two meet on one heading.
+		-- The head's carry angle is untouched - a cubic's start tangent is
+		-- 3*(control - top) where the quadratic's was 2*(control - top), and
+		-- only the direction of that vector was ever load-bearing.
+		local enter = helixTangent(0) * (rest.NECK_END / (rest.HELIX_END - rest.NECK_END))
+		local guide = start - enter / 3
+		local v = 1 - u
+		return top * v ^ 3 + control * (3 * v ^ 2 * u) + guide * (3 * v * u ^ 2) + start * u ^ 3
 	end
 
 	if t <= rest.HELIX_END then
@@ -215,12 +249,29 @@ local function restPoint(state, t: number): Vector3
 	end
 
 	-- Slack: the tail leaves the tower, spirals down and lies on the sand.
+	--
+	-- A HERMITE, so it leaves on the coil's heading too. The old form put the
+	-- radius on k^0.75 and the height on k^0.6, and both of those have an
+	-- INFINITE derivative at k=0: the tail left the bottom coil at 85.8
+	-- degrees to it, the sharpest corner anywhere on the body. Starting from
+	-- `helix(1)` rather than a re-derived point also closes a smaller gap -
+	-- the old `inner` ignored the coils' tightening, so the two ends drifted
+	-- apart by up to a third of a stud whenever the tail was unwinding.
 	local k = (t - rest.HELIX_END) / (1 - rest.HELIX_END)
-	local inner = BrinejawPath.spireRadius(bottomY) + rest.CLEARANCE
-	local theta = rest.BEARING + rest.TURNS * TAU + rest.TAIL_TURN * TAU * k
-	local r = inner + (rest.TAIL_OUT - inner) * k ^ 0.75
-	local y = bottomY + (BrinejawPath.sandY(rest.TAIL_OUT) + 1.2 - bottomY) * k ^ 0.6
-	return Vector3.new(math.cos(theta) * r, y, math.sin(theta) * r)
+	local kScale = (1 - rest.HELIX_END) / (rest.HELIX_END - rest.NECK_END)
+	local p0 = helix(1)
+	local m0 = helixTangent(1) * kScale
+	local endTheta = rest.BEARING + rest.TURNS * TAU + rest.TAIL_TURN * TAU
+	local p1 = Vector3.new(
+		math.cos(endTheta) * rest.TAIL_OUT,
+		BrinejawPath.sandY(rest.TAIL_OUT) + 1.2,
+		math.sin(endTheta) * rest.TAIL_OUT
+	)
+	-- The rattle still swings with the spiral as it settles, and lies flat.
+	local swing = rest.TAIL_TURN * TAU * rest.TAIL_OUT * 0.35
+	local m1 = Vector3.new(-math.sin(endTheta) * swing, 0, math.cos(endTheta) * swing)
+	local k2, k3 = k * k, k * k * k
+	return p0 * (2 * k3 - 3 * k2 + 1) + m0 * (k3 - 2 * k2 + k) + p1 * (3 * k2 - 2 * k3) + m1 * (k3 - k2)
 end
 
 -- The swept pose: the tail laid out along one bearing, at sweep height. `t`
