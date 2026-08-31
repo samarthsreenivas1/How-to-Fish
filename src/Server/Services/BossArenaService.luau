@@ -61,6 +61,10 @@ local FOLDER_NAME = "BossArenas"
 local POSE_ARENA = {
 	brinejaw = {
 		ground = BrinejawPath.sandY,
+		-- How far out `ground` still describes ground. The floor runs further
+		-- (the sweeps need it), but past this the arena is boundary rocks and
+		-- foam, which are correctly placed and correctly not the beach.
+		groundTo = 70,
 		reach = BrinejawPath.SWEEP_REACH,
 		drums = BrinejawPath.SPIRE_DRUMS,
 		spireTop = BrinejawPath.SPIRE_TOP,
@@ -82,6 +86,10 @@ local FLOOR_STEPS = 48
 -- stepping and below the 0.5 a wrong `meshBottom` costs, so it separates a
 -- real misplacement from the approximation instead of straddling both.
 local GROUND_PROBES = 12
+-- ...and how many bearings at each radius. The beach is the LOWEST thing a
+-- ray can land on out there, so taking the smallest drift across four
+-- bearings finds it even when one of them is blocked by a reef stone.
+local GROUND_BEARINGS = 4
 local GROUND_TOLERANCE = 0.30
 -- How far past the boss's roam disc the floor runs, and the wall past that.
 local FLOOR_MARGIN = 20
@@ -409,17 +417,51 @@ local function verifyGround(arena, pose, folder: Instance, radius: number)
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Include
 	params.FilterDescendantsInstances = { folder }
+	-- ONLY WHERE THE PROFILE CLAIMS SOMETHING, and on more than one bearing.
+	--
+	-- Both of those are corrections to the first version of this function, and
+	-- both are the same mistake f9 hit measuring NPC pads: a wrong probe is not
+	-- silent, it SUCCEEDS. It strikes real geometry on a real object and hands
+	-- back a plausible height, so the instrument you built to stop yourself
+	-- trusting assertions quietly starts producing assertions of its own.
+	--
+	-- Here it took two forms. The floor runs to `radius` (86 for Brinejaw,
+	-- because the sweeps reach 66 and need floor under them) but `sandY` only
+	-- describes the beach out to 70 - so a quarter of the probes were landing
+	-- in the boundary rocks and the foam ring, which are correctly placed and
+	-- correctly NOT the beach. And a single bearing means any one object on
+	-- that line - a reef stone, a sea stack - reads as a placement error.
+	--
+	-- So: stop at the profile's own extent, and at each radius take the
+	-- SMALLEST drift across several bearings. A real misplacement shifts every
+	-- bearing equally and still fires; one rock on one bearing no longer does.
+	-- A checker that cries wolf is worse than no checker, because the first
+	-- false alarm is what teaches everyone to ignore the true one.
+	local reach = math.min(radius, pose.groundTo or radius)
 	local worst, worstAt = 0, 0
 	local probes = 0
 	for step = 1, GROUND_PROBES do
-		local r = radius * (step / GROUND_PROBES)
-		local from = Vector3.new(arena.center.X + r, World.WATER_Y + 200, arena.center.Z)
-		local hit = Workspace:Raycast(from, Vector3.new(0, -400, 0), params)
-		if hit then
+		local r = reach * (step / GROUND_PROBES)
+		local best = nil
+		for bearing = 0, GROUND_BEARINGS - 1 do
+			local theta = (bearing / GROUND_BEARINGS) * math.pi * 2
+			local from = Vector3.new(
+				arena.center.X + math.cos(theta) * r,
+				World.WATER_Y + 200,
+				arena.center.Z + math.sin(theta) * r
+			)
+			local hit = Workspace:Raycast(from, Vector3.new(0, -400, 0), params)
+			if hit then
+				local drift = math.abs(hit.Position.Y - (World.WATER_Y + pose.ground(r)))
+				if not best or drift < best then
+					best = drift
+				end
+			end
+		end
+		if best then
 			probes += 1
-			local drift = math.abs(hit.Position.Y - (World.WATER_Y + pose.ground(r)))
-			if drift > worst then
-				worst, worstAt = drift, r
+			if best > worst then
+				worst, worstAt = best, r
 			end
 		end
 	end
