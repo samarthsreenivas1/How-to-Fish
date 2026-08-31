@@ -91,6 +91,11 @@ local GROUND_PROBES = 12
 -- ray can land on out there, so taking the smallest drift across four
 -- bearings finds it even when one of them is blocked by a reef stone.
 local GROUND_BEARINGS = 4
+-- How far a walkable surface may dip under the waterline before it is called
+-- out. Small but non-zero: an arena whose outermost sand meets the sea at
+-- exactly zero is correct and common, and float noise on a raycast against a
+-- near-flush face should not be a warning.
+local WATERLINE_TOLERANCE = 0.25
 local GROUND_TOLERANCE = 0.30
 -- How far past the boss's roam disc the floor runs, and the wall past that.
 local FLOOR_MARGIN = 20
@@ -418,6 +423,77 @@ end
 -- profile by construction, so it should always pass - and a checker that only
 -- ever runs against the case it expects to fail is a checker nobody has
 -- watched succeed. This way boot exercises it every time.
+-- NOTHING WALKABLE MAY SIT BELOW THE WATERLINE, because the ocean is already
+-- there and it is solid.
+--
+-- WorldService builds the sea as a grid of tiles centred at `WATER_Y - 2` with
+-- `Size.Y = 4`, so their TOP FACE is exactly `World.WATER_Y`; the shared part
+-- helper leaves `CanCollide = true`, and the WATER collision group is
+-- non-collidable with BOATS only. Players stand on it. Nothing carves those
+-- tiles under an arena. So a basin authored below zero is not a basin at
+-- runtime - it is filled to the brim and a player walks across the lid.
+--
+-- Found by bd's audit on two SHIPPED arenas: the Rootmere's mere at -3.4 is a
+-- painted puddle you stroll over, and the Choirfloor's pit at -7.5 is filled
+-- so completely that Noctyss rises through a floor players are standing on.
+-- Both survived every gate, both owning lanes' reviews, and a rendered
+-- preview - because each mesh is exactly as authored. It fails only in
+-- composition with a system nobody was thinking about, and it reads as "the
+-- arena looks right" until somebody stands in it.
+--
+-- THE RULE IS NOT "no geometry below zero". Several arenas deliberately drown
+-- decorative geometry outside the play area - the Careenage's awash flat, the
+-- grounded fleet lying in it, six studs past its walkable sand. Forbidding
+-- that outright would break authored content. So this probes only out to the
+-- fight's own radius and says nothing about what lies beyond it.
+--
+-- It deliberately does NOT run inside `verifyGround`: that one returns early
+-- unless the boss declares a ground profile, which today is Brinejaw alone -
+-- so it would have missed both of the arenas that actually have this bug.
+local function verifyWaterline(arena, folder: Instance, walkable: number)
+	if walkable <= 0 then
+		return
+	end
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Include
+	params.FilterDescendantsInstances = { folder }
+	local deepest, deepestAt = 0, 0
+	for step = 1, GROUND_PROBES do
+		local r = walkable * (step / GROUND_PROBES)
+		for bearing = 0, GROUND_BEARINGS - 1 do
+			local theta = (bearing / GROUND_BEARINGS) * math.pi * 2
+			local from = Vector3.new(
+				arena.center.X + math.cos(theta) * r,
+				World.WATER_Y + 200,
+				arena.center.Z + math.sin(theta) * r
+			)
+			local hit = Workspace:Raycast(from, Vector3.new(0, -400, 0), params)
+			-- The DEEPEST surface, not the shallowest: a pit is what fills, and
+			-- taking a minimum across bearings would let one dry bearing hide it.
+			if hit then
+				local under = World.WATER_Y - hit.Position.Y
+				if under > deepest then
+					deepest, deepestAt = under, r
+				end
+			end
+		end
+	end
+	if deepest > WATERLINE_TOLERANCE then
+		warn(
+			string.format(
+				"[BossArenaService] %s has walkable surface %.2f studs BELOW the waterline at "
+					.. "r=%.0f. The ocean is a solid slab whose top face is exactly WATER_Y and "
+					.. "nothing carves it under an arena, so that basin is filled to the brim at "
+					.. "runtime - players walk across the lid and anything rising from it comes up "
+					.. "through a floor. Raise the profile, or carve the tiles under this arena.",
+				arena.model,
+				deepest,
+				deepestAt
+			)
+		)
+	end
+end
+
 local function verifyGround(arena, pose, folder: Instance, radius: number)
 	if not pose.ground then
 		return
@@ -518,6 +594,9 @@ function BossArenaService.init()
 		-- Whichever path built it, check it presents the ground the fight was
 		-- measured against. See verifyGround.
 		verifyGround(arena, pose, folder, radius)
+		-- ...and that none of the ground the fight uses is under the sea. This
+		-- one runs for EVERY arena, profile or not - see verifyWaterline.
+		verifyWaterline(arena, folder, math.max(roam, pose.reach or 0))
 	end
 end
 
