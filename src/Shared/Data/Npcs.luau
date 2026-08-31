@@ -260,6 +260,7 @@ Npcs.items.ferryman = {
 		"You came all this way, so you'll want something. Everyone who gets here wants something.",
 	},
 	quests = { "the_long_way_round" },
+	shop = "ferrymans_stock", -- Shops.luau id: what "my counter is open" pays out
 }
 
 Npcs.items.ansel = {

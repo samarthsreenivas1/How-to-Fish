@@ -103,4 +103,34 @@ Shops.items.hollows_locker = {
 	},
 }
 
+-- The Ferryman's counter, six thousand studs from the nearest shore. He
+-- stocks a little of every leg and charges for the distance: nothing here is
+-- unavailable elsewhere, it is all unavailable ANYWHERE NEAR HERE, which is
+-- the whole of his business. The markup is the character and it is meant to
+-- be legible - specialty goods run ~30% over the island that produces them
+-- (Halvard sells glowgrub at 100 a grub, Brakk sulfur at ~127), and plain
+-- commodities run double, because running out of kelp fibre mid-voyage is
+-- exactly the moment he is pricing. He is the only person out here and both
+-- of you know it.
+Shops.items.ferrymans_stock = {
+	id = "ferrymans_stock",
+	stock = {
+		{ kind = "bait", id = "glowgrub", amount = 3, price = 390 },
+		{ kind = "bait", id = "frostgrub", amount = 3, price = 420 },
+		{ kind = "bait", id = "ember_roe", amount = 3, price = 450 },
+		{ kind = "material", id = "driftwood", amount = 5, price = 90 },
+		{ kind = "material", id = "kelp_fiber", amount = 5, price = 90 },
+	},
+	rotating = {
+		slots = 2,
+		pool = {
+			{ kind = "material", id = "bog_iron", amount = 2, price = 340 },
+			{ kind = "material", id = "glacier_shard", amount = 1, price = 680 },
+			{ kind = "material", id = "sulfur", amount = 3, price = 495 },
+			{ kind = "material", id = "ghost_plank", amount = 2, price = 780 },
+			{ kind = "bait", id = "lanternbait", amount = 2, price = 520 },
+		},
+	},
+}
+
 return Shops
