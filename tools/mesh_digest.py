@@ -40,6 +40,20 @@ your own builder, confirm the diff fires, revert, re-run. A typo'd path or a
 grep that matches nothing reads exactly like success otherwise. Pass
 --self-test to see the digest of a file against itself (which must be empty)
 — that only proves the reader works, not that your invocation was right.
+
+AND THE CONTROL MUST BE A CASE YOU EXPECT TO FAIL. That is the half the
+paragraph above leaves out, and the author of it walked into the gap anyway
+on 2026-08-30. A new arena-placement check was run against the arena whose
+value was already correct; it agreed, it looked like a pass, and it was
+carrying a tolerance that could not have detected the very defect it was
+written for. Running it once against a DIFFERENT arena - one whose right
+answer was not the obvious one - failed immediately, and exposed both the
+wrong tolerance and a second wrong number underneath it.
+
+So there are two ways a green result proves nothing, and from the outside
+they are identical: a control that never ran, and a control that ran on the
+case where the code was already right. The second is the more dangerous,
+because it feels like diligence - you did run it, and it did agree.
 """
 
 import hashlib
