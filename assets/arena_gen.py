@@ -477,7 +477,7 @@ def build_brinejaw():
         *build_bj_dressing(rng),
         *build_bj_edge_detail(rng),
     ]
-    print("HANDOFF brinejaw: mesh bottom z %.1f  <-- SET BossArenas meshBottom TO THIS (the -9 default lands the arena 0.5 high)" % (SKIRT_BOTTOM - 0.5))
+    print("HANDOFF brinejaw: mesh bottom z %.1f  (skirt constant, informational - the authoritative meshBottom is MEASURED at export)" % (SKIRT_BOTTOM - 0.5))
     print(
         "HANDOFF brinejaw: spire base r %.1f (z2..16), waist r ~7.3, top r %.1f at z %.1f"
         " (gallery +2.2, lantern posts to +7.6) - coil stack (boss pass) wraps r ~9.5-12" % (BJ_SPIRE_BASE_R, BJ_SPIRE_TOP_R, BJ_SPIRE_TOP_Z)
@@ -943,7 +943,7 @@ def build_gnashroot():
         build_gn_wisps(rng),
         build_gn_foam(rng),
     ]
-    print("HANDOFF gnashroot: mesh bottom z %.1f  <-- SET BossArenas meshBottom TO THIS (the -9 default lands the arena 0.5 high)" % (SKIRT_BOTTOM - 0.5))
+    print("HANDOFF gnashroot: mesh bottom z %.1f  (skirt constant, informational - the authoritative meshBottom is MEASURED at export)" % (SKIRT_BOTTOM - 0.5))
     print(
         "HANDOFF gnashroot: mere r %.1f, water z %.1f, bed z %.1f (waded, not swum) - it lies here and rises from it"
         % (GN_MERE_R, GN_MERE_Z, GN_PROFILE[0][1])
@@ -2120,7 +2120,7 @@ def build_wrack():
     ]
     head = math.radians(WK_HEAD_DEG)
     cradle_x, cradle_y = math.cos(head) * WK_CRADLE_R, math.sin(head) * WK_CRADLE_R
-    print("HANDOFF wrack: mesh bottom z %.1f  <-- SET BossArenas meshBottom TO THIS (the -9 default lands the arena 0.5 high)" % (SKIRT_BOTTOM - 0.5))
+    print("HANDOFF wrack: mesh bottom z %.1f  (skirt constant, informational - the authoritative meshBottom is MEASURED at export)" % (SKIRT_BOTTOM - 0.5))
     print("HANDOFF wrack: walkable sand r 0-%.0f (wet ribbed flat, dished; z ~0.7-1.5), awash flat to r 88" % WK_SAND_R)
     print("HANDOFF wrack: boundary GROUNDED FLEET r %.0f-%.0f, 15 hulls, ring open %.0f deg at the head" % (WK_FLEET_R[0], WK_FLEET_R[1], WK_FLEET_GAP_DEG))
     print("HANDOFF wrack: foam ring r %.0f-%.0f (*_Foam: OceanController rides it), skirt to r 99" % WK_FOAM_R)
@@ -2165,12 +2165,46 @@ def export(path, objects):
         export_texcoords=False,
     )
     print("ARENA EXPORTED:", path, "-", len(objects), "objects")
+    floor, floor_of = None, None
     for obj in objects:
         lo = [min(v.co[i] for v in obj.data.vertices) for i in range(3)]
         hi = [max(v.co[i] for v in obj.data.vertices) for i in range(3)]
         print(
             "  %s bbox x %.1f..%.1f  y %.1f..%.1f  z %.1f..%.1f"
             % (obj.name, lo[0], hi[0], lo[1], hi[1], lo[2], hi[2])
+        )
+        if floor is None or lo[2] < floor:
+            floor, floor_of = lo[2], obj.name
+    # MEASURED, and printed HERE rather than by each builder, because this is
+    # the only place that has seen every object.
+    #
+    # BossArenaService.placeAuthored pins the WHOLE MODEL's bbox bottom, so the
+    # floor is the minimum across everything exported. Builders used to derive
+    # it from their skirt constant instead, which is a claim about the build
+    # rather than a measurement of it - and the claim was wrong for Pyrelisk by
+    # 75 studs, because its cloud-deck billows hang further down than the flank
+    # the constant described. Nobody would think of decorative geometry as
+    # load-bearing for placement, which is exactly why deriving cannot be
+    # trusted: ANY object added later can silently become the new floor, and a
+    # derived line would never notice.
+    #
+    # NOTE WHAT THIS PRINTS AND WHAT IT DOES NOT. The floor is a measurement.
+    # `meshBottom` is a DECISION on top of it, because pinning the floor to F
+    # puts authored z at world Y = z + (F - floor) - so the field encodes where
+    # you want authored z=0 to land. For an arena built at sea level that is
+    # simply the floor. Pyrelisk's summit is meant to sit at world Y +292, so
+    # its correct value is +292 + floor, and a line here that just said "SET
+    # meshBottom = <floor>" would have contradicted its own row while looking
+    # every bit as authoritative. Print the measurement and the rule; let the
+    # arena's owner supply the altitude.
+    if floor is not None:
+        print(
+            "HANDOFF: measured bbox floor %.3f across all %d objects (lowest: %s)"
+            % (floor, len(objects), floor_of)
+        )
+        print(
+            "HANDOFF: BossArenas meshBottom = (world Y you want authored z=0 at) + (%.3f); "
+            "%.3f for a sea-level arena" % (floor, floor)
         )
 
 
