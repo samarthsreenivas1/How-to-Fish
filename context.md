@@ -2588,6 +2588,64 @@ Client renderers ease toward the replicated values; the server never
 interpolates. Pieces come from the boss's mesh pack with a plain-block
 fallback, so a fight is never invisible before its import lands.
 
+**THE ONE RULE THE 2026-08-30 AUDITS KEPT FINDING.** Two adversarial passes
+over Brinejaw produced fourteen defects and every single one was the same
+shape: *a value that existed in one place and was needed in another.* Not a
+wrong calculation anywhere — both sides were internally consistent, which is
+why all four gates were blind to all fourteen. **Prefer "what consumes this?"
+over "is this correct?"** The five contracts below are that rule made
+concrete; each one prevents a failure that actually shipped.
+
+- **The pose module owns the ground.** A colossus measures its attack heights
+  from its arena's ground profile, so `BossArenaService.POSE_ARENA` reads that
+  profile off the pose module and the procedural fallback BUILDS to it. Two
+  ways this bites. (1) `colossusState` must snap its centre to `World.WATER_Y`
+  — `spawn` lifts a creature by half its own thickness (3.47 studs at
+  Brinejaw's scale) and inheriting that lift floats the boss off its own
+  reference. Measured: it inverted or killed the low/high sweep read across
+  **79%** of the standable floor, because the low band is only 3.4 thick.
+  (2) A flat procedural floor does the same thing more quietly. `verifyGround`
+  now probes the built arena against the profile at boot and warns with a
+  radius and a magnitude, since this failure has no visible symptom — the
+  fight just plays wrong.
+- **Arena furniture is built from the path module's own table**, never a
+  copy. `BrinejawPath.SPIRE_DRUMS` is exported and the stand-in lighthouse is
+  raised from it, so the coils cannot wrap something the tower is not. The
+  same table drives `spireRadius`, and note it is deliberately CONTINUOUS
+  while the drums it describes step 0.2 studs: the tower steps, the body rides
+  over the steps. Reading the stepped form put a **73.7°** corner in the
+  serpent, twice.
+- **One predicate answers "can this be targeted".** `unaimable` ORs the
+  imperative `untargetable` flag with the row's declarative `vulnerableWhen`,
+  and `inRange` / `raycastNearest` / `damage()` all call it. Before, only
+  `damage()` read `vulnerableWhen`, so target selection happily picked an
+  immune boss body and the shot silently did nothing — **five of the Kraken's
+  eight arms** were unreachable from any bearing. Add a consumer, call the
+  predicate; never read the raw flag.
+- **A handler that damages mid-strike must be in `HANDLER_IMPACT`.** The stock
+  tell fires with `duration = p.windup`, which is right only when the blow
+  lands as the windup ends. `ringpulse` damages at 0.95 of its strike, so its
+  countdown finished **1.52 s** before the blow and invited players back in.
+  The fraction is named once and read by both the strike and the tell.
+- **Part hitboxes go where the art is.** `parts.at = "mounts"` takes 3-D
+  boss-local offsets from the boss row (`sockets` is 2-D, lives on the arena
+  row, and forces `centre.Y`). Resolved once against `yaw0`, so it is only
+  correct for a boss that does not turn; heights are authored from SAND and
+  the consumer subtracts `halfThickness` itself, because that value moves when
+  the pack is re-imported.
+
+**And the meta-lesson, because it cost the most time.** A claim printed
+confidently beside the thing it describes is not evidence. Arena generators
+now MEASURE their bbox floor at export instead of deriving it from a skirt
+constant — the derived form was wrong for Pyrelisk by 75 studs, because its
+cloud-deck billows hang below the flank the constant described and
+`placeAuthored` pins the whole model's bbox. Two corollaries learned the hard
+way: `meshBottom` is a DECISION about where authored z=0 should land, not a
+measurement (it equals the floor only for a sea-level arena); and **a positive
+control must be a case you expect to FAIL** — a check run against the case
+that already works looks exactly like a check that passed. See
+`tools/mesh_digest.py`'s header.
+
 ## Design decisions (binding — don't reopen without the user)
 
 - **Fishing and collection are the primary axis** (2026-08-22 pivot).
