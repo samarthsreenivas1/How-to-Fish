@@ -67,9 +67,22 @@ local POSE_ARENA = {
 	},
 }
 
--- How many nested discs approximate a ground profile. 14 puts Brinejaw's
--- 2.8-stud dome in 0.2-stud steps, which reads as a beach rather than stairs.
-local FLOOR_STEPS = 14
+-- How many nested discs approximate a ground profile.
+--
+-- 48, not the 14 this started at, and the reason is `verifyGround` below
+-- rather than looks. Sampled densely rather than at a few radii, 14 discs sit
+-- up to 0.597 studs off the profile where it bends fastest - which is MORE
+-- than the half stud a wrong `meshBottom` costs, so no tolerance could have
+-- told the two apart. 48 brings the approximation to 0.232 and leaves a clean
+-- band. (Both of those are measured; the "0.2-stud steps" this comment used to
+-- claim was an estimate, and it was wrong.)
+local FLOOR_STEPS = 48
+-- How many radii `verifyGround` samples, and how far the floor may sit from
+-- the profile before it says so. 0.30 is above the fallback's own 0.232 of
+-- stepping and below the 0.5 a wrong `meshBottom` costs, so it separates a
+-- real misplacement from the approximation instead of straddling both.
+local GROUND_PROBES = 12
+local GROUND_TOLERANCE = 0.30
 -- How far past the boss's roam disc the floor runs, and the wall past that.
 local FLOOR_MARGIN = 20
 local FLOOR_THICKNESS = 4
@@ -327,6 +340,66 @@ end
 
 -- ============================================================ lifecycle
 
+-- DOES THE ARENA WE ACTUALLY PLACED PRESENT THE GROUND THE FIGHT ASSUMES?
+--
+-- Every height a posed colossus reasons about is measured from its pose
+-- module's profile. If the floor lands at the wrong height - one wrong
+-- `meshBottom`, one decorative object that quietly became the model's bbox
+-- floor, one generator constant that drifted from the build - then every one
+-- of those numbers is off by the same amount and NOTHING says so. The fight
+-- just plays wrong: sweeps that pass over a standing player, a slam that
+-- resolves in the air. That is not hypothetical. A 3.47-stud anchor error did
+-- exactly that to Brinejaw across 79% of its floor, and a wrong `meshBottom`
+-- produces the identical symptom from an unrelated cause - which is the point,
+-- because it means the symptom cannot tell you which one you have.
+--
+-- So probe the thing that got built and compare it to the profile it is
+-- supposed to be. A handful of raycasts, once, at boot. It turns a silent
+-- misplacement into a line naming the radius and the size of the error.
+--
+-- It runs on the PROCEDURAL path too, deliberately. That path builds from the
+-- profile by construction, so it should always pass - and a checker that only
+-- ever runs against the case it expects to fail is a checker nobody has
+-- watched succeed. This way boot exercises it every time.
+local function verifyGround(arena, pose, folder: Instance, radius: number)
+	if not pose.ground then
+		return
+	end
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Include
+	params.FilterDescendantsInstances = { folder }
+	local worst, worstAt = 0, 0
+	local probes = 0
+	for step = 1, GROUND_PROBES do
+		local r = radius * (step / GROUND_PROBES)
+		local from = Vector3.new(arena.center.X + r, World.WATER_Y + 200, arena.center.Z)
+		local hit = Workspace:Raycast(from, Vector3.new(0, -400, 0), params)
+		if hit then
+			probes += 1
+			local drift = math.abs(hit.Position.Y - (World.WATER_Y + pose.ground(r)))
+			if drift > worst then
+				worst, worstAt = drift, r
+			end
+		end
+	end
+	if probes > 0 and worst > GROUND_TOLERANCE then
+		warn(
+			string.format(
+				"[BossArenaService] %s floor is %.2f studs off its pose profile at r=%.0f "
+					.. "(%d/%d probes). Every height this fight measures - sweep bands, coil "
+					.. "clearance, slam impacts - is wrong by that much. Check BossArenas.%s.meshBottom "
+					.. "against the MEASURED bbox floor arena_gen prints at export.",
+				arena.model,
+				worst,
+				worstAt,
+				probes,
+				GROUND_PROBES,
+				arena.islandId
+			)
+		)
+	end
+end
+
 function BossArenaService.init()
 	local folder = Instance.new("Folder")
 	folder.Name = FOLDER_NAME
@@ -351,6 +424,9 @@ function BossArenaService.init()
 			buildSpire(folder, arena, pose)
 			buildStones(folder, arena)
 		end
+		-- Whichever path built it, check it presents the ground the fight was
+		-- measured against. See verifyGround.
+		verifyGround(arena, pose, folder, radius)
 	end
 end
 
