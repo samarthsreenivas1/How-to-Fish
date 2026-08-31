@@ -631,6 +631,7 @@ local MESH_COLOR = {
 	Bellbuoy_Base2 = Color3.fromRGB(96, 98, 104), -- M_BellSplash
 	Bellbuoy_Base3 = Color3.fromRGB(54, 56, 62), -- M_BellWet
 	Bellbuoy_Bell = Color3.fromRGB(103, 122, 103), -- M_BellBronze
+	Bellbuoy_Lip = Color3.fromRGB(152, 126, 71), -- M_BellLip (the struck sound bow, no verdigris)
 	Bellbuoy_Iron = Color3.fromRGB(45, 46, 50), -- M_BellIron
 	-- The Drowned Chapel - a bell tower in open water, church beneath.
 	Chapel_Base = Color3.fromRGB(106, 109, 102), -- M_ChapShoal
@@ -2258,6 +2259,16 @@ function WorldService.teleportToIsland(player: Player, islandId: any): (boolean,
 	-- carry its speed into the new ground.
 	root.AssemblyLinearVelocity = Vector3.zero
 	character:PivotTo(cframe)
+	-- Land in the island's own weather, not in daylight that fades to it.
+	-- The client's probe runs on a 1s interval and then cross-fades over 1.6,
+	-- so arriving at the Gloomtrench used to mean up to ~2.6 seconds of open
+	-- sky before the trench went dark - the wrong first impression of the one
+	-- island whose whole identity is that you cannot see. The client snaps to
+	-- the named island's mood on this (WeatherController.snapToArenaMood);
+	-- islands with no standing mood are a no-op there. Named rather than
+	-- re-probed on purpose: the pivot above may not have replicated to the
+	-- player's own client yet, and a probe on a stale position reads "clear".
+	Remotes.WorldEvent:FireClient(player, { kind = "arrival", islandId = islandId, active = true })
 	return true
 end
 

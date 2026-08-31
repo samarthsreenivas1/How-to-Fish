@@ -8696,7 +8696,7 @@ def build_islet_bellbuoy():
     rng = random.Random(5501)
     state = random.getstate()
     base = build_island_base("Bellbuoy_Base", ["M_BellRock", "M_BellSplash", "M_BellWet"])
-    bronze, iron = bmesh.new(), bmesh.new()
+    bronze, lip, iron = bmesh.new(), bmesh.new(), bmesh.new()
 
     # The plinth: a squat dressed block the yoke is bolted through.
     top = height_at(0.0, 0.0)
@@ -8707,22 +8707,54 @@ def build_islet_bellbuoy():
         add_box(iron, (sx, 0.0, top + 6.4), (1.5, 1.5, 11.0))
     add_box(iron, (0.0, 0.0, top + 12.2), (10.6, 1.7, 1.7))
 
-    # The bell itself - a stack of rings flaring to the mouth, then the lip.
-    # Hung HIGH enough that daylight shows under the mouth: a bell resting on
-    # its plinth is a sculpture, a bell with a gap under it is a bell.
-    BELL_TOP = top + 12.0
-    rings = [(0.9, 1.7), (1.7, 2.5), (2.5, 3.2), (3.2, 3.8), (3.8, 4.25), (4.25, 4.55)]
-    z = BELL_TOP
-    for r0, r1 in rings:
-        add_cone(bronze, (0.0, 0.0, z - 1.25), r0, r1, 1.25, sides=12)
-        z -= 1.25
-    add_cone(bronze, (0.0, 0.0, z - 0.9), 4.55, 5.1, 0.9, sides=12)  # the flared lip
-    add_cone(bronze, (0.0, 0.0, BELL_TOP), 0.9, 0.55, 1.6, sides=8)  # the crown
+    # The bell body. The first pass stacked frusta that each widened at their
+    # OWN top and then started narrow again one course higher, so every seam
+    # stepped OUTWARD and the thing rendered as a pinecone. A bell is ONE
+    # curve: the radii here come off a single profile function, and a course's
+    # bottom radius IS the radius the course below ended on - the same
+    # expression evaluated twice - so no seam can step.
+    BELL_TOP = top + 10.15  # the shoulder; the crown gets the gap up to the beam
+    BODY_H, COURSES = 4.65, 12
+    MOUTH_Z = BELL_TOP - BODY_H
+    # The mouth stops just inside the standards (their faces are at x=3.45), so
+    # the flare reads against daylight instead of being eaten by an upright.
+    R_SHOULDER, R_WAIST, FLARE = 1.80, 2.75, 0.58
 
-    # Clapper on its chain, hanging inside the mouth.
-    for k in range(5):
-        add_box(iron, (0.0, 0.0, BELL_TOP - 1.1 - k * 1.15), (0.5, 0.5, 1.15))
-    add_cone(iron, (0.0, 0.0, z + 0.4), 1.15, 0.7, 2.0, sides=7)
+    def bell_radius(s):
+        """Outer radius `s` of the way DOWN from the shoulder (s=1 is the
+        mouth). Near-vertical at the shoulder, swelling into the waist, and
+        the sound bow's flare added only over the bottom sixth - a bell turns
+        outward at its lip and nowhere else."""
+        return R_SHOULDER + (R_WAIST - R_SHOULDER) * s**2.2 + FLARE * max(0.0, (s - 0.84) / 0.16) ** 2
+
+    # Stacked from the mouth up, since add_cone builds from its base. The two
+    # bottom courses ARE the flare - the same bottom sixth the profile turns
+    # out over - so they take the bright bronze the clapper keeps struck clean
+    # of verdigris, and the band lands exactly on the sound bow.
+    course_h = BODY_H / COURSES
+    for k in range(COURSES):
+        r_bottom, r_top = bell_radius(1.0 - k / COURSES), bell_radius(1.0 - (k + 1) / COURSES)
+        add_cone(lip if k < 2 else bronze, (0.0, 0.0, MOUTH_Z + k * course_h), r_bottom, r_top, course_h, sides=12)
+
+    # The crown: a collar starting ON the shoulder radius (so that seam matches
+    # as well) drawn in to a boss, then an iron strap clasping the boss and
+    # looped clean over the crossbeam. The strap is what the bell hangs BY - a
+    # bell resting on its plinth is a sculpture, a bell with daylight under it
+    # is a bell.
+    add_cone(bronze, (0.0, 0.0, BELL_TOP), R_SHOULDER, 0.95, 0.55, sides=12)
+    add_cone(bronze, (0.0, 0.0, BELL_TOP + 0.55), 0.95, 0.62, 0.45, sides=8)
+    for sy in (-1.05, 1.05):
+        add_box(iron, (0.0, sy, top + 12.125), (0.7, 0.4, 2.75))
+    add_box(iron, (0.0, 0.0, top + 13.3), (0.7, 2.5, 0.4))  # closed over the beam
+    add_box(iron, (0.0, 0.0, top + 10.95), (0.7, 2.5, 0.4))  # and under it, round the boss
+
+    # Clapper on its chain. The ball hangs THROUGH the mouth plane and out into
+    # the daylight: swallowed entirely by the solid body it would read as a
+    # lampshade, and the clapper is half of what says "bell" from a boat.
+    for k in range(6):
+        add_box(iron, (0.0, 0.0, MOUTH_Z + 0.8 + k * 0.62), (0.32, 0.32, 0.62), yaw=0.0 if k % 2 else 0.785)
+    add_cone(iron, (0.0, 0.0, MOUTH_Z - 1.45), 0.32, 0.95, 0.95, sides=10)  # ball, lower half
+    add_cone(iron, (0.0, 0.0, MOUTH_Z - 0.50), 0.95, 0.26, 1.05, sides=10)  # ... and its shank
 
     # Barnacle crust at the waterline, thickest on the weather side.
     for _ in range(26):
@@ -8733,13 +8765,15 @@ def build_islet_bellbuoy():
 
     stand_x, stand_z = 9.0, 0.0
     print(
-        f"[island_gen] HANDOFF bellbuoy (The Bellbuoy): plinth top Y={top + 1.6:.1f}, bell mouth Y={z:.1f}; "
+        f"[island_gen] HANDOFF bellbuoy (The Bellbuoy): plinth top Y={top + 1.6:.1f}, bell mouth Y={MOUTH_Z:.1f} "
+        f"(r={bell_radius(1.0):.2f}, {MOUTH_Z - top - 1.6:.1f} of daylight under it); "
         f"NPC stand (Roblox rel) X={stand_x:.0f} Z={-stand_z:.0f} ground Y={height_at(stand_x, stand_z):.1f}"
     )
     random.setstate(state)
     return [
         base,
         object_from_bmesh("Bellbuoy_Bell", bronze, ["M_BellBronze"]),
+        object_from_bmesh("Bellbuoy_Lip", lip, ["M_BellLip"]),
         object_from_bmesh("Bellbuoy_Iron", iron, ["M_BellIron"]),
     ]
 
@@ -9143,9 +9177,18 @@ def build_islet_ferryraft():
     add_box(shack, (5.0, 0.0, DECK + 1.5), (4.0, 9.0, 0.6))
     for cy in (-3.8, 3.8):
         add_box(shack, (5.0, cy, DECK + 0.6), (3.2, 0.6, 1.8))
-    # Crates and a coil of rope on the deck.
+    # Crates and a coil of rope on the deck. The scatter must keep off the spot
+    # the HANDOFF below calls the Ferryman's stand: a crate can be 2.3 wide and
+    # sits ON the deck, so an unlucky draw buries him to the chest in cargo
+    # (measured: one landed at the pad and put the ground 1.1 studs over his
+    # feet). Rejection-sample instead of shrinking the scatter, which would
+    # push every crate to the rail and leave the deck bare.
+    STAND = (8.0, 0.0)
     for _ in range(5):
-        cx, cy = rng.uniform(0.0, HALF - 3.0), rng.uniform(-HALF + 3.0, HALF - 3.0)
+        for _attempt in range(24):
+            cx, cy = rng.uniform(0.0, HALF - 3.0), rng.uniform(-HALF + 3.0, HALF - 3.0)
+            if math.hypot(cx - STAND[0], cy - STAND[1]) > 4.6:
+                break
         sz = rng.uniform(1.4, 2.3)
         add_box(shack, (cx, cy, DECK + sz * 0.5), (sz * 2, sz * 2, sz), yaw=rng.uniform(0, 1.5))
     add_cone(rope, (10.0, -8.0, DECK), 1.9, 1.6, 0.9, sides=9)
@@ -9873,6 +9916,9 @@ ISLANDS = {
                 # Weathered, unpolished: verdigris over old bronze, so the bell
                 # reads as something that has hung here a very long time.
                 "M_BellBronze": (0.404, 0.478, 0.404),
+                # The sound bow only: the clapper strikes here every swell, so
+                # the verdigris never takes and the lip stays struck bronze.
+                "M_BellLip": (0.596, 0.494, 0.278),
                 "M_BellIron": (0.176, 0.180, 0.196),
             },
         },
