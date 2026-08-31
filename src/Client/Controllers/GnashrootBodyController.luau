@@ -215,6 +215,15 @@ end
 
 -- ---------------------------------------------------------------- pose
 
+-- Every read below defaults, which is right for a frame that arrives before
+-- the server's first publish - but it means an UNFED rig is indistinguishable
+-- from a rig at rest: no error, no nil, just the authored rest pose held
+-- forever. That reads as "the animation is not working yet" when the truth is
+-- "nothing is connected". `fed` exists so the difference can be reported.
+local function isFed(model: Model): boolean
+	return model:GetAttribute("Attack") ~= nil
+end
+
 local function readTarget(model: Model, target)
 	target.rise = model:GetAttribute("Rise") or 1
 	target.faceAngle = model:GetAttribute("FaceAngle") or 0
@@ -280,6 +289,8 @@ local function adoptBoss(model: Model)
 	local body = {
 		folder = folder,
 		state = state,
+		adoptedAt = Workspace:GetServerTimeNow(),
+		fed = isFed(model),
 		target = readTarget(model, {}),
 		-- The creature's LEFT arm first (GnashrootPath's +1 flank).
 		arms = { newArm(folder, 1), newArm(folder, -1) },
@@ -417,6 +428,7 @@ end
 
 function GnashrootBodyController.start()
 	local warned = false
+	local warnedUnfed = false
 	RunService.RenderStepped:Connect(function(dt)
 		-- Server time, not os.clock(): the breath, the drip sway and every
 		-- arm's idle drift are phases two machines have to agree on, and
@@ -435,6 +447,20 @@ function GnashrootBodyController.start()
 				if not ok and not warned then
 					warned = true
 					warn("[GnashrootBody] draw failed: " .. tostring(err))
+				end
+				-- The silent failure this rig is most likely to ship with: it
+				-- adopts, draws, breathes, and never animates, because nobody
+				-- publishes the pose vocabulary. Say so out loud rather than
+				-- letting it look like a rest pose that will not move on.
+				body.fed = body.fed or isFed(model)
+				if not body.fed and not warnedUnfed and now - body.adoptedAt > 8 then
+					warnedUnfed = true
+					warn(
+						"[GnashrootBody] drawing but never fed: no Attack/AttackBlend/Strike/"
+							.. "AimAngle/AimSide attributes in 8s. The rig is connected and the "
+							.. "server's publishPose has no gnashroot branch, so it will hold its "
+							.. "rest pose forever."
+					)
 				end
 			else
 				destroyBody(model)
