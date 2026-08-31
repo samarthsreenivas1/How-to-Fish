@@ -607,6 +607,21 @@ local MESH_COLOR = {
 	Wreckwater_Hut_Props = Color3.fromRGB(84, 69, 52), -- M_WreckPost (ledger desk, crates, gangplank)
 	Wreckwater_Hut_Canvas = Color3.fromRGB(189, 190, 179), -- M_WreckSail (flag, charts, net)
 	Wreckwater_Hut_Glow = Color3.fromRGB(173, 241, 196), -- M_GhostGlow (taffrail + cabin lamps)
+	-- The wreck's dock and foam. These three names are never written at their
+	-- call site: they are PARAMETERS to the shared `build_dock` / `build_foam`
+	-- helpers (island_gen.py:7864-7865), so a search for object names as string
+	-- literals cannot see them - and every island that dresses its shore
+	-- through those helpers hides its dock/foam names the same way.
+	-- Found instead by BUILDING the island headless and diffing the objects it
+	-- actually emits against this table: what the exporter emits is what the
+	-- game renders, so it is the ground truth a source scan only approximates.
+	-- Colours read off each material's Principled BSDF "Base Color" - NOT
+	-- obj.diffuse_color, which is the viewport swatch and reads a plausible
+	-- (204, 204, 204) for every object, so a wrong probe yields a full table of
+	-- confident greys. round(f * 255), no gamma, per the M_Grass control.
+	Wreckwater_Dock_Planks = Color3.fromRGB(121, 103, 79), -- M_WreckPlank
+	Wreckwater_Dock_Posts = Color3.fromRGB(84, 69, 52), -- M_WreckPost
+	Wreckwater_Foam = Color3.fromRGB(225, 231, 228), -- M_WreckFoam
 
 	-- The Maelstrom (assets/island_gen.py `maelstrom`, 2026-08-27). The base
 	-- is a fully SUBMERGED storm-shoal (three materials, so it splits into
