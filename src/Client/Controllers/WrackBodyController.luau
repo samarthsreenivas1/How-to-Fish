@@ -41,6 +41,9 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local MeshColors = require(Shared.Config.MeshColors)
+
 local WrackBodyController = {}
 
 local CREATURES_FOLDER = "Creatures"
@@ -328,6 +331,36 @@ local function makePiece(name: string, parent: Instance): BasePart
 		part.Size = if authored then authored.size else Vector3.new(10, 10, 10)
 		part.Color = if authored then authored.color else Color3.fromRGB(30, 35, 41)
 		part.Material = Enum.Material.SmoothPlastic
+	end
+	-- REPAINT THE IMPORT. Studio's glTF importer does NOT carry colour across:
+	-- every cloned pack part arrives at Roblox's default grey, which is why the
+	-- first import of the Careenage came up flat, arena and boss alike.
+	--
+	-- The inversion this fixes is worth stating, because it reads as a broken
+	-- import rather than a missing repaint: the stand-in branch above has ALWAYS
+	-- tinted from `AUTHORED`, so before this line, importing the real mesh made
+	-- Wrack look WORSE than not importing it.
+	--
+	-- Same placement rule as the Neon assert below and for the same reason -
+	-- AFTER the branch, never inside it, so it reaches the cloned pack part and
+	-- the stand-in alike. It sits BEFORE the Neon assert so the glow pieces keep
+	-- their material: a repaint that ran afterwards would flatten the
+	-- heart-lantern back to plastic.
+	--
+	-- Keyed on the FULL object name, `PREFIX .. name` - `MeshColors` rows are
+	-- the Blender object names ("Wrack_Hull"), not the bare piece names this
+	-- file indexes `PIECES` and `AUTHORED` by. Not `part.Name`: that is not
+	-- assigned until below, so a stand-in would silently miss every lookup.
+	local color = MeshColors.get(PREFIX .. name)
+	if color then
+		part.Color = color
+		-- A textured PBR surface overrides Color outright. boss_gen authors one
+		-- flat material per object and never a texture, so anything the importer
+		-- attached here is noise (BossArenaService drops it on the same grounds).
+		local appearance = part:FindFirstChildWhichIsA("SurfaceAppearance")
+		if appearance then
+			appearance:Destroy()
+		end
 	end
 	-- AFTER the branch, never inside it. A clone keeps whatever the importer
 	-- gave it and a stand-in has just been set to SmoothPlastic, so this is
