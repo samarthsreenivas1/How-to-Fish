@@ -102,6 +102,19 @@ local FALLBACK_SIZE = {
 	ArmTip = Vector3.new(11.8, 7.8, 7.8),
 	Sucker = Vector3.new(1.3, 4.6, 4.6),
 }
+-- WHICH PIECES GLOW, asserted here rather than left to the import. An import
+-- step is the only failure mode with nowhere in the system to check it: a
+-- missing row, anchor or call site can all be looked for, but "someone set
+-- this dropdown" lives in a person's memory. It also does not survive a
+-- re-export that drops materials, and CreaturePack is already owed one.
+--
+-- A LITERAL list, deliberately, not a `Glow` substring rule like the packs
+-- with long or growing part lists use. The Kraken's list is short and closed,
+-- and it has an exclusion that a broad rule would eventually swallow:
+-- `Kraken_Pupil` must stay matte, or the slit stops reading as a pupil and
+-- the eye goes back to being a lamp. Naming the two that glow states that.
+local NEON_PIECES = { Eyes = true, Sucker = true }
+
 -- The pieces that read better as a round fallback than a brick.
 local FALLBACK_SHAPE = {
 	ArmSeg = Enum.PartType.Cylinder, -- a Roblox cylinder's axis IS +X: the pack convention
@@ -136,6 +149,13 @@ local function makePiece(name: string, parent: Instance): BasePart
 		if shape then
 			part.Shape = shape
 		end
+	end
+	-- AFTER the branch closes, on purpose: the SmoothPlastic write above is
+	-- inside the fallback arm, so asserting in there would light the stand-in
+	-- and leave the real imported piece flat - the exact inverse of the
+	-- intent, and it reads as correct.
+	if NEON_PIECES[name] then
+		part.Material = Enum.Material.Neon
 	end
 	part.Name = "Kraken_" .. name
 	part.Anchored = true
