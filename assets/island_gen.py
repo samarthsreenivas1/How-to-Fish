@@ -8782,13 +8782,106 @@ def build_islet_bellbuoy():
 # A guano-white sea stack, every ledge crowded with nesting gulls. The read is
 # CROWDED: dozens of birds, white streaking down the seaward face, nests jammed
 # into every step of the rock.
+#
+# ROUND 2 - THE BIRDS WERE GLUED TO A WALL. Round 1 scattered gulls at
+# height_at() around a cone and called the result ledges. Three things were
+# wrong at once: the cone had no horizontal surface anywhere, height_at()
+# carries none of the crag() the base mesh is actually built with (so even the
+# heights were off by up to the whole CRAG amplitude), and the profile's
+# "steps" were smeared flat by that same crag. Every bird rendered as a decal
+# pasted on near-vertical rock with nothing under its feet.
+#
+# So the ledges are BUILT now, not hoped for: a crown cap, three ring terraces
+# whose tops are TRUE horizontal planes driven into the risers, and shelf slabs
+# cantilevered off the cliff bands between them. Every one of them records its
+# top in `perches`, and not one bird is placed anywhere else. The guano follows
+# the same table - white ledge tops, white ribbons running DOWN the face from
+# under each occupied ledge, which is the signature the islet was missing.
+
+# The stack's ledger of heights, kept in one table because the terraces, the
+# shelves, the streaks and the colony all have to agree on them EXACTLY. Every
+# number here is a built slab, not a reading off the terrain.
+ROOK_CROWN = (0.155, 54.8, 2.2, 46.1)  # summit cap: (rim u, slab top, thickness, streak floor)
+ROOK_TERRACES = [
+    # (inner u, outer u, lip wobble, slab top, thickness, streak floor, arcs,
+    # gulls, guano runs). The inner u is pushed UP the riser above until the
+    # rock buries the slab top, so the terrace reads as a shelf cut into the
+    # cliff rather than a plinth dropped on it; the outer u runs past the tread
+    # so the lip overhangs the drop.
+    (0.200, 0.400, 0.042, 46.1, 3.4, 36.0, 4, 10, 11),
+    # Pip's terrace. Islands.luau spawns him at rel (0, 36, -16) - that lands
+    # on this slab's top, so 36.0 is pinned, not a free number.
+    (0.440, 0.610, 0.046, 36.0, 3.6, 24.4, 5, 14, 14),
+    (0.645, 0.820, 0.050, 24.4, 3.8, 2.0, 5, 15, 17),
+]
+ROOK_CLIFFS = [
+    # The exposed rock between one ledge's underside and the next ledge's top:
+    # (z top, z bottom, shelf slabs). This is the only rock a shelf ever grows
+    # out of - a shelf hung anywhere else has a sloping face under half of it.
+    # The lowest band stops at 9, not at the water: below that the coastline
+    # lobes back inside the shelf's own reach and they hung over open sea like
+    # diving boards.
+    (52.0, 46.1, 2),
+    (42.7, 36.0, 3),
+    (32.4, 24.4, 4),
+    (20.6, 9.0, 4),
+]
+ROOK_SHELF_THICK = 1.4
+ROOK_SHELF_BURY = 3.2  # the inner edge is taken where the face stands this much higher
+
+# Pip's pad, in Blender polar terms. NpcService raycasts DOWN at his anchor and
+# stands him on the first thing the ray hits - it ignores the configured
+# height - so the pad is a HARD CONSTRAINT, not a suggestion: the middle
+# terrace must be unbroken here, nothing may be hung above it here, and no nest
+# may be laid on it here (he would be standing in one).
+ROOK_PAD_A = math.pi * 0.5  # Blender +Y, i.e. Roblox rel -Z
+ROOK_PAD_R = 16.0
+ROOK_PAD_CLEAR = 0.30  # radians of terrace kept bare either side of him
+
+
+def _rook_paint(bm, first, index):
+    """Give every face added since `first` a second material slot - how the
+    nests object carries pale eggs as well as brown debris (the importer splits
+    it into <Name> / <Name>2, which is what MESH_COLOR keys)."""
+    for f in list(bm.faces)[first:]:
+        f.material_index = index
+
+
+def _rook_u_at_height(z):
+    """The relative radius whose PROFILE height is `z` - profile_height run
+    backwards by bisection, which is exact here because the stack's profile
+    falls monotonically outward. Every ledge and every streak is pinned with
+    this, so they sit ON the face instead of near it."""
+    lo, hi = 0.0, RINGS[-1]
+    if profile_height(hi) >= z:
+        return hi
+    for _ in range(30):
+        mid = (lo + hi) * 0.5
+        if profile_height(mid) > z:
+            lo = mid
+        else:
+            hi = mid
+    return (lo + hi) * 0.5
 
 
 def build_islet_rookery():
     rng = random.Random(5502)
     state = random.getstate()
-    base = build_island_base("Rookery_Base", ["M_RookRock", "M_RookGuano", "M_RookWet"])
+    # The fourth slot is empty coming out of build_island_base (it only paints
+    # 0/1/2 by ring band) and gets filled in at the bottom of this function -
+    # the guano is painted ONTO the rock rather than leaned against it.
+    base = build_island_base("Rookery_Base", ["M_RookRock", "M_RookSplash", "M_RookWet", "M_RookStreak"])
+    ledges, streaks = bmesh.new(), bmesh.new()
     birds, nests = bmesh.new(), bmesh.new()
+
+    # Every horizontal surface a bird is allowed to stand on, filled AS the
+    # ledges are built: (x, y, top z, outward angle). Nothing is perched off
+    # this list - that rule is the whole fix.
+    perches = []
+    # Where the rock gets stained, as (centre angle, half width, z top, z
+    # bottom) windows recorded from the ledges above them - so every run of
+    # white starts under rock that is actually occupied.
+    stain_runs = []
 
     def gull(bm, x, y, z, yaw, flying=False):
         add_cone(bm, (x, y, z), 0.62, 0.24, 1.5, sides=6, tilt=(0.0, 1.3 if flying else 0.25), yaw=yaw)
@@ -8801,26 +8894,218 @@ def build_islet_rookery():
                 yaw=yaw,
             )
 
-    # Birds on every ledge band of the stack, thickest low where the rock is wide.
-    for band, (u, count) in enumerate(((0.30, 9), (0.48, 11), (0.66, 13), (0.82, 10))):
-        for k in range(count):
-            a = rng.uniform(0.0, math.tau)
-            rr = u * ISLAND_RADIUS
-            bx, by = math.cos(a) * rr, math.sin(a) * rr
-            bz = height_at(bx, by)
-            gull(birds, bx, by, bz + 0.4, a + math.pi + rng.uniform(-0.5, 0.5))
-            if rng.random() < 0.45:
-                add_cone(nests, (bx, by, bz + 0.05), 1.0, 0.75, 0.45, sides=7)
-                for e in range(rng.randint(1, 3)):
-                    ea = rng.uniform(0.0, math.tau)
-                    add_cone(
-                        nests,
-                        (bx + math.cos(ea) * 0.3, by + math.sin(ea) * 0.3, bz + 0.4),
-                        0.2,
-                        0.16,
-                        0.3,
-                        sides=5,
+    def nest(bm, x, y, z, yaw):
+        """A scrape of dragged-up debris: six twigs laid round a rim with a
+        packed mound under them and an egg or two in the cup. Round 1's nest
+        was a single cone - a floating brown disc under a floating bird."""
+        first = len(bm.faces)
+        add_cone(bm, (x, y, z - 0.10), 1.10, 0.84, 0.28, sides=8)  # the packed mound
+        for k in range(6):
+            a = yaw + k * math.tau / 6 + rng.uniform(-0.18, 0.18)
+            rr = 0.84 + rng.uniform(-0.08, 0.10)
+            add_box(bm, (x + math.cos(a) * rr, y + math.sin(a) * rr, z + 0.20), (0.30, 0.92, 0.24), yaw=a)
+        _rook_paint(bm, first, 0)
+        first = len(bm.faces)
+        for k in range(rng.randint(1, 2)):
+            ea = rng.uniform(0.0, math.tau)
+            add_cone(bm, (x + math.cos(ea) * 0.26, y + math.sin(ea) * 0.26, z + 0.04), 0.20, 0.13, 0.34, sides=5)
+        _rook_paint(bm, first, 1)
+
+    def streak(a, z_from, z_to, w_top, w_bot):
+        """One guano run: a ribbon pinned to the face from a ledge's underside
+        down the rock below it. It follows the profile OUTWARD as it falls - a
+        plumb-straight streak buries itself in a cone that widens downward. It
+        rides only just proud of the face on purpose: standing it clear of the
+        radial crag everywhere turned the runs into fins on the silhouette, and
+        a wash that dips in and out of the rock is what staining looks like."""
+        left, right = [], []
+        steps = 4
+        for k in range(steps + 1):
+            t = k / steps
+            z = z_from + (z_to - z_from) * t
+            r = ring_radius(_rook_u_at_height(z), a) * 1.012 + 0.30
+            half = (w_top + (w_bot - w_top) * t) * 0.5 / max(r, 1.0)
+            left.append(Vector((math.cos(a - half) * r, math.sin(a - half) * r, z)))
+            right.append(Vector((math.cos(a + half) * r, math.sin(a + half) * r, z)))
+        add_strip_slab(streaks, left, right, 0.35)
+
+    def ledge_arc(a0, a1, z_top, thick, u_in, u_out, wobble, jut, samples):
+        """ONE LEDGE, and the only thing on this islet that makes a horizontal
+        surface. `u_in` is a radius whose rock stands ABOVE z_top, so the inner
+        edge is buried and the slab cannot float; `u_out` (plus a scalloped
+        `wobble` and a straight `jut`) runs past the face so the lip overhangs
+        the drop. The top is a true plane at z_top, which is the whole point -
+        a bird seated on it has a level surface under its feet and air beyond.
+        Hands back the per-sample (angle, inner r, outer r) for that seating."""
+        inner, outer, spans = [], [], []
+        for s in range(samples):
+            a = a0 + (a1 - a0) * (s / (samples - 1))
+            n = noise.noise(Vector((math.cos(a) * 3.4, math.sin(a) * 3.4, z_top * 0.13)))
+            ri = ring_radius(u_in, a)
+            ro = ring_radius(u_out + wobble * n, a) + jut
+            inner.append(Vector((math.cos(a) * ri, math.sin(a) * ri, z_top)))
+            outer.append(Vector((math.cos(a) * ro, math.sin(a) * ro, z_top)))
+            spans.append((a, ri, ro))
+        add_strip_slab(ledges, inner, outer, thick)
+        # Hand back the INTERIOR samples only. The two end samples are the
+        # arc's end caps, and a bird seated exactly on that edge fails the
+        # raycast check - it is standing on the rim, not on the ledge.
+        return spans[1:-1]
+
+    # ---- the crown: the summit is small and flat, so it caps rather than
+    # terraces, and it carries the tightest cluster on the stack.
+    crown_u, crown_top, crown_thick, crown_floor = ROOK_CROWN
+    cap = []
+    for s in range(SEGMENTS // 2):
+        a = (s / (SEGMENTS // 2)) * math.tau
+        # Ragged, not a drum: a clean rim up here read as a water tower.
+        n = noise.noise(Vector((math.cos(a) * 3.9, math.sin(a) * 3.9, 4.2)))
+        rr = ring_radius(crown_u * (1.0 + 0.20 * math.sin(a * 3.0 + 0.7) + 0.18 * n), a)
+        cap.append((math.cos(a) * rr, math.sin(a) * rr))
+    add_disc_slab(ledges, cap, crown_top, crown_thick)
+    for k in range(4):
+        a = rng.uniform(0.0, math.tau)
+        # Well inside the cap's narrowest wobble - out at the rim a gull ends
+        # up standing past the edge on the angles where the rim pulls in.
+        rr = rng.uniform(0.8, 2.4)
+        perches.append((math.cos(a) * rr, math.sin(a) * rr, crown_top, a))
+    for k in range(8):
+        a = rng.uniform(0.0, math.tau)
+        w = rng.uniform(1.0, 2.0)
+        streak(a, crown_top - crown_thick + 0.15, crown_floor + rng.uniform(0.2, 2.4), w, w * rng.uniform(0.7, 1.0))
+    # The summit cone is the one stretch with no ledge above it to stain from,
+    # so it gets its own windows or the top of the stack stays bare grey.
+    for k in range(6):
+        stain_runs.append(
+            (rng.uniform(0.0, math.tau), rng.uniform(0.05, 0.12), crown_top - crown_thick, crown_floor - 1.0)
+        )
+
+    # ---- the three terraces, each BROKEN INTO ARCS rather than closed. A
+    # continuous ring all the way round rendered as a machined drum - the stack
+    # came out a wedding cake - and real ledges come and go along a face. The
+    # gaps between arcs leave bare riser showing, which is what sells them.
+    for u_in, u_out, wobble, z_top, thick, floor, arcs, gulls, runs in ROOK_TERRACES:
+        pips = abs(z_top - 36.0) < 0.01
+        # Pip's terrace has to have unbroken slab under his spawn angle, so its
+        # first arc is CENTRED on it instead of falling where the seed likes.
+        origin = (ROOK_PAD_A - math.tau / (2 * arcs)) if pips else rng.uniform(0.0, math.tau)
+        span_all, arc_ends = [], []
+        for i in range(arcs):
+            a0 = origin + i * math.tau / arcs + rng.uniform(0.04, 0.16)
+            a1 = a0 + math.tau / arcs - rng.uniform(0.30, 0.60)
+            # Step each arc DOWN by its own amount so one terrace is not one
+            # continuous altitude all the way round - three dead-level bands
+            # stacked up read as a layer cake however broken the arcs are. Only
+            # downward: an arc lifted above z_top loses its buried inner edge.
+            # Pip's arc is pinned, because Islands.luau spawns him on it.
+            za = z_top if (pips and i == 0) else z_top + rng.uniform(-2.6, 0.0)
+            span_all.extend((a, ri, ro, za) for a, ri, ro in ledge_arc(a0, a1, za, thick, u_in, u_out, wobble, 0.0, 9))
+            arc_ends.append((a0, a1, za))
+        # Seat the colony from the slabs just built - one angular sample each,
+        # radius anywhere across the tread. This list IS the placement rule.
+        for s in rng.sample(range(len(span_all)), min(gulls, len(span_all))):
+            a, ri, ro, za = span_all[s]
+            if pips and abs(((a - ROOK_PAD_A + math.pi) % math.tau) - math.pi) < ROOK_PAD_CLEAR:
+                continue  # keep Pip's pad bare - a nest there and he stands in it
+            r = ri + (ro - ri) * rng.uniform(0.36, 0.78)
+            perches.append((math.cos(a) * r, math.sin(a) * r, za, a))
+        # The guano runs off THIS ledge, started inside its own arcs so the
+        # white is always under occupied rock rather than sprayed at random.
+        for k in range(runs):
+            a0, a1, za = arc_ends[k % len(arc_ends)]
+            a = rng.uniform(a0 + 0.05, a1 - 0.05)
+            # Start UNDER the lip, not level with it: begun flush, a run's top
+            # end stuck out past the scalloped edge as a little floating tab.
+            top = za - thick - 0.35
+            # Narrow and near parallel-sided. Wide runs that pinched to a point
+            # hung under the ledges as white FANGS; guano runs and fades, it
+            # does not taper to a tip, so several thin ones beat one broad one.
+            # These are the SHORT crisp runs off the lip, where the lip really
+            # does overhang the rock; the long wash is painted on below.
+            w = rng.uniform(1.1, 2.3)
+            streak(a, top, top - rng.uniform(0.22, 0.5) * (top - floor), w, w * rng.uniform(0.70, 1.0))
+        # ...and the wash itself, recorded as windows on the rock under each arc.
+        for a0, a1, za in arc_ends:
+            for k in range(3):
+                # One base facet wide, occasionally two. The base mesh is only
+                # 34 segments round, so down here a single face is a five-by-
+                # thirteen-stud panel - windows any wider than this merged into
+                # one white chute pouring off the stack.
+                top = za - thick
+                stain_runs.append(
+                    (
+                        rng.uniform(a0 + 0.16, a1 - 0.16),
+                        rng.uniform(0.03, 0.11),
+                        top,
+                        top - rng.uniform(0.45, 1.0) * (top - floor + 1.0),
                     )
+                )
+
+    # ---- the cliff bands: short shelves cantilevered off the bare face
+    # between the terraces. Same arc slab as a terrace, only narrow - built
+    # with the height-anchored inner edge so it is under rock however the crag
+    # wobble falls, and it juts far enough that a bird on it has air beneath.
+    for z_hi, z_lo, n_shelves in ROOK_CLIFFS:
+        for k in range(n_shelves):
+            # NEVER hang a shelf over Pip's pad. NpcService raycasts straight
+            # down at his anchor and stands him on the FIRST thing it hits, so
+            # a shelf on the band above the terrace would lift him off it and
+            # leave him on a two-foot ledge over a 12-stud drop.
+            for _try in range(16):
+                a = rng.uniform(0.0, math.tau)
+                if z_lo < 35.0 or abs(((a - ROOK_PAD_A + math.pi) % math.tau) - math.pi) > 0.40:
+                    break
+            z_top = z_lo + (z_hi - z_lo) * rng.uniform(0.16, 0.80) + 1.1  # clear of crag
+            u_out = _rook_u_at_height(z_top)
+            # Modest jut and a scalloped edge: round 2 threw these 3.8 studs
+            # off the wall with a straight lip and they read as white café
+            # tables bolted to the rock rather than as broken-off rock.
+            jut = rng.uniform(1.9, 2.8)
+            half = rng.uniform(2.6, 4.4) / max(ring_radius(u_out, a), 4.0)
+            spans = ledge_arc(
+                a - half,
+                a + half,
+                z_top,
+                ROOK_SHELF_THICK,
+                _rook_u_at_height(z_top + ROOK_SHELF_BURY),
+                u_out,
+                0.020,
+                jut,
+                5,
+            )
+            for b in range(rng.randint(1, 2)):
+                sa, _ri, ro = spans[rng.randrange(len(spans))]
+                r = ro - rng.uniform(0.5, 1.3)  # out on the lip, over the drop
+                perches.append((math.cos(sa) * r, math.sin(sa) * r, z_top, sa))
+            for b in range(rng.randint(1, 2)):  # the shelf's own runs, off its lip
+                sa = a + rng.uniform(-half * 0.7, half * 0.7)
+                w = rng.uniform(0.9, 1.7)
+                streak(sa, z_top - ROOK_SHELF_THICK + 0.1, z_top - rng.uniform(2.6, 5.0), w, w * 0.85)
+            stain_runs.append((a, min(half * 0.8, 0.10), z_top - ROOK_SHELF_THICK, z_top - rng.uniform(6.0, 11.0)))
+
+    # ---- the guano wash, PAINTED ONTO THE BASE MESH. Slab ribbons alone read
+    # as white boards leaned against the cliff no matter how close they are
+    # pushed; repainting the rock's own faces to slot 3 is flush by
+    # construction, costs no geometry, and in this faceted style a whole riser
+    # facet going white under a crowded ledge is exactly the look. The face is
+    # claimed by the first window that covers it - one stain, not a fight.
+    for poly in base.data.polygons:
+        cx, cy, cz = poly.center
+        pa = math.atan2(cy, cx)
+        for a_c, a_h, z_hi, z_lo in stain_runs:
+            if z_lo <= cz <= z_hi and abs(((pa - a_c + math.pi) % math.tau) - math.pi) <= a_h:
+                poly.material_index = 3
+                break
+
+    # ---- the colony, placed ONLY from `perches`. Two in five get a nest, and
+    # a bird with a nest sits up in its cup rather than beside it.
+    for px, py, pz, pa in perches:
+        yaw = pa + rng.uniform(-0.6, 0.6)
+        if rng.random() < 0.40:
+            nest(nests, px, py, pz, yaw)
+            gull(birds, px, py, pz + 0.20, yaw)
+        else:
+            gull(birds, px, py, pz, yaw)
 
     # A few in the air off the seaward face, so the stack reads as busy.
     for k in range(7):
@@ -8828,16 +9113,49 @@ def build_islet_rookery():
         rr = rng.uniform(1.05, 1.5) * ISLAND_RADIUS
         gull(birds, math.cos(a) * rr, math.sin(a) * rr, 26.0 + rng.uniform(-7.0, 9.0), rng.uniform(0, math.tau), flying=True)
 
-    stand_x, stand_z = 0.0, 16.0
+    # MEASURE Pip's pad, do not assert it: NpcService raycasts down at his
+    # anchor and stands him on the first hit, so the only honest check is to
+    # cast the same ray here, over the ledges AND the base, and print what it
+    # actually lands on. Round 1 printed height_at() for this, which is the
+    # smooth profile and not the surface anything stands on.
+    pad_x, pad_y = math.cos(ROOK_PAD_A) * ROOK_PAD_R, math.sin(ROOK_PAD_A) * ROOK_PAD_R
+    ledge_obj = object_from_bmesh("Rookery_Ledges", ledges, ["M_RookShelf"])
+    pad_hits = []
+    for probe in (ledge_obj, base):
+        h = _drop_to_ground(_ground_bvh(probe), pad_x, pad_y)
+        if h is not None:
+            pad_hits.append((h, probe.name))
+    pad_top, pad_on = max(pad_hits) if pad_hits else (float("nan"), "NOTHING")
+    near = min((math.dist((px, py, pz), (pad_x, pad_y, pad_top)) for px, py, pz, _pa in perches), default=99.0)
+    # PROVE the seating instead of trusting it: cast down at every gull and
+    # confirm the ledge really is under its feet. This is the check round 1
+    # could never have passed - a bird stuck to a cone has nothing beneath it.
+    ltree = _ground_bvh(ledge_obj)
+    floating = 0
+    for px, py, pz, _pa in perches:
+        hit = ltree.ray_cast(Vector((px, py, pz + 0.6)), Vector((0.0, 0.0, -1.0)))
+        if hit[0] is None or abs(hit[0].z - pz) > 0.7:
+            floating += 1
+    if floating:
+        raise RuntimeError(f"[island_gen] rookery: {floating} gulls have no ledge under them")
     print(
-        f"[island_gen] HANDOFF rookery (The Rookery Stack): NPC stand (Roblox rel) X={stand_x:.0f} "
-        f"Z={-stand_z:.0f} ground Y={height_at(stand_x, stand_z):.1f}; "
-        f"Rookery_Birds carries 7 gulls in flight - the ONE intended floating object"
+        f"[island_gen] HANDOFF rookery (The Rookery Stack): NPC pad (Roblox rel) X={pad_x:.0f} "
+        f"Z={-pad_y:.0f} / (Blender) x={pad_x:.0f} y={pad_y:.0f} - a straight-down ray there lands "
+        f"on {pad_on} at Y={pad_top:.2f} (that is the flat terrace top, and NOT height_at, which "
+        f"reads {height_at(pad_x, pad_y):.2f} here); nearest gull/nest {near:.1f} studs away"
+    )
+    print(
+        f"[island_gen] HANDOFF rookery: {len(perches)} gulls seated on built ledges (crown cap, "
+        f"3 terraces, {sum(c[2] for c in ROOK_CLIFFS)} shelves - all in Rookery_Ledges, NOT on the "
+        f"base mesh), every one raycast-checked to have slab under its feet; Rookery_Birds carries "
+        f"7 gulls in flight - the ONE intended floating object"
     )
     random.setstate(state)
     return [
         base,
-        object_from_bmesh("Rookery_Nests", nests, ["M_RookNest"]),
+        ledge_obj,
+        object_from_bmesh("Rookery_Streaks", streaks, ["M_RookStreak"]),
+        object_from_bmesh("Rookery_Nests", nests, ["M_RookNest", "M_RookEgg"]),
         object_from_bmesh("Rookery_Birds", birds, ["M_RookGull"]),
     ]
 
@@ -10065,18 +10383,23 @@ ISLANDS = {
             "SEGMENTS": 34,
             "GRASS_U": 0.72,
             "RINGS": [0.0, 0.12, 0.24, 0.36, 0.48, 0.58, 0.68, 0.78, 0.88, 0.96, 1.0, 1.09, 1.28],
-            # Ledges, not a smooth fall: every RINGS step is a shelf the colony
-            # nests on, so the sides go step / drop / step rather than sloping.
+            # STEPPED, not a smooth fall: the pairs alternate tread / riser, so
+            # the silhouette is terraced. Round 1 already meant this, but its
+            # treads still shed 1.5 studs across their width and CRAG 2.2 then
+            # smeared what was left - the stack rendered as a plain cone. The
+            # treads are near-dead-level now (0.6 across the step) and the
+            # risers take the whole drop, which is what the built terraces in
+            # ROOK_TERRACES key off.
             "PROFILE": [
                 (0.00, 54.0),
-                (0.12, 53.0),
-                (0.24, 47.0),
-                (0.36, 45.5),
-                (0.48, 36.0),
-                (0.58, 34.5),
-                (0.68, 22.0),
-                (0.78, 20.5),
-                (0.88, 9.0),
+                (0.12, 53.4),  # crown tread
+                (0.24, 44.6),  # riser
+                (0.36, 44.0),  # tread -> terrace A
+                (0.48, 34.2),  # riser
+                (0.58, 33.6),  # tread -> terrace B (Pip's)
+                (0.68, 22.4),  # riser
+                (0.78, 21.8),  # tread -> terrace C
+                (0.88, 9.0),  # riser into the splash zone
                 (0.96, 3.0),
                 (1.00, 1.0),
                 (1.09, -2.2),
@@ -10084,9 +10407,16 @@ ISLANDS = {
             ],
             "COAST_TERMS": [(2, 2.2, 0.12), (5, 1.1, 0.07)],
             "GRASS_TERMS": [(3, 1.6, 0.06)],
-            "CRAG": 2.2,
+            # Calmer than round 1's 2.2 / 0.07 on purpose: crag is vertical
+            # noise the built ledges have to CLEAR, and at 2.2 it both ate the
+            # terracing and forced the slabs so far off the rock they floated.
+            "CRAG": 0.9,
             "CRAG_FREQ": 0.06,
-            "CRAG_RADIAL": 0.07,
+            # The radial wobble is small here for a reason too: the guano runs
+            # ride a hair proud of the ANALYTIC face, so a face that wanders
+            # far off it either swallows them or leaves them standing off the
+            # rock as white fins (which is how round 2 rendered).
+            "CRAG_RADIAL": 0.022,
             "CRAG_RADIAL_FREQS": (7.0, 4.0),
             "CRAG_CALM": None,
             "RIM_FLAT": None,
@@ -10096,15 +10426,34 @@ ISLANDS = {
             "PEAK_TERMS": [],
             "PREVIEW_SHOTS": [
                 ("approach", (86.0, -96.0, 34.0), (0.0, 0.0, 28.0), 28),
-                ("ledges", (40.0, -44.0, 40.0), (0.0, 0.0, 34.0), 38),
+                ("ledges", (52.0, -58.0, 41.0), (0.0, 0.0, 30.0), 34),
+                # Close on the middle terrace: the shot that shows whether the
+                # birds are STANDING on a shelf or pasted to a wall, which is
+                # the failure this islet was rebuilt to fix.
+                ("colony", (38.0, -42.0, 47.0), (0.0, 2.0, 34.0), 44),
             ],
             "COLORS": {
-                "M_RookRock": (0.400, 0.392, 0.376),
-                # The guano band IS the island's colour story: the upper rock
-                # is bleached near-white where the colony sits.
-                "M_RookGuano": (0.878, 0.871, 0.839),
-                "M_RookWet": (0.286, 0.286, 0.278),
+                # Darker than round 1's 0.40. The guano has to READ as white
+                # against it, and under Workbench's studio light a 0.40 rock
+                # and a 0.85 ledge both came out mid-grey - the stack rendered
+                # as one flat tone with the staining invisible on it.
+                "M_RookRock": (0.247, 0.243, 0.235),
+                # The splash zone is SCRUBBED, not fouled - the sea takes the
+                # guano off the bottom of a stack. Round 1 painted this band
+                # (u 0.72 -> 1.0, i.e. the FOOT of the stack) near-white and
+                # called it the colour story, so the island read white at the
+                # waterline and grey where the colony actually is: backwards.
+                "M_RookSplash": (0.235, 0.239, 0.235),
+                "M_RookWet": (0.176, 0.180, 0.176),
+                # The white belongs on the LEDGES and in the runs below them -
+                # that is what a seabird stack looks like from the water. The
+                # ledge is the DULLER of the two on purpose: at matching values
+                # a terrace and the wash under it merged into one white mass
+                # and the streaking stopped reading as streaking.
+                "M_RookShelf": (0.800, 0.792, 0.761),
+                "M_RookStreak": (0.945, 0.941, 0.918),
                 "M_RookNest": (0.478, 0.404, 0.267),
+                "M_RookEgg": (0.788, 0.769, 0.678),
                 "M_RookGull": (0.925, 0.925, 0.910),
             },
         },

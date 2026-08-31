@@ -387,6 +387,11 @@ local NON_COLLIDE = {
 	"Lampwork_Glow",
 	"Rookery_Birds",
 	"Rookery_Nests",
+	-- Guano ribbons standing 0.3-0.6 proud of the cliff face: solid, they
+	-- are snag ledges up a climbing route. Rookery_Ledges is deliberately
+	-- NOT here - it is the built terraces the colony stands on and Pip's
+	-- own pad (a ray there lands on it at Y=36.00, not on the base).
+	"Rookery_Streaks",
 	"Boilshoal_Steam",
 	"Boilshoal_Glow",
 	"Whalefall_Life",
@@ -651,10 +656,14 @@ local MESH_COLOR = {
 	Chapel_Bell4 = Color3.fromRGB(180, 158, 113), -- M_ChapRope
 	Chapel_Bell5 = Color3.fromRGB(71, 68, 64), -- M_ChapCobble (the stone he rings with)
 	-- The Rookery Stack - white rock and a colony that was here first.
-	Rookery_Base = Color3.fromRGB(102, 100, 96), -- M_RookRock
-	Rookery_Base2 = Color3.fromRGB(224, 222, 214), -- M_RookGuano
-	Rookery_Base3 = Color3.fromRGB(73, 73, 71), -- M_RookWet
+	Rookery_Base = Color3.fromRGB(63, 62, 60), -- M_RookRock
+	Rookery_Base2 = Color3.fromRGB(60, 61, 60), -- M_RookSplash
+	Rookery_Base3 = Color3.fromRGB(45, 46, 45), -- M_RookWet
+	Rookery_Base4 = Color3.fromRGB(241, 240, 234), -- M_RookStreak
+	Rookery_Ledges = Color3.fromRGB(204, 202, 194), -- M_RookShelf
+	Rookery_Streaks = Color3.fromRGB(241, 240, 234), -- M_RookStreak
 	Rookery_Nests = Color3.fromRGB(122, 103, 68), -- M_RookNest
+	Rookery_Nests2 = Color3.fromRGB(201, 196, 173), -- M_RookEgg
 	Rookery_Birds = Color3.fromRGB(236, 236, 232), -- M_RookGull
 	-- The Boiling Shoal - black glass, vents, and water too hot to swim.
 	Boilshoal_Base = Color3.fromRGB(33, 31, 34), -- M_ShoalGlass
