@@ -2415,7 +2415,7 @@ ATTACK_HANDLERS.spines = {
 -- ==================================================== the boss arsenal (2026-08-27)
 -- The per-island movesets are built from these parameterized primitives; a
 -- Bosses.luau attack names its engine behaviour with `p.handler` (so Old
--- Gnashroot's "deathroll" and Admiral Wrack's "keelrush" are both `charge`
+-- Brinejaw's "sweeplow" and "constrict" are both `orbitsweep`
 -- with different numbers and skins), and `p.skin` colors the client's
 -- effects per island. Three timed systems live on the creature struct and
 -- tick in update() beside globs/puffs, so they keep running mid-attack and
@@ -4791,10 +4791,21 @@ end
 -- Note WHERE the fallback comes from. bossFacing() reads creature.yaw0, and
 -- yaw0 is written by updateBoss's PROWL branch - which a `pose`d boss returns
 -- before ever reaching. Wrack is planted with `speed = 0` and carries NO
--- pose, so he stays in the prowl branch and his yaw0 is written (turn-rate
--- limited) every frame: bossFacing is live for him. The patterns still do not
--- lean on it - they aim at the latched player - but the empty-arena fallback
--- is a real bearing rather than whatever he happened to spawn on.
+-- pose, so he stays in the prowl branch and `approachAngle` still writes his
+-- yaw0 every frame - but his `turnRate` is 0, so it writes the same value
+-- back. BOSSFACING IS HIS FIXED SPAWN BEARING (+X, the bow), not a live one.
+--
+-- That is fine, and deliberate: a flagship careened on a shoal does not
+-- pivot, and it is load-bearing rather than cosmetic - his four gun decks sit
+-- at four bearings so that no position shows more than two, which is the
+-- reason to move during the fight and is defeated entirely if he turns to
+-- face you. All nine patterns aim at the player `wrackAim` latches and reach
+-- this bearing only when the arena is empty.
+--
+-- Spelled out because the previous version of this comment asserted the
+-- opposite. A note saying "bossFacing is live for this boss", sitting beside
+-- a boss for whom it is frozen, is exactly what lets the next person
+-- re-introduce a frozen-bearing bug while believing they had checked.
 local function wrackAim(creature): Vector3
 	local a = creature.attack
 	if not a then
