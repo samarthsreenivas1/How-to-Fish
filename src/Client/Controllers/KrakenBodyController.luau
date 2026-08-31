@@ -26,6 +26,7 @@ local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local ChainPose = require(Shared.Modules.ChainPose)
+local MeshColors = require(Shared.Config.MeshColors)
 local KrakenPath = require(Shared.Modules.KrakenPath)
 
 local KrakenBodyController = {}
@@ -79,17 +80,6 @@ local RESTING = { hump = 7.0, wave = 0.12, breathe = 1.2, reach = 36.0, tipY = -
 -- out instead of popping into place.
 local EASE = { reach = 12.0, tip = 12.0, rise = 2.2, face = 4.0, shape = 2.5 }
 
-local FALLBACK_COLOR = {
-	Head = Color3.fromRGB(33, 20, 51),
-	Crown = Color3.fromRGB(51, 33, 77),
-	Crust = Color3.fromRGB(77, 61, 48),
-	Eyes = Color3.fromRGB(102, 69, 184),
-	Pupil = Color3.fromRGB(13, 8, 23),
-	Beak = Color3.fromRGB(189, 173, 133),
-	ArmSeg = Color3.fromRGB(33, 20, 51),
-	ArmTip = Color3.fromRGB(33, 20, 51),
-	Sucker = Color3.fromRGB(102, 69, 184),
-}
 -- Rough bulk of each authored piece, at scale 1.
 local FALLBACK_SIZE = {
 	Head = Vector3.new(40, 46, 40),
@@ -143,21 +133,36 @@ local function makePiece(name: string, parent: Instance): BasePart
 	else
 		part = Instance.new("Part")
 		part.Size = FALLBACK_SIZE[name] or Vector3.new(4, 4, 4)
-		part.Color = FALLBACK_COLOR[name] or Color3.fromRGB(33, 20, 51)
 		part.Material = Enum.Material.SmoothPlastic
 		local shape = FALLBACK_SHAPE[name]
 		if shape then
 			part.Shape = shape
 		end
 	end
-	-- AFTER the branch closes, on purpose: the SmoothPlastic write above is
-	-- inside the fallback arm, so asserting in there would light the stand-in
-	-- and leave the real imported piece flat - the exact inverse of the
-	-- intent, and it reads as correct.
+	-- COLOUR AND MATERIAL, asserted for BOTH branches. Studio's glTF importer
+	-- carries no colour at all - every imported part arrives Roblox-default
+	-- grey - so without this the octopus imports as a grey octopus, and the
+	-- pack landing would make the fight look WORSE than the fallback blocks
+	-- it replaced. MeshColors is generated from boss_gen.py by
+	-- tools/gen_mesh_colors.py, so it cannot drift from the builder the way
+	-- the hand-written table it replaces already had (its crust was still the
+	-- brown from before the barnacles went pale).
+	--
+	-- Keyed off the name we are ABOUT to assign, never off `part.Name`: on
+	-- the fallback path that is still "Part" at this point, so every
+	-- stand-in would silently miss its colour.
+	local partName = "Kraken_" .. name
+	local colour = MeshColors.get(partName)
+	if colour then
+		part.Color = colour
+	end
+	-- After the branch for the same reason: the SmoothPlastic write lives in
+	-- the fallback arm, so asserting in there would light the stand-in and
+	-- leave the real imported piece flat - the exact inverse of the intent.
 	if NEON_PIECES[name] then
 		part.Material = Enum.Material.Neon
 	end
-	part.Name = "Kraken_" .. name
+	part.Name = partName
 	part.Anchored = true
 	part.CanCollide = false
 	part.CanQuery = false
