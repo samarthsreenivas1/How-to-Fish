@@ -378,6 +378,30 @@ local NON_COLLIDE = {
 	"Maelstrom_Chains",
 	"Maelstrom_Debris",
 	"Maelstrom_StormGlow",
+	-- The islets (2026-08-30). Same ruling as the NPC houses: anything you
+	-- should not stand on and nothing that should wall a small place in.
+	-- Moths in the air, perched birds, steam columns, hanging lanterns, a
+	-- drying line, a mooring chain, iron scrap jutting off the Spire.
+	"Lampwork_Moths",
+	"Lampwork_Lamps", -- all of them hang: post-tops, rail hooks, under the eave
+	"Lampwork_Glow",
+	"Rookery_Birds",
+	"Rookery_Nests",
+	"Boilshoal_Steam",
+	"Boilshoal_Glow",
+	"Whalefall_Life",
+	"Ferryraft_Rope", -- drying line, hung fish, the chain into the water
+	"Ferryraft_Glow",
+	"Loadstone_Iron",
+	"Loadstone_Glow",
+	-- The Anchor Garden is ONE mesh holding both the standing anchors and the
+	-- catenary chains slung between their stocks. It cannot be split at
+	-- runtime, so it is one CanCollide for both, and the chains decide it:
+	-- solid, they are head-height arcs walling every path through a garden
+	-- whose entire point is walking among the anchors. Same ruling as
+	-- Maelstrom_Chains. Ferryraft_Hull (the deck) and Ferryraft_Shack (walls,
+	-- counter) stay solid deliberately - the deck is the only ground there is.
+	"Anchorage_Iron",
 }
 
 local function shouldCollide(instanceName: string): boolean
@@ -596,6 +620,76 @@ local MESH_COLOR = {
 	Maelstrom_Chains = Color3.fromRGB(22, 23, 28),
 	Maelstrom_Debris = Color3.fromRGB(51, 42, 31),
 	Maelstrom_StormGlow = Color3.fromRGB(107, 240, 255), -- electric storm-fire
+
+	-- ============================================================ THE ISLETS
+	-- Nine tiny places between the islands (2026-08-30). Every islet part
+	-- needs a row here or it imports default grey - the generator bakes
+	-- these colours into the .glb materials, but Roblox does not read them.
+	-- Values are the islet's own COLORS dict in island_gen.py, x255.
+	-- The Bellbuoy - a sea-bell the size of a room on a bare rock.
+	Bellbuoy_Base = Color3.fromRGB(71, 73, 79), -- M_BellRock
+	Bellbuoy_Base2 = Color3.fromRGB(96, 98, 104), -- M_BellSplash
+	Bellbuoy_Base3 = Color3.fromRGB(54, 56, 62), -- M_BellWet
+	Bellbuoy_Bell = Color3.fromRGB(103, 122, 103), -- M_BellBronze
+	Bellbuoy_Iron = Color3.fromRGB(45, 46, 50), -- M_BellIron
+	-- The Drowned Chapel - a bell tower in open water, church beneath.
+	Chapel_Base = Color3.fromRGB(106, 109, 102), -- M_ChapShoal
+	Chapel_Base2 = Color3.fromRGB(90, 93, 87), -- M_ChapSilt
+	Chapel_Base3 = Color3.fromRGB(68, 73, 71), -- M_ChapWet
+	Chapel_Stone = Color3.fromRGB(139, 138, 128), -- M_ChapStone
+	Chapel_Roof = Color3.fromRGB(81, 86, 92), -- M_ChapSlate
+	Chapel_Nave = Color3.fromRGB(69, 81, 83), -- M_ChapDrowned
+	-- The Rookery Stack - white rock and a colony that was here first.
+	Rookery_Base = Color3.fromRGB(102, 100, 96), -- M_RookRock
+	Rookery_Base2 = Color3.fromRGB(224, 222, 214), -- M_RookGuano
+	Rookery_Base3 = Color3.fromRGB(73, 73, 71), -- M_RookWet
+	Rookery_Nests = Color3.fromRGB(122, 103, 68), -- M_RookNest
+	Rookery_Birds = Color3.fromRGB(236, 236, 232), -- M_RookGull
+	-- The Boiling Shoal - black glass, vents, and water too hot to swim.
+	Boilshoal_Base = Color3.fromRGB(33, 31, 34), -- M_ShoalGlass
+	Boilshoal_Base2 = Color3.fromRGB(115, 96, 53), -- M_ShoalCrust
+	Boilshoal_Base3 = Color3.fromRGB(45, 40, 37), -- M_ShoalWet
+	Boilshoal_Vents = Color3.fromRGB(121, 73, 52), -- M_ShoalMineral
+	Boilshoal_Steam = Color3.fromRGB(214, 218, 221), -- M_ShoalSteam
+	Boilshoal_Glow = Color3.fromRGB(255, 131, 56), -- M_ShoalHeat
+	-- The Lampwright's Workshop - a yard of dark lamps and one lit window.
+	Lampwork_Base = Color3.fromRGB(33, 35, 43), -- M_LampStone
+	Lampwork_Base2 = Color3.fromRGB(61, 61, 69), -- M_LampShore
+	Lampwork_Base3 = Color3.fromRGB(43, 45, 53), -- M_LampWet
+	Lampwork_Shop = Color3.fromRGB(81, 78, 78), -- M_LampWall
+	Lampwork_Shop2 = Color3.fromRGB(83, 66, 52), -- M_LampTimber
+	Lampwork_Shop3 = Color3.fromRGB(52, 54, 61), -- M_LampSlate
+	Lampwork_Shop4 = Color3.fromRGB(40, 41, 46), -- M_LampIron
+	Lampwork_Lamps = Color3.fromRGB(130, 101, 53), -- M_LampBrass
+	Lampwork_Lamps2 = Color3.fromRGB(76, 92, 96), -- M_LampGlass
+	Lampwork_Glow = Color3.fromRGB(255, 226, 150), -- M_LampWindow
+	Lampwork_Moths = Color3.fromRGB(216, 210, 193), -- M_LampMoth
+	-- The Anchor Garden - two dozen anchors standing in the sand.
+	Anchorage_Base = Color3.fromRGB(201, 190, 162), -- M_AnchSand
+	Anchorage_Base2 = Color3.fromRGB(146, 150, 135), -- M_AnchReef
+	Anchorage_Base3 = Color3.fromRGB(121, 122, 109), -- M_AnchWet
+	Anchorage_Iron = Color3.fromRGB(83, 67, 55), -- M_AnchIron
+	-- The Whale Fall - a skeleton on a sandbar feeding everything near it.
+	Whalefall_Base = Color3.fromRGB(104, 96, 82), -- M_WhaleSand
+	Whalefall_Base2 = Color3.fromRGB(79, 71, 61), -- M_WhaleDark
+	Whalefall_Base3 = Color3.fromRGB(62, 57, 50), -- M_WhaleWet
+	Whalefall_Bones = Color3.fromRGB(217, 211, 194), -- M_WhaleBone
+	Whalefall_Life = Color3.fromRGB(156, 82, 74), -- M_WhaleLife
+	-- The Ferryman's Raft - the one trader in six thousand studs of sea.
+	Ferryraft_Base = Color3.fromRGB(76, 82, 81), -- M_RaftBar
+	Ferryraft_Base2 = Color3.fromRGB(67, 73, 73), -- M_RaftShallow
+	Ferryraft_Base3 = Color3.fromRGB(55, 60, 61), -- M_RaftWet
+	Ferryraft_Hull = Color3.fromRGB(96, 76, 55), -- M_RaftLog
+	Ferryraft_Shack = Color3.fromRGB(121, 101, 75), -- M_RaftPlank
+	Ferryraft_Rope = Color3.fromRGB(163, 150, 115), -- M_RaftRope
+	Ferryraft_Glow = Color3.fromRGB(255, 211, 122), -- M_RaftLantern
+	-- The Loadstone Spire - a black needle that pulls the storm down.
+	Loadstone_Base = Color3.fromRGB(41, 39, 43), -- M_LoadRock
+	Loadstone_Base2 = Color3.fromRGB(27, 25, 28), -- M_LoadScorch
+	Loadstone_Base3 = Color3.fromRGB(33, 32, 36), -- M_LoadWet
+	Loadstone_Spire = Color3.fromRGB(33, 33, 40), -- M_LoadGlass
+	Loadstone_Iron = Color3.fromRGB(77, 66, 60), -- M_LoadIron
+	Loadstone_Glow = Color3.fromRGB(255, 152, 71), -- M_LoadHeat
 }
 
 -- Per-part material overrides; anything not listed gets SmoothPlastic (the flat
@@ -612,6 +706,14 @@ local MESH_MATERIAL = {
 	Gloomtrench_Hut_Glow = Enum.Material.Neon,
 	Wreckwater_Hut_Glow = Enum.Material.Neon,
 	Maelstrom_StormGlow = Enum.Material.Neon,
+	-- The islets' lit things: the Lampwright's one burning window, the shoal's
+	-- vent mouths, the Ferryman's lanterns, the heat still in the Spire's
+	-- strike-seams. (Explicit rows, not a "_Glow" substring - that would also
+	-- catch Gloomtrench_GlowCyan/Violet and change a foreign island's dress.)
+	Lampwork_Glow = Enum.Material.Neon,
+	Boilshoal_Glow = Enum.Material.Neon,
+	Ferryraft_Glow = Enum.Material.Neon,
+	Loadstone_Glow = Enum.Material.Neon,
 	-- Frostmaw's big glacial forms glint like real ice; nothing Neon here.
 	Frostmaw_Berg = Enum.Material.Ice,
 	Frostmaw_Arch = Enum.Material.Ice,
@@ -1957,6 +2059,16 @@ local function loadIslands(parent: Instance)
 	for id, entry in Islands.items do
 		if entry.site and not placed[id] then
 			buildMaelstromSite(parent, id, entry)
+		end
+	end
+	-- Islets (2026-08-29): real meshes that sit OFF the progression route.
+	-- They are deliberately absent from Islands.order, so nothing gates them
+	-- and the travel menu never lists them - you find them by boat. Placed
+	-- exactly like any other island; the loop above only walks `order`, so
+	-- without this an islet would build in Blender and never appear.
+	for id, entry in Islands.items do
+		if entry.islet and not placed[id] then
+			placed[id] = placeIsland(parent, id, entry)
 		end
 	end
 end
