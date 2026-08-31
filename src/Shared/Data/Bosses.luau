@@ -967,15 +967,31 @@ Bosses.items.noctyss = {
 -- flagship's bow, careened on the tidal flat he died on. REDESIGNED
 -- 2026-08-29 from a chase into a BULLET HELL.
 --
--- He is a STATIC GUN PLATFORM. He never approaches and never roams - `speed`
--- is 0, which zeroes the only line in updateBoss's prowl branch that moves a
--- boss, and `standoff` is past the whole shoal so that line is never reached
--- anyway. Planting him with `speed` rather than with `pose` is deliberate: a
--- posed boss RETURNS before the prowl branch and therefore never writes
--- `yaw0`, which would leave bossFacing() frozen on his spawn bearing for the
--- entire fight. He stays in prowl, so his heading is live and slews at
--- `turnRate` - slow enough to read, which is the tell for where the guns
--- point.
+-- He is a STATIC GUN PLATFORM, in both senses: he never takes a step AND he
+-- never turns. `speed` is 0, which zeroes the only line in updateBoss's prowl
+-- branch that moves a boss, and `standoff` is past the whole shoal so that
+-- line is never reached anyway. `turnRate` is 0, which zeroes the two lines
+-- that turn one - the prowl branch's face-the-player and updateBossAttack's
+-- windup tracking at 1.5x. His yaw0 is therefore his spawn bearing (+X: the
+-- bow) for the whole fight.
+--
+-- HE MUST NOT TURN, and this is the load-bearing half of the design. The
+-- four gun decks are authored at four different BEARINGS (boss_gen's
+-- WR_GUNS: +Y, -Y, -X, +X) so that no position on the shoal shows more than
+-- two of them - repositioning to reach the far pair IS the fight's loop.
+-- Face-the-player presents the same two forever and the loop dies. The
+-- fiction says the same thing twice over: a first-rate hove down on a tidal
+-- shoal, careened onto her starboard bilge, does not pivot; and `parts.at =
+-- "mounts"` below resolves boss-local offsets ONCE against yaw0, which is
+-- only correct for a hull that stays put.
+--
+-- Planting him with `speed`/`turnRate` rather than with `pose` is still
+-- deliberate, for a DIFFERENT reason than it used to be: a posed boss goes
+-- down the colossus path (placeColossus, hideColossusModel), which he has no
+-- rig for - WrackBodyController draws him off `CreatureId` instead. Nothing
+-- in his kit reads his heading: every pattern latches the nearest player's
+-- bearing at windup (wrackAim), and bossFacing() is reached only as the
+-- empty-arena fallback, where there is nobody to point at anyway.
 --
 -- THE LOOP. Four gun-deck batteries (`parts`) ring his hull. While any of
 -- them stands he cannot be hurt (the creature row's vulnerableWhen =
@@ -1022,12 +1038,52 @@ Bosses.items.admiral_wrack = {
 	-- challengers at 48: out among the outer hulks with a clean view of the
 	-- platform and a real approach to make.
 	arena = { offset = Vector3.new(0, 0, -20), radius = 40 },
-	-- THE FOUR GUN DECKS. Planted on an even ring 20 studs out - his hull is
-	-- 14 across, so they read as the gun-deck rail rather than as floating
-	-- targets, and reaching one means coming inside the densest part of every
-	-- pattern. `regrow` is the burst window: 16 seconds of silence and an open
-	-- hull before the decks come back.
-	parts = { row = "wrack_battery", count = 4, ring = 20, regrow = 20 },
+	-- THE FOUR GUN DECKS - the things the player actually shoots, so they stand
+	-- ON THE DRAWN BRASS rather than on a guessed circle. `at = "mounts"` is the
+	-- three-dimensional placement mode: the offsets below are BOSS-LOCAL, with Y
+	-- measured from the SAND (spawnBossParts subtracts `halfThickness` itself -
+	-- do not pre-subtract it), and they are resolved ONCE at spawn against
+	-- `creature.yaw0`.
+	--
+	-- THAT IS ONLY CORRECT BECAUSE HE IS STATIC. `turnRate = 0` below and this
+	-- table are the same decision written twice: a hull that slewed would need
+	-- these re-applied every frame, and until that exists a turning boss must
+	-- not use this mode. Do not restore his slew without taking these out.
+	--
+	-- The numbers are gun-span centroids - the mean of each gun's breech-muzzle
+	-- midpoint - computed from `WR_GUNS` in assets/boss_gen.py, which is that
+	-- mesh's single source of truth for both the art and the muzzle handoff.
+	-- Blender (x, y, z) maps to Roblox (x, z, -y). NO HEEL IS APPLIED and none
+	-- is owed: boss_gen authors WR_GUNS in BOSS space, not ship space, precisely
+	-- because guns re-mounted on a hove-down deck are the things that are no
+	-- longer square to the ship (boss_gen.py:2984), and the four battery
+	-- builders are the only ship parts that never call `_wr_heel`. Cross-checked
+	-- against the exported glb's own battery bounding-box centres
+	-- (WrackBodyController.AUTHORED): every one agrees within 2.6 studs.
+	--
+	-- Order is the authored one - Deck, Keel, Stern, Top - matching WR_GUNS, the
+	-- mesh HANDOFF, import-checklist row 7p and WrackBodyController's PIECES
+	-- list. Nothing in HIS fight keys on the index (only the Kraken's livingArms
+	-- and Noctyss's updateChoir read `socketIndex`; his patterns read the COUNT,
+	-- `partsAlive`), so the order is for the reader.
+	--
+	-- `ring` no longer places anything, and is kept because two other things
+	-- still read it: wrackEmit's ProjectileService.watch radius, and the death
+	-- sequence's ring of gun-deck explosions. `regrow` is the burst window: 16
+	-- seconds of silence and an open hull before the decks come back.
+	parts = {
+		row = "wrack_battery",
+		count = 4,
+		at = "mounts",
+		mounts = {
+			Vector3.new(-19.50, 35.70, -10.34), -- Deck:  +Y high, mortars on the canted quarterdeck
+			Vector3.new(19.38, 10.55, 18.91), -- Keel:  -Y low, punched out through the bottom planking
+			Vector3.new(-34.62, 29.08, -14.37), -- Stern: -X high, the chase guns under his own boots
+			Vector3.new(38.40, 27.71, -11.99), -- Top:   +X high, the swivel nest on the bowsprit
+		},
+		ring = 20,
+		regrow = 20,
+	},
 	-- The burst window's shape, read by the Wrack handlers in CreatureService
 	-- (not by the engine): `staggerFor` seconds of true silence the moment the
 	-- last deck falls, then a skeleton crew firing at `windowFire` of normal
@@ -1044,7 +1100,17 @@ Bosses.items.admiral_wrack = {
 	riseDepth = 22,
 	riseTime = 4.2,
 	speed = 0, -- PLANTED. The gun platform never takes a step.
-	turnRate = math.rad(34), -- a slow deck slew you can read the guns off
+	-- AND NEVER TURNS. Zero, not a slow slew: the four gun decks are authored
+	-- at four bearings so that only two ever face you, and repositioning to
+	-- reach the others is the fight - a hull that turns to face you presents
+	-- the same two forever. It also holds `parts.mounts` above still, since
+	-- those are resolved once against yaw0. Zero is safe rather than
+	-- degenerate: both consumers pass it straight to approachAngle as
+	-- `maxStep`, which divides by nothing and returns `current` unchanged, and
+	-- the third (placeColossus's `def.turnRate or math.rad(70)`) is behind
+	-- `def.pose`, which he does not carry - and 0 is truthy in Luau anyway, so
+	-- no fallback can quietly turn him back on.
+	turnRate = 0,
 	attackGapMin = 0.5,
 	attackGapMax = 1.0,
 	enrageBelow = 0.3,

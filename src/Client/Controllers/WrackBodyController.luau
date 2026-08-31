@@ -21,10 +21,12 @@
 --
 -- WHAT IS STILL PER-FRAME, and why this is not a one-shot placement:
 --
---   * he rises out of the shoal on spawn (`riseDepth = 22`, `riseTime = 4.2`)
---     and he slews (`turnRate = 34 deg/s` - "a slow deck slew you can read
---     the guns off"). Both move the server model's pivot, and the assembly
---     rides it for free;
+--   * he rises out of the shoal on spawn (`riseDepth = 22`, `riseTime = 4.2`),
+--     and the prowl loop breathes him on a small hop and a +-3 degree sway.
+--     Both move the server model's pivot, and the assembly rides it for free.
+--     He does NOT slew: `turnRate` is 0, because his four gun decks are
+--     authored at four bearings and a hull that turns to face you presents the
+--     same two forever;
 --   * the hull SPLITS for the melee window - two plates off the keel hinge,
 --     eased on one scalar. See "the melee window" below. That scalar is the
 --     only thing in this file that is interpolated, and it should stay the
