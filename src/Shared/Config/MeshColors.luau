@@ -11,6 +11,15 @@
 -- Re-run the generator after any change to an arena or boss builder. A part
 -- with no row here keeps the importer's grey, and BossArenaService warns by
 -- name when that happens rather than leaving someone to notice a flat arena.
+--
+-- KEYS ARE THE FULL BLENDER OBJECT NAME, prefix included (`Brinejaw_Head`,
+-- not `Head`), because that is what the pack and the arena mesh both carry.
+-- In a body controller, look up `PREFIX .. name` and NOT `part.Name`: every
+-- controller assigns `part.Name` AFTER the point the colour has to be set,
+-- so a `part.Name` lookup silently returns nil for the fallback blocks while
+-- appearing to work for imported clones. That failure is invisible until
+-- somebody plays without the pack imported, which is the one case the
+-- fallback blocks exist for.
 
 local MeshColors = {}
 

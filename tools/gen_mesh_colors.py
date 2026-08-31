@@ -102,6 +102,38 @@ def run(generator, target, dump_path, tmpdir):
     return rows
 
 
+# The islands keep their own colour table (`WorldService.MESH_COLOR`) because it
+# also carries per-part MATERIAL and water-layer handling. This does not write
+# it - those rows belong to the lanes that own each island - but it reports what
+# is missing, MEASURED the same way.
+#
+# Measured, specifically, because scanning the source for object names is wrong
+# in BOTH directions and looks fine either way. Tried first here: it missed
+# `Wreckwater_Dock_Planks`, `_Dock_Posts` and `_Foam`, whose names are passed as
+# PARAMETERS to shared `build_dock` / `build_foam` helpers and so never appear as
+# literals at a scanned call site - and it invented `Gloomtrench_Path`, a literal
+# that no longer reaches an export. Building the pack and reading the objects
+# that actually come out has neither failure.
+def check_islands(dump_path, tmpdir):
+    rows = run("island_gen.py", "pack", dump_path, tmpdir)
+    if not rows:
+        return
+    try:
+        with open(os.path.join(ROOT, "src", "Server", "Services", "WorldService.luau")) as handle:
+            world = handle.read()
+        block = world[world.index("local MESH_COLOR = {") :]
+        block = block[: block.index("\n}")]
+    except (IOError, ValueError):
+        sys.stderr.write("  !! could not read WorldService MESH_COLOR\n")
+        return
+    have = set(re.findall(r"^\t(\w+) =", block, re.M))
+    missing = sorted(n for n in rows if n not in have)
+    print("\n  islands: %d objects emitted, %d MESH_COLOR rows, %d missing" % (len(rows), len(have), len(missing)))
+    for name in missing:
+        r, g, b = rows[name]
+        print("     %-34s Color3.fromRGB(%d, %d, %d)," % (name, r, g, b))
+
+
 def main():
     colors = {}
     conflicts = []
@@ -117,6 +149,7 @@ def main():
                     if name in colors and colors[name] != rgb:
                         conflicts.append((name, colors[name], rgb))
                     colors[name] = rgb
+        check_islands(dump_path, tmpdir)
 
     # A name meaning two colours would make the table order-dependent, which is
     # exactly the silent kind of wrong this file exists to prevent.
@@ -137,6 +170,15 @@ def main():
         "-- Re-run the generator after any change to an arena or boss builder. A part",
         "-- with no row here keeps the importer's grey, and BossArenaService warns by",
         "-- name when that happens rather than leaving someone to notice a flat arena.",
+        "--",
+        "-- KEYS ARE THE FULL BLENDER OBJECT NAME, prefix included (`Brinejaw_Head`,",
+        "-- not `Head`), because that is what the pack and the arena mesh both carry.",
+        "-- In a body controller, look up `PREFIX .. name` and NOT `part.Name`: every",
+        "-- controller assigns `part.Name` AFTER the point the colour has to be set,",
+        "-- so a `part.Name` lookup silently returns nil for the fallback blocks while",
+        "-- appearing to work for imported clones. That failure is invisible until",
+        "-- somebody plays without the pack imported, which is the one case the",
+        "-- fallback blocks exist for.",
         "",
         "local MeshColors = {}",
         "",
