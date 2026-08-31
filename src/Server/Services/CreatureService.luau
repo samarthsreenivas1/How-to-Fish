@@ -6152,6 +6152,19 @@ local function updateBoss(creature, now: number, dt: number)
 		and now - creature.partsDownAt >= def.parts.regrow
 	then
 		spawnBossParts(creature, def)
+		-- THE WINDOW IS CLOSING, so say so. kill() sets Exposed when the last
+		-- part falls, and nothing unset it for a ring that grows BACK: the
+		-- attribute latched true on the first window, so the head went on
+		-- claiming to be open for the rest of the fight while being immune
+		-- again. Both existing clears are unreachable from here - one belongs
+		-- to the `expose` MOVE field (which this boss never uses) and one to
+		-- the entrenched stagger exit (which it is not) - so this path has to
+		-- own it, and it is the right owner: the only place a ring comes back.
+		--
+		-- The latch matters more than the wrong state. Re-setting an attribute
+		-- to the value it already holds fires no change signal, so a renderer
+		-- watching Exposed would open the head once per fight and never again.
+		creature.model:SetAttribute(ATTR_EXPOSED, nil)
 		fireEvent("regrow", creature.anchor or creature.pos, { count = def.parts.count, name = def.name })
 	end
 
