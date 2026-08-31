@@ -579,12 +579,28 @@ end
 -- consolidation target for the hand-rolled nearest-island loops in
 -- WeatherController, IslandsController and BoatController - not refactored
 -- here to keep this change small.
-function Islands.nearestIsland(position: Vector3): (string?, any, number)
+--
+-- `includeIslets` (default false) decides whether the nine islets can win.
+-- They must NOT for anything asking "which island's ENVIRONMENT am I in",
+-- because an islet has no environment - no `water`, no `ambient`, it is a
+-- rock in open sea. Letting one win looks harmless (it falls back to the
+-- ocean's base dress) and is not: nearest-wins flips on the perpendicular
+-- bisector between the islet and the real island, and several islets sit
+-- close enough to cut inside an island's colour band (the Bellbuoy crosses
+-- the fen's at 1,030 studs of its 1,680). A boat weaving along that line
+-- pulses the sea between murk and blue, because the flip is a step and the
+-- blend behind it is a 1.5s roll, not a distance ramp. None of them reaches
+-- an island's FULL-tint radius, so a shore is never wrong - it is the outer
+-- fade that breaks, which is the half nobody would think to check.
+-- Callers that mean "what can I sail to" (BoatController) do want them.
+function Islands.nearestIsland(position: Vector3, includeIslets: boolean?): (string?, any, number)
 	local bestId, bestEntry, bestDistance = nil, nil, math.huge
 	for id, entry in Islands.items do
-		local d = Vector3.new(position.X - entry.worldPosition.X, 0, position.Z - entry.worldPosition.Z).Magnitude
-		if d < bestDistance then
-			bestId, bestEntry, bestDistance = id, entry, d
+		if includeIslets or not entry.islet then
+			local d = Vector3.new(position.X - entry.worldPosition.X, 0, position.Z - entry.worldPosition.Z).Magnitude
+			if d < bestDistance then
+				bestId, bestEntry, bestDistance = id, entry, d
+			end
 		end
 	end
 	return bestId, bestEntry, bestDistance

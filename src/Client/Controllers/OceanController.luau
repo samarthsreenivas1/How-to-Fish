@@ -125,7 +125,10 @@ end
 local function probeTint(camPos: Vector3)
 	local t = 0
 	local palette = nil
-	local _, entry, distance = Islands.nearestIsland(camPos)
+	-- Islands only: an islet has no `water` of its own, so letting one win
+	-- here would reset the sea to base blue partway through a real island's
+	-- fade (see Islands.nearestIsland).
+	local _, entry, distance = Islands.nearestIsland(camPos, false)
 	if entry and entry.water then
 		palette = entry.water
 		local radius = entry.radius or World.ISLAND_RADIUS
