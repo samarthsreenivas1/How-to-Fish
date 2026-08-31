@@ -98,6 +98,12 @@ local RIM_SEGMENTS = 20
 -- recorded - the islands' skirt convention (WorldService SKIRT_BOTTOM).
 local DEFAULT_MESH_BOTTOM = -9
 
+-- Roblox's default part colour, and therefore what a part looks like when
+-- nothing has coloured it. Compared EXACTLY, not by proximity: an authored
+-- stone or sand colour never lands on this precise triplet, so an exact test
+-- has no false positives while a "looks greyish" test would have many.
+local DEFAULT_PART_GREY = Color3.fromRGB(163, 162, 165)
+
 -- ============================================================ authored path
 
 -- Find an arena's imported mesh group by its `<model>_Base` part, first
@@ -167,6 +173,7 @@ end
 -- the arena centre (the placeIsland pivot math).
 local function placeAuthored(parent: Instance, arena, template: Instance)
 	local model = template:Clone()
+	local uncoloured, uncolouredName = 0, nil
 	for _, descendant in model:GetDescendants() do
 		if descendant:IsA("BasePart") then
 			descendant.Anchored = true
@@ -175,6 +182,28 @@ local function placeAuthored(parent: Instance, arena, template: Instance)
 			-- untextured); only the material needs restoring.
 			if isGlow(descendant.Name) then
 				descendant.Material = Enum.Material.Neon
+			end
+			-- ...and this is what tells us whether that sentence is TRUE.
+			--
+			-- WorldService keeps a per-part colour table for the islands and
+			-- warns when a part is missing from it; this file assumes the
+			-- importer supplies colour and keeps no table at all. Both cannot
+			-- be right about the same importer, and nothing in the repo
+			-- settles it - the checklist's "a glTF import lands every part
+			-- SmoothPlastic" is a claim about MATERIAL, and no imported arena
+			-- exists yet to measure. Building a colour table on a guess would
+			-- be one more confident claim nobody ran.
+			--
+			-- A detector needs no such guess. An un-coloured import is exactly
+			-- Roblox's default part grey, and no authored arena colour lands
+			-- on that triplet by accident. If colour survives, this never
+			-- fires and costs a comparison per part at boot. If it does not,
+			-- the first import names a part instead of leaving someone to
+			-- notice an arena looks flat. Either way the import becomes the
+			-- experiment that answers the question.
+			if descendant.Color == DEFAULT_PART_GREY then
+				uncoloured += 1
+				uncolouredName = uncolouredName or descendant.Name
 			end
 			-- Dressing that must not catch feet or casts - the island
 			-- NON_COLLIDE idea, by the arena naming convention (arena_gen.py):
@@ -202,6 +231,18 @@ local function placeAuthored(parent: Instance, arena, template: Instance)
 		Vector3.new(arena.center.X - anchor.X, targetCenterY - boxCFrame.Position.Y, arena.center.Z - anchor.Z)
 	model:PivotTo(model:GetPivot() + delta)
 	model.Parent = parent
+	if uncoloured > 0 then
+		warn(
+			string.format(
+				"[BossArenaService] %s imported with %d part(s) at Roblox's default grey (first: %q). "
+					.. "The glTF import did NOT carry colour across, so this arena is flat grey - it needs a "
+					.. "per-part colour table like WorldService's MESH_COLOR, or the colours re-set at import.",
+				arena.model,
+				uncoloured,
+				uncolouredName
+			)
+		)
+	end
 end
 
 -- ============================================================ procedural path
