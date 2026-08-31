@@ -26,6 +26,7 @@ local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local BrinejawPath = require(Shared.Modules.BrinejawPath)
+local MeshColors = require(Shared.Config.MeshColors)
 local ChainPose = require(Shared.Modules.ChainPose)
 
 local BrinejawBodyController = {}
@@ -107,6 +108,7 @@ end
 -- One drawable piece: the authored mesh if it is imported, else a block of
 -- roughly its bulk so the serpent still reads.
 local function makePiece(name: string, parent: Instance): BasePart
+	local partName = "Brinejaw_" .. name
 	local template = packPiece(name)
 	local part
 	if template then
@@ -116,6 +118,25 @@ local function makePiece(name: string, parent: Instance): BasePart
 		part.Size = FALLBACK_SIZE[name] or Vector3.new(4, 4, 4)
 		part.Color = FALLBACK_COLOR[name] or Color3.fromRGB(33, 66, 77)
 		part.Material = Enum.Material.SmoothPlastic
+	end
+	-- REPAINT the imported piece. Studio's glTF importer does not carry colour
+	-- across - a cloned pack part arrives at Roblox's default grey - so before
+	-- this the serpent imported as a grey worm while the FALLBACK blocks it
+	-- replaced were correctly coloured. That is the worst way round: importing
+	-- the real mesh made the boss look worse, which reads as the import having
+	-- failed rather than as a missing repaint.
+	--
+	-- `MeshColors` is generated from boss_gen itself, so a piece added by a
+	-- re-export cannot be quietly left grey - it means re-running the tool.
+	local color = MeshColors.get(partName)
+	if color then
+		part.Color = color
+		-- A textured PBR surface would override Color outright; the pack is one
+		-- flat material per object and never authors one.
+		local appearance = part:FindFirstChildWhichIsA("SurfaceAppearance")
+		if appearance then
+			appearance:Destroy()
+		end
 	end
 	-- The pack's glTF round trip drops materials, and the boss path clones
 	-- pack parts with no Neon-by-name rule (boss_gen's own HANDOFF warns
@@ -135,7 +156,7 @@ local function makePiece(name: string, parent: Instance): BasePart
 	if string.find(name, "Glow", 1, true) or name == "Eyes" then
 		part.Material = Enum.Material.Neon
 	end
-	part.Name = "Brinejaw_" .. name
+	part.Name = partName
 	part.Anchored = true
 	part.CanCollide = false
 	part.CanQuery = false

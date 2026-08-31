@@ -38,6 +38,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local BossArenas = require(Shared.Config.BossArenas)
 local Bosses = require(Shared.Data.Bosses)
 local BrinejawPath = require(Shared.Modules.BrinejawPath)
+local MeshColors = require(Shared.Config.MeshColors)
 local World = require(Shared.Config.World)
 
 local BossArenaService = {}
@@ -185,33 +186,40 @@ local function placeAuthored(parent: Instance, arena, template: Instance)
 	for _, descendant in model:GetDescendants() do
 		if descendant:IsA("BasePart") then
 			descendant.Anchored = true
-			-- Emissive accents, by the name contract above. Colour is left to
-			-- the import (the arena meshes are one flat material per object,
-			-- untextured); only the material needs restoring.
-			if isGlow(descendant.Name) then
-				descendant.Material = Enum.Material.Neon
-			end
-			-- ...and this is what tells us whether that sentence is TRUE.
+			-- REPAINT, then relight.
 			--
-			-- WorldService keeps a per-part colour table for the islands and
-			-- warns when a part is missing from it; this file assumes the
-			-- importer supplies colour and keeps no table at all. Both cannot
-			-- be right about the same importer, and nothing in the repo
-			-- settles it - the checklist's "a glTF import lands every part
-			-- SmoothPlastic" is a claim about MATERIAL, and no imported arena
-			-- exists yet to measure. Building a colour table on a guess would
-			-- be one more confident claim nobody ran.
-			--
-			-- A detector needs no such guess. An un-coloured import is exactly
-			-- Roblox's default part grey, and no authored arena colour lands
-			-- on that triplet by accident. If colour survives, this never
-			-- fires and costs a comparison per part at boot. If it does not,
-			-- the first import names a part instead of leaving someone to
-			-- notice an arena looks flat. Either way the import becomes the
-			-- experiment that answers the question.
-			if descendant.Color == DEFAULT_PART_GREY then
+			-- Studio's glTF importer does NOT carry colour across - every part
+			-- arrives at Roblox's default grey, which is why the first import
+			-- of the Tidebreak came up entirely flat, arena and boss alike.
+			-- This file used to assert the opposite in a comment; the import
+			-- settled it. `MeshColors` is GENERATED from the builders
+			-- themselves (tools/gen_mesh_colors.py) rather than typed, because
+			-- a hand-kept table is exactly where parts go missing silently -
+			-- the islet half of WorldService's equivalent shipped 33 rows
+			-- short with every gate green.
+			local color = MeshColors.get(descendant.Name)
+			if color then
+				descendant.Color = color
+				descendant.Material = Enum.Material.SmoothPlastic
+				-- A textured PBR surface overrides Color outright. The packs
+				-- are one flat material per object and never author one, so
+				-- anything the importer attached is noise (the island rule).
+				local appearance = descendant:FindFirstChildWhichIsA("SurfaceAppearance")
+				if appearance then
+					appearance:Destroy()
+				end
+			elseif descendant.Color == DEFAULT_PART_GREY then
+				-- No row, and it still looks like an un-painted import. Counted
+				-- and named below: a part added to a builder without
+				-- regenerating the table reports itself instead of leaving
+				-- someone to notice one grey rock.
 				uncoloured += 1
 				uncolouredName = uncolouredName or descendant.Name
+			end
+			-- Emissive accents, by the name contract above - AFTER the repaint,
+			-- so the material assignment above cannot undo it.
+			if isGlow(descendant.Name) then
+				descendant.Material = Enum.Material.Neon
 			end
 			-- Dressing that must not catch feet or casts - the island
 			-- NON_COLLIDE idea, by the arena naming convention (arena_gen.py):
@@ -242,9 +250,9 @@ local function placeAuthored(parent: Instance, arena, template: Instance)
 	if uncoloured > 0 then
 		warn(
 			string.format(
-				"[BossArenaService] %s imported with %d part(s) at Roblox's default grey (first: %q). "
-					.. "The glTF import did NOT carry colour across, so this arena is flat grey - it needs a "
-					.. "per-part colour table like WorldService's MESH_COLOR, or the colours re-set at import.",
+				"[BossArenaService] %s has %d imported part(s) with no MeshColors row, still at the "
+					.. "importer's default grey (first: %q). Run `python3 tools/gen_mesh_colors.py` - a "
+					.. "builder gained an object and the generated table has not been refreshed.",
 				arena.model,
 				uncoloured,
 				uncolouredName
