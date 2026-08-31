@@ -1033,9 +1033,22 @@ Garden, the Whale Fall, the Ferryman's Raft, the Loadstone Spire.
   `scratchpad/pad_check.py` imports the EXPORTED glb (what Roblox
   receives, not the build scene), takes the true bbox min, and probes down
   at the NPC pad. All nine measure a bbox bottom of exactly -9.00, which
-  is why none declares a `meshBottom`. It found two bugs a height check
-  could not: a deck crate sitting on the Ferryman's stand, and the
-  chapel's anchor landing on its own roof.
+  is why none declares a `meshBottom`. It found a real bug a height check
+  could not - a deck crate sitting on the Ferryman's stand, putting the
+  ground 1.5 studs over his feet.
+- **THE SIGN TRAP, which cost a false bug report before it was caught**:
+  the glTF exporter maps blender (x, y, z) to (x, z, -y) and Roblox
+  imports axis-for-axis, so **roblox Z = -blender y** (X and the height
+  read across unchanged). Reading a .glb back INTO Blender undoes the
+  swap, so a probe script works in BUILD space and a Roblox-relative Z
+  must be negated first. Feeding one straight through is silent: it hits
+  real geometry and returns a plausible height, for the mirror image of
+  the spot you meant. That is exactly what happened - the chapel's pad was
+  reported as landing on its own roof, when build (2, +3) is the roof and
+  the pad is build (2, -3), an honest flat slab. `pad_check.py` now takes
+  ROBLOX-relative coordinates and does the negation itself, and the
+  convention is verified against a .glb POSITION accessor rather than
+  assumed. Every islet pad is clean under the corrected probe.
 
 ### The swamp restart (2026-08-27 → 28, marsh + trees in the tree, import owed)
 

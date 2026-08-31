@@ -640,6 +640,16 @@ local MESH_COLOR = {
 	Chapel_Stone = Color3.fromRGB(139, 138, 128), -- M_ChapStone
 	Chapel_Roof = Color3.fromRGB(81, 86, 92), -- M_ChapSlate
 	Chapel_Nave = Color3.fromRGB(69, 81, 83), -- M_ChapDrowned
+	-- The bell itself, one Blender object carrying five materials, so the
+	-- importer splits it five ways. It is pitched brighter and warmer than
+	-- real weathered bronze on purpose: it hangs in the shade of the belfry
+	-- with pale stone all round it, and anything darker reads as one more
+	-- hole in the masonry.
+	Chapel_Bell = Color3.fromRGB(191, 156, 79), -- M_ChapBronze (the bell)
+	Chapel_Bell2 = Color3.fromRGB(46, 47, 50), -- M_ChapIron (yoke, straps, collar)
+	Chapel_Bell3 = Color3.fromRGB(93, 68, 46), -- M_ChapTimber (bearers, headstock)
+	Chapel_Bell4 = Color3.fromRGB(180, 158, 113), -- M_ChapRope
+	Chapel_Bell5 = Color3.fromRGB(71, 68, 64), -- M_ChapCobble (the stone he rings with)
 	-- The Rookery Stack - white rock and a colony that was here first.
 	Rookery_Base = Color3.fromRGB(102, 100, 96), -- M_RookRock
 	Rookery_Base2 = Color3.fromRGB(224, 222, 214), -- M_RookGuano

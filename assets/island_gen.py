@@ -8849,36 +8849,149 @@ def build_islet_rookery():
 # island.
 
 
+def _chapel_paint(bm, first, index):
+    """Give every face added since `first` another material slot - how the one
+    bell object carries bronze as well as iron, timber, rope and river stone
+    (the importer splits it into <Name> / <Name>2 / ..., which is what
+    MESH_COLOR keys)."""
+    for f in list(bm.faces)[first:]:
+        f.material_index = index
+
+
 def build_islet_chapel():
     rng = random.Random(5503)
     state = random.getstate()
     base = build_island_base("Chapel_Base", ["M_ChapShoal", "M_ChapSilt", "M_ChapWet"])
-    stone, roof, drowned = bmesh.new(), bmesh.new(), bmesh.new()
+    stone, roof, drowned, bell = bmesh.new(), bmesh.new(), bmesh.new(), bmesh.new()
 
-    # The tower: four courses of dressed stone, arched openings near the top,
-    # a small bell inside, and a leaning cross on the cap.
+    # The tower: five courses of dressed stone up to the belfry floor, an OPEN
+    # belfry stage over them with the bell hanging in it, and a leaning cross on
+    # the cap.
     TOWER_X, TOWER_Y = -6.0, 4.0
     foot = height_at(TOWER_X, TOWER_Y)
-    for k in range(7):
+    for k in range(5):
         w = 9.4 - k * 0.22
         add_box(stone, (TOWER_X, TOWER_Y, foot + 2.4 + k * 4.4), (w, w, 4.4))
     # add_box takes a CENTRE, so the top of the last course is its centre plus
     # half its height - not one whole course beyond it. Getting that wrong put
     # the cap slab floating 2.2 studs above the tower.
-    cap = foot + 2.4 + 6 * 4.4 + 2.2
-    # Belfry openings: leave the corners, cut the faces, by building piers.
-    for dx, dy in ((-3.4, 0.0), (3.4, 0.0), (0.0, -3.4), (0.0, 3.4)):
-        add_box(stone, (TOWER_X + dx, TOWER_Y + dy, cap - 5.2), (2.4, 2.4, 5.2))
+    BELFRY = foot + 2.4 + 4 * 4.4 + 2.2  # the top of the shaft IS the belfry floor
+    cap = BELFRY + 8.8  # the cap sits exactly where it did: the stage is two courses
+    # A string course corbelled out under the belfry floor - the shadow line
+    # that says the stage above is a different thing from the shaft.
+    add_box(stone, (TOWER_X, TOWER_Y, BELFRY - 0.4), (9.4, 9.4, 0.8))
+    # Belfry openings: the piers stand at the CORNERS and the four faces between
+    # them are cut clean away. The old code put the piers at the face MIDPOINTS
+    # and then buried them inside a solid seventh course, so the stage was never
+    # open at all - the tower was a plain shaft and the bell was walled up in it.
+    PIER, JAMB = 3.15, 1.7  # the jambs land at 2.3, so each opening is 4.6 wide
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            add_box(stone, (TOWER_X + sx * PIER, TOWER_Y + sy * PIER, BELFRY + 4.4), (JAMB, JAMB, 8.8))
+    # The arched heads: courses stepping in over each opening along a semicircle
+    # of radius ARCH_R - and ARCH_R is exactly the clear half-span, so the arch
+    # springs off the jambs instead of sitting on them like a flat lintel.
+    SPRING, ARCH_R = BELFRY + 5.4, 2.3
+    for ax, ay in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+        for i in range(8):
+            t0, t1 = i * ARCH_R / 8.0, (i + 1) * ARCH_R / 8.0
+            half = math.sqrt(max(ARCH_R ** 2 - t1 ** 2, 0.0))  # the clear opening at this course's TOP
+            wide = ARCH_R - half
+            for side in (-1, 1):
+                off = side * (half + ARCH_R) / 2.0
+                add_box(
+                    stone,
+                    (TOWER_X + ax * PIER - ay * off, TOWER_Y + ay * PIER + ax * off, SPRING + (t0 + t1) / 2.0),
+                    (JAMB if ax else wide, JAMB if ay else wide, t1 - t0),
+                )
+    # The cornice closing the stage off over the arch crowns, then the cap slab.
+    add_box(stone, (TOWER_X, TOWER_Y, cap - 0.6), (8.6, 8.6, 1.2))
     add_box(stone, (TOWER_X, TOWER_Y, cap + 0.7), (10.6, 10.6, 1.4))
-    # The bell still hanging in it.
-    add_cone(stone, (TOWER_X, TOWER_Y, cap - 4.6), 1.5, 2.2, 2.6, sides=8)
     # The cross, leaning.
     add_box(stone, (TOWER_X, TOWER_Y, cap + 3.6), (0.5, 0.5, 4.6), yaw=0.2)
     add_box(stone, (TOWER_X, TOWER_Y, cap + 4.4), (2.8, 0.45, 0.45), yaw=0.2)
 
+    # ---- the bell, which is the only reason anybody comes here ----
+    # The frame first: two bearers laid right across the stage with their ends
+    # buried in the corner piers (the only masonry up here), and the headstock
+    # lapped up under them. A beam that ends in mid-air reads as floating.
+    first = len(bell.faces)
+    FRAME = cap - 1.70
+    for sy in (-1, 1):
+        # 7.8 long, NOT past the piers: an end poking out through the tower face
+        # reads as a stray brown block stuck on the masonry.
+        add_box(bell, (TOWER_X, TOWER_Y + sy * 2.9, FRAME), (7.8, 1.0, 1.0))
+    HEAD = FRAME - 0.85  # the headstock the bell actually hangs from
+    add_box(bell, (TOWER_X, TOWER_Y, HEAD), (1.5, 6.8, 1.3))
+    _chapel_paint(bell, first, 2)
+
+    # The bell. The profile is a list of (height above the mouth, radius) and
+    # every frustum is derived from a CONSECUTIVE PAIR of them, so each course's
+    # bottom radius IS the top radius of the course below it and the silhouette
+    # cannot step outward anywhere. The bellbuoy gave each course its own
+    # (r0, r1) pair that widened downward off a narrow start, so every course
+    # flared past the one below: it rendered as a pinecone. Do not do that.
+    BELL_TOP = HEAD - 0.95  # daylight under the headstock for the yoke to cross
+    # 3.44 across the mouth in a 4.6 opening: the bell is sized to FILL the arch
+    # it hangs in, because at 80 studs a modest bell is a smudge in a shadow.
+    BELL_PROFILE = [
+        (0.00, 1.76),  # the mouth - the lip is the widest line on the bell
+        (0.24, 1.48),  # the flare sweeping up off it, hard
+        (0.60, 1.28),  # into the sound bow, where a clapper would strike
+        (1.26, 1.17),  # the waist: two thirds of the mouth, and it barely tapers
+        (1.94, 1.09),  # ... which is the swell doing the work
+        (2.40, 0.96),
+        (2.82, 0.62),  # the shoulder turns hard in
+        (3.20, 0.38),  # to the crown
+    ]
+    BELL_MOUTH = BELL_TOP - BELL_PROFILE[-1][0]
+    first = len(bell.faces)
+    for (h0, r0), (h1, r1) in zip(BELL_PROFILE, BELL_PROFILE[1:]):
+        add_cone(bell, (TOWER_X, TOWER_Y, BELL_MOUTH + h0), r0, r1, h1 - h0, sides=12)
+    _chapel_paint(bell, first, 0)
+
+    # The yoke: a collar standing proud of the crown, and two iron straps swept
+    # up over the shoulder into the headstock - drawn from explicit end points
+    # with _tilt_toward, the same way the whalefall's ribs are.
+    first = len(bell.faces)
+    add_cone(bell, (TOWER_X, TOWER_Y, BELL_TOP - 0.38), 0.70, 0.54, 0.52, sides=10)
+    for sy in (-1, 1):
+        pts = [
+            (TOWER_X, TOWER_Y + sy * 1.18, BELL_MOUTH + 1.78),  # made off at the waist
+            (TOWER_X, TOWER_Y + sy * 1.01, BELL_MOUTH + 2.41),
+            (TOWER_X, TOWER_Y + sy * 0.55, BELL_MOUTH + 3.01),  # round the shoulder
+            (TOWER_X, TOWER_Y + sy * 0.38, HEAD + 0.25),  # and up into the headstock
+        ]
+        for p0, p1 in zip(pts, pts[1:]):
+            d = (p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2])
+            ln = math.sqrt(d[0] ** 2 + d[1] ** 2 + d[2] ** 2)
+            # Thin enough to read as a STRAP hugging the bell: any fatter and
+            # the pair turns into two dark flaps hiding the shoulder curve.
+            add_cone(bell, p0, 0.16, 0.16, ln, sides=4, tilt=_tilt_toward(Vector(d).normalized()))
+    _chapel_paint(bell, first, 1)
+
+    # NO CLAPPER. The whole three-chapter chain is about the thing that
+    # swallowed it, and "I have been ringing a bell with a stone tied to a rope
+    # for two years" is only a good line if you can SEE it: so the rope takes a
+    # turn over the headstock and the stone hangs a clapper's length clear below
+    # the mouth, in the open, where the belfry arch frames it.
+    STONE_Z = BELL_MOUTH - 1.28  # low enough that a clear run of rope shows under the lip
+    ROPE_TOP = HEAD + 0.52  # made off INSIDE the headstock, not perched on top of it
+    first = len(bell.faces)
+    add_cone(bell, (TOWER_X, TOWER_Y, STONE_Z), 0.15, 0.12, ROPE_TOP - STONE_Z, sides=5)
+    add_box(bell, (TOWER_X, TOWER_Y, ROPE_TOP), (1.9, 0.32, 0.30))  # the turns round the beam
+    _chapel_paint(bell, first, 3)
+    first = len(bell.faces)
+    add_blob(bell, (TOWER_X, TOWER_Y, STONE_Z), (0.48, 0.48, 0.54), 0.20, 61.0, yaw=0.6)
+    _chapel_paint(bell, first, 4)
+
     # The nave roof: a steep ridge running away from the tower and INTO the
     # water, with a hole torn in it - the hole is the whole point, you drop a
     # line through it.
+    # A 4-gon yawed 45 degrees puts its VERTICES on the diagonals, so its edges
+    # are axis-aligned and its half-width is the circumradius over root two -
+    # which is the number Odd's pad has to keep clear of, below.
+    ROOF_HALF = 6.2 / math.sqrt(2.0)
     for k in range(9):
         t = k / 8.0
         rx = TOWER_X + 6.0 + k * 5.4
@@ -8896,14 +9009,27 @@ def build_islet_chapel():
         if k % 2 == 0:
             add_box(drowned, (cx, TOWER_Y, -7.0), (3.6, 7.4, 0.9))
 
-    # Odd's landing: a slab of fallen masonry beside the tower, above water.
-    add_box(stone, (TOWER_X + 7.5, TOWER_Y - 7.0, foot + 1.6), (11.0, 11.0, 3.2))
-    stand_x, stand_y = TOWER_X + 7.5, TOWER_Y - 7.0
+    # Odd's landing: a slab of fallen masonry beside the tower, above water. He
+    # STANDS on this - NpcService raycasts straight down at the island's spawn
+    # X/Z and puts him on whatever it hits - so the stand point is written as
+    # the exact Roblox-relative anchor Islands.luau uses (X=2, Z=3), which in
+    # BUILD space is (2, -3): the exporter is Y-up, so Roblox Z = -blender_y.
+    # Build (2, +3) is the nave roof; that sign is the whole trap here.
+    SLAB_X, SLAB_Y, SLAB_W = TOWER_X + 7.5, TOWER_Y - 7.0, 11.0
+    add_box(stone, (SLAB_X, SLAB_Y, foot + 1.6), (SLAB_W, SLAB_W, 3.2))
+    stand_x, stand_y = 2.0, -3.0
+    slab_top = foot + 3.2
+    roof_near = -(TOWER_Y - ROOF_HALF)  # Roblox rel Z of the roof's nearest edge
 
     print(
         f"[island_gen] HANDOFF chapel (The Drowned Chapel): tower cap Y={cap + 1.4:.1f}, roof hole at "
         f"(Roblox rel) X={TOWER_X + 6.0 + 3.5 * 5.4:.0f} Z={-TOWER_Y:.0f}; "
-        f"NPC stand (Roblox rel) X={stand_x:.0f} Z={-stand_y:.0f} slab top Y={foot + 3.2:.1f}"
+        f"belfry floor Y={BELFRY:.1f}, bell mouth Y={BELL_MOUTH:.1f}, the stone on the rope hangs at "
+        f"Y={STONE_Z:.1f} over (Roblox rel) X={TOWER_X:.0f} Z={-TOWER_Y:.0f}; "
+        f"NPC stand (Roblox rel) X={stand_x:.0f} Z={-stand_y:.0f} is honest slab: top Y={slab_top:.2f}, "
+        f"pad X=[{SLAB_X - SLAB_W / 2:.1f},{SLAB_X + SLAB_W / 2:.1f}] "
+        f"Z=[{-(SLAB_Y + SLAB_W / 2):.1f},{-(SLAB_Y - SLAB_W / 2):.1f}], "
+        f"{-stand_y - roof_near:.1f} studs clear of the nave roof (nearest roof edge Z={roof_near:.1f})"
     )
     random.setstate(state)
     return [
@@ -8911,6 +9037,9 @@ def build_islet_chapel():
         object_from_bmesh("Chapel_Stone", stone, ["M_ChapStone"]),
         object_from_bmesh("Chapel_Roof", roof, ["M_ChapSlate"]),
         object_from_bmesh("Chapel_Nave", drowned, ["M_ChapDrowned"]),
+        object_from_bmesh(
+            "Chapel_Bell", bell, ["M_ChapBronze", "M_ChapIron", "M_ChapTimber", "M_ChapRope", "M_ChapCobble"]
+        ),
     ]
 
 
@@ -10019,6 +10148,12 @@ ISLANDS = {
                 ("approach", (70.0, -70.0, 26.0), (0.0, -4.0, 16.0), 30),
                 ("tower", (54.0, -58.0, 34.0), (-6.0, -4.0, 20.0), 34),
                 ("hole", (18.0, -26.0, 20.0), (13.0, -4.0, 2.0), 42),
+                # Close on the belfry: the bell and the stone on its rope are
+                # the point of this islet and they are 3 studs across on a
+                # 31-stud tower, so they need a shot of their own to judge.
+                # Square-on to a FACE, not to a corner: from a corner the near
+                # pier stands in front of the bell and hides the whole story.
+                ("belfry", (28.0, -4.0, 30.0), (-6.0, 4.0, 26.6), 55),
             ],
             "COLORS": {
                 "M_ChapShoal": (0.416, 0.427, 0.400),
@@ -10029,6 +10164,19 @@ ISLANDS = {
                 # The drowned nave reads through the water, so it is DARKER and
                 # bluer than the tower above it - depth doing the work.
                 "M_ChapDrowned": (0.271, 0.318, 0.325),
+                # The bell. It hangs in the SHADE of the belfry with pale stone
+                # all round it, so it is pitched much brighter and much warmer
+                # than a real weathered bronze: anything darker than the tower
+                # in there just reads as another hole in the masonry. Warm, not
+                # the bellbuoy's green - Odd rings this one every day.
+                "M_ChapBronze": (0.749, 0.612, 0.310),
+                "M_ChapIron": (0.180, 0.184, 0.196),
+                "M_ChapTimber": (0.365, 0.267, 0.180),
+                "M_ChapRope": (0.706, 0.620, 0.443),
+                # The stone Odd rings with. Deliberately NOT the tower's dressed
+                # stone: it has to read as a thing somebody tied on, not as a
+                # lump that fell off the building.
+                "M_ChapCobble": (0.278, 0.267, 0.251),
             },
         },
         "build": build_islet_chapel,

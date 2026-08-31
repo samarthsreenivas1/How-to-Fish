@@ -241,13 +241,23 @@ Quests.items.salvage_rights = {
 -- rods are the point and every one of them makes the taking easier - which is
 -- the whole story, said by nobody.
 --
--- NOTE ON `waters`: an islet sits in the OPEN SEA. A creature `waters` roster
--- ("wreck", "volcano"...) is that ISLAND's interior water, so a waters filter
--- on an islet errand sends the player back across the map, and there is no
--- "ocean" roster to filter on instead - open-sea species simply omit the
--- field, so filtering on it would match nothing at all. These take no waters
--- filter, or a rarity one. The single exception is `every_lamp_dark`, which
--- deliberately sends you to fish the trench itself.
+-- NOTE ON `waters`, corrected 2026-08-30 after reading the code instead of
+-- reasoning about it. An islet sits in the OPEN SEA, and a creature `waters`
+-- roster ("wreck", "volcano"...) is that ISLAND's interior water, so a roster
+-- name on an islet errand does send the player back across the map. But the
+-- rest of what was written here was WRONG: `waters = "ocean"` works, and is
+-- the right filter for these. FishingService normalises a row with no
+-- `waters` to World.WATERS_OCEAN, World.WATERS_BY_PART maps the ocean part to
+-- "ocean", and a finished cast reports that string to QuestService - so an
+-- open-sea catch matches `waters = "ocean"` exactly. Without it these errands
+-- are completable by fishing the fen, which makes every one of them a lie
+-- about where it is set.
+--
+-- KILL objectives are the opposite case and must NEVER carry `waters`:
+-- QuestService.notify("kill", ...) sends only { player, species, rarity }, so
+-- `objective.waters` compares against nil and the objective can never
+-- complete. That asymmetry is invisible at the call site and is why
+-- `struck_twice` below filters by nothing.
 
 Quests.items.what_the_bell_brings = {
 	id = "what_the_bell_brings",
@@ -275,7 +285,7 @@ Quests.items.what_bites_in_boiling_water = {
 	giver = "cinder",
 	blurb = "Anything worth catching out here is already half-cooked and furious about it. Six of the good ones.",
 	requiresLevel = 22,
-	objectives = { { type = "catch", count = 6, rarity = "Uncommon" } },
+	objectives = { { type = "catch", count = 6, rarity = "Uncommon", waters = "ocean" } },
 	rewards = { coins = 1300, xp = 1000 },
 }
 
@@ -285,7 +295,7 @@ Quests.items.the_taut_chain = {
 	giver = "coil",
 	blurb = "I'm not hauling on it and neither are you. Fish the reef a while - whatever is on the end has been patient this long.",
 	requiresLevel = 34,
-	objectives = { { type = "catch", count = 6 } },
+	objectives = { { type = "catch", count = 6, waters = "ocean" } },
 	rewards = { coins = 2000, xp = 1500 },
 }
 
@@ -306,9 +316,9 @@ Quests.items.struck_twice = {
 	id = "struck_twice",
 	name = "Struck Twice",
 	giver = "ansel",
-	blurb = "Things live in the strike-water. They like it. I do not like that they like it - four of them, please.",
+	blurb = "The rays come in under the strikes and lie in it like a hot bath. Four of them, and don't be holding the rod when it goes.",
 	requiresLevel = 38,
-	objectives = { { type = "kill", count = 4, species = "tempest_revenant" } },
+	objectives = { { type = "kill", count = 4, species = "voltray" } },
 	rewards = { coins = 2600, xp = 1900 },
 }
 
@@ -319,7 +329,7 @@ Quests.items.odds_toll = {
 	giver = "bellkeeper_odd",
 	blurb = "The bell wants ringing on the hour and I've only the two hands. Fish the chapel while I climb, and mind the roof.",
 	requiresLevel = 12,
-	objectives = { { type = "catch", count = 6 } },
+	objectives = { { type = "catch", count = 6, waters = "ocean" } },
 	rewards = { coins = 600, xp = 500 },
 }
 
@@ -354,7 +364,7 @@ Quests.items.the_gutting_stone = {
 	giver = "saltmother_vess",
 	blurb = "Something's been at my stone in the night. Bring me work to do while I watch for it - eight will do.",
 	requiresLevel = 26,
-	objectives = { { type = "catch", count = 8 } },
+	objectives = { { type = "catch", count = 8, waters = "ocean" } },
 	rewards = { coins = 1400, xp = 1100 },
 }
 
