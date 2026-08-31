@@ -17,10 +17,16 @@ rows from the builders themselves means a new mesh object cannot be forgotten
 
 USAGE - after ANY change to an arena or boss builder:
 
-    python3 tools/gen_mesh_colors.py
+    python3 tools/gen_mesh_colors.py            # regenerate the module
+    python3 tools/gen_mesh_colors.py --check    # report only, write nothing
 
 It drives Blender once per target (13 of them, so it takes a few minutes),
 reads each object's REAL authored colour, and rewrites the Luau module.
+
+`--check` exists because this also reports the ISLANDS' missing rows, and a
+check that rewrites a file as a side effect is one nobody can run casually -
+which means it gets run rarely, which is the opposite of the point. With the
+flag it inspects and prints; without it, it also writes.
 
 READING THE COLOUR IS THE FIDDLY PART, and the obvious way is wrong. An
 object's `diffuse_color` is Blender's VIEWPORT SWATCH, not its material: it
@@ -66,13 +72,25 @@ print("=== COLORS ===")
 for obj in sorted(bpy.data.objects, key=lambda o: o.name):
     if obj.type != "MESH":
         continue
-    slots = [s.material for s in obj.material_slots if s.material]
-    for i, m in enumerate(slots):
-        rgb = base_color(m)
+    # COUNT FACES PER SLOT. A multi-material object splits on export and Studio
+    # numbers the 2nd and 3rd parts <Name>2 / <Name>3 (the Island_Base
+    # precedent) - but a slot with NO faces emits no glTF primitive at all, so
+    # it must not consume a suffix or every later part is numbered one high.
+    # Every slot on every current object has faces, so this changes nothing
+    # today; it is here because the whole <Name>N convention rests on it
+    # silently, and a mesh edit that empties a slot would misnumber in a way
+    # that reads as a missing colour row rather than as an off-by-one.
+    used = {}
+    for poly in obj.data.polygons:
+        used[poly.material_index] = used.get(poly.material_index, 0) + 1
+    emitted = 0
+    for index, slot in enumerate(obj.material_slots):
+        if not slot.material or not used.get(index):
+            continue
+        rgb = base_color(slot.material)
+        emitted += 1
         if rgb:
-            # A multi-material object splits on export and Studio numbers the
-            # 2nd and 3rd parts <Name>2 / <Name>3 (the Island_Base precedent).
-            print("COLOR %s%s %d %d %d" % (obj.name, "" if i == 0 else str(i + 1), *rgb))
+            print("COLOR %s%s %d %d %d" % (obj.name, "" if emitted == 1 else str(emitted), *rgb))
 print("=== END ===")
 '''
 
@@ -107,13 +125,20 @@ def run(generator, target, dump_path, tmpdir):
 # it - those rows belong to the lanes that own each island - but it reports what
 # is missing, MEASURED the same way.
 #
-# Measured, specifically, because scanning the source for object names is wrong
-# in BOTH directions and looks fine either way. Tried first here: it missed
-# `Wreckwater_Dock_Planks`, `_Dock_Posts` and `_Foam`, whose names are passed as
-# PARAMETERS to shared `build_dock` / `build_foam` helpers and so never appear as
-# literals at a scanned call site - and it invented `Gloomtrench_Path`, a literal
-# that no longer reaches an export. Building the pack and reading the objects
-# that actually come out has neither failure.
+# Measured, specifically, because scanning the source for object names misses a
+# whole category invisibly. Tried first here, and it did not see
+# `Wreckwater_Dock_Planks`, `_Dock_Posts` or `_Foam`: those names are passed as
+# PARAMETERS to shared `build_dock` / `build_foam` helpers, so they never appear
+# as literals at any scanned call site. The wreck island was the only one
+# missing its whole dock-and-foam trio, so anyone working from the scan's list
+# would have left it partly grey and reasonably believed they were done.
+#
+# (An earlier version of this comment also claimed the scan "invented"
+# `Gloomtrench_Path`. That was wrong twice over: the object IS emitted, and it
+# was genuinely un-rowed at the time - the gloom lane has since added the row.
+# Corrected rather than replaced with a better-sounding example, because a
+# tool's header asserting a failure mode it never had is the same defect this
+# file exists to complain about.)
 def check_islands(dump_path, tmpdir):
     rows = run("island_gen.py", "pack", dump_path, tmpdir)
     if not rows:
@@ -127,6 +152,19 @@ def check_islands(dump_path, tmpdir):
         sys.stderr.write("  !! could not read WorldService MESH_COLOR\n")
         return
     have = set(re.findall(r"^\t(\w+) =", block, re.M))
+    # ...MINUS the interior waters. `applyMeshColors` handles those on an
+    # earlier branch and `continue`s before the MESH_COLOR lookup is ever
+    # reached, so they correctly have no row. Without this the check reports
+    # four confident phantom gaps and sends someone hunting bugs that are not
+    # there - a false alarm being the fastest way to make a real one ignored.
+    try:
+        with open(os.path.join(ROOT, "src", "Shared", "Config", "Ocean.luau")) as handle:
+            ocean = handle.read()
+        water_block = ocean[ocean.index("Ocean.INTERIOR_WATER_NAMES = {") :]
+        water_block = water_block[: water_block.index("\n}")]
+        have |= set(re.findall(r"^\t(\w+) = true", water_block, re.M))
+    except (IOError, ValueError):
+        sys.stderr.write("  !! could not read Ocean.INTERIOR_WATER_NAMES; expect phantom gaps\n")
     missing = sorted(n for n in rows if n not in have)
     print("\n  islands: %d objects emitted, %d MESH_COLOR rows, %d missing" % (len(rows), len(have), len(missing)))
     for name in missing:
@@ -135,6 +173,7 @@ def check_islands(dump_path, tmpdir):
 
 
 def main():
+    check_only = "--check" in sys.argv[1:]
     colors = {}
     conflicts = []
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -198,9 +237,21 @@ def main():
         "return MeshColors",
         "",
     ]
-    with open(OUT, "w") as handle:
-        handle.write("\n".join(lines))
-    print("\nwrote %s - %d parts" % (os.path.relpath(OUT, ROOT), len(colors)))
+    rendered = "\n".join(lines)
+    if check_only:
+        try:
+            with open(OUT) as handle:
+                current = handle.read()
+        except IOError:
+            current = None
+        state = "up to date" if current == rendered else "STALE - re-run without --check"
+        print("\n%s - %d parts, %s" % (os.path.relpath(OUT, ROOT), len(colors), state))
+        if current != rendered:
+            raise SystemExit(1)
+    else:
+        with open(OUT, "w") as handle:
+            handle.write(rendered)
+        print("\nwrote %s - %d parts" % (os.path.relpath(OUT, ROOT), len(colors)))
     if conflicts:
         raise SystemExit(1)
 
