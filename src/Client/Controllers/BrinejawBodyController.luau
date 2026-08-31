@@ -121,7 +121,18 @@ local function makePiece(name: string, parent: Instance): BasePart
 	-- pack parts with no Neon-by-name rule (boss_gen's own HANDOFF warns
 	-- about it), so the amber eyes arrive matte and unlit. Two sibling
 	-- controllers already assert this for the same reason.
-	if name == "Eyes" then
+	-- BY NAME, not by a list of names. This matched the literal "Eyes", which
+	-- is correct for the pack as it stands and silently wrong for the pack as
+	-- it changes: an emissive piece added by a re-export arrives matte, and
+	-- nothing says so. `BossArenaService` already settled the general form for
+	-- arena meshes - an object whose NAME contains `Glow` is Neon, marker on
+	-- the object rather than the material - and this is that rule for boss
+	-- packs, so both halves of an import obey one convention.
+	--
+	-- `Eyes` is grandfathered because boss_gen authored it before the marker
+	-- existed. When that object is renamed on its next export, this line
+	-- becomes the substring test alone.
+	if string.find(name, "Glow", 1, true) or name == "Eyes" then
 		part.Material = Enum.Material.Neon
 	end
 	part.Name = "Brinejaw_" .. name
