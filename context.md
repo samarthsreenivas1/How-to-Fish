@@ -968,6 +968,75 @@ code+data; live on next boot). The plan file:
   (economy rule: a normal session should out-earn the shop), tracker
   position, dialog sizing, NPC body species choices.
 
+### The islets: nine places between the islands (2026-08-30, import owed)
+
+Nine tiny landforms scattered in the OPEN SEA between the seven voyage-arc
+islands. One resident each, their own quests, and no gate of any kind: the
+only way to reach one is to sail there. Bellbuoy, the Drowned Chapel, the
+Rookery Stack, the Boiling Shoal, the Lampwright's Workshop, the Anchor
+Garden, the Whale Fall, the Ferryman's Raft, the Loadstone Spire.
+
+- **Where the pieces live**: entries in `Shared/Config/Islands.luau`
+  (`islet = true`, worldPosition, radius, spawn, blurb); builders in
+  `assets/island_gen.py` (`build_islet_*` + an ISLANDS registry entry +
+  ISLAND_ORDER); residents in `Shared/Data/Npcs.luau`; 15 quests in
+  `Quests.luau`; the Ferryman's counter in `Shops.luau`. The pack already
+  bundles all nine - import checklist row 1c has the collision notes.
+- **`islet = true` is load-bearing in two places and deliberately absent
+  from two others.** `WorldService.loadIslands` needs its OWN placement
+  pass, because the main loop walks `Islands.order` and islets are not in
+  it - without that pass an islet builds in Blender, ships in the pack and
+  never appears in the world. `Islands.nearestIsland(pos, includeIslets)`
+  defaults to EXCLUDING them, so the water-colour probe cannot flip to
+  base blue partway through a real island's fade. Meanwhile the travel
+  menu and the boss lists get the right answer for free by walking
+  `order`, and `NpcService` needs no change at all because it reads
+  `Islands.items` directly.
+- **`spawn` on an islet is NOT a teleport destination** - nothing
+  teleports to them. It is the anchor `NpcService` measures its resident
+  from, and NpcService IGNORES the configured Y: it raycasts down at that
+  X/Z and stands the NPC on whatever it hits. So the X/Z is the only part
+  that matters, and getting it wrong puts a character on a roof rather
+  than slightly off the ground. Note the ray respects `CanQuery`, which
+  the NON_COLLIDE pass does NOT clear - so a pass-through prop still
+  blocks the probe and can still be stood on.
+- **Quests**: six single errands plus three 3-chapter hermit sagas that
+  each end in a rod - Odd's Bellringer (surfaces catches stunned), Vess's
+  Ribboncutter (maximum materials), the Lampwright's Line (a LANTERN_RODS
+  member). Each saga's chapter 2 kills a hostile with a guaranteed
+  quest-gate drop (`tollmaw`/`bell_clapper`, `old_ribbonjaw`/
+  `whetstone_heart`, `moth_of_the_deep`/`unburnt_wick`). Nobody in any of
+  them says the player is doing anything wrong, and every one of them
+  hands over a tool that makes the taking easier.
+- **The `waters` trap, worth reading before writing any islet quest**: an
+  islet sits in open sea, and a creature `waters` roster ("wreck",
+  "gloom", ...) is that ISLAND's interior water. A waters filter on an
+  islet errand therefore sends the player back across the map, and there
+  is no `waters = "ocean"` to use instead - open-sea species simply omit
+  the field, so filtering on it matches NOTHING and is a silent dead end.
+  Islet catch objectives take no waters filter, or a rarity one. The one
+  deliberate exception is `every_lamp_dark`, which sends you to fish the
+  trench on purpose.
+- **Roblox-side tables, and the gap none of the gates could see**: all 56
+  islet parts need a `MESH_COLOR` row or they import default grey - the
+  generator bakes colour into the .glb materials and Roblox does not read
+  them. That was broken for every islet while all four gates ran green,
+  because no gate knows a material name in a Blender script implies a row
+  in a Luau table. `tools/check_islet_colors.py` closes it and reports
+  both directions (missing rows AND rows nothing builds any more); it is
+  tested against controls, not just asserted. Four `_Glow` parts take Neon
+  from `MESH_MATERIAL`; thirteen names are in `NON_COLLIDE`, of which
+  `Anchorage_Iron` is the interesting ruling - one mesh holding both the
+  standing anchors and the chains slung between them, so it is one
+  CanCollide for both and the chains decide it.
+- **Verified by raycast, not by HANDOFF line**:
+  `scratchpad/pad_check.py` imports the EXPORTED glb (what Roblox
+  receives, not the build scene), takes the true bbox min, and probes down
+  at the NPC pad. All nine measure a bbox bottom of exactly -9.00, which
+  is why none declares a `meshBottom`. It found two bugs a height check
+  could not: a deck crate sitting on the Ferryman's stand, and the
+  chapel's anchor landing on its own roof.
+
 ### The swamp restart (2026-08-27 → 28, marsh + trees in the tree, import owed)
 
 User verdict on the shipped mangrove fen: "absolutely atrocious" — grey
