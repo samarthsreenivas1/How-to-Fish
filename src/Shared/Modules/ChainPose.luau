@@ -47,17 +47,38 @@ ChainPose.__index = ChainPose
 -- forward convention (assets/boss_gen.py, creatures_gen.py). Guarded for the
 -- straight-up case, which a reared neck really does hit.
 local function alongX(position: Vector3, forward: Vector3): CFrame
-	-- BLENDED, not switched. This used to flip the reference the instant
-	-- |forward.Y| crossed 0.99, which rotates the resulting frame by up to
-	-- 160 degrees in ONE frame - and a reared neck sits right on that
-	-- threshold, so an idle bob alone tripped it three times every ten
-	-- seconds, spinning the finned vertebra at the crossing. Easing the
-	-- reference across a band turns a snap into a roll nobody notices.
-	local blend = math.clamp((math.abs(forward.Y) - 0.90) / 0.09, 0, 1)
-	blend = blend * blend * (3 - 2 * blend)
-	local up = Vector3.new(0, 1, 0):Lerp(Vector3.new(0, 0, 1), blend)
-	local right = forward:Cross(up)
-	if right.Magnitude < 1e-4 then
+	-- WORLD UP, ALWAYS. No switching, no blending between references.
+	--
+	-- Two previous versions both tried to swap the reference near vertical and
+	-- both were worse than not doing it. The original flipped to (0,0,1) the
+	-- instant |forward.Y| crossed 0.99, which rotates the frame 180 degrees in
+	-- one frame; a reared neck sits on that threshold, so an idle bob tripped
+	-- it about three times every ten seconds. Blending across 0.90..0.99
+	-- removed the snap and introduced something worse: with `up = (0, 1-b, b)`
+	-- the reference can align with `forward` itself, and |right| collapses to
+	-- 1e-4 at |forward.Y| = 0.9314 - a true singularity in the MIDDLE of the
+	-- band, where limbs actually spend their time, guarded only by a fallback
+	-- that reads like dead code. Found by bd's rig, which crosses it on three
+	-- of six attacks; the roll error is yaw-dependent (|right| >= 0.707|fx|),
+	-- so it presented as one segment twitching at one bearing - three reports
+	-- and no repro.
+	--
+	-- The switch was never needed. It was guarding a small cross product, and
+	-- small is not ill-conditioned: |forward x up| = sqrt(1 - forward.Y^2), so
+	-- even at |forward.Y| = 0.9999 it is 0.014, which normalises exactly in
+	-- float32. Measured across the band at 24 bearings: worst single-step roll
+	-- change is 180 degrees for the switch, 180 for the blend, and 0.00 for
+	-- this. The horizontal reference makes `right` a pure function of the
+	-- tangent's AZIMUTH, and azimuth varies smoothly while a limb rears.
+	--
+	-- What remains is the genuine one: at EXACTLY vertical the azimuth is
+	-- undefined and no choice is continuous. A limb passing through that
+	-- instant gets an arbitrary roll for one frame. Fixing it properly needs
+	-- parallel transport along the chain rather than a per-link reference,
+	-- which is a real change to this module's statelessness and is not worth
+	-- it until something actually stands a limb dead vertical.
+	local right = forward:Cross(Vector3.new(0, 1, 0))
+	if right.Magnitude < 1e-5 then
 		right = Vector3.new(1, 0, 0)
 	end
 	local realUp = right.Unit:Cross(forward).Unit
