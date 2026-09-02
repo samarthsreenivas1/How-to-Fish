@@ -419,7 +419,12 @@ Bosses.items.old_gnashroot = {
 	-- in open water and BossService.arenaPosition never reads this offset.
 	-- `radius` is still live - it is the roam disc the fight actually uses.
 	arena = { offset = Vector3.new(0, 0, 74), radius = 36 },
-	aggro = 90,
+	-- ROOTED: this must exceed the band's own weapon range or the boss simply
+	-- never picks an attack. Mire Flintlock reaches 150 and the hit sphere adds
+	-- hitRadius*scale = 9, so 159 studs of pivot distance are connectable; 165
+	-- covers it. Not a leash - only the beginBossAttack gates, snaretrap's
+	-- x1.2 sweep and the (unused here) `everyone` barrage read it.
+	aggro = 165,
 	standoff = 14,
 	hitRadius = 6, -- at scale 1, pivot to the core; x1.5 = 9, the Brinejaw frame
 	submerge = 2.4,
@@ -436,7 +441,11 @@ Bosses.items.old_gnashroot = {
 	-- shipped, tuned ones - this pass renamed and re-skinned the book onto
 	-- the mud colossus and added `hammerfall`; it did not re-balance it.
 	phases = {
-		{ below = 1.0, attacks = { "gnash", "wallow", "disgorge" } },
+		-- Phase 1 carries five, not three. With a three-move pool gnash's short
+		-- cooldown made it every other pick for runs of 14, and an empty pool
+		-- falls through to attacks[1] - which IS gnash - ignoring cooldowns.
+		-- Pool size is the lever, not the cooldown.
+		{ below = 1.0, attacks = { "gnash", "wallow", "disgorge", "heave", "hammerfall" } },
 		{ below = 0.65, attacks = { "gnash", "wallow", "disgorge", "heave", "mire", "hammerfall" } },
 		{ below = 0.3, attacks = { "gnash", "wallow", "heave", "heave", "mire", "hammerfall", "disgorge" } },
 	},
@@ -450,9 +459,14 @@ Bosses.items.old_gnashroot = {
 			windup = 0.75,
 			duration = 0.35,
 			recover = 0.55,
-			cooldown = 1.8,
-			lunge = 13,
-			radius = 16,
+			cooldown = 4.5,
+			-- Rooted, so no lunge: the handler translates creature.pos, which a
+			-- pinned boss cannot afford (the drawn body and the hitbox come
+			-- apart and never rejoin). Radius 27 is GN_MERE_R exactly - the
+			-- bite owns the pool and ends at its rim, so the dodge reads off
+			-- the terrain rather than off a number.
+			lunge = 0,
+			radius = 27,
 			cone = math.rad(65),
 			damage = { 58, 82 },
 		},
@@ -460,16 +474,29 @@ Bosses.items.old_gnashroot = {
 		-- forward in a line and leaves half of itself behind as clinging
 		-- sludge. The lane it ploughs is the fight's slowest-to-clear hazard.
 		wallow = {
-			handler = "charge",
+			-- A `charge` cannot survive rooting: the handler walks creature.pos 34
+			-- studs and the pin only runs on non-attack frames, so the hitbox
+			-- leaves the drawn body and does not come back. Re-handlered to the
+			-- identity its own comment already claimed - a WAVE - as a marching
+			-- wall of ranks that needs no locomotion at all.
+			handler = "barrage",
+			pattern = "wall",
+			tell = false, -- as heave: the ranks are the telegraph
 			skin = "peat",
 			windup = 1.0,
-			duration = 1.1,
+			duration = 2.6,
 			recover = 0.85,
-			cooldown = 6.0,
-			length = 34,
-			width = 10,
+			cooldown = 9.0,
+			width = 26, -- the face's span; across = floor(26/6)+1 = 5 points at
+			-- 6.5 spacing, inside a 12-stud diameter, so the face is contiguous
+			ranks = 8,
+			startAt = 10,
+			rankSpacing = 8, -- ranks at 10..66, outermost + radius 6 = 72
+			interval = 0.34, -- 7 * 0.34 = 2.38s to cross 56 studs = 23.5 studs/s
+			-- against WalkSpeed 16: you cross the 38-stud face, you do not outrun it
+			arm = 0.7,
+			radius = 6,
 			damage = { 55, 76 },
-			trail = { every = 7, radius = 6.5, duration = 6, min = 5, max = 8, slow = 0.55, skin = "peat" },
 		},
 		-- It brings up the mere and throws it: gobs of itself that keep
 		-- moving where they land.
@@ -483,7 +510,9 @@ Bosses.items.old_gnashroot = {
 			count = 3,
 			spread = 10,
 			flight = 1.0,
-			stagger = 0.2,
+			-- was 0.2, inside PlayerService's 0.35 i-frame, so glob 2 of 3 could
+			-- never land on the same target
+			stagger = 0.4,
 			radius = 7,
 			damage = { 20, 30 },
 			pool = { radius = 7, duration = 6, min = 5, max = 9, slow = 0.5, skin = "peat" },
@@ -498,11 +527,15 @@ Bosses.items.old_gnashroot = {
 			duration = 1.6,
 			recover = 0.6,
 			cooldown = 6.5,
+			tell = false, -- the generic tell is a 5-stud flash at the pivot for a
+			-- 70-stud attack; the per-strike marks ARE this move's telegraph
 			pattern = "line",
-			count = 7,
-			spacing = 5.0,
-			startAt = 6, -- 6 + 6*5 = 36 studs of rank; at the roam disc's edge
-			-- that still lands inside the walkable peat (bank ends at r 70)
+			count = 10,
+			spacing = 6.4,
+			startAt = 8, -- 8 + 9*6.4 + radius 5 = 70.6: the peat's exact edge
+			fan = { -16, 0, 16 }, -- three bearings: 2.2-stud gaps at the root
+			-- opening to 8.3 at the rim, so it is solid where you are close
+			-- and runnable where you are far
 			interval = 0.16,
 			arm = 0.5,
 			radius = 5,
@@ -551,7 +584,9 @@ Bosses.items.old_gnashroot = {
 			-- AoE warns with a 3-stud flash at the boss's pivot, because the
 			-- client keys telegraphs on `tell or name` and knows no "hammerfall"
 			cooldown = 11.0,
-			radius = 22,
+			-- 30 traces the mere's rim (27) plus its lip: rooted, this is finally
+			-- a concentric ring the arena itself draws for the player.
+			radius = 30,
 			damage = { 60, 84 },
 			expose = 3.5,
 		},

@@ -81,6 +81,10 @@ BossArenas.items = {
 		islandId = "swamp",
 		center = Vector3.new(22200, 0, 9000),
 		model = "GnashrootArena",
+		-- arena_gen HANDOFF: the Rootmere's skirt closes at -9.5. The only
+		-- arena row that lacked this; the -9 default floated it half a stud
+		-- and verifyGround cannot see it (POSE_ARENA has no gnashroot row).
+		meshBottom = -9.5,
 		palette = {
 			floor = Color3.fromRGB(54, 48, 34), -- packed peat
 			rim = Color3.fromRGB(40, 52, 34), -- mangrove wall
