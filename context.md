@@ -970,6 +970,34 @@ code+data; live on next boot). The plan file:
 
 ### The islets: nine places between the islands (2026-08-30, import owed)
 
+**FULL REDESIGN 2026-09-02** (user: "very very bland grey circles with some
+random objects on top"): all nine islets rebuilt by a fleet of nine Opus
+subagents, one per islet, each in an isolated worktree. No two share a
+landform any more, every resident has a real home, and the section below
+should be read with that in mind - placement/quest/waters mechanics are
+unchanged, but every geometry claim predating this line is superseded.
+The nine: a heeled basalt wedge split by a bell-cleft; a drowned church
+whose nave roof IS the ground; two stacks joined by a sea arch; a
+four-platform floating hamlet; a broken caldera round a milky hot lagoon
+(fishable, wired to the OCEAN pool in World.luau); a cliff-edged shelf
+over the trench; a wading flat of seventeen anchors; a 200-stud crescent
+spit with the whale along its spine; a cathedral of eight struck needles.
+MESH_COLOR now carries 220 islet rows DERIVED FROM THE PACK GLB, and
+check_islet_colors v2 reads the pack as ground truth (the redesigned
+builders emit objects through helpers a source regex cannot see - v1
+produced 100+ false findings against a correct table).
+
+**The merge lesson, at my expense** (recorded because the next fleet will
+hit it): applying each agent's diff against the MOVING main tree let
+adjacent-builder hunks carry sibling REVERTS inside legitimately-kept
+hunks - three commits claimed islets their trees did not contain, and six
+of nine designs were silently old before the pack rebuild caught it. The
+correct construction: diff each worktree against the COMMON BASE it
+copied, where the delta is that agent's work and nothing else by
+construction. Also: Blender headless swallows Python exceptions unless
+`--python-exit-code 1` is passed - a crashed pack build exited 0 and left
+a stale pack masquerading as fresh.
+
 Nine tiny landforms scattered in the OPEN SEA between the seven voyage-arc
 islands. One resident each, their own quests, and no gate of any kind: the
 only way to reach one is to sail there. Bellbuoy, the Drowned Chapel, the
