@@ -8330,12 +8330,108 @@ _ISLET_LAMP_YARD = [
 ]
 
 
+# ---------------------------------------------------------------- the void
+#
+# The Lampwright's rock does not end in a beach on every bearing. On the
+# seaward third the ground simply STOPS: the shelf runs out level, lifts a
+# little as if bracing itself, and then falls in ONE WALL to the trench floor.
+# The other side keeps its shore - a low wet apron with tide pools on it.
+# Safe side and nothing side, and the jetty is thrown out over the nothing.
+_LAMP_VOID_DIR = -math.pi / 2  # Blender -y = Roblox +Z: the sail-in bearing
+_LAMP_VOID_HALF = 1.30  # half-width (radians) of the sector cut away
+_LAMP_VOID_CORE = 0.88  # inside this the wall is dead vertical
+_LAMP_LIP_RING = 4  # index into RINGS[1:] of the u=0.80 lip ring
+# Per-ring lift of the rings INSIDE the lip, so the headland tilts UP into the
+# drop: an edge you can see coming, not a fade.
+_LAMP_LIP_LIFT = (0.0, 0.0, 0.55, 1.5, 2.9)
+# Radius of each ring OUTSIDE the lip as a multiple of the lip's own radius,
+# every one of them slammed to SKIRT_BOTTOM. The first is 1.0 - the wall
+# itself, perfectly plumb - and the rest is the trench floor spreading from
+# its foot, which wears M_LampTrench so the water over it reads black.
+_LAMP_VOID_SPREAD = (1.0, 1.08, 1.20, 1.38, 1.66)
+
+_LAMP_LIGHTHOUSE = (17.5, -16.5)  # the stump of the tower he never finished
+_LAMP_FORGE = (-13.5, 0.6)  # the outdoor forge, cold
+_LAMP_GALLOWS = (2.0, 13.2, -4.2)  # x0, x1, y - the row of failed lamps
+
+
 def _islet_lamp_paint(bm, first, index):
     """Give every face added since `first` a material slot - how one object
     carries stone as well as timber, slate and iron (the importer splits it
     into <Name> / <Name>2 / ..., which is what MESH_COLOR keys)."""
     for f in list(bm.faces)[first:]:
         f.material_index = index
+
+
+def _lamp_void_w(theta):
+    """How completely the ground is gone on this bearing: 1 across the core of
+    the seaward sector, 0 on the safe side, and a smooth shoulder between so
+    the wall turns into the tide-pool shore instead of tearing off it."""
+    d = abs(((theta - _LAMP_VOID_DIR + math.pi) % math.tau) - math.pi)
+    if d >= _LAMP_VOID_HALF:
+        return 0.0
+    if d <= _LAMP_VOID_CORE:
+        return 1.0
+    return 1.0 - smoothstep(_LAMP_VOID_CORE, _LAMP_VOID_HALF, d)
+
+
+def _lamp_carve_void(base):
+    """Take the seaward third of the finished base mesh and stand a cliff in
+    its place. The radial fan is not re-topologised - every ring outside the
+    lip is simply PULLED IN onto the lip's own footprint and dropped to
+    SKIRT_BOTTOM, which turns one band of quads into a plumb wall and the rest
+    into the trench floor. Watertight by construction, bottom exactly -9, and
+    the shoulders lerp by _lamp_void_w so the safe side is untouched.
+
+    The wall is repainted M_LampStone (the cliff is rock, not splash band) and
+    the floor beyond it M_LampTrench in a fourth slot appended here - which is
+    why the base imports as Lampwork_Base ... Lampwork_Base4."""
+    verts = base.data.vertices
+    n = SEGMENTS
+
+    def vert(ring, s):
+        return verts[1 + ring * n + s]
+
+    for ring, lift in enumerate(_LAMP_LIP_LIFT):
+        if lift == 0.0:
+            continue
+        for s in range(n):
+            v = vert(ring, s)
+            v.co.z += lift * _lamp_void_w(math.atan2(v.co.y, v.co.x))
+
+    # Vertical ribbing: the LIP ring's own footprint is wobbled in and out, and
+    # because every ring below inherits it the wall comes out fluted in plumb
+    # ribs instead of one flat slab (round 1's cliff read as poured concrete).
+    for s in range(n):
+        v = vert(_LAMP_LIP_RING, s)
+        w = _lamp_void_w(math.atan2(v.co.y, v.co.x))
+        if w <= 0.0:
+            continue
+        f = 1.0 + (0.055 * math.sin(s * 2.7) + 0.035 * math.sin(s * 1.13 + 1.7)) * w
+        v.co.x *= f
+        v.co.y *= f
+
+    for k, spread in enumerate(_LAMP_VOID_SPREAD):
+        ring = _LAMP_LIP_RING + 1 + k
+        for s in range(n):
+            v, lip = vert(ring, s), vert(_LAMP_LIP_RING, s)
+            w = _lamp_void_w(math.atan2(v.co.y, v.co.x))
+            if w <= 0.0:
+                continue
+            v.co.x += (lip.co.x * spread - v.co.x) * w
+            v.co.y += (lip.co.y * spread - v.co.y) * w
+            v.co.z += (SKIRT_BOTTOM - v.co.z) * w
+
+    base.data.materials.append(bpy.data.materials["M_LampTrench"])
+    polys = base.data.polygons
+    for band in range(_LAMP_LIP_RING, len(RINGS) - 2):
+        for s in range(n):
+            p = polys[n * (1 + band) + s]
+            cx = sum(verts[i].co.x for i in p.vertices) / len(p.vertices)
+            cy = sum(verts[i].co.y for i in p.vertices) / len(p.vertices)
+            if _lamp_void_w(math.atan2(cy, cx)) < 0.45:
+                continue
+            p.material_index = 0 if band == _LAMP_LIP_RING else 3
 
 
 def _islet_lamp_lamp(bm, x, y, z0, height, radius, i_brass, i_glass):
@@ -8353,6 +8449,31 @@ def _islet_lamp_lamp(bm, x, y, z0, height, radius, i_brass, i_glass):
     _islet_lamp_paint(bm, first, i_glass)
     first = len(bm.faces)
     add_cone(bm, (x, y, z0 + foot + body - 0.05), radius * 1.2, radius * 0.24, height - foot - body, sides=6)
+    _islet_lamp_paint(bm, first, i_brass)
+
+
+def _lamp_failed(bm, x, y, z_top, size, i_brass, i_glass, broken):
+    """A lamp that did not come out right, hung by its ring from a gallows beam
+    head-down like game. `broken` drops the drum and leaves the brass cage
+    empty - the ones whose glass went in the annealing."""
+    r = size
+    first = len(bm.faces)
+    add_post(bm, x, y, z_top - r * 0.5, z_top, r * 0.22, sides=4)  # the ring
+    add_post(bm, x, y, z_top - r * 0.9, z_top - r * 0.45, r * 1.05, sides=6)  # the cap, uppermost
+    _islet_lamp_paint(bm, first, i_brass)
+    if not broken:
+        first = len(bm.faces)
+        add_post(bm, x, y, z_top - r * 3.0, z_top - r * 0.85, r * 0.92, sides=6)
+        _islet_lamp_paint(bm, first, i_glass)
+    else:
+        first = len(bm.faces)
+        for k in range(4):
+            aa = k * math.pi / 2 + math.pi / 4
+            add_box(bm, (x + math.cos(aa) * r * 0.8, y + math.sin(aa) * r * 0.8, z_top - r * 1.9),
+                    (0.16, 0.16, r * 2.1), yaw=aa)
+        _islet_lamp_paint(bm, first, i_brass)
+    first = len(bm.faces)
+    add_post(bm, x, y, z_top - r * 3.4, z_top - r * 2.95, r * 0.85, sides=6)  # the foot, lowest
     _islet_lamp_paint(bm, first, i_brass)
 
 
@@ -8379,25 +8500,31 @@ def _islet_lamp_moth(bm, x, y, z, s, yaw, dihedral):
 
 
 def build_islet_lampwork():
-    """The Lampwright's Workshop. Deterministic on its own Random(5507), and
-    the shared stream is saved and handed back exactly as found (the hut
-    builders' rule) so adding this islet cannot move one prop on any island
-    that builds after it."""
+    """The Lampwright's Workshop, on a shelf cantilevered over the trench.
+
+    Deterministic on its own Random(5507), and the shared stream is saved and
+    handed back exactly as found (the hut builders' rule) so this islet cannot
+    move one prop on any island that builds after it."""
     shared_state = random.getstate()
     rng = random.Random(_ISLET_LAMP_SEED)
 
     base = build_island_base("Lampwork_Base", ["M_LampStone", "M_LampShore", "M_LampWet"])
+    _lamp_carve_void(base)  # BEFORE the BVH: every prop must raycast the cliff
     ground = _ground_bvh(base)
 
     def gz(x, y):
         """The REAL faceted rock under a point - raycast, never the smooth
-        profile, so the crag on the shoulder can't leave the jetty in the air."""
+        profile, which knows nothing about the cliff. Off the lip this returns
+        the trench floor at -9, which is how the jetty finds the edge."""
         g = _drop_to_ground(ground, x, y)
-        return g if g is not None else height_at(x, y)
+        return g if g is not None else SKIRT_BOTTOM
 
     shop, lamps, glow, moths = bmesh.new(), bmesh.new(), bmesh.new(), bmesh.new()
+    yard, rock = bmesh.new(), bmesh.new()
     WALL, TIMBER, SLATE, IRON = 0, 1, 2, 3  # Lampwork_Shop slots
     BRASS, GLASS = 0, 1  # Lampwork_Lamps slots
+    CLAY, ROPE = 0, 1  # Lampwork_Yard slots
+    STONE, WET, TRENCH = 0, 1, 2  # Lampwork_Rock slots
 
     def box(bm, center, size, index=0, yaw=0.0):
         first = len(bm.faces)
@@ -8417,6 +8544,11 @@ def build_islet_lampwork():
     def slab(bm, corners, thickness, index=0):
         first = len(bm.faces)
         _hut_maren_quad_slab(bm, corners, thickness)
+        _islet_lamp_paint(bm, first, index)
+
+    def blob(bm, center, scale, roughness, salt, index=0, yaw=0.0):
+        first = len(bm.faces)
+        add_blob(bm, center, scale, roughness, salt, yaw=yaw)
         _islet_lamp_paint(bm, first, index)
 
     SX, SY = _ISLET_LAMP_SX, _ISLET_LAMP_SY
@@ -8444,7 +8576,25 @@ def build_islet_lampwork():
 
     UZ, UM = FLOOR + KNEE + (WH - KNEE) / 2, WH - KNEE
     box(shop, (SX, BACK - T / 2, UZ), (2 * HX, T, UM), TIMBER)
-    box(shop, (LEFT + T / 2, SY, UZ), (T, 2 * HY, UM), TIMBER)
+
+    # ---- the glazier's wall: the whole -x gable above the knee is SASH, six
+    # bays by four lights, every pane dark. It is the exact opposite of the one
+    # lit window on the far gable, and it makes the shop read as a glass shop.
+    GW0, GW1 = FLOOR + KNEE, FLOOR + WH
+    box(shop, (LEFT + T / 2, SY, GW0 + 0.30), (T, 2 * HY, 0.60), TIMBER)  # sill
+    box(shop, (LEFT + T / 2, SY, GW1 - 0.32), (T, 2 * HY, 0.64), TIMBER)  # head
+    PANE_X = LEFT + T / 2
+    BAYS, LIGHTS = 6, 4
+    by0, by1 = SY - HY + 0.3, SY + HY - 0.3
+    bz0, bz1 = GW0 + 0.60, GW1 - 0.64
+    for k in range(BAYS + 1):  # mullions
+        box(shop, (PANE_X, by0 + (by1 - by0) * k / BAYS, (bz0 + bz1) / 2), (T + 0.16, 0.42, bz1 - bz0), TIMBER)
+    for k in range(1, LIGHTS):  # transoms, iron
+        box(shop, (PANE_X, SY, bz0 + (bz1 - bz0) * k / LIGHTS), (T + 0.20, by1 - by0, 0.20), IRON)
+    for a in range(BAYS):
+        for b in range(LIGHTS):
+            box(lamps, (PANE_X, by0 + (by1 - by0) * (a + 0.5) / BAYS, bz0 + (bz1 - bz0) * (b + 0.5) / LIGHTS),
+                (0.24, (by1 - by0) / BAYS - 0.5, (bz1 - bz0) / LIGHTS - 0.26), GLASS)
 
     # The +x gable carries the ONE window: boards under it, over it and to
     # each side, so the lit square is a real hole in a real wall.
@@ -8517,6 +8667,75 @@ def build_islet_lampwork():
         box(shop, (RIGHT + 0.08, SY, bz_), (0.4, 2 * HY - 0.6, 0.34), TIMBER)
     add_box(glow, (RIGHT - T / 2, SY, (W0 + W1) / 2), (T + 0.5, WW, WHG))
 
+    # ---- THE LEAN-TO: where he actually lives, bolted on the back of the
+    # shop as an afterthought. Mono-pitch slate off the workshop wall, boarded
+    # on three sides and OPEN at the -x end, so the whole of his life - bunk,
+    # stove, one chair - is legible from the yard in one look.
+    LTX0, LTX1 = SX - HX + 1.4, SX + HX - 6.0
+    LTY0, LTY1 = BACK - 0.2, BACK + 8.4
+    LT_HI, LT_LO = FLOOR + WH - 0.4, FLOOR + 5.4  # roof z at LTY0 / at LTY1+0.9
+
+    def lt_roof_z(y):
+        return LT_HI + (LT_LO - LT_HI) * (y - LTY0) / (LTY1 + 0.9 - LTY0)
+
+    box(shop, ((LTX0 + LTX1) / 2, (LTY0 + LTY1) / 2, FLOOR - 0.75), (LTX1 - LTX0 + 1.6, LTY1 - LTY0 + 1.6, 1.7), WALL)
+    box(shop, ((LTX0 + LTX1) / 2, (LTY0 + LTY1) / 2, FLOOR - 0.18), (LTX1 - LTX0, LTY1 - LTY0, 0.42), TIMBER)
+    box(shop, ((LTX0 + LTX1) / 2, LTY1 - 0.3, FLOOR + 1.15), (LTX1 - LTX0, 0.6, 2.3), WALL)  # back knee
+    box(shop, ((LTX0 + LTX1) / 2, LTY1 - 0.3, FLOOR + 3.9), (LTX1 - LTX0, 0.6, 3.2), TIMBER)  # back boarding
+    for k in range(4):  # the +x end wall, stepped up under the rake
+        ya = LTY0 + (LTY1 - LTY0) * k / 4.0
+        yb = LTY0 + (LTY1 - LTY0) * (k + 1) / 4.0
+        top = lt_roof_z((ya + yb) / 2) - 0.30
+        box(shop, (LTX1 - 0.3, (ya + yb) / 2, (FLOOR + top) / 2), (0.6, yb - ya, top - FLOOR), TIMBER)
+    for py in (LTY0 + 0.4, LTY1 - 0.4):  # the open -x end keeps its two posts
+        box(shop, (LTX0 + 0.35, py, (FLOOR + lt_roof_z(py) - 0.3) / 2), (0.7, 0.7, lt_roof_z(py) - 0.3 - FLOOR), TIMBER)
+    box(shop, (LTX0 + 0.35, (LTY0 + LTY1) / 2, lt_roof_z((LTY0 + LTY1) / 2) - 0.55),
+        (0.7, LTY1 - LTY0, 0.7), TIMBER)  # the eaves plate they carry
+    for k in range(4):  # slate, four courses down the pitch
+        ya = LTY0 - 0.5 + (LTY1 + 0.9 - LTY0 + 0.5) * k / 4.0
+        yb = LTY0 - 0.5 + (LTY1 + 0.9 - LTY0 + 0.5) * (k + 1) / 4.0 + 0.10
+        slab(shop, [(LTX0 - 0.9, ya, lt_roof_z(ya)), (LTX1 + 0.9, ya, lt_roof_z(ya)),
+                    (LTX1 + 0.9, yb, lt_roof_z(yb)), (LTX0 - 0.9, yb, lt_roof_z(yb))], 0.32, SLATE)
+    # a plank door and one small DARK window on the back wall
+    box(shop, ((LTX0 + LTX1) / 2 + 3.4, LTY1 + 0.06, FLOOR + 2.2), (2.4, 0.30, 4.4), TIMBER)
+    box(shop, (LTX0 + 2.6, LTY1 + 0.06, FLOOR + 4.4), (2.6, 0.34, 1.9), TIMBER)
+    box(lamps, (LTX0 + 2.6, LTY1 - 0.10, FLOOR + 4.4), (2.0, 0.24, 1.4), GLASS)
+    # bunk: frame, four legs, a straw pallet and a rolled blanket
+    BKX, BKY = (LTX0 + LTX1) / 2 - 2.2, LTY1 - 2.3
+    box(shop, (BKX, BKY, FLOOR + 1.55), (6.6, 3.0, 0.4), TIMBER)
+    for ox, oy in ((-3.0, -1.3), (3.0, -1.3), (-3.0, 1.3), (3.0, 1.3)):
+        box(shop, (BKX + ox, BKY + oy, FLOOR + 0.75), (0.35, 0.35, 1.5), TIMBER)
+    box(yard, (BKX, BKY, FLOOR + 1.95), (6.2, 2.7, 0.5), ROPE)  # the straw pallet
+    box(shop, (BKX - 3.2, BKY, FLOOR + 2.6), (0.4, 3.0, 2.5), TIMBER)  # headboard
+    box(yard, (BKX + 1.6, BKY, FLOOR + 2.45), (2.6, 2.6, 0.55), ROPE)  # the blanket, thrown back
+    cone(yard, (BKX - 2.2, BKY - 1.0, FLOOR + 2.3), 0.5, 0.5, 1.9, ROPE, sides=6, tilt=(math.pi / 2, 0.0))
+    # the stove: a squat stone box, an iron plate, and a pipe out through the slate
+    STX, STY = LTX1 - 2.6, LTY0 + 2.4
+    box(shop, (STX, STY, FLOOR + 1.25), (2.4, 2.4, 2.5), WALL)
+    box(shop, (STX, STY, FLOOR + 2.62), (2.8, 2.8, 0.24), IRON)
+    box(shop, (STX, STY - 1.28, FLOOR + 1.1), (1.3, 0.22, 1.2), IRON)  # the cold firebox door
+    post(shop, STX, STY, FLOOR + 2.6, lt_roof_z(STY) + 2.4, 0.34, IRON, sides=6)
+    cone(shop, (STX, STY, lt_roof_z(STY) + 2.4), 0.5, 0.62, 0.5, IRON, sides=6)
+    # one chair, and a small table with a lamp on it that is also not lit
+    CHX, CHY = LTX0 + 5.2, LTY0 + 2.4
+    box(shop, (CHX, CHY, FLOOR + 1.55), (1.7, 1.7, 0.3), TIMBER)
+    for ox, oy in ((-0.65, -0.65), (0.65, -0.65), (-0.65, 0.65), (0.65, 0.65)):
+        box(shop, (CHX + ox, CHY + oy, FLOOR + 0.78), (0.26, 0.26, 1.55), TIMBER)
+    box(shop, (CHX, CHY + 0.72, FLOOR + 2.6), (1.7, 0.26, 1.8), TIMBER)
+    TBX, TBY = LTX1 - 2.8, LTY1 - 2.4
+    box(shop, (TBX, TBY, FLOOR + 2.05), (2.6, 2.2, 0.3), TIMBER)
+    for ox, oy in ((-1.05, -0.85), (1.05, -0.85), (-1.05, 0.85), (1.05, 0.85)):
+        box(shop, (TBX + ox, TBY + oy, FLOOR + 1.0), (0.24, 0.24, 2.0), TIMBER)
+    _islet_lamp_lamp(lamps, TBX, TBY, FLOOR + 2.2, 1.7, 0.45, BRASS, GLASS)
+    # a shelf over the table, two jars on it, and one more lamp on a rafter
+    # hook - the room a man keeps when every lamp he owns is one he failed at
+    box(shop, (TBX, LTY1 - 0.75, FLOOR + 5.0), (4.6, 1.1, 0.28), TIMBER)
+    for jx_ in (TBX - 1.4, TBX + 1.2):
+        box(yard, (jx_, LTY1 - 0.75, FLOOR + 5.14), (1.0, 0.9, 1.3), CLAY)
+    box(shop, (LTX0 + 4.2, (LTY0 + LTY1) / 2, lt_roof_z((LTY0 + LTY1) / 2) - 1.0), (0.18, 0.18, 1.3), IRON)
+    _islet_lamp_lamp(lamps, LTX0 + 4.2, (LTY0 + LTY1) / 2,
+                     lt_roof_z((LTY0 + LTY1) / 2) - 1.65 - 1.9, 1.9, 0.5, BRASS, GLASS)
+
     # ---- the gantry, and THE GREAT LAMP on top of it ----
     GX, GY = _ISLET_LAMP_GANTRY
     BZ0 = gz(GX, GY) - 0.4
@@ -8567,11 +8786,111 @@ def build_islet_lampwork():
         box(shop, (hx, FRONT + 0.45, EAVE_HOOK_Z - hl / 2), (0.2, 0.2, hl), IRON)
         _islet_lamp_lamp(lamps, hx, FRONT + 0.45, EAVE_HOOK_Z - hl - hr * 3.2 + 0.06, hr * 3.2, hr, BRASS, GLASS)
 
-    # ---- glass stock: lens blanks racked ON EDGE along the back bench, and a
-    # crate of rounds out in the yard, delivered and never fitted. Both read as
-    # discs face-on from the open side (round 1 spaced them too tight and the
-    # bench rack fused into a ridge, the outside stack into a boulder).
-    for k in range(5):
+    # ---- THE STUMP OF THE LIGHTHOUSE HE NEVER FINISHED. Three courses of
+    # dressed stone eight studs high, each course stepped in a little, a
+    # doorway on the shop side, a newel and a stair that climbs nine treads and
+    # stops in the open air. He builds lamps beside a dark tower he never
+    # finished; that is the man. Around it: the spoil, and the blocks for the
+    # fourth course, dressed and squared and lying where they were landed.
+    LHX, LHY = _LAMP_LIGHTHOUSE
+    LH_G = min(gz(LHX + math.cos(a) * 4.4, LHY + math.sin(a) * 4.4) for a in
+               [k * math.tau / 8 for k in range(8)] + [0.0])
+    box(shop, (LHX, LHY, LH_G - 0.5), (11.2, 11.2, 1.6), WALL, yaw=0.4)  # the footing it stands on
+    LH_FACES = 16
+    RAGGED = (0.0, 0.0, 0.9, 1.9, 2.8, 2.8, 1.6, 0.7)  # where he put the trowel down
+    for c, (h0, h1, r_out) in enumerate(((0.0, 2.8, 4.5), (2.8, 5.6, 4.34), (5.6, 8.4, 4.18))):
+        for k in range(LH_FACES):
+            aa = k * math.tau / LH_FACES
+            if c == 0 and k in (12, 13):  # the doorway, facing the sail-in
+                continue
+            top = h1 - (RAGGED[k % 8] if c == 2 else 0.0)
+            if top - h0 < 0.4:
+                continue  # the top course simply STOPS partway round
+            box(shop, (LHX + math.cos(aa) * (r_out - 0.6), LHY + math.sin(aa) * (r_out - 0.6),
+                       LH_G + (h0 + top) / 2), (1.2, r_out * 0.44, top - h0), WALL, yaw=aa)
+        if c == 2:
+            continue
+        # the string course that makes each lift read as a separate course
+        for k in range(LH_FACES):
+            aa = k * math.tau / LH_FACES
+            box(shop, (LHX + math.cos(aa) * (r_out - 0.35), LHY + math.sin(aa) * (r_out - 0.35),
+                       LH_G + h1 - 0.16), (0.75, r_out * 0.46, 0.32), WALL, yaw=aa)
+    box(shop, (LHX + math.cos(math.pi * 1.5625) * 4.1, LHY + math.sin(math.pi * 1.5625) * 4.1,
+               LH_G + 4.1), (1.4, 2.8, 0.5), TIMBER, yaw=math.pi * 1.5625)  # the door lintel
+    post(shop, LHX, LHY, LH_G, LH_G + 6.6, 0.8, WALL, sides=8)  # the newel
+    for k in range(9):  # a stair to nowhere
+        aa = math.pi * 1.5625 + 0.52 * (k + 1)
+        box(shop, (LHX + math.cos(aa) * 2.05, LHY + math.sin(aa) * 2.05, LH_G + 0.55 + k * 0.68),
+            (2.6, 1.4, 0.40), WALL, yaw=aa)
+    for k in range(5):  # the fourth course, dressed and never laid
+        aa = 1.1 + k * 0.62
+        rr = 8.6 + (k % 2) * 1.4
+        bx, byy = LHX + math.cos(aa) * rr, LHY + math.sin(aa) * rr
+        box(shop, (bx, byy, gz(bx, byy) + 0.55), (3.4, 1.7, 1.1), WALL, yaw=aa + 0.4 * k)
+    for k in range(9):  # spoil and offcuts at its foot
+        aa = rng.uniform(0, math.tau)
+        rr = rng.uniform(6.4, 10.5)
+        bx, byy = LHX + math.cos(aa) * rr, LHY + math.sin(aa) * rr
+        s = rng.uniform(0.6, 1.4)
+        blob(rock, (bx, byy, gz(bx, byy) + s * 0.35), (s * 1.5, s * 1.2, s * 0.7), 0.30, 40.0 + k, STONE,
+             yaw=rng.uniform(0, math.tau))
+
+    # ---- THE GALLOWS: a beam on two legs with the failed lamps hung head-down
+    # from it in a row, the way a keeper hangs game. Eight of them, three with
+    # the glass gone and only the brass cage left.
+    GA0, GA1, GAY = _LAMP_GALLOWS
+    GA_TOP = max(gz(GA0, GAY), gz(GA1, GAY)) + 8.4
+    for gx_ in (GA0, GA1):
+        post(shop, gx_, GAY, gz(gx_, GAY) - 0.4, GA_TOP, 0.45, TIMBER, sides=6)
+        for s in (-1, 1):  # sole braces, so it does not read as two poles
+            box(shop, (gx_ + (1.6 if gx_ == GA0 else -1.6), GAY + s * 1.5, gz(gx_, GAY) + 1.5),
+                (3.6, 0.34, 0.34), TIMBER, yaw=0.0)
+    box(shop, ((GA0 + GA1) / 2, GAY, GA_TOP - 0.25), (GA1 - GA0 + 1.4, 0.5, 0.5), TIMBER)
+    for s_, bx_ in ((1, GA0), (-1, GA1)):  # knee braces under the beam
+        box(shop, (bx_ + s_ * 1.3, GAY, GA_TOP - 1.55), (3.4, 0.3, 0.3), TIMBER, yaw=0.0)
+        box(shop, (bx_ + s_ * 1.3, GAY, GA_TOP - 1.55), (0.3, 0.3, 3.0), TIMBER)
+    for k in range(8):
+        hx = GA0 + 1.1 + k * (GA1 - GA0 - 2.2) / 7.0
+        drop = 0.5 + (k % 3) * 0.55
+        sz = 0.50 + ((k * 3) % 4) * 0.11
+        box(shop, (hx, GAY, GA_TOP - 0.5 - drop / 2), (0.16, 0.16, drop), IRON)
+        _lamp_failed(lamps, hx, GAY, GA_TOP - 0.5 - drop, sz, BRASS, GLASS, broken=(k % 3 == 1))
+
+    # ---- GLASS STOCK RACKED ON EDGE. Two A-frames in the yard with sheet
+    # leaned against them, every pane on edge so it reads as glass and not as
+    # a wall, plus the old bench rack of lens blanks inside the shop.
+    def pane_rack(cx, cy, yaw_, count, w, h):
+        along = Vector((math.cos(yaw_), math.sin(yaw_), 0.0))
+        across = Vector((-math.sin(yaw_), math.cos(yaw_), 0.0))
+        g = gz(cx, cy)
+        c = Vector((cx, cy, g))
+        for s in (-1, 1):  # the two A-frames
+            f = c + along * (s * (count * 0.36 + 0.9))
+            for t in (-1, 1):
+                top = f + Vector((0.0, 0.0, h + 0.5))
+                foot = f + across * (t * (h * 0.34))
+                d = top - foot
+                cone(shop, (foot.x, foot.y, g - 0.2), 0.26, 0.20, d.length, TIMBER, sides=4,
+                     tilt=_tilt_toward(d.normalized()))
+            box(shop, (f.x, f.y, g + 0.35), (0.34 + abs(across.x) * h * 0.6, 0.34 + abs(across.y) * h * 0.6, 0.34),
+                TIMBER, yaw=yaw_ + math.pi / 2)
+        for k in range(count):
+            u = (k - (count - 1) / 2.0) * 0.66
+            lean = across * ((0.55 if k % 2 == 0 else -0.55) + (0.10 * k))
+            b = c + along * u
+            p0 = b - along * 0.0 + across * 0.0
+            corners = [
+                (p0 + along * (-w / 2)).to_tuple(),
+                (p0 + along * (w / 2)).to_tuple(),
+                (p0 + along * (w / 2) + lean + Vector((0.0, 0.0, h))).to_tuple(),
+                (p0 + along * (-w / 2) + lean + Vector((0.0, 0.0, h))).to_tuple(),
+            ]
+            slab(lamps, corners, 0.16, GLASS)
+
+    pane_rack(13.0, 16.0, 0.20, 7, 3.6, 4.2)
+    pane_rack(-16.5, -12.0, 1.15, 6, 3.2, 3.6)
+
+    for k in range(5):  # lens blanks on edge along the back bench
         cone(lamps, (-8.2 + k * 1.5, BACK - T - 0.7, BENCH_TOP + 0.88), 0.88, 0.85, 0.24, GLASS,
              sides=8, tilt=(math.pi / 2, 0.0))
     CX_, CY_ = 2.6, 0.5
@@ -8585,63 +8904,272 @@ def build_islet_lampwork():
         cone(lamps, (CX_ - 0.95 + k * 0.95, CY_ + 0.55, cg + 0.36 + 0.76), 0.76, 0.74, 0.22, GLASS,
              sides=8, tilt=(math.pi / 2, 0.0))
 
-    # ---- half-built lamp housings on the bench under the window: brass
-    # frames with the panes not yet fitted. The work he is still doing.
-    for hy_, hs in ((SY - 3.2, 0.95), (SY + 0.6, 1.2), (SY + 3.6, 0.8)):
-        bx = RIGHT - T - 1.5
-        post(lamps, bx, hy_, BENCH_TOP, BENCH_TOP + 0.28, hs * 0.9, BRASS, sides=6)
-        for k in range(4):
-            aa = k * math.pi / 2 + math.pi / 4
-            box(lamps, (bx + math.cos(aa) * hs * 0.85, hy_ + math.sin(aa) * hs * 0.85, BENCH_TOP + 0.28 + hs * 1.1),
-                (0.2, 0.2, hs * 2.2), BRASS, yaw=aa)
-        box(lamps, (bx + hs * 0.6, hy_, BENCH_TOP + 0.28 + hs * 1.1), (0.12, hs * 1.2, hs * 1.9), GLASS)
+    # ---- THE CRACKED LENS, the size of a cartwheel, leaned against the shed
+    # below the lit window. It is the single biggest piece of glass on the
+    # islet and it is ruined - two shakes across it in brass-coloured lead.
+    LNX, LNY = RIGHT + 1.7, SY + HY - 1.2
+    lng = gz(LNX, LNY)
+    LEAN = 0.30  # radians off vertical, leaning into the gable
+    cone(lamps, (LNX, LNY, lng + 0.15), 2.95, 2.75, 0.55, GLASS, sides=14,
+         tilt=_tilt_toward(Vector((-math.sin(LEAN), 0.0, math.cos(LEAN)))))
+    for kk, (off, tl) in enumerate(((0.0, 0.55), (0.9, -0.9))):  # the cracks
+        box(lamps, (LNX - math.sin(LEAN) * 2.9 + off * 0.2, LNY + off, lng + 2.9),
+            (0.20, 5.0, 0.20), BRASS, yaw=tl)
+    box(shop, (LNX + 0.9, LNY, lng + 0.35), (2.2, 5.2, 0.7), TIMBER)  # the batten it rests its foot on
 
-    # ---- brass fittings loose on the back bench ----
-    for k in range(8):
+    # ---- THE COLD FORGE. Stone hearth, iron hood, a chimney, an anvil, a
+    # quench trough and the bellows - and no fire in it, because nothing on
+    # this islet burns except the window.
+    FGX, FGY = _LAMP_FORGE
+    fg = gz(FGX, FGY)
+    box(shop, (FGX, FGY, fg + 1.35), (6.4, 4.4, 2.7), WALL)
+    box(shop, (FGX, FGY, fg + 2.78), (6.8, 4.8, 0.3), WALL)
+    box(shop, (FGX, FGY - 0.2, fg + 2.2), (4.2, 3.0, 1.4), IRON)  # the dead firebox
+    for s in (-1, 1):  # the hood, two rakes and a lintel
+        slab(shop, [(FGX - 3.2, FGY + s * 2.2, fg + 3.0), (FGX + 3.2, FGY + s * 2.2, fg + 3.0),
+                    (FGX + 3.2, FGY + s * 0.8, fg + 5.4), (FGX - 3.2, FGY + s * 0.8, fg + 5.4)], 0.28, IRON)
+    box(shop, (FGX, FGY, fg + 5.5), (6.6, 2.0, 0.4), IRON)
+    post(shop, FGX, FGY, fg + 5.5, fg + 10.6, 1.05, WALL, sides=6)
+    box(shop, (FGX, FGY, fg + 10.8), (2.9, 2.9, 0.5), WALL)
+    ANX, ANY = FGX + 4.6, FGY - 1.6  # the anvil, on its block
+    ang_ = gz(ANX, ANY)
+    post(shop, ANX, ANY, ang_ - 0.3, ang_ + 1.5, 0.9, TIMBER, sides=6)
+    box(shop, (ANX, ANY, ang_ + 1.8), (2.9, 1.1, 0.6), IRON)
+    box(shop, (ANX, ANY, ang_ + 1.35), (1.4, 0.8, 0.5), IRON)
+    QX, QY = FGX - 4.4, FGY - 1.2  # the quench trough
+    qg = gz(QX, QY)
+    box(shop, (QX, QY, qg + 0.55), (2.0, 3.6, 1.1), TIMBER)
+    box(rock, (QX, QY, qg + 1.02), (1.6, 3.2, 0.16), TRENCH)  # black water in it
+    for s in (-1, 1):  # the bellows, hung off the forge's back
+        slab(shop, [(FGX - 1.6, FGY + 2.3, fg + 2.6), (FGX + 1.6, FGY + 2.3, fg + 2.6),
+                    (FGX + 1.2, FGY + 4.6, fg + 2.6 + s * 0.5), (FGX - 1.2, FGY + 4.6, fg + 2.6 + s * 0.5)],
+             0.24, TIMBER)
+
+    # ---- BRASS FITTINGS IN OPEN TRAYS. A trestle table with six shallow
+    # trays on it, each one full of collars, rings and burners graded by size.
+    TRX, TRY = 6.2, 3.2
+    trg = gz(TRX, TRY)
+    box(shop, (TRX, TRY, trg + 2.15), (7.2, 3.4, 0.34), TIMBER)
+    for ox in (-3.0, 3.0):  # trestles
+        box(shop, (TRX + ox, TRY, trg + 1.0), (0.4, 3.0, 2.2), TIMBER)
+        box(shop, (TRX + ox, TRY, trg + 0.15), (0.4, 3.6, 0.3), TIMBER)
+    for a in range(3):
+        for b in range(2):
+            tx = TRX - 2.3 + a * 2.3
+            ty = TRY - 0.8 + b * 1.6
+            box(shop, (tx, ty, trg + 2.45), (2.0, 1.4, 0.26), TIMBER)
+            for s in (-1, 1):
+                box(shop, (tx + s * 1.0, ty, trg + 2.58), (0.16, 1.4, 0.36), TIMBER)
+                box(shop, (tx, ty + s * 0.7, trg + 2.58), (2.0, 0.16, 0.36), TIMBER)
+            for k in range(5):  # the fittings themselves
+                fx = tx + rng.uniform(-0.75, 0.75)
+                fy = ty + rng.uniform(-0.45, 0.45)
+                rr = rng.uniform(0.16, 0.30)
+                post(lamps, fx, fy, trg + 2.58, trg + 2.58 + rng.uniform(0.22, 0.5), rr, BRASS, sides=6)
+    for k in range(9):  # and more loose on the shop's back bench
         box(lamps, (rng.uniform(-9.0, 2.0), BACK - T - 1.6 + rng.uniform(-1.0, 1.0), BENCH_TOP + 0.22),
             (rng.uniform(0.3, 0.6), rng.uniform(0.3, 0.6), 0.44), BRASS, yaw=rng.uniform(0, math.tau))
 
-    # ---- the jetty. Root plank bottom is set ON the real raycast rock, the
-    # deck runs 4 studs INLAND of that so it bites in, and every post runs to
-    # -6 through the water. Nothing here is height_at-guessed.
-    lane = -math.pi / 2  # Blender -y = Roblox +Z, the bearing home lies on
+    # ---- WICK AND OIL. Coils of flat-plaited wick on a low rack and in a
+    # barrel, hanks of it hung under the eave, and the oil jars: fat sealed
+    # clay bellies in a straw collar, stacked two deep against the shop.
+    WKX, WKY = -19.6, 3.4
+    wkg = gz(WKX, WKY)
+    box(shop, (WKX, WKY, wkg + 0.2), (5.0, 3.0, 0.4), TIMBER)
+    for ox in (-2.1, 2.1):
+        box(shop, (WKX + ox, WKY, wkg + 0.85), (0.4, 2.8, 1.3), TIMBER)
+    for k in range(6):  # coils, stacked and leaning
+        cx_ = WKX - 1.8 + (k % 3) * 1.8
+        cy_ = WKY - 0.7 + (k // 3) * 1.4
+        cone(yard, (cx_, cy_, wkg + 0.4 + (k // 3) * 0.05), 0.85, 0.80, 0.42, ROPE, sides=10)
+        cone(yard, (cx_, cy_, wkg + 0.78), 0.62, 0.58, 0.30, ROPE, sides=10)
+    post(shop, WKX + 3.9, WKY, wkg - 0.2, wkg + 2.4, 1.25, TIMBER, sides=8)  # the wick barrel
+    for k in range(3):
+        cone(yard, (WKX + 3.9 + (k - 1) * 0.4, WKY + (k % 2) * 0.4, wkg + 2.4), 0.55, 0.5, 0.35, ROPE, sides=8)
+    for k in range(5):  # hanks hanging under the shop eave
+        hx = LEFT + 1.6 + k * 3.4
+        box(yard, (hx, FRONT + 0.05, FLOOR + WH - 2.2), (0.36, 0.36, 2.0), ROPE)
+        cone(yard, (hx, FRONT + 0.05, FLOOR + WH - 2.5), 0.42, 0.10, 0.42, ROPE, sides=6)
 
-    def lane_pt(u):
-        r = ring_radius(u, lane)
-        return math.cos(lane) * r, math.sin(lane) * r
+    def oil_jar(x, y, z, s):
+        post(yard, x, y, z, z + s * 0.35, s * 0.55, CLAY, sides=8)
+        post(yard, x, y, z + s * 0.30, z + s * 1.5, s * 0.86, CLAY, sides=8)
+        cone(yard, (x, y, z + s * 1.45), s * 0.84, s * 0.34, s * 0.7, CLAY, sides=8)
+        post(yard, x, y, z + s * 2.1, z + s * 2.35, s * 0.40, CLAY, sides=8)
+        cone(yard, (x, y, z + s * 0.25), s * 0.92, s * 0.88, s * 0.25, ROPE, sides=8)
 
-    u_root = 0.84
-    while u_root < 1.06 and gz(*lane_pt(u_root)) > 3.4:
-        u_root += 0.01
-    jx0, jy0 = lane_pt(u_root)
-    DECK_Z = gz(jx0, jy0) + 0.56
-    jy_in = jy0 + 4.0
-    jy1 = -(ring_radius(1.0, lane) + 15.0)
-    box(shop, (0.0, (jy_in + jy1) / 2, DECK_Z - 0.28), (5.2, jy_in - jy1, 0.56), TIMBER)
-    for sx_ in (-2.1, 2.1):
-        box(shop, (sx_, (jy_in + jy1) / 2, DECK_Z - 0.85), (0.5, jy_in - jy1, 0.6), TIMBER)
-    span = (jy0 - 1.0) - (jy1 + 1.2)
-    for k in range(4):
-        py = (jy0 - 1.0) - span * k / 3.0
-        for sx_ in (-2.1, 2.1):
-            post(shop, sx_, py, -6.0, DECK_Z - 0.45, 0.42, TIMBER)
-    post(shop, 0.0, jy1 + 1.6, DECK_Z - 0.4, DECK_Z + 2.2, 0.45, TIMBER)  # the bollard
+    JAR_SPOTS = [(-18.9, 8.8, 1.0), (-17.6, 10.6, 0.85), (-19.4, 12.2, 1.1), (-17.2, 13.8, 0.8),
+                 (5.4, 0.2, 0.95), (7.6, -1.4, 0.8), (3.2, -1.8, 1.05),
+                 (-3.2, 3.0, 0.9), (-0.4, 2.2, 0.75),
+                 (13.4, -10.6, 1.0), (11.4, -12.4, 0.85), (15.2, -12.8, 0.9),
+                 (-25.5, 4.2, 0.95), (-27.0, 1.0, 0.8)]
+    for jx, jy, js in JAR_SPOTS:
+        oil_jar(jx, jy, gz(jx, jy) - 0.1, js * 1.5)
+
+    # ---- THE LIP. Iron stakes and a slack rope along the top of the drop -
+    # the only thing between the yard and eighteen studs of nothing - and a
+    # line of rubble tipped over the edge where he squared the ledge off.
+    def lip_at(theta):
+        """Walk out along a bearing until the rock quits: the true edge, from
+        the raycast, so the rail follows the wall the mesh actually has."""
+        r = 30.0
+        while r < 60.0 and gz(math.cos(theta) * (r + 0.5), math.sin(theta) * (r + 0.5)) > 4.0:
+            r += 0.5
+        return r
+
+    stake_pts = []
+    for k in range(13):
+        th = _LAMP_VOID_DIR - 0.98 + k * (1.96 / 12.0)
+        r = lip_at(th) - 2.6
+        sx_, sy_ = math.cos(th) * r, math.sin(th) * r
+        if abs(sx_) < 4.0 and sy_ < -20.0:  # leave the jetty lane open
+            stake_pts.append(None)
+            continue
+        g = gz(sx_, sy_)
+        post(shop, sx_, sy_, g - 0.4, g + 2.6, 0.20, IRON, sides=4)
+        stake_pts.append((sx_, sy_, g + 2.3))
+    for a in range(len(stake_pts) - 1):
+        p, q = stake_pts[a], stake_pts[a + 1]
+        if p is None or q is None:
+            continue
+        mid = ((p[0] + q[0]) / 2, (p[1] + q[1]) / 2, (p[2] + q[2]) / 2 - 0.75)
+        for a_, b_ in ((p, mid), (mid, q)):  # two runs, so the rope hangs
+            slab(yard, [(a_[0], a_[1], a_[2]), (b_[0], b_[1], b_[2]),
+                        (b_[0] + 0.16, b_[1] + 0.16, b_[2]), (a_[0] + 0.16, a_[1] + 0.16, a_[2])], 0.16, ROPE)
+
+    # ---- THE JETTY, thrown out OVER the void: a ramp off the lip, then a flat
+    # deck on piles that run thirteen studs down through black water to the
+    # trench floor. Nothing under it but the drop.
+    y_lip = -30.0
+    while y_lip > -70.0 and gz(0.0, y_lip - 0.4) > 4.0:
+        y_lip -= 0.4
+    y_root = y_lip + 5.0
+    DECK0 = gz(0.0, y_root) + 0.6
+    y_mid, y_head = y_lip - 13.0, y_lip - 31.0
+    DECK1 = 3.6
+
+    def ramp_z(y):
+        t = (y_root - y) / (y_root - y_mid)
+        return DECK0 + (DECK1 - DECK0) * max(0.0, min(1.0, t))
+
+    slab(shop, [(-2.7, y_root, DECK0), (2.7, y_root, DECK0), (2.7, y_mid, DECK1), (-2.7, y_mid, DECK1)], 0.55, TIMBER)
+    box(shop, (0.0, (y_mid + y_head) / 2, DECK1 - 0.28), (5.4, y_mid - y_head, 0.56), TIMBER)
+    for sx_ in (-2.2, 2.2):
+        box(shop, (sx_, (y_mid + y_head) / 2, DECK1 - 0.85), (0.5, y_mid - y_head, 0.6), TIMBER)
+    PILE_Y = [y_lip - 2.0, y_mid + 0.5, y_mid - 5.0, y_mid - 11.0, y_head + 1.5]
+    for py in PILE_Y:
+        z_top = ramp_z(py) - 0.45 if py > y_mid else DECK1 - 0.45
+        for sx_ in (-2.2, 2.2):
+            post(shop, sx_, py, SKIRT_BOTTOM + 0.2, z_top, 0.44, TIMBER)
+        box(shop, (0.0, py, min(z_top - 1.6, 1.2)), (4.6, 0.34, 0.34), TIMBER)  # a cross tie in the water
+    for k in range(len(PILE_Y) - 1):  # raking braces between the bents
+        pa, pb = PILE_Y[k], PILE_Y[k + 1]
+        for sx_ in (-2.2, 2.2):
+            d = Vector((0.0, pb - pa, 3.2))
+            cone(shop, (sx_, pa, -1.4), 0.22, 0.18, d.length, TIMBER, sides=4,
+                 tilt=_tilt_toward(d.normalized()))
+    for k in range(7):  # handrail down the ramp and along the deck, one side
+        ry = y_root - 1.5 - k * 5.5
+        rz = ramp_z(ry) if ry > y_mid else DECK1
+        post(shop, 2.45, ry, rz - 0.4, rz + 2.0, 0.18, TIMBER, sides=4)
+        if k:
+            py0 = y_root - 1.5 - (k - 1) * 5.5
+            pz0 = ramp_z(py0) if py0 > y_mid else DECK1
+            slab(shop, [(2.30, py0, pz0 + 1.9), (2.30, ry, rz + 1.9),
+                        (2.60, ry, rz + 1.9), (2.60, py0, pz0 + 1.9)], 0.22, TIMBER)
+    post(shop, 0.0, y_head + 1.6, DECK1 - 0.4, DECK1 + 2.2, 0.45, TIMBER)  # the bollard
     for sx_ in (-2.3, 2.3):  # mooring cleats
-        box(shop, (sx_, jy1 + 6.0, DECK_Z + 0.34), (0.55, 1.6, 0.45), IRON)
+        box(shop, (sx_, y_head + 6.0, DECK1 + 0.34), (0.55, 1.6, 0.45), IRON)
+    # a lamp on a post at the head, and it is dark too
+    post(shop, -2.45, y_head + 2.4, DECK1 - 0.4, DECK1 + 4.6, 0.26, TIMBER, sides=4)
+    _islet_lamp_lamp(lamps, -2.45, y_head + 2.4, DECK1 + 4.55, 2.6, 0.72, BRASS, GLASS)
+
+    # ---- THE SAFE SIDE: a wet apron with tide pools in it. The pools carry
+    # the same near-black as the trench floor, so the two waters rhyme - one
+    # you can stand in, one you cannot.
+    def pool(theta, target_z, radius):
+        r = 40.0
+        best, best_d = None, 1e9
+        while r < 62.0:
+            x_, y_ = math.cos(theta) * r, math.sin(theta) * r
+            g = gz(x_, y_)
+            if abs(g - target_z) < best_d:
+                best, best_d = (x_, y_, g), abs(g - target_z)
+            r += 0.4
+        if best is None:
+            return
+        px, py, pg = best
+        cone(rock, (px, py, pg - 0.55), radius, radius * 0.94, 0.62, TRENCH, sides=10)
+        for k in range(9):  # the rim it sits in
+            aa = k * math.tau / 9 + theta
+            rr = radius * rng.uniform(1.02, 1.22)
+            bx, byy = px + math.cos(aa) * rr, py + math.sin(aa) * rr
+            s = radius * rng.uniform(0.30, 0.52)
+            blob(rock, (bx, byy, gz(bx, byy) + s * 0.25), (s * 1.4, s * 1.1, s * 0.75), 0.34,
+                 70.0 + k + theta, WET, yaw=aa)
+
+    for th_deg, tz, rad in ((8.0, 1.7, 3.4), (44.0, 1.5, 4.2), (82.0, 1.8, 3.0),
+                            (118.0, 1.5, 4.6), (152.0, 1.7, 3.2), (176.0, 1.6, 2.6)):
+        pool(math.radians(th_deg), tz, rad)
+
+    # sea stacks off the safe shore, and boulders all over the shelf: the rock
+    # must never read as a bald grey disc with objects standing on it.
+    for th_deg, rr, s in ((26.0, 62.0, 3.4), (66.0, 66.0, 4.6), (104.0, 60.0, 2.8), (140.0, 65.0, 3.9)):
+        th = math.radians(th_deg)
+        blob(rock, (math.cos(th) * rr, math.sin(th) * rr, 1.4),
+             (s, s * 0.82, s * 1.9), 0.30, 90.0 + th_deg, STONE, yaw=th)
+
+    # and three stacks standing IN the void, off the cliff foot: the only
+    # things out there, and the scale that tells you how far down it goes.
+    for th_deg, out, s, h in ((-118.0, 9.0, 3.2, 9.0), (-72.0, 15.0, 2.4, 7.2), (-46.0, 8.5, 2.8, 8.4)):
+        th = math.radians(th_deg)
+        rr = lip_at(th) + out
+        blob(rock, (math.cos(th) * rr, math.sin(th) * rr, h * 0.5 - 4.0),
+             (s, s * 0.8, h * 0.62), 0.28, 150.0 + th_deg, STONE, yaw=th)
+
+    stand = _ISLET_LAMP_STAND
+    keep_out = [(stand[0], stand[1], 8.0), (GX, GY, 8.5), (LHX, LHY, 12.0), (FGX, FGY, 8.0),
+                (TRX, TRY, 7.0), (WKX, WKY, 7.0), (13.0, 16.0, 8.0), (-16.5, -12.0, 7.5),
+                (CX_, CY_, 5.0), (-17.0, RAIL_Y, 8.0), (LNX, LNY, 6.0),
+                ((GA0 + GA1) / 2, GAY, 9.0), (0.0, -34.0, 9.0)]
+    keep_out += [(lx, ly, 4.0) for lx, ly, _p, _r in _ISLET_LAMP_YARD]
+    keep_out += [(jx, jy, 3.0) for jx, jy, _s in JAR_SPOTS]
+
+    def clear(x, y, pad):
+        if LEFT - 5.0 - pad < x < RIGHT + 5.0 + pad and FRONT - 5.0 - pad < y < LTY1 + 4.0 + pad:
+            return False
+        return all(math.hypot(x - kx, y - ky) > kr + pad for kx, ky, kr in keep_out)
+
+    placed = 0
+    tries = 0
+    while placed < 34 and tries < 900:
+        tries += 1
+        th = rng.uniform(0, math.tau)
+        rr = rng.uniform(14.0, 42.0)
+        bx, byy = math.cos(th) * rr, math.sin(th) * rr
+        s = rng.uniform(0.7, 2.3)
+        if not clear(bx, byy, s * 1.4):
+            continue
+        g = gz(bx, byy)
+        if g < 5.0:
+            continue
+        blob(rock, (bx, byy, g + s * 0.42), (s * 1.7, s * 1.35, s * 0.95), 0.32, 120.0 + placed,
+             STONE if placed % 4 else WET, yaw=rng.uniform(0, math.tau))
+        placed += 1
 
     # ---- MOTHS. Thick at the pane, thinning outward; six dead on the sill
     # and three more at the wall foot. The only things on this rock that hover.
     wx, wy, wz = RIGHT + 0.5, SY, (W0 + W1) / 2
-    for k in range(26):
-        mx = wx + 0.28 + (rng.random() ** 1.9) * 3.6
+    for k in range(30):
+        mx = wx + 0.55 + (rng.random() ** 1.5) * 4.0
         my = wy + max(-2.4, min(2.4, rng.gauss(0.0, 1.15)))
         mz = wz + max(-2.3, min(2.3, rng.gauss(0.0, 1.05)))
         _islet_lamp_moth(moths, mx, my, mz, rng.uniform(0.46, 0.78), rng.uniform(0, math.tau), rng.uniform(0.35, 1.15))
-    for k in range(6):  # dead on the sill, wings flat
+    for k in range(8):  # dead on the sill, wings flat
         s = rng.uniform(0.44, 0.66)
         _islet_lamp_moth(moths, RIGHT + rng.uniform(0.3, 1.4), SY + rng.uniform(-2.1, 2.1),
                          SILL_TOP + s * 0.10, s, rng.uniform(0, math.tau), rng.uniform(0.0, 0.22))
-    for k in range(4):  # and more at the foot of the wall
+    for k in range(6):  # and more at the foot of the wall
         s = rng.uniform(0.42, 0.62)
         gx_, gy_ = RIGHT + rng.uniform(0.9, 3.0), SY + rng.uniform(-3.0, 3.0)
         _islet_lamp_moth(moths, gx_, gy_, gz(gx_, gy_) + s * 0.10, s, rng.uniform(0, math.tau), rng.uniform(0.0, 0.22))
@@ -8650,23 +9178,33 @@ def build_islet_lampwork():
         base,
         object_from_bmesh("Lampwork_Shop", shop, ["M_LampWall", "M_LampTimber", "M_LampSlate", "M_LampIron"]),
         object_from_bmesh("Lampwork_Lamps", lamps, ["M_LampBrass", "M_LampGlass"]),
+        object_from_bmesh("Lampwork_Yard", yard, ["M_LampClay", "M_LampRope"]),
+        object_from_bmesh("Lampwork_Rock", rock, ["M_LampStone", "M_LampWet", "M_LampTrench"]),
         object_from_bmesh("Lampwork_Glow", glow, ["M_LampWindow"]),
         object_from_bmesh("Lampwork_Moths", moths, ["M_LampMoth"]),
     ]
 
-    stand = _ISLET_LAMP_STAND
     pad = [gz(stand[0] + dx, stand[1] + dy) for dx in (-4.0, 0.0, 4.0) for dy in (-4.0, 0.0, 4.0)]
+    stand_g = _drop_to_ground(ground, stand[0], stand[1])
     print(
         f"[island_gen] HANDOFF lampwork (the Lampwright's Workshop): floor Y={FLOOR:.1f}, "
         f"open forge face at (Roblox rel) X={SX:.0f} Z={-FRONT:.0f}; "
-        f"NPC stand (Roblox rel) X={stand[0]:.0f} Z={-stand[1]:.0f} ground Y={gz(*stand):.1f} "
-        f"- 8x8 pad, fall {max(pad) - min(pad):.2f} studs corner to corner, 2.1 studs off the plinth, "
-        f"nearest yard lamp {min(math.hypot(lx - stand[0], ly - stand[1]) for lx, ly, _p, _r in _ISLET_LAMP_YARD):.1f} studs"
+        f"NPC stand (Roblox rel) X={stand[0]:.0f} Z={-stand[1]:.0f} ground Y={stand_g:.2f} "
+        f"- 8x8 pad, fall {max(pad) - min(pad):.2f} studs corner to corner, "
+        f"nearest yard lamp {min(math.hypot(lx - stand[0], ly - stand[1]) for lx, ly, _p, _r in _ISLET_LAMP_YARD):.1f} studs, "
+        f"recommended radius 55"
     )
     print(
-        f"[island_gen] HANDOFF lampwork: jetty head (Roblox rel) X=0 Z={-jy1:.0f}, deck top Y={DECK_Z:.1f}; "
-        f"great lamp on its gantry at X={GX:.0f} Z={-GY:.0f}, glass base Y={LZ:.1f}, finial Y={LZ + 7.8:.1f} - DARK; "
-        f"18 yard lamps, all dark; ONE lit window at X={RIGHT:.0f} Z={-SY:.0f} centre Y={(W0 + W1) / 2:.1f}"
+        f"[island_gen] HANDOFF lampwork: the drop - lip on the sail-in lane at (Roblox rel) Z={-y_lip:.1f}, "
+        f"lip Y={gz(0.0, y_lip):.1f}, wall plumb to the trench floor at Y={SKIRT_BOTTOM:.1f} "
+        f"({gz(0.0, y_lip) - SKIRT_BOTTOM:.1f} studs of cliff); jetty ramp from Y={DECK0:.1f} down to deck Y={DECK1:.1f}, "
+        f"head at Z={-y_head:.0f} standing on 13-stud piles over the void"
+    )
+    print(
+        f"[island_gen] HANDOFF lampwork: great lamp on its gantry at X={GX:.0f} Z={-GY:.0f}, "
+        f"glass base Y={LZ:.1f}, finial Y={LZ + 7.8:.1f} - DARK; unfinished lighthouse at X={LHX:.0f} "
+        f"Z={-LHY:.0f}, three courses, top Y={LH_G + 8.1:.1f}; 19 yard lamps and 8 failed ones on the "
+        f"gallows, ALL dark; ONE lit window at X={RIGHT:.0f} Z={-SY:.0f} centre Y={(W0 + W1) / 2:.1f}"
     )
     low = min(min(v.co.z for v in o.data.vertices) for o in objects if o.data.vertices)
     keyed = "" if abs(low - SKIRT_BOTTOM) < 0.01 else "  <-- set Islands.luau meshBottom to this"
@@ -9447,84 +9985,712 @@ def build_islet_whalefall():
 
 
 # ================================================================ THE ANCHOR GARDEN (islet)
-# A shallow reef where two dozen anchors stand upright in the sand like a
-# sculpture garden, chains swagged between them. ONE chain is taut and runs off
-# into deep water - something is still on the other end.
+# A shipbreaker's shallows. Almost the whole islet is UNDER the water: a
+# white-gold sand flat you WADE across ankle deep, with a handful of dry
+# hummocks breaking the surface. Anchors of every era and scale stand rusting
+# in the turquoise - grapnels, fisherman's, stocked admiralty patterns, a
+# modern stockless - and one MONSTER anchor twice house-height carries a plank
+# shack on its stock like a treehouse. Chains everywhere: heaped, swagged,
+# buried and re-emerging. All of them hang dead except ONE, which runs
+# bar-straight off into deep water. Something is still on the far end of it.
+
+
+# The dry hummocks, as a height field so the mesh and every prop agree:
+# (x, y, radius, rise, plateau fraction, salt).
+_ANCH_MOUNDS = [
+    (26.0, -28.0, 16.0, 3.4, 0.50, 1.7),  # the landing hummock - Coil stands here
+    (-34.0, 16.0, 13.0, 2.9, 0.42, 4.1),  # bollards and the capstan
+    (4.0, 39.0, 10.5, 2.4, 0.38, 2.6),
+    (-22.0, -37.0, 9.0, 2.1, 0.36, 5.3),
+]
+
+# The monster anchor, and the shack it carries. Fixed here so the walkway, the
+# taut chain and the NPC pad can all be derived from one place.
+_ANCH_MONSTER = (-3.0, -7.0)
+_ANCH_NPC = (31.5, -32.5)
+
+
+def _anch_mound_z(x, y):
+    """Extra height the hummocks add at (x, y). The mound mesh is built from
+    this exact field, so anything placed with it sits ON the sand, not in it."""
+    top = 0.0
+    for cx, cy, r, rise, flat, salt in _ANCH_MOUNDS:
+        dx, dy = x - cx, y - cy
+        d = math.hypot(dx, dy)
+        if d > r * 1.4:
+            continue
+        th = math.atan2(dy, dx)
+        edge = r * (1.0 + 0.20 * math.sin(3.0 * th + salt) + 0.11 * math.sin(5.0 * th + salt * 1.7))
+        f = d / max(1e-6, edge)
+        t = max(0.0, min(1.0, (f - flat) / max(1e-6, 1.0 - flat)))
+        top = max(top, rise * (1.0 - t * t * (3.0 - 2.0 * t)))
+    return top
+
+
+def _anch_ground(x, y):
+    """Sand height including the hummocks."""
+    return height_at(x, y) + _anch_mound_z(x, y)
+
+
+def _anch_paint(bm, first, index):
+    """Give every face added since `first` another material slot (the importer
+    splits a multi-slot mesh into <Name> / <Name>2 / ..., which is what
+    MESH_COLOR keys)."""
+    for f in list(bm.faces)[first:]:
+        f.material_index = index
+
+
+def _anch_rust(bm, first, z_split):
+    """Two-tone every iron thing built since `first`: bright orange rust below
+    the waterline band, darker iron above. Rust on white sand is the islet."""
+    for f in list(bm.faces)[first:]:
+        f.material_index = 1 if f.calc_center_median().z < z_split else 0
+
+
+def _anch_seg(bm, p, q, r0, r1=None, sides=4, twist=0.0):
+    """A capped bar from p to q - shanks, arms, chain links, rail wire."""
+    d = Vector((q[0] - p[0], q[1] - p[1], q[2] - p[2]))
+    ln = d.length
+    if ln < 1e-4:
+        return
+    add_cone(bm, tuple(p), r0, r0 if r1 is None else r1, ln, sides=sides,
+             tilt=_tilt_toward(d.normalized()), yaw=twist)
+
+
+def _anch_ring(bm, centre, up, e1, R, r, seg=7):
+    """The shackle ring at an anchor's head, lying in the (up, e1) plane."""
+    c = Vector(centre)
+    pts = [c + up * (math.cos(a) * R) + e1 * (math.sin(a) * R)
+           for a in (i / seg * math.tau for i in range(seg))]
+    for i in range(seg):
+        _anch_seg(bm, pts[i], pts[(i + 1) % seg], r, r, sides=4)
+
+
+def _anch_plate(bm, centre, u_axis, v_axis, r, thick, n_axis, seg=8):
+    """A flat polygonal plate in an arbitrary plane - the ship's hatch cover
+    that serves as the shack's door, and the stockless anchor's palms."""
+    c, nn = Vector(centre), Vector(n_axis).normalized() * (thick * 0.5)
+    u, v = Vector(u_axis), Vector(v_axis)
+    front, back = [], []
+    for i in range(seg):
+        a = i / seg * math.tau
+        p = c + u * (math.cos(a) * r) + v * (math.sin(a) * r)
+        front.append(bm.verts.new(p + nn))
+        back.append(bm.verts.new(p - nn))
+    bm.faces.new(front)
+    bm.faces.new(list(reversed(back)))
+    for i in range(seg):
+        j = (i + 1) % seg
+        bm.faces.new((front[i], back[i], back[j], front[j]))
+
+
+def _anch_mound(bm, cx, cy, r, rise, flat, salt, seg=20, rings=4):
+    """One dry hummock: a low sand dome closed underneath so it is a solid."""
+    base_z = height_at(cx, cy)
+
+    def edge(th):
+        return r * (1.0 + 0.20 * math.sin(3.0 * th + salt) + 0.11 * math.sin(5.0 * th + salt * 1.7))
+
+    def zat(f):
+        t = max(0.0, min(1.0, (f - flat) / max(1e-6, 1.0 - flat)))
+        return rise * (1.0 - t * t * (3.0 - 2.0 * t))
+
+    cen = bm.verts.new(Vector((cx, cy, base_z + rise)))
+    loops = []
+    for k in range(1, rings + 1):
+        f = k / rings
+        loop = []
+        for s in range(seg):
+            th = s / seg * math.tau
+            d = edge(th) * f
+            x, y = cx + math.cos(th) * d, cy + math.sin(th) * d
+            z = (height_at(x, y) - 0.30) if k == rings else (height_at(x, y) + zat(f))
+            loop.append(bm.verts.new(Vector((x, y, z))))
+        loops.append(loop)
+    for s in range(seg):
+        s2 = (s + 1) % seg
+        bm.faces.new((cen, loops[0][s], loops[0][s2]))
+    for k in range(rings - 1):
+        for s in range(seg):
+            s2 = (s + 1) % seg
+            bm.faces.new((loops[k][s], loops[k + 1][s], loops[k + 1][s2], loops[k][s2]))
+    floor = base_z - 2.4
+    bot = [bm.verts.new(Vector((v.co.x, v.co.y, floor))) for v in loops[-1]]
+    for s in range(seg):
+        s2 = (s + 1) % seg
+        bm.faces.new((loops[-1][s], bot[s], bot[s2], loops[-1][s2]))
+    bm.faces.new(list(reversed(bot)))
+
+
+def _anch_anchor(bm, kind, x, y, scale, yaw, lean=0.0, lean_dir=0.0, sink=0.0, arm=1.0):
+    """One anchor planted in the sand. Returns (top, stock_a, stock_b, up, e1,
+    e2, foot) so chains and the shack can hang off real points on it."""
+    g = _anch_ground(x, y) - sink
+    up = Vector((math.sin(lean) * math.cos(lean_dir), math.sin(lean) * math.sin(lean_dir), math.cos(lean)))
+    e1 = Vector((math.cos(yaw), math.sin(yaw), 0.0))
+    e1 = (e1 - up * e1.dot(up)).normalized()
+    e2 = up.cross(e1).normalized()
+    c = Vector((x, y, g))
+    s = scale
+    first = len(bm.faces)
+
+    if kind == "grapnel":
+        L = 6.2 * s
+        top = c + up * L
+        _anch_seg(bm, c, top, 0.34 * s, 0.26 * s, sides=6)
+        _anch_ring(bm, top + up * (0.62 * s), up, e1, 0.62 * s, 0.14 * s)
+        crown = c + up * (0.20 * s)
+        for k in range(4):
+            a0 = yaw + k * math.pi * 0.5
+            ee = Vector((math.cos(a0), math.sin(a0), 0.0))
+            ee = (ee - up * ee.dot(up)).normalized()
+            prev = crown
+            for i in range(1, 4):
+                a = 1.35 * i / 3.0
+                p = crown + ee * (2.2 * s * math.sin(a)) + up * (2.2 * s * (1.0 - math.cos(a)))
+                _anch_seg(bm, prev, p, 0.27 * s, 0.23 * s, sides=5)
+                prev = p
+            tan = (ee * math.cos(1.35) + up * math.sin(1.35)).normalized()
+            _anch_seg(bm, prev, prev + tan * (1.2 * s), 0.52 * s, 0.06, sides=4)
+        stock_a = stock_b = top
+    elif kind == "stockless":
+        L = 6.8 * s
+        top = c + up * L
+        _anch_seg(bm, c + up * (1.0 * s), top, 0.62 * s, 0.44 * s, sides=6)
+        _anch_ring(bm, top + up * (0.80 * s), up, e1, 0.80 * s, 0.20 * s)
+        crown = c + up * (0.55 * s)
+        _anch_seg(bm, crown - e1 * (1.5 * s), crown + e1 * (1.5 * s), 1.05 * s, 1.05 * s, sides=6)
+        for side in (-1, 1):
+            a = 0.66
+            dirv = (e1 * (side * math.cos(a)) + up * math.sin(a)).normalized()
+            base = crown + e1 * (side * 1.2 * s)
+            tip = base + dirv * (3.9 * s)
+            _anch_seg(bm, base, tip, 1.30 * s, 0.45 * s, sides=4)
+            _anch_plate(bm, base + dirv * (2.6 * s), dirv, e2, 1.5 * s, 0.30 * s, e1.cross(dirv), seg=6)
+        stock_a = stock_b = top
+    else:  # "admiralty" (and the slimmer "fisherman", same pattern, thinner)
+        thin = 0.78 if kind == "fisherman" else 1.0
+        L = 7.4 * s
+        top = c + up * L
+        _anch_seg(bm, c, top, 0.54 * s * thin, 0.36 * s * thin, sides=6)
+        _anch_ring(bm, top + up * (0.76 * s), up, e1, 0.76 * s, 0.17 * s)
+        half = 3.1 * s
+        st = c + up * (L * 0.90)
+        stock_a, stock_b = st + e2 * half, st - e2 * half
+        _anch_seg(bm, st, stock_a, 0.31 * s * thin, 0.15 * s, sides=5)
+        _anch_seg(bm, st, stock_b, 0.31 * s * thin, 0.15 * s, sides=5)
+        # nuts on the stock ends so it reads forged, not like a stick
+        _anch_seg(bm, stock_a - e2 * (0.35 * s), stock_a + e2 * (0.20 * s), 0.30 * s, 0.30 * s, sides=5)
+        _anch_seg(bm, stock_b + e2 * (0.35 * s), stock_b - e2 * (0.20 * s), 0.30 * s, 0.30 * s, sides=5)
+        K = 2.75 * s * arm
+        A = 1.24
+        crown = c + up * (0.24 * s)
+        for side in (-1, 1):
+            prev = crown
+            for i in range(1, 5):
+                a = A * i / 4.0
+                p = crown + e1 * (side * K * math.sin(a)) + up * (K * (1.0 - math.cos(a)))
+                _anch_seg(bm, prev, p, (0.48 - 0.045 * i) * s * thin, (0.44 - 0.045 * i) * s * thin, sides=5)
+                prev = p
+            tan = (e1 * (side * math.cos(A)) + up * math.sin(A)).normalized()
+            tip = prev + tan * (2.4 * s)
+            _anch_seg(bm, prev, tip, 0.88 * s, 0.10 * s, sides=4)
+            _anch_plate(bm, prev + tan * (1.0 * s), tan, e2, 1.05 * s, 0.26 * s, e1.cross(tan), seg=6)
+
+    _anch_rust(bm, first, g + (top.z - g) * 0.82)
+    return top, stock_a, stock_b, up, e1, e2, c
+
+
+def _anch_chain(bm, p, q, sag=0.0, links=9, r=0.28, i0=0):
+    """A run of chain. `sag` > 0 dips it into a catenary; every chain on this
+    islet sags except the taut one, which passes sag = 0 and a heavy radius."""
+    for i in range(links):
+        f0, f1 = i / links, (i + 1) / links
+
+        def at(f):
+            return (p[0] + (q[0] - p[0]) * f,
+                    p[1] + (q[1] - p[1]) * f,
+                    p[2] + (q[2] - p[2]) * f - math.sin(f * math.pi) * sag)
+
+        a0, a1 = at(f0), at(f1)
+        d = Vector((a1[0] - a0[0], a1[1] - a0[1], a1[2] - a0[2]))
+        ln = d.length
+        if ln < 1e-4:
+            continue
+        add_cone(bm, a0, r, r * 0.92, ln * 1.05, sides=4, tilt=_tilt_toward(d.normalized()),
+                 yaw=0.0 if (i + i0) % 2 else math.pi * 0.25)
+
+
+def _anch_heap(bm, cx, cy, rad, rng, loops=3):
+    """A heap of chain dumped on the sand - overlapping flattened coils."""
+    for k in range(loops):
+        a0 = rng.uniform(0.0, math.tau)
+        rr = rad * rng.uniform(0.55, 1.0)
+        ox = cx + rng.uniform(-rad * 0.45, rad * 0.45)
+        oy = cy + rng.uniform(-rad * 0.45, rad * 0.45)
+        z = _anch_ground(ox, oy) + 0.30 + k * 0.24
+        prev = None
+        for i in range(11):
+            a = a0 + i / 10.0 * math.tau
+            p = (ox + math.cos(a) * rr, oy + math.sin(a) * rr * 0.78,
+                 z + math.sin(a * 2.0 + a0) * 0.14)
+            if prev is not None:
+                _anch_chain(bm, prev, p, 0.0, links=1, r=0.38, i0=i)
+            prev = p
+
+
+def _anch_buried(bm, x0, y0, ang, length, phase, rng):
+    """A chain lying in the sand, dipping under and re-emerging."""
+    n = max(4, int(length / 1.7))
+    prev = None
+    for i in range(n + 1):
+        t = i / n
+        x = x0 + math.cos(ang) * length * t + math.sin(ang) * math.sin(t * 6.0 + phase) * 2.4
+        y = y0 + math.sin(ang) * length * t - math.cos(ang) * math.sin(t * 6.0 + phase) * 2.4
+        z = _anch_ground(x, y) + 0.30 + math.sin(t * 10.0 + phase) * 0.95
+        p = (x, y, z)
+        if prev is not None:
+            _anch_chain(bm, prev, p, 0.0, links=1, r=0.36, i0=i)
+        prev = p
+
+
+def _anch_bollard(bm, x, y, h, r):
+    """A cast-iron mooring bollard: a fat post with a mushroom head."""
+    g = _anch_ground(x, y)
+    first = len(bm.faces)
+    add_cone(bm, (x, y, g - 0.3), r * 1.25, r * 0.86, h, sides=8)
+    add_cone(bm, (x, y, g - 0.3 + h), r * 1.05, r * 0.55, r * 0.9, sides=8)
+    _anch_rust(bm, first, g + h * 0.5)
+
+
+def _anch_capstan(bm, x, y, s, yaw):
+    """A wooden capstan: a waisted drum with iron bands and pushing bars."""
+    g = _anch_ground(x, y)
+    first = len(bm.faces)
+    add_cone(bm, (x, y, g - 0.3), 1.9 * s, 1.35 * s, 1.5 * s, sides=10)
+    add_cone(bm, (x, y, g - 0.3 + 1.5 * s), 1.35 * s, 1.75 * s, 1.6 * s, sides=10)
+    add_cone(bm, (x, y, g - 0.3 + 3.1 * s), 1.85 * s, 1.7 * s, 0.45 * s, sides=10)
+    for k in range(4):
+        a = yaw + k * math.pi * 0.5
+        d = Vector((math.cos(a), math.sin(a), 0.0))
+        p0 = Vector((x, y, g + 2.9 * s)) + d * (1.5 * s)
+        _anch_seg(bm, p0, p0 + d * (3.4 * s) + Vector((0, 0, -0.35 * s)), 0.26 * s, 0.20 * s, sides=5)
+    _anch_rust(bm, first, g + 1.2 * s)
+
+
+def _anch_starfish(bm, x, y, s, yaw):
+    """A starfish on the sand: five stubby tapered arms lying flat."""
+    g = _anch_ground(x, y) + 0.10
+    for k in range(5):
+        a = yaw + k * math.tau / 5.0
+        p = (x, y, g)
+        q = (x + math.cos(a) * 1.5 * s, y + math.sin(a) * 1.5 * s, g + 0.02)
+        _anch_seg(bm, p, q, 0.42 * s, 0.10 * s, sides=4)
+
+
+def _anch_shack(deck, trim, st, e2h, deck_z, rng):
+    """The plank shack sitting on the monster anchor's stock, and the porch it
+    is entered from. `deck` takes plank work, `trim` the iron and the roof."""
+    yaw = math.atan2(e2h[1], e2h[0])
+    ax = Vector((e2h[0], e2h[1], 0.0))           # along the stock (toward the hummock)
+    ay = Vector((-e2h[1], e2h[0], 0.0))          # across it
+    c = Vector((st[0], st[1], deck_z))
+    HL, HW = 5.6, 4.3                            # shack half-length / half-width
+    PORCH = 3.6
+
+    def P(a, b, z):
+        return tuple(c + ax * a + ay * b + Vector((0, 0, z)))
+
+    # --- deck: two bearers laid over the stock, then a plank floor.
+    for b in (-HW * 0.72, HW * 0.72):
+        add_box(deck, P(0.4, b, -0.75), (2 * HL + PORCH + 1.0, 0.85, 0.85), yaw=yaw)
+    n_pl = 17
+    for i in range(n_pl):
+        a = -HL - 0.4 + (2 * HL + PORCH + 0.8) * (i + 0.5) / n_pl
+        add_box(deck, P(a, 0.0, -0.20), ((2 * HL + PORCH + 0.8) / n_pl * 0.9, 2 * HW + 0.9, 0.40), yaw=yaw)
+
+    # --- corner posts and the wall planking (vertical boards with gaps).
+    WALL = 6.1
+    for sa in (-1, 1):
+        for sb in (-1, 1):
+            add_box(deck, P(sa * HL, sb * HW, WALL * 0.5), (0.62, 0.62, WALL), yaw=yaw)
+    for sb in (-1, 1):                            # the two long walls
+        n = 15
+        for i in range(n):
+            a = -HL + 2 * HL * (i + 0.5) / n
+            h = WALL * rng.uniform(0.92, 1.0)
+            add_box(deck, P(a, sb * HW, h * 0.5), (2 * HL / n * 0.82, 0.36, h), yaw=yaw)
+    for sa in (-1, 1):                            # the two ends
+        n = 11
+        for i in range(n):
+            b = -HW + 2 * HW * (i + 0.5) / n
+            if sa > 0 and abs(b) < 1.9:           # the doorway, on the porch end
+                continue
+            h = WALL * rng.uniform(0.92, 1.0)
+            add_box(deck, P(sa * HL, b, h * 0.5), (0.36, 2 * HW / n * 0.82, h), yaw=yaw)
+    # a window on the long wall facing the wading flat
+    add_box(deck, P(-1.4, -HW, WALL * 0.62), (3.3, 0.5, 0.34), yaw=yaw)
+    add_box(deck, P(-1.4, -HW, WALL * 0.62 + 1.9), (3.3, 0.5, 0.34), yaw=yaw)
+    add_box(deck, P(-1.4, -HW, WALL * 0.62 + 0.95), (0.34, 0.5, 1.6), yaw=yaw)
+    # eave plate
+    add_box(deck, P(0.0, 0.0, WALL + 0.18), (2 * HL + 0.9, 2 * HW + 1.4, 0.36), yaw=yaw)
+
+    # --- roof: two pitched slabs, tarred, with the ridge along the stock.
+    first = len(trim.faces)
+    RID, EAV = WALL + 2.5, WALL + 0.30
+    for sb in (-1, 1):
+        ridge = [Vector(P(a, 0.0, RID)) for a in (-HL - 0.9, HL + 0.9)]
+        eave = [Vector(P(a, sb * (HW + 1.25), EAV)) for a in (-HL - 0.9, HL + 0.9)]
+        add_strip_slab(trim, ridge, eave, 0.42)
+    add_box(trim, P(0.0, 0.0, RID + 0.16), (2 * HL + 2.1, 0.7, 0.34), yaw=yaw)
+    _anch_paint(trim, first, 1)
+
+    # --- stove pipe, the ship's hatch cover for a door, and iron corner straps.
+    first = len(trim.faces)
+    px, py = P(-HL + 2.0, HW * 0.45, 0.0)[:2]
+    add_post(trim, px, py, deck_z + WALL, deck_z + RID + 3.4, 0.34, sides=7)
+    add_cone(trim, (px, py, deck_z + RID + 3.4), 0.60, 0.42, 0.55, sides=7)
+    # the hatch cover: a round iron plate standing in the doorway, swung ajar
+    door_n = (ax * math.cos(0.55) + ay * math.sin(0.55)).normalized()
+    _anch_plate(trim, P(HL + 0.55, 0.75, 2.55), (ay * math.cos(0.55) - ax * math.sin(0.55)),
+                Vector((0, 0, 1)), 2.45, 0.34, door_n, seg=8)
+    for sb in (-1, 1):
+        for sa in (-1, 1):
+            add_box(trim, P(sa * HL, sb * HW, WALL * 0.28), (0.78, 0.78, 0.34), yaw=yaw)
+            add_box(trim, P(sa * HL, sb * HW, WALL * 0.80), (0.78, 0.78, 0.34), yaw=yaw)
+    _anch_paint(trim, first, 2)
+
+    # --- the porch, and the landing the walkway arrives at.
+    for b in (-2.6, 2.6):
+        add_box(deck, P(HL + PORCH * 0.5, b, 0.30), (PORCH, 0.5, 1.0), yaw=yaw)
+    landing = P(HL + PORCH, 0.0, 0.0)
+    posts = [P(HL + PORCH - 0.3, sb * 2.8, 1.6) for sb in (-1, 1)]
+    for p in posts:
+        add_box(deck, p, (0.55, 0.55, 3.2), yaw=yaw)
+    return landing, [P(HL + PORCH - 0.3, sb * 2.8, 3.1) for sb in (-1, 1)], \
+        [P(HL + 0.2, sb * 2.8, 3.1) for sb in (-1, 1)]
 
 
 def build_islet_anchorage():
     rng = random.Random(5505)
     state = random.getstate()
-    base = build_island_base("Anchorage_Base", ["M_AnchSand", "M_AnchReef", "M_AnchWet"])
-    iron = bmesh.new()
+    base = build_island_base("Anchorage_Base", ["M_AnchSand", "M_AnchShoal", "M_AnchDeep"])
+    sand, pools = bmesh.new(), bmesh.new()
+    iron, chain, shack = bmesh.new(), bmesh.new(), bmesh.new()
 
-    def anchor(bm, x, y, scale, yaw):
-        g = height_at(x, y)
-        shank = 7.0 * scale
-        add_cone(bm, (x, y, g - 0.6), 0.52 * scale, 0.38 * scale, shank, sides=6)
-        # The stock across the top, and the ring above it.
-        add_box(bm, (x, y, g + shank * 0.86), (5.4 * scale, 0.44 * scale, 0.44 * scale), yaw=yaw + 1.57)
-        add_cone(bm, (x, y, g + shank * 0.94), 0.6 * scale, 0.5 * scale, 0.9 * scale, sides=7)
-        # Two arms sweeping up off the crown, each ending in a fluke.
-        for side in (-1, 1):
-            for i in range(4):
-                f0, f1 = i / 4.0, (i + 1) / 4.0
-                a0, a1 = f0 * 1.15, f1 * 1.15
-                p0 = (x + side * math.sin(a0) * 2.6 * scale * math.cos(yaw), y + side * math.sin(a0) * 2.6 * scale * math.sin(yaw), g - 0.4 + (1 - math.cos(a0)) * 2.4 * scale)
-                p1 = (x + side * math.sin(a1) * 2.6 * scale * math.cos(yaw), y + side * math.sin(a1) * 2.6 * scale * math.sin(yaw), g - 0.4 + (1 - math.cos(a1)) * 2.4 * scale)
-                d = (p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2])
-                ln = math.sqrt(d[0] ** 2 + d[1] ** 2 + d[2] ** 2)
-                add_cone(bm, p0, 0.46 * scale, 0.4 * scale, ln, sides=5, tilt=_tilt_toward(Vector(d).normalized()))
-            tipx = x + side * math.sin(1.15) * 2.6 * scale * math.cos(yaw)
-            tipy = y + side * math.sin(1.15) * 2.6 * scale * math.sin(yaw)
-            add_cone(bm, (tipx, tipy, g - 0.4 + (1 - math.cos(1.15)) * 2.4 * scale), 1.15 * scale, 0.1, 2.0 * scale, sides=5, tilt=(0.0, side * 0.5))
+    # ---------------------------------------------------------------- the sand
+    for cx, cy, r, rise, flat, salt in _ANCH_MOUNDS:
+        _anch_mound(sand, cx, cy, r, rise, flat, salt)
 
-    placed = []
-    for _ in range(24):
-        for _try in range(30):
-            a = rng.uniform(0.0, math.tau)
-            rr = rng.uniform(0.10, 0.78) * ISLAND_RADIUS
-            x, y = math.cos(a) * rr, math.sin(a) * rr
-            if all((x - px) ** 2 + (y - py) ** 2 > 121.0 for px, py, _ in placed):
-                sc = rng.uniform(0.72, 1.35)
-                anchor(iron, x, y, sc, rng.uniform(0.0, math.tau))
-                placed.append((x, y, sc))
-                break
+    NX, NY = _ANCH_NPC
 
-    # Chains swagged between neighbours: a catenary of short links, both ends
-    # buried in the anchor stocks they hang from.
-    def chain(bm, p, q, sag, links=9):
-        for i in range(links):
-            f0, f1 = i / links, (i + 1) / links
-            def at(f):
-                return (
-                    p[0] + (q[0] - p[0]) * f,
-                    p[1] + (q[1] - p[1]) * f,
-                    p[2] + (q[2] - p[2]) * f - math.sin(f * math.pi) * sag,
-                )
-            a0, a1 = at(f0), at(f1)
-            d = (a1[0] - a0[0], a1[1] - a0[1], a1[2] - a0[2])
-            ln = math.sqrt(d[0] ** 2 + d[1] ** 2 + d[2] ** 2)
-            add_cone(bm, a0, 0.3, 0.28, ln, sides=4, tilt=_tilt_toward(Vector(d).normalized()))
+    def clear_of_pad(x, y, pad=6.5):
+        return (x - NX) ** 2 + (y - NY) ** 2 > pad * pad
 
-    placed.sort(key=lambda t: math.atan2(t[1], t[0]))
-    for i in range(len(placed) - 1):
-        x0, y0, s0 = placed[i]
-        x1, y1, s1 = placed[i + 1]
-        if (x0 - x1) ** 2 + (y0 - y1) ** 2 < 900.0 and rng.random() < 0.75:
-            chain(iron, (x0, y0, height_at(x0, y0) + 6.0 * s0), (x1, y1, height_at(x1, y1) + 6.0 * s1), rng.uniform(1.6, 3.4))
+    # LOW-RELIEF ripple marks combed across the flat by the tide. Deliberately
+    # the same sand colour as the flat and barely a hand high - round 1 built
+    # them tall and in the bright dune tone and the whole islet read as
+    # scattered lumber (preview review).
+    first = len(sand.faces)
+    for _ in range(46):
+        a = rng.uniform(0.0, math.tau)
+        rr = rng.uniform(0.10, 0.94) * ISLAND_RADIUS
+        x, y = math.cos(a) * rr, math.sin(a) * rr
+        if not clear_of_pad(x, y, 9.0):
+            continue
+        g = _anch_ground(x, y)
+        if g < -0.9 or g > 1.2:
+            continue
+        ang = 0.9 + math.sin(x * 0.035) * 0.7 + math.cos(y * 0.03) * 0.5
+        for k in range(3):
+            ox, oy = math.cos(ang + 1.57) * k * 1.5, math.sin(ang + 1.57) * k * 1.5
+            add_box(sand, (x + ox, y + oy, _anch_ground(x + ox, y + oy) + 0.02),
+                    (rng.uniform(4.0, 7.0), 0.62, 0.18), yaw=ang)
+    _anch_paint(sand, first, 2)
 
-    # THE taut one: dead straight, no sag, running off the reef into deep water.
-    tx, ty, ts = placed[0]
-    chain(iron, (tx, ty, height_at(tx, ty) + 6.0 * ts), (math.cos(0.6) * ISLAND_RADIUS * 1.45, math.sin(0.6) * ISLAND_RADIUS * 1.45, -6.0), 0.0, links=16)
+    first = len(sand.faces)
+    for _ in range(14):
+        a = rng.uniform(0.0, math.tau)
+        rr = rng.uniform(0.12, 0.88) * ISLAND_RADIUS
+        x, y = math.cos(a) * rr, math.sin(a) * rr
+        if clear_of_pad(x, y, 8.0):
+            _anch_starfish(sand, x, y, rng.uniform(0.8, 1.4), rng.uniform(0.0, math.tau))
+    _anch_paint(sand, first, 1)
 
-    stand_x, stand_y = 0.0, 0.0
+    # Shallow standing pools left on the flat between the hummocks - the
+    # turquoise that makes the sand read white.
+    for _ in range(22):
+        a = rng.uniform(0.0, math.tau)
+        rr = rng.uniform(0.12, 0.96) * ISLAND_RADIUS
+        cx, cy = math.cos(a) * rr, math.sin(a) * rr
+        if _anch_mound_z(cx, cy) > 0.15 or not clear_of_pad(cx, cy, 11.0):
+            continue
+        R = rng.uniform(8.0, 17.0)
+        pts = []
+        n = 14
+        for i in range(n):
+            th = i / n * math.tau
+            d = R * (1.0 + 0.30 * math.sin(3.0 * th + a) + 0.16 * math.sin(5.0 * th))
+            pts.append((cx + math.cos(th) * d, cy + math.sin(th) * d * 0.8))
+        add_disc_slab(pools, pts, _anch_ground(cx, cy) + 0.16, 0.5)
+
+    # ---------------------------------------------------------------- the monster
+    # Its stock points at the landing hummock, so the shack's long axis and the
+    # walkway line up and the two great flukes flare left and right on approach.
+    MX, MY = _ANCH_MONSTER
+    to_hum = math.atan2(_ANCH_MOUNDS[0][1] - MY, _ANCH_MOUNDS[0][0] - MX)
+    m_top, m_sa, m_sb, m_up, m_e1, m_e2, m_c = _anch_anchor(
+        iron, "admiralty", MX, MY, 3.30, yaw=to_hum + math.pi * 0.5,
+        lean=0.21, lean_dir=to_hum + math.pi, sink=0.4, arm=1.85)
+    st = (m_sa + m_sb) * 0.5
+    e2h = (m_e2.x, m_e2.y)
+    ln = math.hypot(*e2h)
+    e2h = (e2h[0] / ln, e2h[1] / ln)
+    if e2h[0] * math.cos(to_hum) + e2h[1] * math.sin(to_hum) < 0:
+        e2h = (-e2h[0], -e2h[1])
+        m_sa, m_sb = m_sb, m_sa
+    DECK_Z = st.z + 0.95
+    landing, rail_far, rail_near = _anch_shack(shack, shack, st, e2h, DECK_Z, rng)
+
+    # ---------------------------------------------------------------- the fleet
+    placed = [(MX, MY, 12.0)]
+    KINDS = ["admiralty", "admiralty", "fisherman", "grapnel", "stockless", "admiralty", "fisherman"]
+    heads = []
+    for _ in range(60):
+        if len(placed) > 17:
+            break
+        a = rng.uniform(0.0, math.tau)
+        rr = rng.uniform(0.14, 0.86) * ISLAND_RADIUS
+        x, y = math.cos(a) * rr, math.sin(a) * rr
+        if not clear_of_pad(x, y, 10.0):
+            continue
+        sc = rng.uniform(0.55, 1.25)
+        keep = 8.0 + sc * 5.0
+        if any((x - px) ** 2 + (y - py) ** 2 < (keep + pr) ** 2 for px, py, pr in placed):
+            continue
+        # keep the walkway corridor clear
+        kind = KINDS[len(placed) % len(KINDS)]
+        lean = rng.uniform(0.10, 0.36) if rng.random() < 0.55 else rng.uniform(0.0, 0.10)
+        top, sa, sb, up, e1, e2, cc = _anch_anchor(
+            iron, kind, x, y, sc, yaw=rng.uniform(0.0, math.tau), lean=lean,
+            lean_dir=rng.uniform(0.0, math.tau), sink=rng.uniform(-0.2, 1.6) * sc)
+        placed.append((x, y, sc * 4.0))
+        heads.append((x, y, sc, tuple(sa), tuple(sb), tuple(top), kind))
+
+    # bollards and the capstan on the second hummock
+    bx, by = _ANCH_MOUNDS[1][0], _ANCH_MOUNDS[1][1]
+    for k in range(5):
+        a = 0.7 + k * 1.05
+        _anch_bollard(iron, bx + math.cos(a) * 6.4, by + math.sin(a) * 6.4, 2.5 + (k % 3) * 0.35, 0.85)
+    _anch_capstan(iron, bx - 1.0, by + 0.8, 1.15, 0.4)
+    _anch_bollard(iron, _ANCH_MOUNDS[3][0] + 2.0, _ANCH_MOUNDS[3][1] - 1.5, 2.3, 0.8)
+    _anch_bollard(iron, _ANCH_MOUNDS[2][0] - 2.5, _ANCH_MOUNDS[2][1] + 1.0, 2.6, 0.9)
+    # Dress the landing hummock so it is not a bare grey lump - but ONLY around
+    # the rim, well clear of Coil's pad and of the walkway's foot.
+    hx, hy, hr = _ANCH_MOUNDS[0][0], _ANCH_MOUNDS[0][1], _ANCH_MOUNDS[0][2]
+    for a, rr, kind, sc in ((to_hum + 1.30, 9.5, "grapnel", 0.72),
+                            (to_hum - 1.35, 10.5, "fisherman", 0.80),
+                            (to_hum + 2.55, 8.5, "stockless", 0.62)):
+        px, py = hx + math.cos(a) * rr, hy + math.sin(a) * rr
+        if clear_of_pad(px, py, 9.0):
+            _anch_anchor(iron, kind, px, py, sc, yaw=a, lean=0.24, lean_dir=a, sink=0.3)
+    for a, rr in ((to_hum + 0.55, 8.0), (to_hum - 0.60, 8.6)):
+        px, py = hx + math.cos(a) * rr, hy + math.sin(a) * rr
+        if clear_of_pad(px, py, 8.5):
+            _anch_bollard(iron, px, py, 2.4, 0.80)
+
+    # ---------------------------------------------------------------- the chains
+    # Catenaries slung stock to stock between neighbours. Every one of them is
+    # DEAD SLACK - that is what makes the taut one legible.
+    heads.sort(key=lambda t: math.atan2(t[1], t[0]))
+    for i in range(len(heads)):
+        x0, y0, s0, sa0, sb0, t0, _k0 = heads[i]
+        x1, y1, s1, sa1, sb1, t1, _k1 = heads[(i + 1) % len(heads)]
+        d2 = (x0 - x1) ** 2 + (y0 - y1) ** 2
+        if d2 > 1100.0 or rng.random() > 0.8:
+            continue
+        p = sa0 if (sa0[2] > sb0[2]) else sb0
+        q = sa1 if (sa1[2] > sb1[2]) else sb1
+        # a catenary strung OVER the pad would be what Coil's downward raycast
+        # finds, and he would stand on it in mid-air
+        if any(not clear_of_pad(p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t, 8.0)
+               for t in (0.0, 0.2, 0.4, 0.6, 0.8, 1.0)):
+            continue
+        _anch_chain(chain, p, q, sag=math.sqrt(d2) * rng.uniform(0.16, 0.30), links=10, r=0.44)
+    # a few reaching in to the monster's low stock end
+    for x, y, s, sa, sb, t, _k in heads[:4]:
+        q = tuple(m_sb)
+        if (x - MX) ** 2 + (y - MY) ** 2 < 2600.0 and all(
+                clear_of_pad(sa[0] + (q[0] - sa[0]) * t, sa[1] + (q[1] - sa[1]) * t, 8.0)
+                for t in (0.0, 0.25, 0.5, 0.75, 1.0)):
+            _anch_chain(chain, sa, q, sag=rng.uniform(3.0, 6.0), links=12, r=0.46)
+
+    _anch_heap(chain, _ANCH_MOUNDS[0][0] + math.cos(to_hum + 2.0) * 8.0,
+               _ANCH_MOUNDS[0][1] + math.sin(to_hum + 2.0) * 8.0, 3.4, rng)
+    _anch_heap(chain, _ANCH_MOUNDS[1][0] + 5.5, _ANCH_MOUNDS[1][1] - 4.0, 3.0, rng)
+    for _ in range(5):
+        a = rng.uniform(0.0, math.tau)
+        rr = rng.uniform(0.20, 0.80) * ISLAND_RADIUS
+        hx, hy = math.cos(a) * rr, math.sin(a) * rr
+        if clear_of_pad(hx, hy, 10.0):
+            _anch_heap(chain, hx, hy, rng.uniform(2.4, 4.2), rng)
+    for _ in range(14):
+        a = rng.uniform(0.0, math.tau)
+        rr = rng.uniform(0.15, 0.55) * ISLAND_RADIUS
+        bx0, by0 = math.cos(a) * rr, math.sin(a) * rr
+        ang, blen = rng.uniform(0.0, math.tau), rng.uniform(18.0, 34.0)
+        # the whole RUN has to miss the pad, not just its start
+        if any(not clear_of_pad(bx0 + math.cos(ang) * blen * t, by0 + math.sin(ang) * blen * t, 9.0)
+               for t in (0.0, 0.25, 0.5, 0.75, 1.0)):
+            continue
+        _anch_buried(chain, bx0, by0, ang, blen, rng.uniform(0.0, 6.0), rng)
+
+    # walkway handrails and the porch rail - chain, so they stay pass-through.
+    FX = _ANCH_MOUNDS[0][0] + math.cos(to_hum + math.pi) * 7.0
+    FY = _ANCH_MOUNDS[0][1] + math.sin(to_hum + math.pi) * 7.0
+    FZ = _anch_ground(FX, FY)
+    for sb, far, near in ((-1, rail_far[0], rail_near[0]), (1, rail_far[1], rail_near[1])):
+        off = (math.cos(to_hum + math.pi * 0.5) * 2.6 * sb, math.sin(to_hum + math.pi * 0.5) * 2.6 * sb)
+        _anch_chain(chain, near, far, sag=0.35, links=4, r=0.26)
+        _anch_chain(chain, far, (FX + off[0], FY + off[1], FZ + 3.2), sag=1.1, links=16, r=0.28)
+
+    # mooring buoys on their rodes
+    first = len(chain.faces)
+    buoys = []
+    for _ in range(22):
+        if len(buoys) >= 8:
+            break
+        a = rng.uniform(0.0, math.tau)
+        rr = rng.uniform(0.35, 1.02) * ISLAND_RADIUS
+        x, y = math.cos(a) * rr, math.sin(a) * rr
+        if not clear_of_pad(x, y, 12.0) or _anch_mound_z(x, y) > 0.1:
+            continue
+        if any((x - px) ** 2 + (y - py) ** 2 < 90.0 for px, py, _pr in placed):
+            continue
+        R = rng.uniform(1.5, 2.3)
+        _anch_chain(chain, (x, y, 1.15), (x + rng.uniform(-2.5, 2.5), y + rng.uniform(-2.5, 2.5),
+                    _anch_ground(x, y) + 0.2), sag=0.0, links=7, r=0.30)
+        buoys.append((x, y, R, rng.random() < 0.5))
+    _anch_paint(chain, first, 0)
+    for pick in (True, False):
+        first = len(chain.faces)
+        for x, y, R, red in buoys:
+            if red != pick:
+                continue
+            add_blob(chain, (x, y, 1.15 + R * 0.35), (R, R, R * 0.92), 0.10, x * 0.3 + y)
+            add_cone(chain, (x, y, 1.15 + R * 1.15), R * 0.22, R * 0.16, R * 0.8, sides=6)
+        _anch_paint(chain, first, 1 if pick else 2)
+
+    # ---------------------------------------------------------------- THE taut chain
+    # Bar straight, heavy gauge, leaving the monster's far stock end at a
+    # shallow angle and running clean off the flat into deep water.
+    first = len(chain.faces)
+    tp = (m_sb.x, m_sb.y, m_sb.z)
+    tdir = (-e2h[0], -e2h[1])
+    tq = (tp[0] + tdir[0] * 158.0, tp[1] + tdir[1] * 158.0, -7.6)
+    _anch_chain(chain, tp, tq, sag=0.0, links=44, r=1.00)
+    # a shackle at the anchor end, so the eye follows the line to its source
+    _anch_ring(chain, m_sb + Vector((tdir[0], tdir[1], 0.0)) * 1.2, Vector((0, 0, 1.0)),
+               Vector((tdir[0], tdir[1], 0.0)).normalized(), 1.7, 0.40)
+    _anch_paint(chain, first, 3)
+
+    # ---------------------------------------------------------------- the walkway
+    # A chain-and-plank gangway from the landing hummock up to the porch.
+    first = len(shack.faces)
+    run = Vector((landing[0] - FX, landing[1] - FY, landing[2] - FZ - 3.4))
+    horiz = math.hypot(run.x, run.y)
+    wyaw = math.atan2(run.y, run.x)
+    across = Vector((-math.sin(wyaw), math.cos(wyaw), 0.0))
+    left, right = [], []
+    N = 26
+    for i in range(N + 1):
+        t = i / N
+        p = Vector((FX, FY, FZ + 3.4)) + run * t
+        p.z -= math.sin(t * math.pi) * 0.5
+        left.append(p + across * 2.1)
+        right.append(p - across * 2.1)
+    add_strip_slab(shack, left, right, 0.45)
+    for i in range(N):
+        t = (i + 0.5) / N
+        p = Vector((FX, FY, FZ + 3.4)) + run * t
+        p.z -= math.sin(t * math.pi) * 0.5
+        add_box(shack, (p.x, p.y, p.z + 0.22), (horiz / N * 0.62, 4.5, 0.34), yaw=wyaw)
+    _anch_paint(shack, first, 0)
+
+    # ---------------------------------------------------------------- channel poles
+    # The line of markers showing where the sand is shallow enough to wade.
+    first = len(shack.faces)
+    ch = math.atan2(_ANCH_MOUNDS[0][1], _ANCH_MOUNDS[0][0])
+    poles = []
+    for i in range(11):
+        rr = 26.0 + i * 5.6
+        side = 1 if i % 2 else -1
+        w = 8.5 + i * 0.45
+        px = math.cos(ch) * rr + math.cos(ch + math.pi * 0.5) * side * w
+        py = math.sin(ch) * rr + math.sin(ch + math.pi * 0.5) * side * w
+        g = _anch_ground(px, py)
+        h = 7.6 + max(0.0, -g) * 1.20
+        lean = rng.uniform(0.05, 0.20)
+        la = rng.uniform(0.0, math.tau)
+        add_cone(shack, (px, py, g - 0.8), 0.34, 0.23, h, sides=6,
+                 tilt=(math.atan2(-math.sin(la) * math.sin(lean), math.cos(lean)),
+                       math.asin(math.cos(la) * math.sin(lean))))
+        poles.append((px, py, g - 0.8 + h * math.cos(lean), la, lean, h))
+    _anch_paint(shack, first, 0)
+    first = len(shack.faces)
+    for px, py, tz, la, lean, h in poles:
+        dx = math.cos(la) * math.sin(lean) * h
+        dy = math.sin(la) * math.sin(lean) * h
+        add_cone(shack, (px + dx * 0.86, py + dy * 0.86, tz - 1.6), 0.44, 0.42, 1.3, sides=6)
+    _anch_paint(shack, first, 3)
+
+    # ---------------------------------------------------------------- handoff
+    objs = [
+        base,
+        object_from_bmesh("Anchorage_Sand", sand, ["M_AnchDune", "M_AnchStar", "M_AnchSand"]),
+        object_from_bmesh("Anchorage_Shallows", pools, ["M_AnchWater"]),
+        object_from_bmesh("Anchorage_Iron", iron, ["M_AnchIron", "M_AnchRust"]),
+        object_from_bmesh("Anchorage_Chain", chain, ["M_AnchChain", "M_AnchBuoyRed", "M_AnchBuoyPale", "M_AnchTaut"]),
+        object_from_bmesh("Anchorage_Shack", shack, ["M_AnchPlank", "M_AnchRoof", "M_AnchTrim", "M_AnchMark"]),
+    ]
+    stand_y = None
+    for o in objs:
+        hit = _drop_to_ground(_ground_bvh(o), NX, NY)
+        if hit is not None and (stand_y is None or hit > stand_y):
+            stand_y = hit
+            stand_on = o.name
     print(
-        f"[island_gen] HANDOFF anchorage (The Anchor Garden): {len(placed)} anchors; the TAUT chain leaves from "
-        f"(Roblox rel) X={tx:.0f} Z={-ty:.0f}; NPC stand X={stand_x:.0f} Z={-stand_y:.0f} ground Y={height_at(stand_x, stand_y):.1f}"
+        f"[island_gen] HANDOFF anchorage (The Anchor Garden): {len(heads) + 1} anchors, "
+        f"{len(buoys)} buoys, {len(poles)} channel poles"
+    )
+    print(f"[island_gen] HANDOFF anchorage: shack deck z {DECK_Z:.2f}; monster top z {m_top.z:.2f}")
+    print(
+        f"[island_gen] HANDOFF anchorage: the TAUT chain leaves the stock at (Roblox rel) "
+        f"X={tp[0]:.0f} Z={-tp[1]:.0f} Y={tp[2]:.1f} and runs to X={tq[0]:.0f} Z={-tq[1]:.0f}"
+    )
+    # Coil's pad must be DRY and PROP-FREE: NpcService raycasts straight down
+    # and stands him on whatever it hits, pass-through props included.
+    intruders = {
+        o.name: sum(1 for v in o.data.vertices if (v.co.x - NX) ** 2 + (v.co.y - NY) ** 2 < 25.0)
+        for o in objs if o.name not in ("Anchorage_Base", "Anchorage_Sand")
+    }
+    intruders = {k: v for k, v in intruders.items() if v}
+    print(f"[island_gen] HANDOFF anchorage: props within 5 studs of the NPC pad: {intruders} (must be empty)")
+    for o in objs:
+        xs = [v.co.x for v in o.data.vertices]
+        ys = [v.co.y for v in o.data.vertices]
+        zs = [v.co.z for v in o.data.vertices]
+        print(f"[island_gen]     {o.name:<20} {len(o.data.polygons):5d} polys  bbox "
+              f"{max(xs) - min(xs):6.1f} x {max(ys) - min(ys):6.1f} x {max(zs) - min(zs):6.1f}")
+    low = min(min(v.co.z for v in o.data.vertices) for o in objs)
+    print(f"[island_gen] HANDOFF anchorage: lowest geometry z {low:.2f} (must be {SKIRT_BOTTOM:.2f})")
+    print(
+        f"[island_gen] HANDOFF anchorage: NPC stand (Roblox rel) X={NX:.1f} Z={-NY:.1f} "
+        f"ground Y={stand_y:.2f} (raycast hit {stand_on}); recommended radius 74"
     )
     random.setstate(state)
-    return [base, object_from_bmesh("Anchorage_Iron", iron, ["M_AnchIron"])]
+    return objs
+
 
 
 # ================================================================ THE BOILING SHOAL (islet)
@@ -9672,71 +10838,654 @@ def build_islet_ferryraft():
 
 
 # ================================================================ THE LOADSTONE SPIRE (islet)
-# A black magnetite needle that pulls lightning onto itself. Scorched and fused
-# where it has been struck, iron scrap welded to it by the strikes, filings
-# standing on end around the base.
+# A lightning-struck magnetite tor. Not one needle but a CATHEDRAL CLUSTER of
+# fused black spires standing out of a shattered rubble field - the strikes
+# break the rock apart, so the ground reads as debris, not as a dome. The
+# signature is FULGURITE: hollow branching white glass tubes where lightning
+# fused the sand, standing up out of the rubble like roots. Ansel lives here in
+# a Faraday shack wrapped in every chain he owns, earthed into the sea, with a
+# lightning rod that plainly does not work and a board of nailed-up compasses
+# all pointing different directions.
+
+
+def _load_paint(bm, first, index):
+    """Give every face added since `first` another material slot (the importer
+    splits the object into <Name> / <Name>2 / ... in slot order)."""
+    for f in list(bm.faces)[first:]:
+        f.material_index = index
+
+
+def _load_dir(phi, psi):
+    """Unit axis for a polar tilt: `phi` off vertical, bearing `psi`."""
+    return (math.sin(phi) * math.cos(psi), math.sin(phi) * math.sin(psi), math.cos(phi))
+
+
+def _load_seg(bm, p0, p1, r0, r1, sides=5):
+    """A frustum spanning two points - the workhorse for cables, chains,
+    nails, filings, fulgurite tubes and anchor arms."""
+    dx, dy, dz = p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]
+    length = math.sqrt(dx * dx + dy * dy + dz * dz)
+    if length < 1e-5:
+        return
+    phi = math.acos(max(-1.0, min(1.0, dz / length)))
+    psi = math.atan2(dy, dx)
+    add_cone(bm, p0, r0, r1, length, sides=sides, tilt=(0.0, phi), yaw=psi)
+
+
+def _load_chain(bm, p0, p1, links, rad, sag=0.0):
+    """A run of chain/cable between two points, sagging by `sag` in the middle.
+    Alternate links pinch so the run reads as chain rather than a pipe."""
+    pts = []
+    for k in range(links + 1):
+        t = k / links
+        pts.append(
+            (
+                p0[0] + (p1[0] - p0[0]) * t,
+                p0[1] + (p1[1] - p0[1]) * t,
+                p0[2] + (p1[2] - p0[2]) * t - sag * math.sin(math.pi * t),
+            )
+        )
+    for k in range(links):
+        r = rad if k % 2 else rad * 0.62
+        _load_seg(bm, pts[k], pts[k + 1], r, rad * (0.62 if k % 2 else 1.0), sides=4)
+
+
+def _load_spire_radius(t, r0):
+    """ONE profile function for a needle, sampled at both ends of every course
+    so consecutive frusta share their seam radius exactly (a spire stacked from
+    independently-derived radii renders as a pinecone)."""
+    return r0 * (0.05 + 0.95 * (1.0 - t) ** 1.28) * (1.0 + 0.075 * math.sin(t * 8.5 + 0.6))
+
+
+def _load_spire(bm, x0, y0, z0, height, r0, lean_deg, dir_deg, sides=6, courses=8, twist=0.0):
+    """One leaning black needle, stacked frusta. Returns (tip, axis, seams)."""
+    phi, psi = math.radians(lean_deg), math.radians(dir_deg)
+    d = _load_dir(phi, psi)
+    seg = height / courses
+    p = (x0, y0, z0)
+    seams = []
+    for k in range(courses):
+        ra = _load_spire_radius(k / courses, r0)
+        rb = _load_spire_radius((k + 1) / courses, r0)
+        add_cone(bm, p, ra, rb, seg, sides=sides, tilt=(0.0, phi), yaw=psi + twist * k)
+        seams.append((p, ra))
+        p = (p[0] + d[0] * seg, p[1] + d[1] * seg, p[2] + d[2] * seg)
+    return p, d, seams
+
+
+def _load_shard(bm, x, y, z, size, salt, rng):
+    """One angular block of shattered magnetite - a squat 4/5-sided frustum
+    tipped off vertical, so the rubble field reads as debris, not pebbles."""
+    add_cone(
+        bm,
+        (x, y, z),
+        size * rng.uniform(0.75, 1.15),
+        size * rng.uniform(0.28, 0.85),
+        size * rng.uniform(0.55, 1.5),
+        sides=4 if salt % 3 else 5,
+        tilt=(rng.uniform(-0.30, 0.30), rng.uniform(-0.30, 0.30)),
+        yaw=rng.uniform(0.0, math.tau),
+    )
+
+
+def _load_fulgurite(bm, rng, base, height, r0, mouths, depth=2):
+    """A hollow branching glass tube fused out of the ground by a strike. Each
+    limb wanders as it climbs and forks; every terminal limb flares into an
+    open mouth, recorded in `mouths` for the caller to cap with a dark disc so
+    the tube reads HOLLOW."""
+    phi = math.radians(rng.uniform(3.0, 20.0))
+    psi = rng.uniform(0.0, math.tau)
+    p = base
+    courses = 4 if depth else 3
+    for k in range(courses):
+        t0, t1 = k / courses, (k + 1) / courses
+        ra, rb = r0 * (1.0 - 0.58 * t0), r0 * (1.0 - 0.58 * t1)
+        h = (height / courses) * rng.uniform(0.82, 1.20)
+        d = _load_dir(phi, psi)
+        p1 = (p[0] + d[0] * h, p[1] + d[1] * h, p[2] + d[2] * h)
+        _load_seg(bm, p, p1, ra, rb, sides=6)
+        if depth > 0 and k >= 1 and rng.random() < 0.7:
+            _load_fulgurite(bm, rng, p1, height * rng.uniform(0.34, 0.52), rb * 0.82, mouths, depth - 1)
+        p = p1
+        phi = math.radians(max(2.0, min(38.0, math.degrees(phi) + rng.uniform(-9.0, 13.0))))
+        psi += rng.uniform(-0.55, 0.55)
+    d = _load_dir(phi, psi)
+    mouth_r = r0 * 0.42 + 0.10
+    tip = (p[0] + d[0] * 0.55, p[1] + d[1] * 0.55, p[2] + d[2] * 0.55)
+    _load_seg(bm, p, tip, r0 * 0.42, mouth_r * 1.45, sides=6)
+    mouths.append((tip, d, mouth_r))
+
+
+def _load_gull(bm, x, y, z, yaw, rng):
+    """A storm-killed gull on the rubble: one wing still open."""
+    add_blob(bm, (x, y, z + 0.32), (1.05, 0.52, 0.40), 0.22, 40.0 + x, yaw=yaw)
+    add_blob(bm, (x + math.cos(yaw) * 1.0, y + math.sin(yaw) * 1.0, z + 0.40), (0.36, 0.30, 0.30), 0.18, 12.0 + y)
+    for side in (-1.0, 1.0):
+        a = yaw + side * 1.5
+        tipz = z + (0.75 if side > 0 else 0.10)
+        _load_seg(
+            bm,
+            (x, y, z + 0.30),
+            (x + math.cos(a) * 1.9, y + math.sin(a) * 1.9, tipz),
+            0.34,
+            0.08,
+            sides=4,
+        )
+
+
+def _load_anchor(bm, centre, out_a, scale):
+    """A ship's anchor fused flat onto a spire flank by a strike. Built in the
+    plane spanned by the flank's up-and-outward lean and its tangent."""
+    ca, sa = math.cos(out_a), math.sin(out_a)
+    up = (ca * 0.30, sa * 0.30, 0.954)
+    right = (-sa, ca, 0.0)
+
+    def f(u, v):
+        return (
+            centre[0] + up[0] * u * scale + right[0] * v * scale,
+            centre[1] + up[1] * u * scale + right[1] * v * scale,
+            centre[2] + up[2] * u * scale + right[2] * v * scale,
+        )
+
+    _load_seg(bm, f(-3.0, 0.0), f(3.1, 0.0), 0.30 * scale, 0.22 * scale, sides=6)  # shank
+    _load_seg(bm, f(2.5, -1.9), f(2.5, 1.9), 0.17 * scale, 0.17 * scale, sides=5)  # stock
+    for side in (-1.0, 1.0):
+        _load_seg(bm, f(-2.8, 0.0), f(-1.5, 2.5 * side), 0.26 * scale, 0.20 * scale, sides=5)  # arm
+        _load_seg(bm, f(-1.5, 2.5 * side), f(-0.5, 3.1 * side), 0.42 * scale, 0.06 * scale, sides=3)  # fluke
+    # the ring at the head
+    for k in range(6):
+        a0, a1 = k * math.tau / 6, (k + 1) * math.tau / 6
+        _load_seg(
+            bm,
+            f(3.5 + math.sin(a0) * 0.5, math.cos(a0) * 0.5),
+            f(3.5 + math.sin(a1) * 0.5, math.cos(a1) * 0.5),
+            0.12 * scale,
+            0.12 * scale,
+            sides=4,
+        )
+
+
+def _load_ground_y(objects, x, y):
+    """The REAL surface height at (x, y): a downward raycast against every
+    finished object, not the smooth profile height_at."""
+    tmp = bmesh.new()
+    for obj in objects:
+        tmp.from_mesh(obj.data)
+    tree = BVHTree.FromBMesh(tmp)
+    tmp.free()
+    hit = tree.ray_cast(Vector((x, y, 900.0)), Vector((0.0, 0.0, -1.0)))
+    return hit[0].z if hit[0] is not None else None
+
+
+# Ansel's pad and the plinth his shack stands on: reserved ground, no scatter.
+_LOAD_SHACK_X, _LOAD_SHACK_Y = 0.0, -25.0
+_LOAD_PLINTH_TOP = 4.0
+_LOAD_PAD = (0.0, -33.2)
+_LOAD_PAD_R = 4.0
+
+
+def _load_reserved(x, y):
+    """The shack plinth footprint plus its approach - kept free of rubble,
+    fulgurite, filings and scrap so nothing lands on Ansel or his door."""
+    return -9.4 <= x <= 9.4 and -37.5 <= y <= -18.6
 
 
 def build_islet_loadstone():
     rng = random.Random(5508)
     state = random.getstate()
     base = build_island_base("Loadstone_Base", ["M_LoadRock", "M_LoadScorch", "M_LoadWet"])
-    spire, iron, glow = bmesh.new(), bmesh.new(), bmesh.new()
+    spires = bmesh.new()
+    rubble = bmesh.new()
+    fulg = bmesh.new()
+    scrap = bmesh.new()
+    shack = bmesh.new()
+    compass = bmesh.new()
+    glow = bmesh.new()
+    elmo = bmesh.new()
 
-    # The needle: a tall faceted taper, leaning very slightly, built as stacked
-    # sections so the facets break the light like fused glass.
-    SEGS = 11
-    z = height_at(0.0, 0.0) - 1.0
-    r = 7.4
-    lean = 0.035
-    x = y = 0.0
-    for k in range(SEGS):
-        h = 7.6 - k * 0.28
-        r1 = r * 0.80
-        add_cone(spire, (x, y, z), r, r1, h, sides=7 if k % 2 else 6, tilt=(lean * 0.4, lean), yaw=k * 0.42)
-        x += math.sin(lean) * h * 0.5
-        z += h
-        r = r1
-    TOP = z
+    # ---------------------------------------------------------------- the cluster
+    # Five to eight fused needles at different heights and angles: the tallest
+    # runs ~90 studs, the rest 17-58, several leaning hard off it. They
+    # interpenetrate at the foot, so the cluster reads as ONE broken massif.
+    CLUSTER = [
+        # x,     y,     height, r0,  lean, bearing, sides, courses, twist
+        (0.0, 1.6, 90.0, 6.4, 3.0, 202.0, 7, 9, 0.11),
+        (-8.6, -3.4, 58.0, 4.8, 8.0, 244.0, 6, 8, -0.09),
+        (7.8, -4.8, 45.0, 4.3, 12.0, 52.0, 6, 7, 0.10),
+        (-4.4, 9.8, 36.0, 3.7, 15.0, 128.0, 5, 6, 0.0),
+        (3.4, -11.4, 31.0, 3.2, 13.0, 328.0, 6, 6, -0.12),
+        (10.9, 6.2, 25.0, 3.1, 18.0, 38.0, 5, 5, 0.0),
+        (-12.4, 6.6, 20.0, 2.8, 21.0, 166.0, 5, 5, 0.13),
+        (13.2, -9.8, 16.0, 2.4, 25.0, 18.0, 5, 4, 0.0),
+    ]
+    tips = []
+    for x0, y0, h, r0, lean, bear, sides, courses, twist in CLUSTER:
+        z0 = height_at(x0, y0) - 2.2
+        tip, axis, seams = _load_spire(spires, x0, y0, z0, h, r0, lean, bear, sides, courses, twist)
+        tips.append((tip, axis, h, r0, x0, y0, z0))
 
-    # Iron scrap welded on by the strikes: plates and old anchor shanks fused
-    # flat to the rock, thickest low down where the scrap has piled up.
-    for _ in range(22):
-        t = rng.random() ** 1.7
-        zz = height_at(0.0, 0.0) + t * (TOP - height_at(0.0, 0.0)) * 0.92
+    # Vitrified splash: glassy fused patches where the bolts actually landed,
+    # plastered flat on the flanks (slot 2 of the spire object).
+    first = len(spires.faces)
+    for tip, axis, h, r0, x0, y0, z0 in tips:
+        for _ in range(2 if h > 30 else 1):
+            t = rng.uniform(0.12, 0.72)
+            a = rng.uniform(0.0, math.tau)
+            rr = _load_spire_radius(t, r0) * 0.62  # sunk INTO the flank, not stuck on it
+            px = x0 + axis[0] * h * t + math.cos(a) * rr
+            py = y0 + axis[1] * h * t + math.sin(a) * rr
+            pz = z0 + axis[2] * h * t
+            add_cone(
+                spires,
+                (px, py, pz),
+                rng.uniform(1.0, 2.2),
+                rng.uniform(0.6, 1.5),
+                _load_spire_radius(t, r0) * 0.55,
+                sides=6,
+                tilt=(1.5708, 0.0),
+                yaw=a,
+            )
+    _load_paint(spires, first, 1)
+
+    # ---------------------------------------------------------------- rubble field
+    GZ0 = height_at(0.0, 0.0)
+
+    # Ansel's plinth: a heap of shards Ansel levelled the top of, NOT a
+    # pedestal - the three courses are yawed off each other and the perimeter
+    # is broken by loose blocks, so the silhouette never reads as one box. The
+    # top face is flat at 4.0 and IS what the NPC raycast lands on.
+    add_box(rubble, (_LOAD_SHACK_X - 0.9, -27.6, _LOAD_PLINTH_TOP - 3.4), (13.6, 17.2, 6.8), yaw=0.22)
+    add_box(rubble, (_LOAD_SHACK_X + 0.8, -27.6, _LOAD_PLINTH_TOP - 1.5), (13.4, 16.6, 3.0), yaw=-0.17)
+    add_box(rubble, (_LOAD_SHACK_X, -27.6, _LOAD_PLINTH_TOP - 0.5), (12.9, 16.2, 1.0), yaw=0.06)
+    for k in range(22):
+        a = k * math.tau / 22 + 0.3
+        rr = 7.0 + rng.uniform(-0.5, 1.6)
+        bx, by = _LOAD_SHACK_X + math.cos(a) * rr, -27.6 + math.sin(a) * rr * 1.08
+        # A perimeter shard on the seaward arc would land ON the pad and stand
+        # proud of it - the raycast would then put Ansel on top of a boulder.
+        if abs(bx - _LOAD_PAD[0]) < 6.8 and by < _LOAD_PAD[1] + 3.0:
+            continue
+        _load_shard(rubble, bx, by, _LOAD_PLINTH_TOP - rng.uniform(0.9, 3.6), rng.uniform(1.5, 3.4), k, rng)
+    # The flat shard-slab pad itself, right in front of the chain curtain.
+    add_box(rubble, (_LOAD_PAD[0], _LOAD_PAD[1], _LOAD_PLINTH_TOP + 0.09), (11.4, 5.6, 0.36), yaw=0.03)
+
+    # Broken ground everywhere else: angular blocks, some big enough to shelter
+    # behind, tipped every way.
+    placed = []
+    for i in range(112):
+        for _try in range(26):
+            a = rng.uniform(0.0, math.tau)
+            rr = math.sqrt(rng.uniform(0.02, 1.0)) * ISLAND_RADIUS * 0.96
+            x, y = math.cos(a) * rr, math.sin(a) * rr
+            if _load_reserved(x, y):
+                continue
+            if all((x - px) ** 2 + (y - py) ** 2 > 6.4 for px, py in placed):
+                break
+        else:
+            continue
+        placed.append((x, y))
+        size = rng.uniform(1.0, 2.3) if rr > 27 else rng.uniform(1.7, 4.6)
+        _load_shard(rubble, x, y, height_at(x, y) - size * 0.35, size, i, rng)
+
+    # Big flat shards tipped up out of the debris - the pieces that came off
+    # the needles whole. These are what make the field read SHATTERED.
+    for k in range(13):
         a = rng.uniform(0.0, math.tau)
-        rr = (7.4 - 6.0 * t) * 0.92
-        px, py = math.cos(a) * rr, math.sin(a) * rr
-        add_box(iron, (px, py, zz), (rng.uniform(1.4, 3.4), rng.uniform(0.5, 1.1), rng.uniform(0.8, 2.4)), yaw=a)
+        rr = rng.uniform(13.0, ISLAND_RADIUS * 0.86)
+        x, y = math.cos(a) * rr, math.sin(a) * rr
+        if _load_reserved(x, y):
+            continue
+        w = rng.uniform(4.0, 8.5)
+        add_cone(
+            rubble,
+            (x, y, height_at(x, y) - 1.2),
+            w,
+            w * rng.uniform(0.45, 0.8),
+            rng.uniform(1.0, 2.0),
+            sides=4,
+            tilt=(rng.uniform(-0.5, 0.5), rng.uniform(-0.5, 0.5)),
+            yaw=a,
+        )
 
-    # Fused seams still holding heat, running up the struck face.
-    for k in range(7):
-        t0 = 0.10 + k * 0.115
-        zz = height_at(0.0, 0.0) + t0 * (TOP - height_at(0.0, 0.0))
-        a = 0.8 + rng.uniform(-0.5, 0.5)
-        rr = (7.4 - 6.0 * t0) * 0.86
-        add_box(glow, (math.cos(a) * rr, math.sin(a) * rr, zz), (0.5, 0.22, rng.uniform(2.0, 4.5)), yaw=a)
+    # Climbable rubble ramps: stepped slabs off the plinth up into the cluster,
+    # and a second run climbing the east shoulder to a flat lookout shard.
+    for k in range(6):
+        t = k / 5.0
+        y = -18.2 + t * 6.8
+        add_box(rubble, (0.6 * k, y, _LOAD_PLINTH_TOP + 0.2 + t * 1.5), (7.4 - k * 0.4, 3.4, 1.6), yaw=0.06 * k)
+    for k in range(5):
+        t = k / 4.0
+        x = 22.0 - t * 6.0
+        y = -12.0 + t * 3.0
+        add_box(rubble, (x, y, height_at(x, y) + 0.4 + t * 2.1), (5.6, 5.0, 1.8), yaw=0.5 + 0.2 * k)
+    add_box(rubble, (15.5, -8.4, height_at(15.5, -8.4) + 3.1), (8.6, 7.4, 1.1), yaw=0.42)
+    for k in range(4):
+        t = k / 3.0
+        x = -20.0 + t * 5.5
+        y = 14.0 - t * 4.0
+        add_box(rubble, (x, y, height_at(x, y) + 0.3 + t * 1.6), (5.2, 4.6, 1.6), yaw=-0.4 - 0.22 * k)
 
-    # Iron filings standing on end in rings around the foot.
-    for _ in range(70):
+    # Scorch stars radiating from three strike points, burned flat into the rock.
+    first = len(rubble.faces)
+    for cx, cy in ((14.0, 16.0), (-18.0, -12.5), (6.0, 26.5)):
+        gz = height_at(cx, cy)
+        for k in range(rng.randint(8, 11)):
+            a = rng.uniform(0.0, math.tau)
+            L = rng.uniform(3.5, 11.0)
+            add_box(
+                rubble,
+                (cx + math.cos(a) * L * 0.5, cy + math.sin(a) * L * 0.5, gz + 0.10),
+                (L, rng.uniform(0.35, 1.0), 0.14),
+                yaw=a,
+            )
+    _load_paint(rubble, first, 1)
+
+    # Vitrified patches: the ground itself turned to glass under the bolts.
+    first = len(rubble.faces)
+    for _ in range(9):
         a = rng.uniform(0.0, math.tau)
-        rr = rng.uniform(9.0, ISLAND_RADIUS * 0.78)
-        fx, fy = math.cos(a) * rr, math.sin(a) * rr
-        add_cone(iron, (fx, fy, height_at(fx, fy)), 0.16, 0.05, rng.uniform(0.5, 1.4), sides=4, tilt=(rng.uniform(-0.2, 0.2), rng.uniform(-0.2, 0.2)))
+        rr = rng.uniform(9.0, ISLAND_RADIUS * 0.80)
+        x, y = math.cos(a) * rr, math.sin(a) * rr
+        if _load_reserved(x, y):
+            continue
+        add_cone(rubble, (x, y, height_at(x, y) - 0.12), rng.uniform(1.6, 3.6), rng.uniform(1.2, 2.8), 0.30, sides=7, yaw=a)
+    _load_paint(rubble, first, 2)
 
-    stand_x, stand_y = 14.0, 0.0
-    print(
-        f"[island_gen] HANDOFF loadstone (The Loadstone Spire): spire top Y={TOP:.1f}; NPC stand (Roblox rel) "
-        f"X={stand_x:.0f} Z={-stand_y:.0f} ground Y={height_at(stand_x, stand_y):.1f}"
+    # ---------------------------------------------------------------- fulgurite
+    # The signature. Hollow white glass tubes, branching like roots, standing
+    # out of the rubble where the strikes fused the ground.
+    mouths = []
+    HERO = [
+        (-15.5, -6.5, 15.0, 1.05),
+        (11.5, 13.5, 12.5, 0.92),
+        (-6.5, 19.5, 10.5, 0.80),
+        (19.0, -18.0, 9.0, 0.74),
+        (-21.0, 6.0, 11.5, 0.86),
+        (2.0, -17.5, 7.5, 0.66),
+    ]
+    for hx, hy, hh, hr in HERO:
+        _load_fulgurite(fulg, rng, (hx, hy, height_at(hx, hy) - 0.6), hh, hr, mouths, depth=2)
+    for _ in range(8):
+        a = rng.uniform(0.0, math.tau)
+        rr = rng.uniform(11.0, ISLAND_RADIUS * 0.84)
+        x, y = math.cos(a) * rr, math.sin(a) * rr
+        if _load_reserved(x, y):
+            continue
+        _load_fulgurite(fulg, rng, (x, y, height_at(x, y) - 0.5), rng.uniform(2.6, 5.4), rng.uniform(0.30, 0.52), mouths, depth=1)
+    # Dark discs down each open mouth - the tubes are HOLLOW.
+    first = len(fulg.faces)
+    for (mx, my, mz), d, mr in mouths:
+        phi = math.acos(max(-1.0, min(1.0, d[2])))
+        add_cone(fulg, (mx - d[0] * 0.16, my - d[1] * 0.16, mz - d[2] * 0.16), mr * 1.05, mr * 1.05, 0.10,
+                 sides=6, tilt=(0.0, phi), yaw=math.atan2(d[1], d[0]))
+    _load_paint(fulg, first, 1)
+
+    # ---------------------------------------------------------------- welded scrap
+    # Iron filings standing on end in FANS, curved along the field lines that
+    # run into the cluster.
+    for f in range(8):
+        fa = f * math.tau / 8 + 0.2
+        frr = rng.uniform(16.0, 34.0)
+        fx, fy = math.cos(fa) * frr, math.sin(fa) * frr
+        if _load_reserved(fx, fy):
+            continue
+        span = rng.uniform(0.7, 1.3)
+        for k in range(9):
+            t = k / 8.0 - 0.5
+            a = fa + t * span
+            rr = frr + math.cos(t * 3.0) * 2.2
+            px, py = math.cos(a) * rr, math.sin(a) * rr
+            gz = height_at(px, py)
+            h = rng.uniform(0.7, 1.9) * (1.0 - abs(t) * 0.8)
+            lean = 0.42
+            _load_seg(scrap, (px, py, gz - 0.1),
+                      (px - math.cos(a) * h * lean, py - math.sin(a) * h * lean, gz + h), 0.13, 0.03, sides=4)
+
+    # Nails driven into the rock by the strikes, every which way.
+    for _ in range(32):
+        a = rng.uniform(0.0, math.tau)
+        rr = rng.uniform(7.0, ISLAND_RADIUS * 0.82)
+        x, y = math.cos(a) * rr, math.sin(a) * rr
+        if _load_reserved(x, y):
+            continue
+        gz = height_at(x, y)
+        na, np_ = rng.uniform(0.0, math.tau), rng.uniform(0.5, 1.25)
+        d = _load_dir(np_, na)
+        L = rng.uniform(0.9, 2.2)
+        _load_seg(scrap, (x, y, gz - 0.2), (x + d[0] * L, y + d[1] * L, gz - 0.2 + d[2] * L), 0.11, 0.04, sides=4)
+        add_box(scrap, (x + d[0] * L, y + d[1] * L, gz - 0.2 + d[2] * L), (0.30, 0.30, 0.10), yaw=na)
+
+    # A whole ship's anchor fused onto the flank of the second spire.
+    ax0, ay0, ah, ar0 = CLUSTER[1][0], CLUSTER[1][1], CLUSTER[1][2], CLUSTER[1][3]
+    aphi, apsi = math.radians(CLUSTER[1][4]), math.radians(CLUSTER[1][5])
+    aax = _load_dir(aphi, apsi)
+    at = 0.26
+    flank_a = math.radians(300.0)
+    frad = _load_spire_radius(at, ar0) * 0.85
+    anchor_c = (
+        ax0 + aax[0] * ah * at + math.cos(flank_a) * frad,
+        ay0 + aax[1] * ah * at + math.sin(flank_a) * frad,
+        height_at(ax0, ay0) - 2.2 + aax[2] * ah * at,
     )
-    random.setstate(state)
-    return [
+    _load_anchor(scrap, anchor_c, flank_a, 1.55)
+
+    # Chain welded across the rubble by a strike, and a length still hanging
+    # off the big spire.
+    _load_chain(scrap, (-11.0, -14.0, height_at(-11.0, -14.0) + 0.4), (-2.0, -19.5, height_at(-2.0, -19.5) + 0.4), 9, 0.24, sag=0.5)
+    _load_chain(scrap, (5.6, 3.0, GZ0 + 16.0), (9.5, 8.5, height_at(9.5, 8.5) + 0.3), 10, 0.26, sag=1.4)
+
+    # Tools fused flat into a shard by the yard - a hammer, a saw, a kettle.
+    first = len(scrap.faces)
+    tx, ty = 12.0, -16.6
+    tz = height_at(tx, ty) + 0.6
+    _load_seg(scrap, (tx - 1.6, ty, tz), (tx + 1.2, ty + 0.4, tz + 0.5), 0.14, 0.12, sides=4)
+    add_box(scrap, (tx + 1.4, ty + 0.5, tz + 0.6), (0.9, 0.4, 0.45), yaw=0.3)
+    add_box(scrap, (tx - 1.0, ty + 2.6, tz + 0.9), (3.4, 0.10, 1.0), yaw=-0.4)
+    add_cone(scrap, (tx + 2.6, ty + 2.2, tz - 0.4), 0.85, 0.62, 1.3, sides=7, tilt=(0.25, 0.15))
+
+    # The lightning rod Ansel built. It is bent, scorched and plainly useless,
+    # and the guy chain that once braced it has snapped.
+    rx, ry = 6.6, -21.6
+    rz = _LOAD_PLINTH_TOP + 0.1
+    add_cone(scrap, (rx, ry, rz), 0.62, 0.46, 3.2, sides=6)  # the timber it is lashed to
+    p = (rx, ry, rz + 3.2)
+    bend = 0.12
+    for k in range(4):
+        bend += 0.22
+        d = _load_dir(bend, 2.4 + k * 0.34)
+        q = (p[0] + d[0] * 1.25, p[1] + d[1] * 1.25, p[2] + d[2] * 1.25)
+        _load_seg(scrap, p, q, 0.26 - k * 0.03, 0.24 - k * 0.03, sides=5)
+        p = q
+    add_blob(scrap, p, (0.42, 0.42, 0.32), 0.4, 3.0)  # the melted stub of a tip
+    # The guy chain that once braced it, snapped: three links hanging off the
+    # bracket and nothing below them.
+    _load_chain(scrap, (rx + 0.5, ry - 0.2, rz + 3.0), (rx + 1.5, ry - 1.1, rz + 0.9), 4, 0.15, sag=0.4)
+    _load_paint(scrap, first, 1)
+
+    # Two storm-killed gulls.
+    first = len(scrap.faces)
+    _load_gull(scrap, -13.6, -16.4, height_at(-13.6, -16.4) + 0.5, 1.9, rng)
+    _load_gull(scrap, 12.5, 4.5, height_at(12.5, 4.5) + 0.4, -0.7, rng)
+    _load_paint(scrap, first, 2)
+
+    # ---------------------------------------------------------------- Faraday shack
+    SX, SY = _LOAD_SHACK_X, _LOAD_SHACK_Y
+    FZ = _LOAD_PLINTH_TOP  # floor top sits on the plinth
+    HALF = 4.4
+    WALL = 5.2
+    DOORW = 2.7
+    DOORH = 3.7
+    front_y = SY - HALF
+    back_y = SY + HALF
+
+    add_box(shack, (SX, SY, FZ - 0.18), (2 * HALF + 0.6, 2 * HALF + 0.6, 0.36))  # floor
+    add_box(shack, (SX - HALF, SY, FZ + WALL / 2), (0.44, 2 * HALF, WALL))
+    add_box(shack, (SX + HALF, SY, FZ + WALL / 2), (0.44, 2 * HALF, WALL))
+    add_box(shack, (SX, back_y, FZ + WALL / 2), (2 * HALF, 0.44, WALL))
+    side = (2 * HALF - DOORW) / 2
+    for sgn in (-1.0, 1.0):
+        add_box(shack, (SX + sgn * (DOORW / 2 + side / 2), front_y, FZ + WALL / 2), (side, 0.44, WALL))
+    add_box(shack, (SX, front_y, FZ + DOORH + (WALL - DOORH) / 2), (DOORW, 0.44, WALL - DOORH))
+    # Plank texture: three battens across the front and back.
+    for k in range(3):
+        add_box(shack, (SX, front_y - 0.30, FZ + 0.9 + k * 1.7), (2 * HALF, 0.14, 0.30))
+        add_box(shack, (SX, back_y + 0.30, FZ + 0.9 + k * 1.7), (2 * HALF, 0.14, 0.30))
+
+    # Corrugated tin roof, hipped, overhanging - and struck twice.
+    first = len(shack.faces)
+    add_cone(shack, (SX, SY, FZ + WALL), (HALF + 1.4) * 1.4142, 1.1, 2.1, sides=4, yaw=math.pi / 4)
+    add_cone(shack, (SX, SY, FZ + WALL + 2.1), 1.1, 0.6, 0.30, sides=4, yaw=math.pi / 4)
+    _load_paint(shack, first, 1)
+
+    # Every chain and iron mesh Ansel owns, wrapped round the outside.
+    first = len(shack.faces)
+    corners = [
+        (SX - HALF - 0.3, back_y + 0.3),
+        (SX + HALF + 0.3, back_y + 0.3),
+        (SX + HALF + 0.3, front_y - 0.3),
+        (SX - HALF - 0.3, front_y - 0.3),
+    ]
+    for band_z in (FZ + 1.5, FZ + 3.1, FZ + 4.6):
+        for k in range(4):
+            a = corners[k]
+            b = corners[(k + 1) % 4]
+            _load_chain(shack, (a[0], a[1], band_z), (b[0], b[1], band_z), 4, 0.17, sag=0.30)
+    # Iron mesh thrown over the roof.
+    for k in range(3):
+        t = (k / 2.0 - 0.5) * 2.0
+        _load_chain(shack, (SX + t * HALF, SY - HALF - 1.0, FZ + WALL + 0.1),
+                    (SX + t * HALF, SY + HALF + 1.0, FZ + WALL + 0.1), 4, 0.11, sag=-1.2)
+        _load_chain(shack, (SX - HALF - 1.0, SY + t * HALF, FZ + WALL + 0.1),
+                    (SX + HALF + 1.0, SY + t * HALF, FZ + WALL + 0.1), 4, 0.11, sag=-1.2)
+    # The chain curtain in the doorway.
+    for k in range(7):
+        cx = SX - DOORW / 2 + 0.22 + k * (DOORW - 0.44) / 6
+        _load_chain(shack, (cx, front_y, FZ + DOORH - 0.1), (cx, front_y, FZ + 0.2), 5, 0.12)
+    # Earthing cables: one off each corner, over the plinth edge and down into
+    # the sea. Routed on the bearing from the ISLAND centre, so all four run
+    # DOWNHILL to open water instead of one burying itself inland.
+    for k, (cxx, cyy) in enumerate(corners):
+        a = math.atan2(cyy, cxx)
+        mx, my = math.cos(a) * 12.5, math.sin(a) * 12.5
+        ex, ey = math.cos(a) * 49.0, math.sin(a) * 49.0
+        _load_chain(shack, (cxx, cyy, FZ + WALL + 0.4), (mx, my, _LOAD_PLINTH_TOP - 0.2), 6, 0.16, sag=0.9)
+        _load_chain(shack, (mx, my, _LOAD_PLINTH_TOP - 0.2), (ex, ey, -2.8), 8, 0.15, sag=1.4)
+    _load_paint(shack, first, 2)
+
+    # Through the open door: the bed, up on glass insulators.
+    add_box(shack, (SX + 1.4, SY + 1.6, FZ + 1.35), (3.6, 2.0, 0.34), yaw=0.0)
+    add_box(shack, (SX + 1.4, SY + 2.5, FZ + 1.9), (3.6, 0.24, 0.9))
+    first = len(shack.faces)
+    for bx in (SX - 0.2, SX + 3.0):
+        for by in (SY + 0.8, SY + 2.4):
+            add_cone(shack, (bx, by, FZ + 0.05), 0.34, 0.26, 1.1, sides=8)
+    _load_paint(shack, first, 3)
+
+    # ---------------------------------------------------------------- compass board
+    # Nailed to the wall beside the door: twelve compasses, every one of them
+    # pointing somewhere else. Wall-mounted rather than free-standing, so it
+    # sits flat against the boards and never encroaches on Ansel's pad.
+    BX, BY, BZ = SX - 3.5, front_y - 0.30, FZ + 1.0
+    add_box(compass, (BX, BY, BZ + 1.85), (4.6, 0.22, 3.9))
+    for k in range(2):
+        add_box(compass, (BX, BY - 0.14, BZ + 0.35 + k * 3.0), (4.6, 0.12, 0.20))
+    for row in range(3):
+        for col in range(4):
+            cx = BX - 1.62 + col * 1.08
+            cz = BZ + 0.75 + row * 1.10
+            cy = BY - 0.11
+            first = len(compass.faces)
+            add_cone(compass, (cx, cy, cz), 0.44, 0.44, 0.14, sides=9, tilt=(1.5708, 0.0))  # brass case
+            _load_paint(compass, first, 1)
+            first = len(compass.faces)
+            add_cone(compass, (cx, cy - 0.14, cz), 0.37, 0.37, 0.05, sides=9, tilt=(1.5708, 0.0))  # dial
+            _load_paint(compass, first, 2)
+            first = len(compass.faces)
+            nphi = rng.uniform(0.0, math.tau)  # every needle points somewhere else
+            nd = (math.sin(nphi), 0.0, math.cos(nphi))
+            _load_seg(compass, (cx - nd[0] * 0.30, cy - 0.22, cz - nd[2] * 0.30),
+                      (cx + nd[0] * 0.30, cy - 0.22, cz + nd[2] * 0.30), 0.06, 0.025, sides=4)
+            _load_paint(compass, first, 3)
+
+    # ---------------------------------------------------------------- heat + St Elmo
+    # Orange heat still in the fresh seams up the struck faces.
+    for tip, axis, h, r0, x0, y0, z0 in tips[:5]:
+        for k in range(3):
+            t = 0.10 + k * 0.19 + rng.uniform(-0.04, 0.04)
+            a = rng.uniform(0.0, math.tau)
+            rr = _load_spire_radius(t, r0) * 0.88
+            px = x0 + axis[0] * h * t + math.cos(a) * rr
+            py = y0 + axis[1] * h * t + math.sin(a) * rr
+            add_box(glow, (px, py, z0 + axis[2] * h * t), (0.42, 0.22, rng.uniform(2.2, 5.0)), yaw=a)
+    for cx, cy in ((14.0, 16.0), (-18.0, -12.5), (6.0, 26.5)):
+        add_box(glow, (cx, cy, height_at(cx, cy) + 0.16), (2.2, 0.5, 0.16), yaw=rng.uniform(0, 3.1))
+
+    # A violet St Elmo's fire crawling on the tips of the tallest needles. It
+    # must HUG the needle - a cone wider than the tip reads as a party hat, so
+    # every piece is a hair-thin tendril licking up off the last few studs of
+    # rock, sized from the SAME profile function the needle was built with.
+    for tip, axis, h, r0, x0, y0, z0 in tips[:4]:
+        phi = math.acos(max(-1.0, min(1.0, axis[2])))
+        psi = math.atan2(axis[1], axis[0])
+
+        def on_axis(t_back, off_a=None, off_r=0.0):
+            bx = tip[0] - axis[0] * t_back
+            by = tip[1] - axis[1] * t_back
+            bz = tip[2] - axis[2] * t_back
+            if off_a is not None:
+                bx += math.cos(off_a) * off_r
+                by += math.sin(off_a) * off_r
+            return (bx, by, bz)
+
+        # the sheath over the last few studs, no wider than the rock it sits on
+        add_cone(elmo, on_axis(3.0), _load_spire_radius(1.0 - 3.0 / h, r0) * 1.06, 0.04, 4.4,
+                 sides=6, tilt=(0.0, phi), yaw=psi)
+        # tendrils flicking off the point
+        for k in range(5):
+            a = k * math.tau / 5 + rng.uniform(-0.3, 0.3)
+            back = rng.uniform(1.5, 5.0)
+            rr = _load_spire_radius(1.0 - back / h, r0) * 0.9
+            _load_seg(elmo, on_axis(back, a, rr * 0.6),
+                      on_axis(back - rng.uniform(1.0, 2.6), a, rr * rng.uniform(1.6, 2.8)),
+                      0.13, 0.02, sides=4)
+    # And a bead of it on the useless rod, which is the whole joke.
+    add_cone(elmo, (p[0], p[1], p[2] + 0.15), 0.22, 0.03, 0.9, sides=5)
+
+    objects = [
         base,
-        object_from_bmesh("Loadstone_Spire", spire, ["M_LoadGlass"]),
-        object_from_bmesh("Loadstone_Iron", iron, ["M_LoadIron"]),
+        object_from_bmesh("Loadstone_Spires", spires, ["M_LoadGlass", "M_LoadVitrify"]),
+        object_from_bmesh("Loadstone_Rubble", rubble, ["M_LoadRock", "M_LoadScorch", "M_LoadVitrify"]),
+        object_from_bmesh("Loadstone_Fulgurite", fulg, ["M_LoadFulgurite", "M_LoadScorch"]),
+        object_from_bmesh("Loadstone_Scrap", scrap, ["M_LoadIron", "M_LoadRust", "M_LoadGull"]),
+        object_from_bmesh("Loadstone_Shack", shack, ["M_LoadPlank", "M_LoadRoof", "M_LoadIron", "M_LoadInsulator"]),
+        object_from_bmesh("Loadstone_Compass", compass, ["M_LoadPlank", "M_LoadBrass", "M_LoadDial", "M_LoadNeedle"]),
         object_from_bmesh("Loadstone_Glow", glow, ["M_LoadHeat"]),
+        object_from_bmesh("Loadstone_Elmo", elmo, ["M_LoadElmo"]),
     ]
 
+    # The NPC pad: NpcService raycasts straight down here and stands Ansel on
+    # whatever it hits, so the number below is a REAL raycast against the built
+    # meshes (height_at is the smooth profile and disagrees with the plinth by
+    # half a stud or more), and _load_reserved keeps every prop off it.
+    stand_x, stand_y = _LOAD_PAD
+    ground_y = _load_ground_y(objects, stand_x, stand_y)
+    # Prove the pad is FLAT and prop-free, not just that its centre reads 4.27:
+    # raycast a ring around it and report the worst deviation.
+    worst = 0.0
+    for rr in (0.8, 1.5, 2.2):
+        for k in range(8):
+            a = k * math.tau / 8
+            hz = _load_ground_y(objects, stand_x + math.cos(a) * rr, stand_y + math.sin(a) * rr)
+            if hz is not None:
+                worst = max(worst, abs(hz - ground_y))
+    print(f"[island_gen] loadstone pad: flat to {worst:.2f} studs out to r=2.2 (raycast ring; past that the roof eave overhangs, which is head clearance, not ground)")
+    print(
+        f"[island_gen] HANDOFF loadstone (The Loadstone Spire): tallest needle top Y={tips[0][0][2]:.1f}, "
+        f"{len(CLUSTER)} spires; NPC stand (Roblox rel) X={stand_x:.1f} Z={-stand_y:.1f} "
+        f"ground Y={ground_y:.2f} (raycast); radius 45"
+    )
+    random.setstate(state)
+    return objects
 
 ISLAND_ORDER = [
     "tropical",
@@ -10534,46 +12283,74 @@ ISLANDS = {
         "model": "Whalefall",
         "overrides": {
             "SEED": 7,
-            "ISLAND_RADIUS": 65,
-            "SEGMENTS": 44,
-            "GRASS_U": 0.62,
-            "RINGS": [0.0, 0.22, 0.42, 0.62, 0.78, 0.90, 1.0, 1.09, 1.28],
-            # A SANDBAR: almost flat, barely above the sea, so the skeleton is
-            # the only silhouette. Nothing here should compete with the ribs.
+            # Big, because the crescent is 200 studs tip to tip and its drowned
+            # banks trail 50 further off the west end. The radial base is not
+            # the island here - it is the SHOAL the bar sits on, so its whole
+            # profile is under water and only build_islet_whalefall's own bmesh
+            # breaks the surface.
+            "ISLAND_RADIUS": 120,
+            "SEGMENTS": 46,
+            "GRASS_U": 0.48,
+            "RINGS": [0.0, 0.24, 0.48, 0.66, 0.80, 0.90, 1.0, 1.09, 1.28],
             "PROFILE": [
-                (0.00, 3.1),
-                (0.22, 3.0),
-                (0.42, 2.6),
-                (0.62, 1.9),
-                (0.78, 1.0),
-                (0.90, 0.4),
-                (1.00, 0.0),
-                (1.09, -2.4),
+                (0.00, -1.4),
+                (0.24, -1.7),
+                (0.48, -2.2),
+                (0.66, -3.0),
+                (0.80, -4.1),
+                (0.90, -5.2),
+                (1.00, -6.3),
+                (1.09, -7.6),
                 (1.28, SKIRT_BOTTOM),
             ],
-            "COAST_TERMS": [(2, 3.2, 0.12), (3, 1.8, 0.08), (5, 0.9, 0.05)],
+            "COAST_TERMS": [(2, 3.2, 0.10), (3, 1.8, 0.07), (5, 0.9, 0.04)],
             "GRASS_TERMS": [(2, 1.4, 0.05)],
-            "CRAG": 0.4,
-            "CRAG_FREQ": 0.04,
-            "CRAG_RADIAL": 0.03,
+            "CRAG": 0.55,
+            "CRAG_FREQ": 0.05,
+            "CRAG_RADIAL": 0.05,
             "CRAG_RADIAL_FREQS": (4.0, 3.0),
             "CRAG_CALM": None,
-            "RIM_FLAT": (0.0, 0.72),
+            "RIM_FLAT": None,
             "NOTCHES": [],
             "NOTCH_BAND": None,
             "PEAK_JAG": 0.0,
             "PEAK_TERMS": [],
             "PREVIEW_SHOTS": [
-                ("approach", (72.0, -78.0, 22.0), (0.0, 0.0, 8.0), 30),
-                ("ribs", (44.0, -52.0, 16.0), (2.0, 0.0, 7.0), 34),
+                # The silhouette IS the island: a high shot from inside the
+                # curve, with both arms coming at the camera.
+                ("crescent", (34.0, 236.0, 176.0), (0.0, -8.0, 0.0), 40),
+                ("carcass", (-8.0, -98.0, 27.0), (-4.0, -25.0, 6.0), 42),
+                ("camp", (96.0, -52.0, 25.0), (56.0, -3.0, 5.0), 38),
+                ("hut", (78.0, -22.0, 13.0), (63.0, 4.0, 5.0), 40),
+                # from the gutting table, looking straight into the jaw door.
+                ("door", (49.0, -15.0, 10.5), (61.6, 1.2, 5.4), 32),
             ],
             "COLORS": {
-                # Dark, rich sand - a whale fall feeds the ground it lands on.
-                "M_WhaleSand": (0.408, 0.376, 0.322),
-                "M_WhaleDark": (0.310, 0.278, 0.239),
-                "M_WhaleWet": (0.243, 0.224, 0.196),
-                "M_WhaleBone": (0.851, 0.827, 0.761),
-                "M_WhaleLife": (0.612, 0.322, 0.290),
+                # Cold, wind-scoured sand: pale and bleached, nothing warm.
+                "M_WhaleSand": (0.663, 0.639, 0.576),
+                "M_WhaleSilt": (0.435, 0.435, 0.416),
+                "M_WhaleWet": (0.325, 0.337, 0.337),
+                # The oil halo the carcass has bled into the bar - as dark as
+                # anything on the islet, so the stain reads as a SHAPE from the
+                # air and the skeleton sits inside it.
+                "M_WhaleOil": (0.196, 0.180, 0.165),
+                "M_WhaleBone": (0.878, 0.855, 0.796),
+                # Baleen is keratin, not bone: near-black, and deliberately the
+                # opposite end of the ramp so the fence and thatch never blur
+                # into the skeleton they came off.
+                "M_WhaleBaleen": (0.161, 0.153, 0.169),
+                "M_WhaleDrift": (0.427, 0.396, 0.345),
+                "M_WhaleCanvas": (0.729, 0.702, 0.616),
+                "M_WhaleIron": (0.176, 0.184, 0.196),
+                "M_WhaleRope": (0.627, 0.553, 0.427),
+                "M_WhaleSalt": (0.827, 0.816, 0.784),
+                "M_WhaleFish": (0.702, 0.510, 0.463),
+                # The ONLY green: marram on the dry crown of the spine.
+                "M_WhaleGrass": (0.494, 0.573, 0.376),
+                "M_WhaleGull": (0.933, 0.929, 0.910),
+                "M_WhaleBeak": (0.859, 0.627, 0.204),
+                # Neon in-game, and the one warm thing for 200 studs.
+                "M_WhaleEmber": (1.000, 0.443, 0.125),
             },
         },
         "build": build_islet_whalefall,
@@ -10583,44 +12360,63 @@ ISLANDS = {
         "overrides": {
             "SEED": 7,
             "ISLAND_RADIUS": 70,
-            "SEGMENTS": 46,
-            "GRASS_U": 0.60,
-            "RINGS": [0.0, 0.22, 0.44, 0.64, 0.80, 0.92, 1.0, 1.09, 1.28],
-            # A REEF: it barely clears the water, which is the point - the
-            # anchors stand in ankle-deep sand and read as a garden, not as
-            # wreckage piled on a hill.
+            "SEGMENTS": 52,
+            "GRASS_U": 0.38,
+            "RINGS": [0.0, 0.20, 0.38, 0.56, 0.72, 0.88, 1.0, 1.10, 1.30],
+            # A WADING FLAT, not a hill: the sand sits a hand's breadth under
+            # the sea the whole way across, so the player walks the garden in
+            # ankle-to-knee water and only the hummocks (own geometry) are dry.
             "PROFILE": [
-                (0.00, 2.2),
-                (0.22, 2.0),
-                (0.44, 1.6),
-                (0.64, 1.0),
-                (0.80, 0.4),
-                (0.92, 0.0),
-                (1.00, -0.6),
-                (1.09, -3.0),
-                (1.28, SKIRT_BOTTOM),
+                (0.00, 0.55),
+                (0.20, 0.52),
+                (0.38, 0.46),
+                (0.56, 0.38),
+                (0.72, 0.26),
+                (0.88, 0.14),
+                (1.00, -0.22),
+                (1.10, -3.4),
+                (1.30, SKIRT_BOTTOM),
             ],
-            "COAST_TERMS": [(2, 4.0, 0.12), (3, 2.2, 0.08), (5, 1.1, 0.05)],
-            "GRASS_TERMS": [(2, 1.2, 0.05)],
-            "CRAG": 0.5,
-            "CRAG_FREQ": 0.04,
-            "CRAG_RADIAL": 0.04,
+            "COAST_TERMS": [(2, 4.0, 0.14), (3, 2.2, 0.09), (5, 1.1, 0.06)],
+            "GRASS_TERMS": [(2, 1.2, 0.06)],
+            "CRAG": 0.22,
+            "CRAG_FREQ": 0.07,
+            "CRAG_RADIAL": 0.05,
             "CRAG_RADIAL_FREQS": (4.0, 3.0),
             "CRAG_CALM": None,
-            "RIM_FLAT": (0.0, 0.78),
+            "RIM_FLAT": (0.0, 0.88),
             "NOTCHES": [],
             "NOTCH_BAND": None,
             "PEAK_JAG": 0.0,
             "PEAK_TERMS": [],
             "PREVIEW_SHOTS": [
-                ("approach", (92.0, -96.0, 26.0), (0.0, 0.0, 6.0), 30),
-                ("garden", (34.0, -40.0, 16.0), (0.0, 0.0, 5.0), 40),
+                ("approach", (96.0, -100.0, 30.0), (-3.0, -7.0, 10.0), 30),
+                # the money shot: a wader's eye, rust standing out of turquoise
+                ("wade", (80.0, 18.0, 2.8), (-6.0, -6.0, 12.0), 34),
+                ("shack", (36.0, -44.0, 20.0), (-6.0, -7.0, 17.0), 46),
+                ("taut", (62.0, 74.0, 34.0), (-62.0, -34.0, 4.0), 30),
+                ("channel", (80.0, -86.0, 4.2), (24.0, -26.0, 5.0), 34),
             ],
             "COLORS": {
-                "M_AnchSand": (0.788, 0.745, 0.635),
-                "M_AnchReef": (0.573, 0.588, 0.529),
-                "M_AnchWet": (0.475, 0.478, 0.427),
-                "M_AnchIron": (0.325, 0.263, 0.216),  # rusted through, every one
+                # white-gold sand, then the same sand read through turquoise
+                "M_AnchSand": (0.965, 0.906, 0.702),
+                "M_AnchShoal": (0.404, 0.855, 0.796),
+                "M_AnchDeep": (0.106, 0.494, 0.573),
+                "M_AnchDune": (0.976, 0.918, 0.749),
+                "M_AnchStar": (0.941, 0.443, 0.259),
+                "M_AnchWater": (0.243, 0.831, 0.788),
+                # RUST is the identity: every iron thing is two-tone, dark
+                # above the waterline band and burnt orange below it.
+                "M_AnchIron": (0.259, 0.235, 0.220),
+                "M_AnchRust": (0.804, 0.318, 0.063),
+                "M_AnchChain": (0.667, 0.310, 0.106),
+                "M_AnchBuoyRed": (0.741, 0.310, 0.271),
+                "M_AnchBuoyPale": (0.831, 0.839, 0.792),
+                "M_AnchTaut": (0.949, 0.502, 0.055),  # THE chain: hottest rust
+                "M_AnchPlank": (0.596, 0.463, 0.310),
+                "M_AnchRoof": (0.325, 0.290, 0.267),
+                "M_AnchTrim": (0.322, 0.212, 0.145),
+                "M_AnchMark": (0.788, 0.294, 0.220),  # the channel markers' bands
             },
         },
         "build": build_islet_anchorage,
@@ -10728,44 +12524,62 @@ ISLANDS = {
             "SEED": 7,
             "ISLAND_RADIUS": 45,
             "SEGMENTS": 34,
-            "GRASS_U": 0.68,
+            "GRASS_U": 0.74,  # on a RINGS entry, so the scorch band edge is a clean polyline
             "RINGS": [0.0, 0.18, 0.38, 0.56, 0.74, 0.88, 1.0, 1.09, 1.28],
-            # A low scorched base - all the height is in the spire the builder
-            # puts on top of it, so the profile stays out of its way.
+            # A low BROKEN base. Every stud of height lives in the spire
+            # cluster and the rubble the builder stacks on top, so the profile
+            # only has to give them a craggy shelf to stand on and a hard
+            # shoulder down to the waterline. Standard -9 skirt.
             "PROFILE": [
-                (0.00, 4.6),
-                (0.18, 4.4),
-                (0.38, 3.8),
-                (0.56, 2.8),
-                (0.74, 1.6),
-                (0.88, 0.6),
+                (0.00, 5.4),
+                (0.18, 5.2),
+                (0.38, 4.6),
+                (0.56, 3.5),
+                (0.74, 2.1),
+                (0.88, 0.9),
                 (1.00, 0.0),
-                (1.09, -2.6),
+                (1.09, -2.8),
                 (1.28, SKIRT_BOTTOM),
             ],
-            "COAST_TERMS": [(2, 2.0, 0.13), (5, 1.0, 0.06)],
+            "COAST_TERMS": [(2, 2.0, 0.15), (5, 1.0, 0.08), (9, 0.4, 0.04)],
             "GRASS_TERMS": [(3, 0.9, 0.05)],
-            "CRAG": 1.8,
-            "CRAG_FREQ": 0.07,
-            "CRAG_RADIAL": 0.05,
-            "CRAG_RADIAL_FREQS": (6.0, 4.0),
+            # Cranked hard and left un-flattened: the strikes SHATTER this
+            # rock, so the ground under the rubble has to be broken too.
+            "CRAG": 2.6,
+            "CRAG_FREQ": 0.10,
+            "CRAG_RADIAL": 0.07,
+            "CRAG_RADIAL_FREQS": (7.0, 5.0),
             "CRAG_CALM": None,
-            "RIM_FLAT": (0.0, 0.34),
+            "RIM_FLAT": None,
             "NOTCHES": [],
             "NOTCH_BAND": None,
             "PEAK_JAG": 0.0,
             "PEAK_TERMS": [],
             "PREVIEW_SHOTS": [
-                ("approach", (96.0, -104.0, 40.0), (0.0, 0.0, 34.0), 28),
-                ("foot", (34.0, -38.0, 16.0), (0.0, 0.0, 12.0), 40),
+                # The money shot: the cathedral cluster from the water.
+                ("approach", (118.0, -128.0, 26.0), (0.0, 2.0, 44.0), 30),
+                ("rubble", (30.0, -30.0, 15.0), (-6.0, 2.0, 7.0), 34),
+                ("shack", (11.0, -54.0, 13.0), (0.0, -26.0, 7.0), 40),
+                ("compass", (-11.0, -41.5, 8.6), (-2.6, -29.6, 6.2), 42),
             ],
             "COLORS": {
-                "M_LoadRock": (0.161, 0.153, 0.169),
-                "M_LoadScorch": (0.106, 0.098, 0.110),
-                "M_LoadWet": (0.129, 0.125, 0.141),
-                "M_LoadGlass": (0.129, 0.129, 0.157),  # fused, near-black, faintly metallic
-                "M_LoadIron": (0.302, 0.259, 0.235),
-                "M_LoadHeat": (1.000, 0.596, 0.278),  # heat still in the seams
+                "M_LoadRock": (0.145, 0.141, 0.165),  # magnetite, a blue cast in the black
+                "M_LoadScorch": (0.075, 0.071, 0.082),
+                "M_LoadWet": (0.110, 0.110, 0.129),
+                "M_LoadGlass": (0.180, 0.176, 0.231),  # spire body: black with a violet metallic sheen
+                "M_LoadVitrify": (0.286, 0.271, 0.365),  # fused glassy splash where the bolts landed
+                "M_LoadFulgurite": (0.878, 0.867, 0.831),  # lightning glass, bone white
+                "M_LoadIron": (0.325, 0.310, 0.302),
+                "M_LoadRust": (0.451, 0.263, 0.176),
+                "M_LoadGull": (0.780, 0.769, 0.741),
+                "M_LoadPlank": (0.427, 0.345, 0.251),
+                "M_LoadRoof": (0.400, 0.412, 0.400),  # corrugated tin
+                "M_LoadInsulator": (0.663, 0.796, 0.808),  # the glass under the bed legs
+                "M_LoadBrass": (0.722, 0.565, 0.267),
+                "M_LoadDial": (0.867, 0.847, 0.784),
+                "M_LoadNeedle": (0.749, 0.192, 0.176),
+                "M_LoadHeat": (1.000, 0.596, 0.278),  # NEON: heat still in the seams
+                "M_LoadElmo": (0.612, 0.427, 1.000),  # NEON: St Elmo's fire on the tips
             },
         },
         "build": build_islet_loadstone,
@@ -10777,20 +12591,27 @@ ISLANDS = {
             "ISLAND_RADIUS": 55,
             "SEGMENTS": 44,  # ~8-stud facets on a 55-stud rock: low-poly, still round
             "GRASS_U": 0.72,  # dark stone above, splash band below - the break IS a ring
-            "RINGS": [0.0, 0.14, 0.30, 0.46, 0.62, 0.72, 0.84, 0.93, 1.0, 1.09, 1.28],
-            # A blunt dark rock with a level top: the whole workshop yard sits
-            # on a ~0.7-stud fall across 40 studs of radius, then the shoulder
-            # drops hard to the waterline. Standard -9 skirt.
+            # The ring at u=0.80 is THE LIP - _LAMP_LIP_RING indexes it, and
+            # _lamp_carve_void pulls every ring outside it onto the lip's own
+            # footprint on the seaward third. Move 0.80's position in this list
+            # and that constant must move with it.
+            "RINGS": [0.0, 0.18, 0.38, 0.56, 0.70, 0.80, 0.90, 0.96, 1.02, 1.12, 1.30],
+            # A level shelf out to u=0.80, then TWO different endings. On the
+            # safe side this profile takes over: a rocky bank down to a wide
+            # wet apron just above the waterline (u 0.90-1.02) with the tide
+            # pools in it, then away to the -9 skirt. On the seaward third the
+            # profile is overwritten in the mesh - the shelf lifts into a brow
+            # and the ground stops in a plumb wall to -9. Standard -9 skirt.
             "PROFILE": [
-                (0.00, 10.2),  # the shelf the workshop and the lamp yard stand on
-                (0.30, 10.0),
-                (0.62, 9.5),
-                (0.72, 8.8),
-                (0.84, 5.4),  # the shoulder falls away
-                (0.93, 2.2),
-                (1.00, 0.7),
-                (1.09, -1.8),
-                (1.28, SKIRT_BOTTOM),
+                (0.00, 9.6),  # the shelf the workshop and the lamp yard stand on
+                (0.38, 9.4),
+                (0.70, 8.9),
+                (0.80, 8.0),  # THE LIP
+                (0.90, 2.2),  # (safe side) the bank falls to the apron
+                (0.96, 1.5),
+                (1.02, 0.9),  # the wet apron, tide-pool height
+                (1.12, -3.0),
+                (1.30, SKIRT_BOTTOM),
             ],
             "COAST_TERMS": [(2, 1.9, 0.13), (3, 0.4, 0.09), (5, 2.7, 0.06)],
             "GRASS_TERMS": [(2, 1.2, 0.05), (4, 2.4, 0.035)],
@@ -10819,8 +12640,20 @@ ISLANDS = {
                 # same frame, which is the whole read.
                 ("approach", (64.0, -82.0, 17.0), (-6.0, 2.0, 12.0), 30),
                 ("shop", (9.0, -29.0, 15.0), (-6.0, 12.0, 13.5), 34),
-                ("window", (24.0, 1.0, 16.5), (4.2, 12.0, 15.4), 46),
+                ("window", (27.0, 3.0, 18.5), (4.2, 12.0, 15.2), 44),
                 ("jetty", (34.0, -66.0, 9.0), (0.0, -44.0, 3.0), 34),
+                # THE MONEY SHOT: eye height barely above the sea, dead astern
+                # of the drop. Land that ends in a wall over blackness, with
+                # the jetty walking out off the end of it.
+                ("void", (14.0, -112.0, 6.5), (-4.0, -30.0, 9.0), 34),
+                # The yard from inside it - the density check.
+                ("yard", (33.0, -31.0, 21.0), (-9.0, 2.0, 10.0), 28),
+                # The tower he never finished, dark, with the shop behind it.
+                ("stump", (50.0, -30.0, 17.0), (14.0, -15.0, 12.5), 40),
+                # Straight into the open end of the lean-to: bunk, stove, chair.
+                ("quarters", (-36.0, 17.5, 15.5), (-7.0, 25.0, 11.0), 32),
+                # The glazier's wall of dark sash on the far gable.
+                ("glazier", (-46.0, -4.0, 16.0), (-16.0, 12.0, 14.0), 34),
             ],
             "COLORS": {
                 # A rock on the run down to the trench: near-black wet basalt,
@@ -10847,6 +12680,18 @@ ISLANDS = {
                 # in-game). Everything above is tuned to lose to this.
                 "M_LampWindow": (1.000, 0.886, 0.588),
                 "M_LampMoth": (0.847, 0.824, 0.757),
+                # THE TRENCH. The seabed beyond the cliff foot and the water
+                # standing in the tide pools and the quench trough - near
+                # black, so from above the water on the void side reads as a
+                # different, deeper thing than the water on the safe side.
+                "M_LampTrench": (0.031, 0.043, 0.063),
+                # Fired clay: the oil jars. The only earth tone on the islet.
+                "M_LampClay": (0.294, 0.216, 0.169),
+                # Hemp: wick coils and hanks, the straw collars round the jars,
+                # the pallet on his bunk, the rope along the lip. Pale enough
+                # to read against black basalt without competing with the
+                # window - it is matte, and the window is Neon.
+                "M_LampRope": (0.435, 0.388, 0.294),
             },
         },
         "build": build_islet_lampwork,
