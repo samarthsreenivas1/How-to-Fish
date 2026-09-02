@@ -462,6 +462,9 @@ Islands.items = {
 	-- and their quests. None needs a `meshBottom` - all nine sit on the
 	-- standard -9 skirt (the pack build's HANDOFF lines confirm it).
 	--
+	-- Redesign 2026-09-02: every spawn below is the builder's MEASURED pad -
+	-- a downward raycast in the exported scene, printed in its HANDOFF line
+	-- and re-verified against the .glb by pad_check (all deltas <= 0.01).
 	-- `spawn` on an islet is NOT a teleport destination (there is no teleport
 	-- to them); it is the anchor NpcService measures its resident from, so it
 	-- is set to the flat pad each islet's builder reserved and measured.
@@ -472,8 +475,8 @@ Islands.items = {
 		model = "Bellbuoy",
 		islet = true,
 		worldPosition = Vector3.new(1900, 0, 500),
-		radius = 45,
-		spawn = Vector3.new(1909, 6, 500),
+		radius = 40,
+		spawn = Vector3.new(1925, 3.82, 496.4),
 	},
 
 	chapel = {
@@ -482,8 +485,8 @@ Islands.items = {
 		model = "Chapel",
 		islet = true,
 		worldPosition = Vector3.new(5100, 0, 3600),
-		radius = 55,
-		spawn = Vector3.new(5102, 5, 3603),
+		radius = 60,
+		spawn = Vector3.new(5100.4, 0.95, 3617.6),
 	},
 
 	rookery = {
@@ -492,8 +495,8 @@ Islands.items = {
 		model = "Rookery",
 		islet = true,
 		worldPosition = Vector3.new(9500, 0, 4200),
-		radius = 32,
-		spawn = Vector3.new(9500, 36, 4184),
+		radius = 46,
+		spawn = Vector3.new(9518.5, 34.02, 4198.5),
 	},
 
 	boilshoal = {
@@ -503,7 +506,7 @@ Islands.items = {
 		islet = true,
 		worldPosition = Vector3.new(13400, 0, 300),
 		radius = 60,
-		spawn = Vector3.new(13400, 2, 348),
+		spawn = Vector3.new(13385.8, 3.4, 278.2),
 	},
 
 	lampwork = {
@@ -513,7 +516,7 @@ Islands.items = {
 		islet = true,
 		worldPosition = Vector3.new(13100, 0, -1200),
 		radius = 55,
-		spawn = Vector3.new(13094, 10, -1198),
+		spawn = Vector3.new(13094, 9.54, -1198),
 	},
 
 	anchorage = {
@@ -522,8 +525,8 @@ Islands.items = {
 		model = "Anchorage",
 		islet = true,
 		worldPosition = Vector3.new(14200, 0, -6000),
-		radius = 70,
-		spawn = Vector3.new(14200, 2, -6000),
+		radius = 74,
+		spawn = Vector3.new(14231.5, 3.45, -5967.5),
 	},
 
 	whalefall = {
@@ -532,8 +535,8 @@ Islands.items = {
 		model = "Whalefall",
 		islet = true,
 		worldPosition = Vector3.new(8400, 0, -11300),
-		radius = 65,
-		spawn = Vector3.new(8404, 3, -11284),
+		radius = 120,
+		spawn = Vector3.new(8444.7, 2.89, -11290.8),
 	},
 
 	ferryraft = {
@@ -542,8 +545,8 @@ Islands.items = {
 		model = "Ferryraft",
 		islet = true,
 		worldPosition = Vector3.new(7000, 0, -5000),
-		radius = 40,
-		spawn = Vector3.new(7008, 3, -5000),
+		radius = 60,
+		spawn = Vector3.new(6990.35, 3.7, -4998.5),
 	},
 
 	loadstone = {
@@ -553,7 +556,7 @@ Islands.items = {
 		islet = true,
 		worldPosition = Vector3.new(3000, 0, -8000),
 		radius = 45,
-		spawn = Vector3.new(3014, 4, -8000),
+		spawn = Vector3.new(3000, 4.27, -7966.8),
 	},
 }
 

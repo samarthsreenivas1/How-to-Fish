@@ -40,6 +40,13 @@ World.FISHABLE_NAMES = {
 	-- The Maelstrom site's whirlpool disc (built procedurally by
 	-- WorldService, not imported - the name is the contract all the same).
 	Maelstrom_Water = true,
+	-- The Boiling Shoal's hot lagoon (islet redesign 2026-09-02): its own
+	-- milky-turquoise disc inside the caldera ring. Fishable, and it draws
+	-- the OCEAN pool below - the islet quests are pinned waters="ocean", so
+	-- a player standing in the lagoon still progresses them, and no creature
+	-- roster exists for a "boilshoal" water. Give it one later if the shoal
+	-- ever earns its own species; both tables change together then.
+	Boilshoal_Lagoon = true,
 }
 
 -- Which POOL of creatures a fishable surface draws from, by part name. This is
@@ -57,6 +64,7 @@ World.WATERS_BY_PART = {
 	Gloomtrench_DarkWater = "gloom",
 	Wreckwater_Bay = "wreck",
 	Maelstrom_Water = "maelstrom",
+	Boilshoal_Lagoon = World.WATERS_OCEAN,
 }
 
 -- The two collision groups that make the world's invisible barriers ONE-WAY

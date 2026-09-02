@@ -382,31 +382,56 @@ local NON_COLLIDE = {
 	-- should not stand on and nothing that should wall a small place in.
 	-- Moths in the air, perched birds, steam columns, hanging lanterns, a
 	-- drying line, a mooring chain, iron scrap jutting off the Spire.
-	"Lampwork_Moths",
-	"Lampwork_Lamps", -- all of them hang: post-tops, rail hooks, under the eave
-	"Lampwork_Glow",
+	-- THE ISLETS (redesign 2026-09-02): per-object rulings from each
+	-- builder's own report. The split-by-collision-intent rule from the old
+	-- Anchor Garden generalised: every islet now separates what you stand on
+	-- from what would snag or wall you, so the standing anchors are solid and
+	-- only the chains pass through.
+	"Bellbuoy_Crust", -- barnacle band proud of the rock
+	"Bellbuoy_Kelp",
+	"Bellbuoy_Pools", -- water skin over the rock pools
+	"Bellbuoy_Tally",
+	"Bellbuoy_Lamp",
+	"Bellbuoy_Salvage",
+	"Chapel_Weed",
+	"Chapel_Glow",
+	"Chapel_Hut", -- Odd's lean-to canvas and kit; the porch masonry is Chapel_Stone
+	"Chapel_Bell", -- 25 studs up; thin straps and rope
+	"Chapel_Nave", -- the drowned interior: a line dropped through the roof tears must not snag a pew
 	"Rookery_Birds",
 	"Rookery_Nests",
-	-- Guano ribbons standing 0.3-0.6 proud of the cliff face: solid, they
-	-- are snag ledges up a climbing route. Rookery_Ledges is deliberately
-	-- NOT here - it is the built terraces the colony stands on and Pip's
-	-- own pad (a ray there lands on it at Y=36.00, not on the base).
-	"Rookery_Streaks",
+	"Rookery_Litter",
+	"Rookery_Guano", -- the ledge slab underneath carries the collision
+	"Rookery_Rig",
 	"Boilshoal_Steam",
 	"Boilshoal_Glow",
-	"Whalefall_Life",
-	"Ferryraft_Rope", -- drying line, hung fish, the chain into the water
+	"Boilshoal_Smalls",
+	"Boilshoal_Lagoon", -- you wade the floor beneath it; it is a fishable surface, not a floor
+	"Lampwork_Moths",
+	"Lampwork_Lamps", -- every lamp hangs off or sits on collidable structure
+	"Lampwork_Glow",
+	"Lampwork_Yard", -- the lip rope spans midair; the wick hanks hang from the eave
+	"Anchorage_Chain", -- head-height catenaries; solid they wall the garden off
+	"Anchorage_Shallows",
+	"Whalefall_Fish",
+	"Whalefall_Grass",
+	"Whalefall_Gulls",
+	"Whalefall_Embers",
+	"Whalefall_Baleen", -- fence and roof skin; the bone arches under them carry the shape
+	"Ferryraft_Rig2", -- rope: lantern lines, shrouds, bridge handrails
+	"Ferryraft_Rig3", -- the canvas awning
+	"Ferryraft_Rig4", -- netting
+	"Ferryraft_Fish",
+	"Ferryraft_Fenders",
+	"Ferryraft_Chain",
 	"Ferryraft_Glow",
-	"Loadstone_Iron",
+	"Loadstone_Scrap", -- welded nails and chain jut at head height (all three slots)
 	"Loadstone_Glow",
-	-- The Anchor Garden is ONE mesh holding both the standing anchors and the
-	-- catenary chains slung between their stocks. It cannot be split at
-	-- runtime, so it is one CanCollide for both, and the chains decide it:
-	-- solid, they are head-height arcs walling every path through a garden
-	-- whose entire point is walking among the anchors. Same ruling as
-	-- Maelstrom_Chains. Ferryraft_Hull (the deck) and Ferryraft_Shack (walls,
-	-- counter) stay solid deliberately - the deck is the only ground there is.
-	"Anchorage_Iron",
+	"Loadstone_Elmo",
+	"Loadstone_Compass",
+	"Loadstone_Shack3", -- the chain wrap, curtain and earthing cables
+	"Loadstone_Shack4", -- the insulators
+	"Loadstone_Fulgurite2", -- the dark mouth discs; the tubes themselves stay solid
 }
 
 local function shouldCollide(instanceName: string): boolean
@@ -642,89 +667,241 @@ local MESH_COLOR = {
 	Maelstrom_StormGlow = Color3.fromRGB(107, 240, 255), -- electric storm-fire
 
 	-- ============================================================ THE ISLETS
-	-- Nine tiny places between the islands (2026-08-30). Every islet part
-	-- needs a row here or it imports default grey - the generator bakes
-	-- these colours into the .glb materials, but Roblox does not read them.
-	-- Values are the islet's own COLORS dict in island_gen.py, x255.
-	-- The Bellbuoy - a sea-bell the size of a room on a bare rock.
-	Bellbuoy_Base = Color3.fromRGB(71, 73, 79), -- M_BellRock
-	Bellbuoy_Base2 = Color3.fromRGB(96, 98, 104), -- M_BellSplash
-	Bellbuoy_Base3 = Color3.fromRGB(54, 56, 62), -- M_BellWet
-	Bellbuoy_Bell = Color3.fromRGB(103, 122, 103), -- M_BellBronze
-	Bellbuoy_Lip = Color3.fromRGB(152, 126, 71), -- M_BellLip (the struck sound bow, no verdigris)
-	Bellbuoy_Iron = Color3.fromRGB(45, 46, 50), -- M_BellIron
-	-- The Drowned Chapel - a bell tower in open water, church beneath.
-	Chapel_Base = Color3.fromRGB(106, 109, 102), -- M_ChapShoal
-	Chapel_Base2 = Color3.fromRGB(90, 93, 87), -- M_ChapSilt
-	Chapel_Base3 = Color3.fromRGB(68, 73, 71), -- M_ChapWet
-	Chapel_Stone = Color3.fromRGB(139, 138, 128), -- M_ChapStone
-	Chapel_Roof = Color3.fromRGB(81, 86, 92), -- M_ChapSlate
-	Chapel_Nave = Color3.fromRGB(69, 81, 83), -- M_ChapDrowned
-	-- The bell itself, one Blender object carrying five materials, so the
-	-- importer splits it five ways. It is pitched brighter and warmer than
-	-- real weathered bronze on purpose: it hangs in the shade of the belfry
-	-- with pale stone all round it, and anything darker reads as one more
-	-- hole in the masonry.
-	Chapel_Bell = Color3.fromRGB(191, 156, 79), -- M_ChapBronze (the bell)
-	Chapel_Bell2 = Color3.fromRGB(46, 47, 50), -- M_ChapIron (yoke, straps, collar)
-	Chapel_Bell3 = Color3.fromRGB(93, 68, 46), -- M_ChapTimber (bearers, headstock)
+	-- Full redesigns (2026-09-02). These rows are DERIVED FROM THE EXPORTED
+	-- GLBS, not hand-typed: each part name is a mesh's primitive index in
+	-- slot order (a multi-material object imports as Name / Name2 / ...),
+	-- and each colour is that islet's own COLORS entry x255. Regenerate the
+	-- same way after any builder change; tools/check_islet_colors.py fails
+	-- the build in both directions when this table and the builders drift.
+	-- The Bellbuoy - a basalt wedge split by a cleft the sea rings the bell through.
+	Bellbuoy_Base = Color3.fromRGB(51, 54, 58), -- M_BellRock
+	Bellbuoy_Base2 = Color3.fromRGB(76, 78, 76), -- M_BellSplash
+	Bellbuoy_Base3 = Color3.fromRGB(33, 38, 43), -- M_BellWet
+	Bellbuoy_Bell = Color3.fromRGB(95, 120, 101), -- M_BellBronze
+	Bellbuoy_Bell2 = Color3.fromRGB(152, 126, 71), -- M_BellLip
+	Bellbuoy_Bell3 = Color3.fromRGB(56, 57, 61), -- M_BellIron
+	Bellbuoy_Crust = Color3.fromRGB(187, 176, 153), -- M_BellCrust
+	Bellbuoy_Crust2 = Color3.fromRGB(29, 26, 34), -- M_BellMussel
+	Bellbuoy_Dinghy = Color3.fromRGB(36, 35, 34), -- M_BellTar
+	Bellbuoy_Dinghy2 = Color3.fromRGB(102, 83, 60), -- M_BellPlank
+	Bellbuoy_Dinghy3 = Color3.fromRGB(56, 57, 61), -- M_BellIron
+	Bellbuoy_Gantry = Color3.fromRGB(56, 57, 61), -- M_BellIron
+	Bellbuoy_Gantry2 = Color3.fromRGB(143, 40, 37), -- M_BellRed
+	Bellbuoy_Gantry3 = Color3.fromRGB(204, 201, 193), -- M_BellWhite
+	Bellbuoy_Kelp = Color3.fromRGB(59, 65, 33), -- M_BellKelp
+	Bellbuoy_Lamp = Color3.fromRGB(255, 224, 143), -- M_BellLamp
+	Bellbuoy_Pools = Color3.fromRGB(46, 120, 120), -- M_BellPool
+	Bellbuoy_Salvage = Color3.fromRGB(102, 83, 60), -- M_BellPlank
+	Bellbuoy_Salvage2 = Color3.fromRGB(139, 117, 82), -- M_BellRope
+	Bellbuoy_Salvage3 = Color3.fromRGB(168, 120, 69), -- M_BellCork
+	Bellbuoy_Salvage4 = Color3.fromRGB(84, 92, 76), -- M_BellNet
+	Bellbuoy_Tally = Color3.fromRGB(22, 20, 19), -- M_BellTally
+	Bellbuoy_Wedge = Color3.fromRGB(90, 85, 79), -- M_BellBasalt
+	Bellbuoy_Wedge2 = Color3.fromRGB(39, 42, 44), -- M_BellSoak
+	Bellbuoy_Wedge3 = Color3.fromRGB(108, 98, 85), -- M_BellSalt
+	-- The Drowned Chapel - there is no island; you walk on the church.
+	Chapel_Base = Color3.fromRGB(79, 85, 76), -- M_ChapShoal
+	Chapel_Base2 = Color3.fromRGB(66, 73, 67), -- M_ChapSilt
+	Chapel_Base3 = Color3.fromRGB(50, 58, 55), -- M_ChapWet
+	Chapel_Bell = Color3.fromRGB(191, 156, 79), -- M_ChapBronze
+	Chapel_Bell2 = Color3.fromRGB(46, 47, 50), -- M_ChapIron
+	Chapel_Bell3 = Color3.fromRGB(103, 74, 47), -- M_ChapTimber
 	Chapel_Bell4 = Color3.fromRGB(180, 158, 113), -- M_ChapRope
-	Chapel_Bell5 = Color3.fromRGB(71, 68, 64), -- M_ChapCobble (the stone he rings with)
-	-- The Rookery Stack - white rock and a colony that was here first.
-	Rookery_Base = Color3.fromRGB(63, 62, 60), -- M_RookRock
-	Rookery_Base2 = Color3.fromRGB(60, 61, 60), -- M_RookSplash
-	Rookery_Base3 = Color3.fromRGB(45, 46, 45), -- M_RookWet
-	Rookery_Base4 = Color3.fromRGB(241, 240, 234), -- M_RookStreak
-	Rookery_Ledges = Color3.fromRGB(204, 202, 194), -- M_RookShelf
-	Rookery_Streaks = Color3.fromRGB(241, 240, 234), -- M_RookStreak
-	Rookery_Nests = Color3.fromRGB(122, 103, 68), -- M_RookNest
-	Rookery_Nests2 = Color3.fromRGB(201, 196, 173), -- M_RookEgg
-	Rookery_Birds = Color3.fromRGB(236, 236, 232), -- M_RookGull
-	-- The Boiling Shoal - black glass, vents, and water too hot to swim.
-	Boilshoal_Base = Color3.fromRGB(33, 31, 34), -- M_ShoalGlass
-	Boilshoal_Base2 = Color3.fromRGB(115, 96, 53), -- M_ShoalCrust
-	Boilshoal_Base3 = Color3.fromRGB(45, 40, 37), -- M_ShoalWet
-	Boilshoal_Vents = Color3.fromRGB(121, 73, 52), -- M_ShoalMineral
-	Boilshoal_Steam = Color3.fromRGB(214, 218, 221), -- M_ShoalSteam
-	Boilshoal_Glow = Color3.fromRGB(255, 131, 56), -- M_ShoalHeat
-	-- The Lampwright's Workshop - a yard of dark lamps and one lit window.
+	Chapel_Bell5 = Color3.fromRGB(62, 60, 56), -- M_ChapCobble
+	Chapel_Bell6 = Color3.fromRGB(122, 103, 68), -- M_ChapNest
+	Chapel_Glow = Color3.fromRGB(255, 206, 111), -- M_ChapGlow
+	Chapel_Hut = Color3.fromRGB(103, 74, 47), -- M_ChapTimber
+	Chapel_Hut2 = Color3.fromRGB(202, 191, 161), -- M_ChapCanvas
+	Chapel_Hut3 = Color3.fromRGB(46, 47, 50), -- M_ChapIron
+	Chapel_Hut4 = Color3.fromRGB(180, 158, 113), -- M_ChapRope
+	Chapel_Nave = Color3.fromRGB(62, 76, 79), -- M_ChapDrowned
+	Chapel_Roof = Color3.fromRGB(83, 91, 102), -- M_ChapSlate
+	Chapel_Roof2 = Color3.fromRGB(103, 74, 47), -- M_ChapTimber
+	Chapel_Roof3 = Color3.fromRGB(61, 68, 79), -- M_ChapSlateDark
+	Chapel_Stone = Color3.fromRGB(146, 141, 123), -- M_ChapStone
+	Chapel_Stone2 = Color3.fromRGB(62, 60, 56), -- M_ChapCobble
+	Chapel_Weed = Color3.fromRGB(56, 83, 46), -- M_ChapWeed
+	Chapel_Weed2 = Color3.fromRGB(163, 115, 61), -- M_ChapLichen
+	Chapel_Yard = Color3.fromRGB(176, 169, 146), -- M_ChapFlag
+	Chapel_Yard2 = Color3.fromRGB(146, 141, 123), -- M_ChapStone
+	Chapel_Yard3 = Color3.fromRGB(62, 60, 56), -- M_ChapCobble
+	Chapel_Yard4 = Color3.fromRGB(231, 225, 207), -- M_ChapWax
+	Chapel_Yard5 = Color3.fromRGB(103, 74, 47), -- M_ChapTimber
+	-- The Rookery Stack - two stacks, a natural arch, 97 seated gulls.
+	Rookery_Base = Color3.fromRGB(50, 60, 52), -- M_RookReef
+	Rookery_Base2 = Color3.fromRGB(45, 49, 46), -- M_RookSplash
+	Rookery_Base3 = Color3.fromRGB(29, 35, 36), -- M_RookDeep
+	Rookery_Birds = Color3.fromRGB(243, 243, 240), -- M_RookGull
+	Rookery_Birds2 = Color3.fromRGB(230, 152, 41), -- M_RookBeak
+	Rookery_Eyrie = Color3.fromRGB(157, 142, 113), -- M_RookDeck
+	Rookery_Eyrie2 = Color3.fromRGB(81, 66, 49), -- M_RookBeam
+	Rookery_Eyrie3 = Color3.fromRGB(185, 158, 105), -- M_RookRope
+	Rookery_Eyrie4 = Color3.fromRGB(55, 55, 60), -- M_RookIron
+	Rookery_Eyrie5 = Color3.fromRGB(200, 195, 180), -- M_RookNet
+	Rookery_Eyrie6 = Color3.fromRGB(204, 198, 173), -- M_RookEgg
+	Rookery_Eyrie7 = Color3.fromRGB(255, 219, 133), -- M_RookLamp
+	Rookery_Guano = Color3.fromRGB(247, 246, 240), -- M_RookGuano
+	Rookery_Ledges = Color3.fromRGB(152, 150, 142), -- M_RookShelf
+	Rookery_Litter = Color3.fromRGB(229, 229, 224), -- M_RookFeather
+	Rookery_Litter2 = Color3.fromRGB(219, 214, 199), -- M_RookBone
+	Rookery_Nests = Color3.fromRGB(113, 92, 61), -- M_RookNest
+	Rookery_Nests2 = Color3.fromRGB(204, 198, 173), -- M_RookEgg
+	Rookery_Rig = Color3.fromRGB(185, 158, 105), -- M_RookRope
+	Rookery_Rig2 = Color3.fromRGB(55, 55, 60), -- M_RookIron
+	Rookery_Rig3 = Color3.fromRGB(240, 240, 236), -- M_RookChalk
+	Rookery_Stacks = Color3.fromRGB(65, 64, 62), -- M_RookRock
+	Rookery_Stacks2 = Color3.fromRGB(37, 39, 38), -- M_RookWet
+	Rookery_Stacks3 = Color3.fromRGB(231, 230, 224), -- M_RookStreak
+	-- The Boiling Shoal - a broken caldera around a milky hot lagoon.
+	Boilshoal_Apron = Color3.fromRGB(40, 38, 45), -- M_ShoalGlass
+	Boilshoal_Apron2 = Color3.fromRGB(189, 165, 60), -- M_ShoalCrust
+	Boilshoal_Base = Color3.fromRGB(40, 38, 45), -- M_ShoalGlass
+	Boilshoal_Base2 = Color3.fromRGB(189, 165, 60), -- M_ShoalCrust
+	Boilshoal_Base3 = Color3.fromRGB(27, 26, 30), -- M_ShoalWet
+	Boilshoal_Glow = Color3.fromRGB(255, 122, 37), -- M_ShoalHeat
+	Boilshoal_Hut = Color3.fromRGB(40, 38, 45), -- M_ShoalGlass
+	Boilshoal_Hut2 = Color3.fromRGB(77, 146, 126), -- M_ShoalCopper
+	Boilshoal_Hut3 = Color3.fromRGB(77, 62, 52), -- M_ShoalTimber
+	Boilshoal_Hut4 = Color3.fromRGB(246, 244, 236), -- M_ShoalChalk
+	Boilshoal_Hut5 = Color3.fromRGB(71, 66, 64), -- M_ShoalIron
+	Boilshoal_Hut6 = Color3.fromRGB(76, 230, 221), -- M_ShoalPool
+	Boilshoal_Hut7 = Color3.fromRGB(216, 211, 196), -- M_ShoalFish
+	Boilshoal_Lagoon = Color3.fromRGB(83, 239, 224), -- M_ShoalLagoon
+	Boilshoal_Rim = Color3.fromRGB(40, 38, 45), -- M_ShoalGlass
+	Boilshoal_Rim2 = Color3.fromRGB(189, 165, 60), -- M_ShoalCrust
+	Boilshoal_Smalls = Color3.fromRGB(216, 211, 196), -- M_ShoalFish
+	Boilshoal_Smalls2 = Color3.fromRGB(40, 38, 45), -- M_ShoalGlass
+	Boilshoal_Smalls3 = Color3.fromRGB(133, 76, 47), -- M_ShoalMineral
+	Boilshoal_Smalls4 = Color3.fromRGB(189, 165, 60), -- M_ShoalCrust
+	Boilshoal_Steam = Color3.fromRGB(245, 248, 249), -- M_ShoalSteam
+	Boilshoal_Terraces = Color3.fromRGB(246, 244, 236), -- M_ShoalChalk
+	Boilshoal_Terraces2 = Color3.fromRGB(173, 196, 189), -- M_ShoalChalkWet
+	Boilshoal_Terraces3 = Color3.fromRGB(76, 230, 221), -- M_ShoalPool
+	Boilshoal_Vents = Color3.fromRGB(40, 38, 45), -- M_ShoalGlass
+	Boilshoal_Vents2 = Color3.fromRGB(189, 165, 60), -- M_ShoalCrust
+	Boilshoal_Vents3 = Color3.fromRGB(133, 76, 47), -- M_ShoalMineral
+	-- The Lampwright's Workshop - a shelf that ends in a cliff over the trench.
 	Lampwork_Base = Color3.fromRGB(33, 35, 43), -- M_LampStone
 	Lampwork_Base2 = Color3.fromRGB(61, 61, 69), -- M_LampShore
 	Lampwork_Base3 = Color3.fromRGB(43, 45, 53), -- M_LampWet
+	Lampwork_Base4 = Color3.fromRGB(8, 11, 16), -- M_LampTrench
+	Lampwork_Glow = Color3.fromRGB(255, 226, 150), -- M_LampWindow
+	Lampwork_Lamps = Color3.fromRGB(130, 101, 53), -- M_LampBrass
+	Lampwork_Lamps2 = Color3.fromRGB(76, 92, 96), -- M_LampGlass
+	Lampwork_Moths = Color3.fromRGB(216, 210, 193), -- M_LampMoth
+	Lampwork_Rock = Color3.fromRGB(33, 35, 43), -- M_LampStone
+	Lampwork_Rock2 = Color3.fromRGB(43, 45, 53), -- M_LampWet
+	Lampwork_Rock3 = Color3.fromRGB(8, 11, 16), -- M_LampTrench
 	Lampwork_Shop = Color3.fromRGB(81, 78, 78), -- M_LampWall
 	Lampwork_Shop2 = Color3.fromRGB(83, 66, 52), -- M_LampTimber
 	Lampwork_Shop3 = Color3.fromRGB(52, 54, 61), -- M_LampSlate
 	Lampwork_Shop4 = Color3.fromRGB(40, 41, 46), -- M_LampIron
-	Lampwork_Lamps = Color3.fromRGB(130, 101, 53), -- M_LampBrass
-	Lampwork_Lamps2 = Color3.fromRGB(76, 92, 96), -- M_LampGlass
-	Lampwork_Glow = Color3.fromRGB(255, 226, 150), -- M_LampWindow
-	Lampwork_Moths = Color3.fromRGB(216, 210, 193), -- M_LampMoth
-	-- The Anchor Garden - two dozen anchors standing in the sand.
-	Anchorage_Base = Color3.fromRGB(201, 190, 162), -- M_AnchSand
-	Anchorage_Base2 = Color3.fromRGB(146, 150, 135), -- M_AnchReef
-	Anchorage_Base3 = Color3.fromRGB(121, 122, 109), -- M_AnchWet
-	Anchorage_Iron = Color3.fromRGB(83, 67, 55), -- M_AnchIron
-	-- The Whale Fall - a skeleton on a sandbar feeding everything near it.
-	Whalefall_Base = Color3.fromRGB(104, 96, 82), -- M_WhaleSand
-	Whalefall_Base2 = Color3.fromRGB(79, 71, 61), -- M_WhaleDark
-	Whalefall_Base3 = Color3.fromRGB(62, 57, 50), -- M_WhaleWet
-	Whalefall_Bones = Color3.fromRGB(217, 211, 194), -- M_WhaleBone
-	Whalefall_Life = Color3.fromRGB(156, 82, 74), -- M_WhaleLife
-	-- The Ferryman's Raft - the one trader in six thousand studs of sea.
+	Lampwork_Yard = Color3.fromRGB(75, 55, 43), -- M_LampClay
+	Lampwork_Yard2 = Color3.fromRGB(111, 99, 75), -- M_LampRope
+	-- The Anchor Garden - a wading flat of rust on white sand.
+	Anchorage_Base = Color3.fromRGB(246, 231, 179), -- M_AnchSand
+	Anchorage_Base2 = Color3.fromRGB(103, 218, 203), -- M_AnchShoal
+	Anchorage_Base3 = Color3.fromRGB(27, 126, 146), -- M_AnchDeep
+	Anchorage_Chain = Color3.fromRGB(170, 79, 27), -- M_AnchChain
+	Anchorage_Chain2 = Color3.fromRGB(189, 79, 69), -- M_AnchBuoyRed
+	Anchorage_Chain3 = Color3.fromRGB(212, 214, 202), -- M_AnchBuoyPale
+	Anchorage_Chain4 = Color3.fromRGB(242, 128, 14), -- M_AnchTaut
+	Anchorage_Iron = Color3.fromRGB(66, 60, 56), -- M_AnchIron
+	Anchorage_Iron2 = Color3.fromRGB(205, 81, 16), -- M_AnchRust
+	Anchorage_Sand = Color3.fromRGB(249, 234, 191), -- M_AnchDune
+	Anchorage_Sand2 = Color3.fromRGB(240, 113, 66), -- M_AnchStar
+	Anchorage_Sand3 = Color3.fromRGB(246, 231, 179), -- M_AnchSand
+	Anchorage_Shack = Color3.fromRGB(152, 118, 79), -- M_AnchPlank
+	Anchorage_Shack2 = Color3.fromRGB(83, 74, 68), -- M_AnchRoof
+	Anchorage_Shack3 = Color3.fromRGB(82, 54, 37), -- M_AnchTrim
+	Anchorage_Shack4 = Color3.fromRGB(201, 75, 56), -- M_AnchMark
+	Anchorage_Shallows = Color3.fromRGB(62, 212, 201), -- M_AnchWater
+	-- The Whale Fall - a 200-stud crescent spit, the skeleton along its spine.
+	Whalefall_Baleen = Color3.fromRGB(41, 39, 43), -- M_WhaleBaleen
+	Whalefall_Bar = Color3.fromRGB(169, 163, 147), -- M_WhaleSand
+	Whalefall_Bar2 = Color3.fromRGB(83, 86, 86), -- M_WhaleWet
+	Whalefall_Bar3 = Color3.fromRGB(50, 46, 42), -- M_WhaleOil
+	Whalefall_Base = Color3.fromRGB(169, 163, 147), -- M_WhaleSand
+	Whalefall_Base2 = Color3.fromRGB(111, 111, 106), -- M_WhaleSilt
+	Whalefall_Base3 = Color3.fromRGB(83, 86, 86), -- M_WhaleWet
+	Whalefall_Bones = Color3.fromRGB(224, 218, 203), -- M_WhaleBone
+	Whalefall_Camp = Color3.fromRGB(109, 101, 88), -- M_WhaleDrift
+	Whalefall_Camp2 = Color3.fromRGB(186, 179, 157), -- M_WhaleCanvas
+	Whalefall_Camp3 = Color3.fromRGB(45, 47, 50), -- M_WhaleIron
+	Whalefall_Camp4 = Color3.fromRGB(160, 141, 109), -- M_WhaleRope
+	Whalefall_Camp5 = Color3.fromRGB(211, 208, 200), -- M_WhaleSalt
+	Whalefall_Camp6 = Color3.fromRGB(50, 46, 42), -- M_WhaleOil
+	Whalefall_Embers = Color3.fromRGB(255, 113, 32), -- M_WhaleEmber
+	Whalefall_Fish = Color3.fromRGB(179, 130, 118), -- M_WhaleFish
+	Whalefall_Grass = Color3.fromRGB(126, 146, 96), -- M_WhaleGrass
+	Whalefall_Gulls = Color3.fromRGB(238, 237, 232), -- M_WhaleGull
+	Whalefall_Gulls2 = Color3.fromRGB(219, 160, 52), -- M_WhaleBeak
+	-- The Ferryman's Raft - four platforms, plank bridges, a lantern canopy.
+	Ferryraft_Barge = Color3.fromRGB(122, 53, 43), -- M_RaftBarge
+	Ferryraft_Barge2 = Color3.fromRGB(143, 117, 85), -- M_RaftBargeDeck
+	Ferryraft_Barge3 = Color3.fromRGB(67, 82, 55), -- M_RaftWeed
+	Ferryraft_Barrels = Color3.fromRGB(103, 79, 55), -- M_RaftBarrel
+	Ferryraft_Barrels2 = Color3.fromRGB(167, 162, 150), -- M_RaftBoards
+	Ferryraft_Barrels3 = Color3.fromRGB(118, 109, 95), -- M_RaftBoards2
+	Ferryraft_Barrels4 = Color3.fromRGB(62, 60, 61), -- M_RaftIron
 	Ferryraft_Base = Color3.fromRGB(76, 82, 81), -- M_RaftBar
 	Ferryraft_Base2 = Color3.fromRGB(67, 73, 73), -- M_RaftShallow
 	Ferryraft_Base3 = Color3.fromRGB(55, 60, 61), -- M_RaftWet
-	Ferryraft_Hull = Color3.fromRGB(96, 76, 55), -- M_RaftLog
-	Ferryraft_Shack = Color3.fromRGB(121, 101, 75), -- M_RaftPlank
-	Ferryraft_Rope = Color3.fromRGB(163, 150, 115), -- M_RaftRope
+	Ferryraft_Bow = Color3.fromRGB(165, 180, 187), -- M_RaftBow
+	Ferryraft_Bow2 = Color3.fromRGB(191, 177, 146), -- M_RaftBowDeck
+	Ferryraft_Bow3 = Color3.fromRGB(52, 62, 71), -- M_RaftStripe
+	Ferryraft_Bridges = Color3.fromRGB(121, 101, 75), -- M_RaftPlank
+	Ferryraft_Cabin = Color3.fromRGB(122, 68, 36), -- M_RaftCabin
+	Ferryraft_Cabin2 = Color3.fromRGB(196, 156, 71), -- M_RaftTrim
+	Ferryraft_Cabin3 = Color3.fromRGB(156, 189, 182), -- M_RaftGlass
+	Ferryraft_Cabin4 = Color3.fromRGB(45, 47, 50), -- M_RaftRoof
+	Ferryraft_Cabin5 = Color3.fromRGB(74, 92, 102), -- M_RaftSign
+	Ferryraft_Cabin6 = Color3.fromRGB(210, 200, 179), -- M_RaftFigure
+	Ferryraft_Cargo = Color3.fromRGB(130, 103, 68), -- M_RaftCrate
+	Ferryraft_Cargo2 = Color3.fromRGB(166, 69, 55), -- M_RaftMarkRed
+	Ferryraft_Cargo3 = Color3.fromRGB(60, 93, 125), -- M_RaftMarkBlue
+	Ferryraft_Cargo4 = Color3.fromRGB(90, 117, 69), -- M_RaftMarkGreen
+	Ferryraft_Chain = Color3.fromRGB(62, 60, 61), -- M_RaftIron
+	Ferryraft_Fenders = Color3.fromRGB(163, 150, 115), -- M_RaftRope
+	Ferryraft_Fish = Color3.fromRGB(175, 175, 165), -- M_RaftFish
+	Ferryraft_Gear = Color3.fromRGB(103, 79, 55), -- M_RaftBarrel
+	Ferryraft_Gear2 = Color3.fromRGB(62, 60, 61), -- M_RaftIron
+	Ferryraft_Gear3 = Color3.fromRGB(122, 111, 90), -- M_RaftCoop
+	Ferryraft_Gear4 = Color3.fromRGB(221, 208, 190), -- M_RaftHen
+	Ferryraft_Gear5 = Color3.fromRGB(111, 115, 101), -- M_RaftSkiff
+	Ferryraft_Gear6 = Color3.fromRGB(121, 101, 75), -- M_RaftPlank
 	Ferryraft_Glow = Color3.fromRGB(255, 211, 122), -- M_RaftLantern
-	-- The Loadstone Spire - a black needle that pulls the storm down.
-	Loadstone_Base = Color3.fromRGB(41, 39, 43), -- M_LoadRock
-	Loadstone_Base2 = Color3.fromRGB(27, 25, 28), -- M_LoadScorch
-	Loadstone_Base3 = Color3.fromRGB(33, 32, 36), -- M_LoadWet
-	Loadstone_Spire = Color3.fromRGB(33, 33, 40), -- M_LoadGlass
-	Loadstone_Iron = Color3.fromRGB(77, 66, 60), -- M_LoadIron
+	Ferryraft_Logs = Color3.fromRGB(60, 49, 40), -- M_RaftLog
+	Ferryraft_Logs2 = Color3.fromRGB(67, 82, 55), -- M_RaftWeed
+	Ferryraft_Logs3 = Color3.fromRGB(167, 162, 150), -- M_RaftBoards
+	Ferryraft_Rig = Color3.fromRGB(115, 92, 66), -- M_RaftMast
+	Ferryraft_Rig2 = Color3.fromRGB(163, 150, 115), -- M_RaftRope
+	Ferryraft_Rig3 = Color3.fromRGB(207, 200, 177), -- M_RaftCanvas
+	Ferryraft_Rig4 = Color3.fromRGB(139, 132, 107), -- M_RaftNet
+	-- The Loadstone Spire - eight fused needles out of a shattered rubble field.
+	Loadstone_Base = Color3.fromRGB(37, 36, 42), -- M_LoadRock
+	Loadstone_Base2 = Color3.fromRGB(19, 18, 21), -- M_LoadScorch
+	Loadstone_Base3 = Color3.fromRGB(28, 28, 33), -- M_LoadWet
+	Loadstone_Compass = Color3.fromRGB(109, 88, 64), -- M_LoadPlank
+	Loadstone_Compass2 = Color3.fromRGB(184, 144, 68), -- M_LoadBrass
+	Loadstone_Compass3 = Color3.fromRGB(221, 216, 200), -- M_LoadDial
+	Loadstone_Compass4 = Color3.fromRGB(191, 49, 45), -- M_LoadNeedle
+	Loadstone_Elmo = Color3.fromRGB(156, 109, 255), -- M_LoadElmo
+	Loadstone_Fulgurite = Color3.fromRGB(224, 221, 212), -- M_LoadFulgurite
+	Loadstone_Fulgurite2 = Color3.fromRGB(19, 18, 21), -- M_LoadScorch
 	Loadstone_Glow = Color3.fromRGB(255, 152, 71), -- M_LoadHeat
+	Loadstone_Rubble = Color3.fromRGB(37, 36, 42), -- M_LoadRock
+	Loadstone_Rubble2 = Color3.fromRGB(19, 18, 21), -- M_LoadScorch
+	Loadstone_Rubble3 = Color3.fromRGB(73, 69, 93), -- M_LoadVitrify
+	Loadstone_Scrap = Color3.fromRGB(83, 79, 77), -- M_LoadIron
+	Loadstone_Scrap2 = Color3.fromRGB(115, 67, 45), -- M_LoadRust
+	Loadstone_Scrap3 = Color3.fromRGB(199, 196, 189), -- M_LoadGull
+	Loadstone_Shack = Color3.fromRGB(109, 88, 64), -- M_LoadPlank
+	Loadstone_Shack2 = Color3.fromRGB(102, 105, 102), -- M_LoadRoof
+	Loadstone_Shack3 = Color3.fromRGB(83, 79, 77), -- M_LoadIron
+	Loadstone_Shack4 = Color3.fromRGB(169, 203, 206), -- M_LoadInsulator
+	Loadstone_Spires = Color3.fromRGB(46, 45, 59), -- M_LoadGlass
+	Loadstone_Spires2 = Color3.fromRGB(73, 69, 93), -- M_LoadVitrify
 }
 
 -- Per-part material overrides; anything not listed gets SmoothPlastic (the flat
@@ -749,6 +926,12 @@ local MESH_MATERIAL = {
 	Boilshoal_Glow = Enum.Material.Neon,
 	Ferryraft_Glow = Enum.Material.Neon,
 	Loadstone_Glow = Enum.Material.Neon,
+	-- Redesign additions (2026-09-02): each islet's one warm or eerie light.
+	Loadstone_Elmo = Enum.Material.Neon, -- violet St Elmo sheaths on the spire tips
+	Whalefall_Embers = Enum.Material.Neon, -- coals under Vess's cauldron and smoker
+	Bellbuoy_Lamp = Enum.Material.Neon, -- the lamp at the dinghy's transom door
+	Chapel_Glow = Enum.Material.Neon, -- candle flames and Odd's lantern core
+	Rookery_Eyrie7 = Enum.Material.Neon, -- the eyrie's gable lantern (M_RookLamp, slot 7)
 	-- Frostmaw's big glacial forms glint like real ice; nothing Neon here.
 	Frostmaw_Berg = Enum.Material.Ice,
 	Frostmaw_Arch = Enum.Material.Ice,
@@ -911,6 +1094,14 @@ local function placeIsland(parent: Instance, id: string, entry): boolean
 		if descendant:IsA("BasePart") then
 			descendant.Anchored = true
 			descendant.CanCollide = shouldCollide(descendant.Name)
+			-- The Anchor Garden's decorative water skins must not intercept
+			-- raycasts either (NpcService's ground probe, CastAim): a sheet
+			-- 0.16 studs over the sand would answer for the sand under it.
+			-- The Boilshoal_Lagoon stays queryable ON PURPOSE - it is a
+			-- fishable surface (World.FISHABLE_NAMES) and casts must see it.
+			if string.find(descendant.Name, "Anchorage_Shallows", 1, true) then
+				descendant.CanQuery = false
+			end
 			-- Remember the landform surfaces for the under-map net below.
 			if string.find(descendant.Name, "_Base", 1, true) then
 				table.insert(baseParts, descendant)
