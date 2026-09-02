@@ -81,6 +81,10 @@ MeshColors.items = {
 	["Gnashroot_Mass"] = Color3.fromRGB(107, 71, 43),
 	["Gnashroot_Maw"] = Color3.fromRGB(56, 36, 20),
 	["Gnashroot_Stones"] = Color3.fromRGB(94, 92, 85),
+	-- Hand-spliced ahead of the next gen_mesh_colors.py run (the Teeth/Fangs
+	-- split, 2026-09-01): same GN_FANG bone as Fangs, and the regeneration
+	-- reproduces this row identically, so it cannot drift.
+	["Gnashroot_Teeth"] = Color3.fromRGB(158, 148, 122),
 	["Kraken_ArmSeg"] = Color3.fromRGB(33, 20, 51),
 	["Kraken_ArmTip"] = Color3.fromRGB(33, 20, 51),
 	["Kraken_Beak"] = Color3.fromRGB(189, 173, 133),

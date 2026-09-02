@@ -77,10 +77,14 @@
 -- the windup starts, and does not call it again until the attack is over.
 -- This is a rule of the module, not a note at one call site:
 --
---   * an arm is ~34 studs of reach at the row's 1.5 scale. Re-picking
---     "nearest player" between frames moves the fist most of the arena's
---     width in one frame, so the hand teleports - and `heave`'s marching hump
---     starts from that hand, so the hazard teleports with it;
+--   * a fist stands 26.5 world studs out from the body's own axis at the
+--     row's 1.5 scale, measured across all nine poses (`heavePlant`, the
+--     furthest; 28.8 with the grip shift at full stretch). The ~34 this used
+--     to claim is the rest curve's ARC - 23.1 authored, 34.65 world - which is
+--     a length of arm and not a reach. Re-picking "nearest player" between
+--     frames swings the fist through up to twice 26.5 in one frame, so the
+--     hand teleports - and `heave`'s marching hump starts from that hand, so
+--     the hazard teleports with it;
 --   * in a party the nearest player changes constantly (two people trading
 --     places is enough), so a boss that re-aims per frame swings at the
 --     moving average of a crowd and connects with nobody. That does not read
@@ -154,15 +158,27 @@ end
 GnashrootPath.SCALE = 1.5 -- the creature row's body.scale (Creatures.old_gnashroot)
 GnashrootPath.CROWN = 27.0 -- the top of the head, for anything drawn over it
 GnashrootPath.JAW_HINGE = authored(9.0, 0.0, 9.6) -- Jaw + Fangs + Maw swing about this
-GnashrootPath.CORE = authored(3.4, 0.0, 18.6) -- the gnashroot burning in its chest
+GnashrootPath.CORE = authored(5.0, 0.0, 22.0) -- the gnashroot burning in its chest
+-- (moved 2026-09-01 from (3.4, 0, 18.6), which sat 0.1 studs INSIDE the mass's
+-- skin - 0 of 48 front faces visible from the bank. Measured after the move:
+-- 67 of 104 triangles reach open air, visible from all 57 tested stances.)
 GnashrootPath.ARM_SEGMENTS = 5 -- vertebrae, plus the fist at the tip
 GnashrootPath.ARM_PITCH = 4.6 -- studs between vertebra centres at rest
 GnashrootPath.ARM_HALF_WIDTH = 3.5 -- at the shoulder; the client tapers toward the fist
 GnashrootPath.KNOT_EVERY = 3 -- every third vertebra is a knuckle (Gnashroot_ArmKnot)
 
--- How deep it waits before it rises - the row's `riseDepth`, so the drawn
--- body comes up out of the peat exactly as long as the server says it does.
-GnashrootPath.RISE_DEPTH = 18.0
+-- How deep it waits before it rises, in AUTHORED studs like everything else
+-- here - `bodyCFrame` is the one place it becomes world (x1.5 = 42.0).
+--
+-- NOT the row's `riseDepth`, despite what this used to say. For a POSED boss
+-- the server never pivots the model: CreatureService's rising mode publishes
+-- `rise` and lets the client draw the whole climb (`if def.pose then ...
+-- colossusState(creature, def).rise = e`), so the row's 18 moves nothing here
+-- and this number has to clear the animal's own crown by itself. It did not:
+-- 18 applied in world units left the crown (27 authored, 40.5 world) standing
+-- 22.5 studs out of the mud at rise = 0. Taken off CROWN, so a re-measured
+-- head cannot leave a buried boss with its face showing.
+GnashrootPath.RISE_DEPTH = GnashrootPath.CROWN + 1.0 -- 28.0 authored, 42.0 world
 
 -- Full gape. Wide, because the jaw hinges down at the chest (the hinge is 9.6
 -- up, the crown 27): this animal's mouth is most of its front, and a modest
@@ -180,9 +196,20 @@ local LEAN = {
 	mire = math.rad(19),
 	hammerRaised = math.rad(-9),
 	hammerLanded = math.rad(23),
-	-- Held while the punish window is open, on top of whatever the attack
-	-- left behind: the chest pitched forward IS the window's tell, and it is
-	-- what puts the core inside a player's swing height.
+	-- ASKED FOR while the punish window is open, on top of whatever the attack
+	-- left behind - and then CAPPED by the ground (see `groundLean`). Added
+	-- outright it buried both fists 3 to 8.6 studs for the whole 3.5s window,
+	-- which is the one beat the fight teaches the player to watch. What
+	-- survives the cap is 8.4 degrees over the rest silhouette - where most of
+	-- the window is actually spent, the blend easing home at 14/s against
+	-- `exposed`'s 6/s - and nothing at all over a full-weight attack pose,
+	-- because every one of those is already authored at its own limit.
+	--
+	-- It is NOT what "puts the core inside a player's swing height", and no
+	-- pitch could be: the core stands 33.0 world studs up at rest, 31.6 at
+	-- that cap, 28.1 at the full 21 degrees and still 18.5 at 44. The tell is
+	-- the chest coming FORWARD - the core travels 4.7 studs out over the legs
+	-- and the controller burns it - not the core coming DOWN.
 	exposed = math.rad(21),
 }
 
@@ -203,17 +230,37 @@ local LEAN = {
 -- hands going through the floor. Each ground-contact pose therefore carries
 -- z ~= x * tan(its lean), which lands the fist ON the surface at the moment
 -- the pose is fully reached. Re-tune a LEAN entry and its pose's wrist z has
--- to move with it.
+-- to move with it - and `groundLean` reads the wrist back out to cap the
+-- punish window's extra pitch, so the two cannot be re-tuned apart.
+--
+-- THE RULE IS SIGNED. `wallow`'s fist rakes BEHIND the hinge (x = -7.0), so a
+-- nose-down lean LIFTS it and x * tan(lean) is NEGATIVE: its wrist z has to go
+-- below the authored mud line to reach the mud, which is why it is the one
+-- entry here with a negative z. Read as "z must be positive, it is a height"
+-- it floated 6.18 world studs - the pose whose whole job is that the arms rake
+-- the ground was the only one that never touched it.
 local SHOULDER = { -1.0, 8.8, 18.2 }
 
 local POSE = {
 	-- REST: hung forward off the shoulders, elbows kicked out, fists in the
-	-- mud in front. This is the silhouette every attack is read against, so it
-	-- is the one pose whose numbers came off the builder rather than out of
-	-- this file. It measures 23.1 studs of arc, which over five vertebrae is a
-	-- 4.62 pitch - the authored 4.6, to within rounding. That agreement is not
-	-- a coincidence to be preserved by luck: it is what lets the client place a
-	-- FIXED five pieces and have them sit at the spacing the pack was cut for.
+	-- mud in front. This is the silhouette every attack is read against, so its
+	-- three JOINT POINTS came off the builder (assets/boss_gen.py,
+	-- `_gn_arm_path`) rather than out of this file.
+	--
+	-- THE CURVE THROUGH THEM DID NOT, and that is worth saying plainly because
+	-- the arc length looks like it agrees with the pack. The builder draws a
+	-- quadratic BEZIER - `shoulder.lerp(elbow, t).lerp(elbow.lerp(wrist, t), t)`
+	-- - so the elbow is a control point it leans toward and never reaches,
+	-- while `through` below passes THROUGH it and bulges further out. Measured
+	-- over the same three points: the builder's curve is 20.83 studs of arc, a
+	-- 4.17 pitch over five vertebrae; this file's is 23.10, a 4.62 pitch. The
+	-- authored ARM_PITCH is 4.6 because that is the pack's own spacing constant
+	-- (GN_ARM_SPACING), not a measurement of either curve - and the builder's
+	-- own rest arm divides into 4.17, not 4.6. So this file's agreement to
+	-- within rounding IS an artifact of the fatter curve. Nothing enforces the
+	-- match and nothing here should be tuned as if it did: move a
+	-- joint and the two numbers move independently, and the client's FIXED five
+	-- pieces stretch to cover whatever arc comes out (STRETCH_MIN/MAX).
 	rest = { elbow = { 1.5, 13.2, 10.5 }, wrist = { 10.5, 9.0, 1.8 } },
 
 	-- GNASH: the head comes down, so the arms have to take the weight - fists
@@ -225,7 +272,12 @@ local POSE = {
 	-- forward travel is NOT here - the server walks the creature and the
 	-- drawn body follows its pivot, so a surge in the pose too would move it
 	-- twice. What this pose owns is the drag.
-	wallow = { elbow = { -2.5, 14.5, 11.0 }, wrist = { -7.0, 12.0, 2.5 } },
+	--
+	-- The wrist z is NEGATIVE and has to be: the fist is 7 studs BEHIND the
+	-- hinge, so the 14-degree nose-down lean swings it UP, and the rule reads
+	-- z = x * tan(lean) = -1.75. At the +2.5 it used to carry, the raking fist
+	-- floated 6.18 world studs over the mud; at -1.75 it sits on it (-0.01).
+	wallow = { elbow = { -2.5, 14.5, 11.0 }, wrist = { -7.0, 12.0, -1.75 } },
 
 	-- DISGORGE: it rears and the throat swells, and the arms open out of the
 	-- way of what is about to come up. Palms out, chest height.
@@ -270,6 +322,13 @@ local function limb(pose, side: number, t: number): Vector3
 	return through(joint(SHOULDER, side), joint(pose.elbow, side), joint(pose.wrist, side), t)
 end
 
+-- How far FORWARD of its pose the grip shift can carry a fist, authored
+-- studs. Named because two places need it: `drift`, which spends it, and
+-- `groundLean`, which has to cap the body's pitch against the fist's furthest
+-- excursion rather than against the pose - the ground rule is only true at
+-- the reach it is measured at.
+local GRIP_REACH = 1.7
+
 -- IDLE LIFE. A colossus that is perfectly still reads as scenery, so nothing
 -- here is ever quite at rest. Added AFTER the pose blend rather than baked
 -- into any pose, so a new attack never has to remember to breathe.
@@ -286,7 +345,7 @@ local function drift(state, side: number, t: number): Vector3
 	-- is still most of the time and then moves - a plain sine here is a
 	-- metronome, which reads worse than not moving at all. Weighted by t^2, so
 	-- it is the hand that shifts and not the shoulder.
-	local grip = math.sin(time * 0.23 + phase) ^ 5 * 1.7 * t * t
+	local grip = math.sin(time * 0.23 + phase) ^ 5 * GRIP_REACH * t * t
 	-- A committed swing does not idle-sway.
 	local calm = 1 - 0.8 * clamp01(state.blend)
 	return Vector3.new(grip, bob, swing * side) * calm
@@ -328,16 +387,33 @@ end
 
 -- ---------------------------------------------------------------- the body
 
--- The slow swell of the mass. ~11 seconds a cycle: slow enough to read as
--- something alive rather than a bobbing prop, big enough to see at 27 studs
--- of crown.
+-- How far the swell of the mass carries it, AUTHORED studs (x1.5 = 0.60
+-- world). ~11 seconds a cycle: slow enough to read as something alive rather
+-- than a bobbing prop, big enough to see at 27 studs of crown.
+GnashrootPath.BREATH_RISE = 0.4
+
+-- The slow swell of the mass. IT ONLY EVER LIFTS, and that is the whole of
+-- this function's design.
+--
+-- Every wrist z in POSE is tuned to put a planted fist within 0.1 to 0.4 world
+-- studs of the mud (the ground rule above), so a breath that swings both ways
+-- drives both fists straight through the floor twice a minute. The old one was
+-- `sin * 0.9` applied on the far side of the `* SCALE` boundary - so +/-0.9
+-- WORLD studs against a hammerfall fist sitting at +0.18, 4.9 times the
+-- clearance it had, and every ground pose in the table annihilated. Half the
+-- travel, one direction, and authored units like everything else: the animal
+-- settles onto its fists and swells up off them, and nothing it does can push
+-- a hand under the floor. Zero while it is still buried, so the rise reads as
+-- the rise and not as a rise with a wobble in it.
 function GnashrootPath.breath(state): number
-	return math.sin((state.time or 0) * 0.57) * 0.9
+	local swell = 0.5 - 0.5 * math.cos((state.time or 0) * 0.57)
+	return GnashrootPath.BREATH_RISE * swell * clamp01(state.rise)
 end
 
--- How far the whole animal is lifted this frame, breath included. Shared by
--- the body and (through `bodyCFrame`) by both arms, so a rising Gnashroot
--- brings its arms up with it instead of leaving two fists in the peat.
+-- How far the whole animal is lifted this frame, breath included, in AUTHORED
+-- studs - `bodyCFrame` is the single place this becomes world. Shared by the
+-- body and (through `bodyCFrame`) by both arms, so a rising Gnashroot brings
+-- its arms up with it instead of leaving two fists in the peat.
 function GnashrootPath.lift(state): number
 	return GnashrootPath.RISE_DEPTH * (clamp01(state.rise) - 1) + GnashrootPath.breath(state)
 end
@@ -345,10 +421,93 @@ end
 -- Which way the body points this frame - the latch, made visible. See THE
 -- CONTRACT: the idle watch is free, the attack's angle is not, and the blend
 -- between them is the attack's own so nothing snaps at either end.
+--
+-- BLENDED AS A VECTOR, NOT AS AN ANGLE. `face + wrapAngle(aim - face) * blend`
+-- is the obvious form and it has a seam in it: `wrapAngle` flips sign as the
+-- free-running face sweeps past the ANTIPODE of the latched aim, which moves
+-- the output by 2*pi*blend - invisible at blend 0 and 1, and a clean 180
+-- degrees at blend 0.5, which is 53 studs of fist travel in one frame. It is
+-- the blend that amplifies the wrap, so the fix is to stop interpolating the
+-- wrapped number: lerp the two unit vectors and read the angle back. Measured
+-- against a 5-degree face step sweeping the antipode, worst-case single-frame
+-- yaw jump falls from 147/165/177 degrees (blend 0.40/0.45/0.50) to 15/27/177.
+--
+-- That last one is not a typo and cannot be removed: at EXACTLY antipodal and
+-- EXACTLY half weight there is no continuous answer - the body is being asked
+-- to be equally two opposite ways round - and the degeneracy is a single point
+-- rather than the whole antipode line. Either side of it the jump is bounded
+-- and small, which is what "the blend cannot amplify a wrap" buys.
 function GnashrootPath.bearing(state): number
 	local face = state.faceAngle or 0
 	local aim = state.aimAngle or face
-	return face + wrapAngle(aim - face) * clamp01(state.blend)
+	local w = clamp01(state.blend)
+	local x = math.cos(face) * (1 - w) + math.cos(aim) * w
+	local z = math.sin(face) * (1 - w) + math.sin(aim) * w
+	if x * x + z * z < 1e-12 then
+		return if w >= 0.5 then aim else face
+	end
+	return math.atan2(z, x)
+end
+
+-- THE MUD IS A FLOOR. The pitch hinges at the mud line, so a fist standing x
+-- studs in front of the hinge at height z goes UNDER the surface the moment
+-- the body leans past atan(z / x) - the pose table's rule, read backwards.
+--
+-- Every ground-contact pose is authored right at its own lean, so none of them
+-- has headroom: gnash's limit is 17.6 degrees and it leans 17, mire 19.4 and
+-- 19, heavePlant 10.2 and 10, hammerLanded 23.4 and 23. REST - which never
+-- leans, and which is where the punish window is actually spent, the blend
+-- easing home at 14/s against `exposed`'s 6/s - is 9.7 at the pose, 8.4 once
+-- the grip shift's extra reach is allowed for. That is why `exposed` cannot
+-- simply be ADDED to the lean: +21 on top of any of them put both fists 3.1 to
+-- 8.6 studs underground for the whole window.
+--
+-- Taken off the wrist the pose is ACTUALLY at, not off a table of limits, so
+-- re-tuning a wrist z moves the cap with it and the two cannot drift.
+local function activeWrist(state, side: number): (number, number)
+	local blend, strike = clamp01(state.blend), clamp01(state.strike)
+	local attack = state.attack
+	local rest = POSE.rest.wrist
+	local x, z = rest[1], rest[3]
+	if attack == "gnash" then
+		x, z = POSE.gnash.wrist[1], POSE.gnash.wrist[3]
+	elseif attack == "wallow" then
+		x, z = POSE.wallow.wrist[1], POSE.wallow.wrist[3]
+	elseif attack == "disgorge" then
+		x, z = POSE.disgorge.wrist[1], POSE.disgorge.wrist[3]
+	elseif attack == "heave" then
+		-- Off the LATCHED side, exactly as `heaveShape` picks it: the planting
+		-- arm reaches 15.5 and the bracing one 5.0, and it is the planting one
+		-- that runs out of ground first.
+		local wrist = if (state.aimSide or 1) == side then POSE.heavePlant.wrist else POSE.heaveBrace.wrist
+		x, z = wrist[1], wrist[3]
+	elseif attack == "mire" then
+		x, z = POSE.mire.wrist[1], POSE.mire.wrist[3]
+	elseif attack == "hammerfall" then
+		-- `hammerShape`'s own lerp, at t = 1 where the curve IS the wrist.
+		local raised, landed = POSE.hammerRaised.wrist, POSE.hammerLanded.wrist
+		local fall = strike * strike
+		x = raised[1] + (landed[1] - raised[1]) * fall
+		z = raised[3] + (landed[3] - raised[3]) * fall
+	end
+	-- The blend home to rest, which is a plain lerp of the endpoints
+	-- (ChainPose.blend) and so exact at the fist.
+	return rest[1] + (x - rest[1]) * blend, rest[3] + (z - rest[3]) * blend
+end
+
+-- How far one arm's fist lets the body pitch before it goes under the mud.
+local function wristLean(state, side: number): number
+	local x, z = activeWrist(state, side)
+	-- Against the fist's FURTHEST reach, not the pose's: the grip shift is
+	-- always on, and a cap that breathed with it would rock the whole body at
+	-- the grip's own rhythm.
+	x += GRIP_REACH
+	if x <= 0 then
+		-- Nothing out in front of the hinge: a pose that rakes BEHIND (wallow)
+		-- is LIFTED by a nose-down lean, so the ground has no opinion.
+		return math.huge
+	end
+	return math.atan(z / x)
 end
 
 -- Body pitch this frame, radians, positive = nose down.
@@ -374,25 +533,109 @@ function GnashrootPath.lean(state): number
 		-- arms being lowered rather than thrown.
 		lean = LEAN.hammerRaised + (LEAN.hammerLanded - LEAN.hammerRaised) * strike * strike
 	end
-	return lean * blend + LEAN.exposed * clamp01(state.exposed)
+	local pitch = lean * blend
+	-- THE PUNISH PITCH IS CAPPED, NOT STACKED. The attack's own lean always
+	-- stands - its wrists were authored against it - and `exposed` may pitch
+	-- the chest further only as far as the fists have ground for. With the
+	-- window shut this is exactly `pitch`, so no attack's lean changed.
+	local limit = math.max(pitch, math.min(wristLean(state, 1), wristLean(state, -1)))
+	return math.min(pitch + LEAN.exposed * clamp01(state.exposed), limit)
 end
+
+-- LAST FRAME'S ANSWER, and the inputs it was computed from. A memo, not
+-- state: every field of the key is read by the frame below, so a state that
+-- has moved at all misses, and two callers holding two different states cannot
+-- see each other's answer. (ChainPose keeps its samples the same way.)
+local memo = {
+	state = nil :: any,
+	center = nil :: Vector3?,
+	time = nil :: number?,
+	rise = nil :: number?,
+	faceAngle = nil :: number?,
+	aimAngle = nil :: number?,
+	aimSide = nil :: number?,
+	attack = nil :: string?,
+	blend = nil :: number?,
+	strike = nil :: number?,
+	exposed = nil :: number?,
+	frame = CFrame.identity,
+}
 
 -- The ONE CFrame the whole body cluster is placed with (Mass, Legs, Head,
 -- Eyes, Core, Stones, Drips - and the jaw group, off its hinge). Scale is
 -- applied at this boundary and nowhere else, so every constant in this file
--- stays the authored number.
+-- stays the authored number - `lift` included, which is why it is multiplied
+-- here rather than carried in world units.
+--
+-- MEMOISED, because it is invariant in `t` and the arms ask for it once per
+-- SAMPLE: two chains at 40 samples is 82 calls a frame, every one of them
+-- identical, each otherwise three CFrame constructions, two multiplies and the
+-- whole of `bearing`, `lean` and `lift` (five trig calls between them). The
+-- clock alone guarantees the first call of a new frame misses.
 function GnashrootPath.bodyCFrame(state): CFrame
 	local c = state.center or Vector3.zero
-	local at = Vector3.new(c.X, c.Y + GnashrootPath.lift(state), c.Z)
-	return CFrame.new(at)
+	if
+		memo.state == state
+		and memo.center == c
+		and memo.time == state.time
+		and memo.rise == state.rise
+		and memo.faceAngle == state.faceAngle
+		and memo.aimAngle == state.aimAngle
+		and memo.aimSide == state.aimSide
+		and memo.attack == state.attack
+		and memo.blend == state.blend
+		and memo.strike == state.strike
+		and memo.exposed == state.exposed
+	then
+		return memo.frame
+	end
+	local at = Vector3.new(c.X, c.Y + GnashrootPath.lift(state) * GnashrootPath.SCALE, c.Z)
+	local frame = CFrame.new(at)
 		* CFrame.Angles(0, -GnashrootPath.bearing(state), 0)
 		* CFrame.Angles(0, 0, -GnashrootPath.lean(state))
+	memo.state = state
+	memo.center = c
+	memo.time = state.time
+	memo.rise = state.rise
+	memo.faceAngle = state.faceAngle
+	memo.aimAngle = state.aimAngle
+	memo.aimSide = state.aimSide
+	memo.attack = state.attack
+	memo.blend = state.blend
+	memo.strike = state.strike
+	memo.exposed = state.exposed
+	memo.frame = frame
+	return frame
 end
 
 -- Body-local (authored, unscaled) to world.
 local function toWorld(state, point: Vector3): Vector3
 	return GnashrootPath.bodyCFrame(state) * (point * GnashrootPath.SCALE)
 end
+
+-- THE RECOVERY IS NOT THE WINDUP RUN BACKWARDS, and both numbers below exist
+-- because the naive forms assumed it was. GnashrootBodyController eases
+-- `strike` home at 22/s and `blend` at 14/s (its EASE table), so after a blow
+-- lands the strike collapses while the arms are still coming back: through the
+-- whole recovery `strike` is SMALLER than `blend`, and any gape that reads
+-- "not struck yet" off a small strike re-opens the mouth behind the bite.
+
+-- How much of `strike` shuts the jaw. The bite is the mouth CLOSING, so it has
+-- to be shut before the blow and must not come back open behind it: at three
+-- times the strike the jaw is closed a third of the way into the swing, and
+-- the recovery's rebound peaks at 0.024 (0.9 degrees) 194ms out, with the arms
+-- already home. `blend * (1 - strike)` re-opened to 0.335 - 12.7 degrees of
+-- jaw, 43ms after the bite - which is a second, false tell on the one attack
+-- whose whole read is the mouth. The windup, where strike is 0, is untouched.
+local GNASH_SHUT = 3
+
+-- How much `strike` still counts as "the blow has landed" - the hammerfall
+-- bellow's GATE, deliberately low, and a gate rather than an amplitude.
+-- Multiplying the bell by `strike` directly collapsed it into a 0.46 twitch
+-- that peaked 26ms after impact and never reached half gape, because it was
+-- decaying at 22/s over a bell that runs at the blend's 14/s. Gated, the same
+-- bell reaches full gape 50ms out and holds above half for 88ms.
+local STRUCK = 0.15
 
 -- How wide the jaw is open, 0..1. DERIVED, not published: the mouth and the
 -- blow come off the same two numbers, so they cannot disagree.
@@ -401,8 +644,8 @@ function GnashrootPath.gape(state): number
 	local attack = state.attack
 	if attack == "gnash" then
 		-- The bite IS the jaw closing, so the gape leads the blow and is shut
-		-- by the time the strike lands.
-		return blend * (1 - strike)
+		-- well before the strike lands - and stays shut through the recovery.
+		return clamp01(blend - GNASH_SHUT * strike)
 	elseif attack == "disgorge" then
 		-- Open through the windup and widest as the gobs leave.
 		return blend * (0.6 + 0.4 * strike)
@@ -410,8 +653,8 @@ function GnashrootPath.gape(state): number
 		-- The bellow after the blow: a bell over the RECOVERY (strike done,
 		-- blend on its way home), peaking mid-way and shut again by the time
 		-- the arms are back - so the gape never hangs open into the window and
-		-- becomes a second, false tell.
-		return strike * math.sin(math.pi * (1 - blend))
+		-- becomes a second, false tell. `strike` only says WHETHER it landed.
+		return math.min(strike / STRUCK, 1) * math.sin(math.pi * (1 - blend))
 	end
 	return 0
 end
@@ -497,11 +740,19 @@ function GnashrootPath.handPosition(state, side: number): Vector3
 	return GnashrootPath.armShape(side)(state, 1)
 end
 
--- NOTE ON GROUND HEIGHT: the rest and press poses put the fists at z = 0.2 to
--- 1.8 authored, i.e. just proud of the model's own mud line, and the whole
--- body is placed off the server's pivot. So the hands sit on the mere's
--- surface wherever the boss is standing, and there is no terrain sampling
--- here at all - deliberately, because the Rootmere is one flat pool
+-- NOTE ON GROUND HEIGHT: the poses that plant carry wrists at z = -1.75 to 6.5
+-- authored, which is NOT "just proud of the mud line" - it is whatever
+-- x * tan(that pose's lean) comes to, so the fist lands ON the surface once
+-- the pose is fully reached. Measured world heights at full blend, breath at
+-- its low, ground at 0: rest +2.70 (the one pose that really does sit proud -
+-- it never leans, so its 1.8 authored is 2.70 world of clearance), gnash
+-- +0.09, wallow -0.01, heaveBrace +0.32, heavePlant +0.10, mire +0.14,
+-- hammerLanded +0.18. The breath adds 0 to +0.60 on top of every one of them
+-- and never subtracts.
+--
+-- The whole body is placed off the server's pivot, so those clearances are the
+-- mere's surface wherever the boss is standing, and there is no terrain
+-- sampling here at all - deliberately, because the Rootmere is one flat pool
 -- (assets/island_gen.py, the swamp mere step) and a height profile that has
 -- to be re-keyed after every marsh relayout is a bug waiting on a relayout.
 -- If the mere ever gains a bed profile, it belongs here, the way

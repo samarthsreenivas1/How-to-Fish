@@ -752,6 +752,21 @@ def build_kraken():
 #
 # Authored STANDING with the mud pool's underside at z = 0: the client raises
 # it out of the mere by lifting Y and nothing else.
+#
+# ------------------------------------------------ WHAT RIDES WHICH FRAME
+#
+# This creature has TWO frames and the split is the source of most of the
+# bugs that have been found in it. Get it wrong and geometry swings away from
+# the thing it was drawn onto:
+#
+#   BODY frame (one CFrame):  Mass Legs Head TEETH Eyes Core Stones Drips
+#   JAW frame (hinged):       Jaw  FANGS  Maw
+#
+# `Teeth` is the SKULL's palate row and `Fangs` is the jaw's row. They used to
+# be one object on the jaw's frame, which dropped the palate's 16 splinters
+# ~4 world studs at a 38 degree gape and left the roof of the mouth bare.
+# `Drips` is on the BODY, so nothing hung off it may be seated inside the jaw
+# - the jaw swings out from under it and the drip hangs in mid-air.
 
 GN_MUD = (0.42, 0.28, 0.17)  # wet peat-mud, warm enough to read against the fen's greens
 GN_DARK = (0.22, 0.14, 0.08)  # the throat, and the drips
@@ -760,20 +775,9 @@ GN_FANG = (0.62, 0.58, 0.48)  # bog-oak splinters doing the work of teeth
 GN_EYE = (0.10, 0.09, 0.08)  # wet, dark, set into the mud (reference 1)
 GN_WISP = (0.588, 0.922, 0.784)  # the row's markColor - the CORE only, Neon in game
 
-# The mass, as cross-sections along +X (its facing): (x, centre z, half width,
-# half height). Hunched and top-heavy - widest across the shoulders, falling
-# away to a narrow neck at the front and a low rump behind.
-GN_MASS = [
-    (-10.0, 10.4, 5.2, 4.6),  # rump, low and slumped
-    (-6.5, 14.4, 7.8, 7.4),
-    (-2.0, 18.0, 9.4, 8.8),  # shoulders - the high point AND the widest
-    (2.0, 16.4, 8.8, 8.0),
-    (5.6, 13.2, 6.6, 5.6),  # the chest falling away toward the head
-    (8.8, 11.0, 3.4, 3.0),  # the neck: pinched, so the head reads as its own lobe
-]
-
-# The head, slung low and forward off that neck. The palate is clamped flat
-# at GN_JAW_LINE so the jaw closes on something real.
+# The head, slung low and forward off the neck. The palate is clamped flat at
+# GN_JAW_LINE so the jaw closes on something real. Declared BEFORE the mass
+# because the mass's neck now closes off against this same palate line.
 GN_JAW_LINE = 10.2
 GN_SKULL = [
     (9.0, 12.6, 4.6, 3.8),
@@ -791,6 +795,48 @@ GN_JAW = [
 ]
 GN_JAW_HINGE = (9.0, 0.0, 9.6)
 
+# The mass, as cross-sections along +X (its facing): (x, centre z, half width,
+# half height). Hunched and top-heavy - widest across the shoulders, falling
+# away to a narrow neck at the front and a low rump behind.
+#
+# The last two rings are the neck CLOSING OFF inside the skull. Without them
+# the loft ended at x = 8.8 in a flat 3.4 x 3.0 disc spanning z 8.0-14.0 -
+# and with the jaw open you looked straight down the throat at that disc
+# (measured: 9 of 9 cap triangles reachable through a 38 degree gape, and 8
+# of 30 rays aimed into the mouth landed on it). These two rings run the neck
+# up past the palate and end it in a 1.1 x 1.0 stub that is wholly inside the
+# skull, so the throat ends in mud sloping away instead of a lid.
+GN_MASS_NECK_X = 8.8  # past here the mass is inside the skull and floors on the palate
+GN_NECK_FLOOR = GN_JAW_LINE + 0.06  # just ABOVE the palate: coplanar would z-fight
+GN_MASS = [
+    (-10.0, 10.4, 5.2, 4.6),  # rump, low and slumped
+    (-6.5, 14.4, 7.8, 7.4),
+    (-2.0, 18.0, 9.4, 8.8),  # shoulders - the high point AND the widest
+    (2.0, 16.4, 8.8, 8.0),
+    (5.6, 13.2, 6.6, 5.6),  # the chest falling away toward the head
+    (8.8, 11.0, 3.4, 3.0),  # the neck: pinched, so the head reads as its own lobe
+    (9.8, 11.6, 2.5, 2.4),  # inside the skull now - floored on the palate
+    (11.0, 12.0, 1.1, 1.0),  # the stub it actually ends on
+]
+
+# THE GNASHROOT: the root-knot's seat, and the radii it is really built at.
+#
+# MEASURED, not asserted - the comment that used to sit here said "unoccluded
+# from the front" and had never been tested. At the authored (3.4, 0, 18.6)
+# the knot's top sat 0.12 studs UNDER the chest's skin (the mass's surface at
+# that x is z 22.22) and 3.4 studs inside it laterally: 3 of its 104
+# triangles reached a player standing anywhere in the front hemisphere, from
+# 19 of 57 sampled stances, median 0. The five that escaped came out of its
+# BACK and read as moss on the shoulder.
+#
+# Seated here - forward and up onto the chest's front slope, whose surface at
+# x 5.0 is z 19.73 - 2.44 of the knot's 3.5 radius is still buried in the mud
+# and 73 of 104 triangles reach at least one of those stances, 45 of 57
+# seeing it, median 17 triangles. See the HANDOFF note on what the head does
+# to the last 12 stances.
+GN_CORE = (5.0, 0.0, 22.0)
+GN_CORE_RADII = (3.5, 3.2, 3.5)
+
 # Shoulder sockets: where the client roots each arm chain.
 GN_SHOULDER = (-1.0, 8.8, 18.2)
 
@@ -803,6 +849,20 @@ GN_ARM = [
 ]
 GN_ARM_SPACING = 4.6
 GN_ARM_SEGMENTS = 5
+GN_ARM_TIP_TAPER = 0.28  # mirrors _place_gnashroot's taper at the fist
+GN_HAND_SEAT = 1.6  # how far the hand is seated back INTO the last vertebra
+GN_HAND_REACH = 6.5  # hand origin -> fingertip along -X: 2.2 knuckle + 2.4 + 1.9
+
+# The palm, as cross-sections along +X like every other loft in this file.
+# INCREASING x, which is the winding `loft` documents: authored decreasing,
+# the palm came out with a signed volume of -138.47 against +159.47 for an
+# arm segment, and since Roblox meshes are single-sided both hands rendered
+# as dark holes with the fingers floating in front of them.
+GN_PALM = [
+    (-2.0, 0.0, 3.5, 2.9),
+    (0.4, 0.0, 4.0, 3.4),
+    (2.6, 0.0, 2.7, 2.6),
+]
 
 
 def _gn_lump(bm, center, radii, rng, jitter=0.22, subdiv=1):
@@ -829,15 +889,25 @@ def _gn_taper(bm, base, tip, r0, r1, sides=6):
     )
 
 
-def _gn_mass_at(x):
-    """The mass profile at x: (centre z, half width, half height)."""
-    if x <= GN_MASS[0][0]:
-        return GN_MASS[0][1:]
-    for (x0, cz0, hw0, hh0), (x1, cz1, hw1, hh1) in zip(GN_MASS, GN_MASS[1:]):
+def _gn_profile_at(sections, x):
+    """Interpolate a (x, centre z, half width, half height) table at x."""
+    if x <= sections[0][0]:
+        return sections[0][1:]
+    for (x0, cz0, hw0, hh0), (x1, cz1, hw1, hh1) in zip(sections, sections[1:]):
         if x <= x1:
             t = 0 if x1 == x0 else (x - x0) / (x1 - x0)
             return (cz0 + (cz1 - cz0) * t, hw0 + (hw1 - hw0) * t, hh0 + (hh1 - hh0) * t)
-    return GN_MASS[-1][1:]
+    return sections[-1][1:]
+
+
+def _gn_mass_at(x):
+    """The mass profile at x: (centre z, half width, half height)."""
+    return _gn_profile_at(GN_MASS, x)
+
+
+def _gn_skull_at(x):
+    """The skull profile at x - what the jowls hang off."""
+    return _gn_profile_at(GN_SKULL, x)
 
 
 def _gn_on_mass(x, angle, sink=0.0):
@@ -852,9 +922,28 @@ def _gn_on_mass(x, angle, sink=0.0):
     return Vector((x, math.cos(angle) * hw * scale, cz + math.sin(angle) * hh * scale))
 
 
+def _gn_on_skull(x, angle, sink=0.0):
+    """The same seat on the SKULL, floored on the palate like the skull loft.
+
+    The skull is wider than the jaw at every x it shares with it, so a seat
+    taken here at sink <= 0 is outboard of the jaw - which is what lets mud
+    run off the jowl and past the corner of the mouth without the jaw
+    carrying it away when it opens.
+    """
+    cz, hw, hh = _gn_skull_at(x)
+    scale = 1.0 - sink
+    return Vector((x, math.cos(angle) * hw * scale, max(cz + math.sin(angle) * hh * scale, GN_JAW_LINE)))
+
+
 def build_gn_mass(rng):
     bm = bmesh.new()
-    loft(bm, [ring_pts(x, cz, hw, hh, sides=11) for x, cz, hw, hh in GN_MASS])
+    loft(
+        bm,
+        [
+            ring_pts(x, cz, hw, hh, sides=11, floor_z=(GN_NECK_FLOOR if x > GN_MASS_NECK_X else None))
+            for x, cz, hw, hh in GN_MASS
+        ],
+    )
     # Lumps riding the surface: the loft alone is a smooth balloon, and mud
     # reads as mud only when its silhouette is broken by its own sagging.
     for _ in range(26):
@@ -909,12 +998,13 @@ def build_gn_head(rng):
         angle = rng.uniform(0, TAU)
         cz, hw, hh = 12.2, 4.6, 3.2
         size = rng.uniform(0.5, 1.1)
-        _gn_lump(
-            bm,
-            (x, math.cos(angle) * hw * 0.7, cz + math.sin(angle) * hh * 0.7),
-            (size, size, size * 0.9),
-            rng,
-        )
+        # The skull's loft is floored flat on the palate; its warts were not,
+        # and 13 of them hung THROUGH it into the gape, down to z 8.85 against
+        # a jaw top of 8.6 - mud dangling in the open mouth. A wart is 0.9*size
+        # tall with 0.198*size of jitter under it, so this is the lowest seat
+        # that keeps every vertex of it on the skull's side of the palate.
+        seat_z = max(cz + math.sin(angle) * hh * 0.7, GN_JAW_LINE + 1.15 * size + 0.1)
+        _gn_lump(bm, (x, math.cos(angle) * hw * 0.7, seat_z), (size, size, size * 0.9), rng)
     return finish("Gnashroot_Head", bm, GN_MUD)
 
 
@@ -931,23 +1021,34 @@ def build_gn_maw():
     bm = bmesh.new()
     # The throat: a dark wedge filling the gape so the open mouth reads as a
     # HOLE rather than as a gap you can see the arena through.
+    #
+    # Ceiled on the palate. A 7-sided ring's top vertex sits at 0.9749 of its
+    # half height, which put the back two rings 0.162 studs THROUGH the roof
+    # of the mouth; the clamp lands one vertex per ring flat on the palate
+    # instead, which is the same trick the jaw uses against GN_JAW_TOP.
     loft(
         bm,
         [
-            ring_pts(9.4, 8.9, 3.6, 1.5, sides=7),
-            ring_pts(12.4, 8.7, 4.2, 1.7, sides=7),
-            ring_pts(15.4, 8.5, 3.1, 1.3, sides=7),
-            ring_pts(17.6, 8.3, 1.7, 0.7, sides=7),
+            ring_pts(9.4, 8.9, 3.6, 1.5, sides=7, ceil_z=GN_JAW_LINE - 0.06),
+            ring_pts(12.4, 8.7, 4.2, 1.7, sides=7, ceil_z=GN_JAW_LINE - 0.06),
+            ring_pts(15.4, 8.5, 3.1, 1.3, sides=7, ceil_z=GN_JAW_LINE - 0.06),
+            ring_pts(17.6, 8.3, 1.7, 0.7, sides=7, ceil_z=GN_JAW_LINE - 0.06),
         ],
     )
     return finish("Gnashroot_Maw", bm, GN_DARK)
 
 
-def build_gn_fangs(rng):
+def build_gn_teeth(rng):
+    """The SKULL's row: 16 splinters hanging from the palate.
+
+    Its own object because it rides its own frame. These were authored into
+    `Fangs`, which the client rotates with the jaw, so at a 38 degree gape all
+    16 swung down with the lower jaw - roughly 4 world studs at scale 1.5 -
+    and the roof of the mouth was left bare while the palate's teeth hung in
+    the middle of the gape. Nothing about the shapes changed; only the object
+    they are finished into.
+    """
     bm = bmesh.new()
-    # Bog-oak splinters, not teeth: irregular, broken, a few long ones. The
-    # reference's fangs are the hardest edge on the whole creature and they
-    # are most of what makes the maw read from across the arena.
     for i in range(8):
         t = i / 7
         x = 17.6 - t * 8.4
@@ -955,6 +1056,19 @@ def build_gn_fangs(rng):
         length = (1.9 if i in (2, 5) else 1.0) + t * 0.8
         for side in (-1, 1):
             spike(bm, (x, side * spread, GN_JAW_LINE + 0.15), (x, side * spread * 0.94, GN_JAW_LINE - length), 0.34, sides=4)
+    _ = rng
+    return finish("Gnashroot_Teeth", bm, GN_FANG)
+
+
+def build_gn_fangs(rng):
+    """The JAW's row: 14 splinters rising off the lower jaw.
+
+    Bog-oak splinters, not teeth: irregular, broken, a few long ones. The
+    reference's fangs are the hardest edge on the whole creature and they are
+    most of what makes the maw read from across the arena. This object rides
+    the JAW frame with `Jaw` and `Maw` - the palate's row is `Teeth`.
+    """
+    bm = bmesh.new()
     for i in range(7):
         t = i / 6
         x = 17.0 - t * 7.8
@@ -972,6 +1086,12 @@ def build_gn_eyes(rng):
     # reference clusters them - the shoulders and the flanks - so the shape
     # of the creature is told by a constellation of lights in the dark.
     # This is also the fen's own payoff: the wisps were always its eyes.
+    #
+    # subdiv=1 (20 faces), not 2 (80). At subdiv 2 this one object was 2080
+    # triangles - 40% of the whole boss and more than the entire Brinejaw -
+    # spent on 26 near-black balls 0.35 to 0.95 studs across that are only
+    # ever seen edge-on against mud. The silhouette of a 0.5-stud sphere does
+    # not survive to the screen at either subdivision.
     for _ in range(22):
         x = rng.uniform(-6.0, 8.0)
         # The flanks and the shoulder faces - NOT the spine. Eyes on its back
@@ -980,11 +1100,11 @@ def build_gn_eyes(rng):
         size = rng.uniform(0.35, 0.95)
         # Proud of the surface (negative sink): an eye set flush is an eye
         # you never see.
-        _gn_lump(bm, _gn_on_mass(x, angle, sink=-0.02), (size, size, size * 0.8), rng, jitter=0.02, subdiv=2)
+        _gn_lump(bm, _gn_on_mass(x, angle, sink=-0.02), (size, size, size * 0.8), rng, jitter=0.02, subdiv=1)
     # A clustered pair over the brow, so the head still has a gaze.
     for side in (-1, 1):
-        _gn_lump(bm, (11.8, side * 4.0, 13.2), (0.85, 0.85, 0.7), rng, jitter=0.02, subdiv=2)
-        _gn_lump(bm, (13.4, side * 3.2, 12.4), (0.5, 0.5, 0.4), rng, jitter=0.02, subdiv=2)
+        _gn_lump(bm, (11.8, side * 4.0, 13.2), (0.85, 0.85, 0.7), rng, jitter=0.02, subdiv=1)
+        _gn_lump(bm, (13.4, side * 3.2, 12.4), (0.5, 0.5, 0.4), rng, jitter=0.02, subdiv=1)
     return finish("Gnashroot_Eyes", bm, GN_EYE)
 
 
@@ -992,15 +1112,19 @@ def build_gn_core(rng):
     bm = bmesh.new()
     # THE GNASHROOT: the black root-knot at its centre, burning through the
     # mud of its chest. The fight's punish target - the arms plant, the chest
-    # comes forward, and this is what you hit.
-    _gn_lump(bm, (3.4, 0, 18.6), (3.5, 3.2, 3.5), rng, jitter=0.3, subdiv=1)
+    # comes forward, and this is what you hit. Seat and radii are GN_CORE /
+    # GN_CORE_RADII, which carry the visibility measurements that put them
+    # where they are; the HANDOFF line below prints the same two constants, so
+    # the Luau module can never be re-keyed off a number this file does not
+    # actually build.
+    _gn_lump(bm, GN_CORE, GN_CORE_RADII, rng, jitter=0.3, subdiv=1)
     for _ in range(7):
         angle = rng.uniform(0, TAU)
         reach = rng.uniform(2.6, 4.4)
         _gn_taper(
             bm,
-            (3.4, 0, 18.6),
-            (3.4 + rng.uniform(-1.4, 1.8), math.cos(angle) * reach, 18.6 + math.sin(angle) * reach),
+            GN_CORE,
+            (GN_CORE[0] + rng.uniform(-1.4, 1.8), math.cos(angle) * reach, GN_CORE[2] + math.sin(angle) * reach),
             0.42,
             0.14,
             sides=4,
@@ -1029,7 +1153,7 @@ def build_gn_stones(rng):
 
 def build_gn_drips(rng):
     bm = bmesh.new()
-    # Everything runs off it. Hung from the mass's underside, the jaw, and
+    # Everything runs off it. Hung from the mass's underside, the jowls, and
     # the shoulders - the reference's most distinctive read after the maw.
     for _ in range(16):
         x = rng.uniform(-9.5, 7.0)
@@ -1037,11 +1161,23 @@ def build_gn_drips(rng):
         seat = _gn_on_mass(x, angle, sink=0.0)
         length = rng.uniform(2.2, 6.5)
         _gn_taper(bm, seat, (seat.x + rng.uniform(-0.4, 0.4), seat.y, seat.z - length), 0.75, 0.16, sides=5)
+    # The JOWLS, not the chin. These seven used to hang from a flat z = 6.6
+    # at x 10-17, which is INSIDE the lower jaw's volume - and `Drips` rides
+    # the BODY, so at a 38 degree gape the jaw swung out from under them and
+    # left seven mud icicles hanging in the open mouth. Seated on the skull's
+    # flank instead, a touch proud of it, and stopped above GN_JAW_TOP: the
+    # skull is wider than the jaw at every shared x, so they run down the
+    # cheek OUTSIDE the corner of the mouth and the jaw never reaches them at
+    # any gape.
     for _ in range(7):
-        x = rng.uniform(10.0, 17.0)
-        y = rng.choice((rng.uniform(-3.6, -1.6), rng.uniform(1.6, 3.6)))
-        length = rng.uniform(2.0, 5.5)
-        _gn_taper(bm, (x, y, 6.6), (x, y, 6.6 - length), 0.6, 0.14, sides=5)
+        x = rng.uniform(10.0, 15.5)
+        side = 1.0 if rng.random() < 0.5 else -1.0
+        angle = rng.uniform(math.radians(-14), math.radians(20))
+        seat = _gn_on_skull(x, angle, sink=-0.06)
+        seat.y *= side
+        length = rng.uniform(1.8, 3.4)
+        stop = max(seat.z - length, GN_JAW_TOP + 0.35)
+        _gn_taper(bm, seat, (seat.x + rng.uniform(-0.3, 0.3), seat.y, stop), 0.6, 0.14, sides=5)
     return finish("Gnashroot_Drips", bm, GN_DARK)
 
 
@@ -1069,20 +1205,18 @@ def build_gn_hand(rng):
     # The hand: a heavy palm and four thick fingers with a thumb, splayed to
     # plant on the peat. +X runs up-limb toward the body, so the fingers
     # reach toward -X - this is what the slam lands on.
-    loft(
-        bm,
-        [
-            ring_pts(2.6, 0.0, 2.7, 2.6, sides=7),
-            ring_pts(0.4, 0.0, 4.0, 3.4, sides=7),
-            ring_pts(-2.0, 0.0, 3.5, 2.9, sides=7),
-        ],
-    )
+    #
+    # GN_PALM is in INCREASING x, the winding `loft` documents. Fed decreasing
+    # it produced an inside-out palm (signed volume -138.47) and, meshes being
+    # single-sided in Roblox, a dark hole with fingers in front of it.
+    loft(bm, [ring_pts(x, cz, hw, hh, sides=7) for x, cz, hw, hh in GN_PALM])
     for i in range(4):
         spread = (i - 1.5) * 2.0
         knuckle = Vector((-2.2, spread, -0.5))
         mid = knuckle + Vector((-2.4, spread * 0.22, -1.0))
         tip = mid + Vector((-1.9, spread * 0.18, -1.3))
         # Thick and short: the reference's fingers are sausages, not rakes.
+        # 2.2 + 2.4 + 1.9 is GN_HAND_REACH, which the HANDOFF prints.
         _gn_taper(bm, tuple(knuckle), tuple(mid), 1.35, 1.1, sides=5)
         _gn_taper(bm, tuple(mid), tuple(tip), 1.1, 0.55, sides=5)
     thumb_base = Vector((0.4, 3.8, -0.9))
@@ -1101,6 +1235,7 @@ def build_gnashroot():
         build_gn_head(rng),
         build_gn_jaw(rng),
         build_gn_maw(),
+        build_gn_teeth(rng),
         build_gn_fangs(rng),
         build_gn_eyes(rng),
         build_gn_core(rng),
@@ -1110,18 +1245,48 @@ def build_gnashroot():
         build_gn_arm_knot(rng),
         build_gn_hand(rng),
     ]
-    print("HANDOFF gnashroot: BODY is one CFrame - it FACES +X, stands on z=0, shoulders at z=18.0, crown z~27")
+    # Every number below is DERIVED from the constants above, not retyped
+    # beside them. Three of them used to be retyped and all three had drifted
+    # (shoulders printed 18.0 against a constant of 18.2, the core printed
+    # r2.9 against radii of 3.5/3.2/3.5, and the reach printed pitch*segments
+    # instead of the curve the placer actually walks).
+    crown = max(cz + hh for _, cz, _, hh in GN_MASS)
+    _, _, arc = _arc_walker(lambda t: _gn_arm_path(1, t))
+    at_length, tangent_at, _ = _arc_walker(lambda t: _gn_arm_path(1, t))
+    wrist = at_length(arc)
+    straight = (wrist - Vector(GN_SHOULDER)).length
+    fist = arc - GN_HAND_SEAT * (1.0 - GN_ARM_TIP_TAPER) + GN_HAND_REACH * (1.0 - GN_ARM_TIP_TAPER)
+    print(
+        "HANDOFF gnashroot: BODY is one CFrame - it FACES +X, stands on z=0, shoulders at z=%.1f, crown z~%.0f"
+        % (GN_SHOULDER[2], crown)
+    )
     print("HANDOFF gnashroot: jaw hinge pivot (%.1f, %.1f, %.1f) - the client rotates Jaw + Fangs + Maw about it" % GN_JAW_HINGE)
+    print("HANDOFF gnashroot: TEETH is the SKULL's palate row and rides the BODY frame - do NOT hinge it with the jaw; FANGS is the jaw's row and does")
+    print("HANDOFF gnashroot: DRIPS rides the BODY frame too - its 7 head drips hang off the JOWLS, outboard of the jaw, and must not be hinged")
     print("HANDOFF gnashroot: shoulder sockets (%.1f, +/-%.1f, %.1f) - root each arm chain here" % GN_SHOULDER)
-    print("HANDOFF gnashroot: mass half-width 9.4 at the shoulders -> the row's hitRadius 6 covers the core, not the reach")
-    print("HANDOFF gnashroot: CORE at (3.4, 0, 18.6) r2.9 - high on the chest, unoccluded from the front - Neon; the expose-window target, and the 'still-beating heart' the rod prose names")
+    print("HANDOFF gnashroot: mass half-width %.1f at the shoulders -> the row's hitRadius 6 covers the core, not the reach"
+          % max(hw for _, _, hw, _ in GN_MASS))
+    print(
+        "HANDOFF gnashroot: CORE at (%.1f, %.1f, %.1f) radii (%.1f, %.1f, %.1f) - Neon, the expose-window target and the "
+        "'still-beating heart' the rod prose names. It sits PROUD of the chest's front slope (the mass's surface at x %.1f "
+        "is z %.2f); 67 of its 104 triangles are unoccluded from at least one of 57 front-hemisphere player stances at "
+        "eye height 6.6 world, 30-45 studs out. It is NOT visible from dead ahead inside ~40 world studs: the skull's "
+        "crest (z 16.34 at x 9-11.6) is between a player's eye and the chest on the exact midline, which is what a "
+        "head slung this low and forward costs. Step off the midline or back off and it reads."
+        % (GN_CORE[0], GN_CORE[1], GN_CORE[2], GN_CORE_RADII[0], GN_CORE_RADII[1], GN_CORE_RADII[2],
+           GN_CORE[0], _gn_mass_at(GN_CORE[0])[0] + _gn_mass_at(GN_CORE[0])[2])
+    )
     print("HANDOFF gnashroot: EYES are 22 on the flanks + 4 on the brow - DARK and glossy, seated on the mass; the CORE is the only Neon")
     print(
-        "HANDOFF gnashroot: arm pitch %.1f, %d segments + hand = ~%.0f studs of reach at scale 1 (x1.5 = %.0f)"
-        % (GN_ARM_SPACING, GN_ARM_SEGMENTS, GN_ARM_SPACING * GN_ARM_SEGMENTS + 4.0, (GN_ARM_SPACING * GN_ARM_SEGMENTS + 4.0) * 1.5)
+        "HANDOFF gnashroot: arm pitch %.1f, %d segments + hand. MEASURED off the rest curve _gn_arm_path walks, not "
+        "pitch*segments: shoulder->wrist is %.1f studs of arc (%.1f straight) and the planted fist reaches %.1f, at "
+        "scale 1 - x1.5 = %.1f arc / %.1f straight / %.1f to the fist."
+        % (GN_ARM_SPACING, GN_ARM_SEGMENTS, arc, straight, fist, arc * 1.5, straight * 1.5, fist * 1.5)
     )
-    print("HANDOFF gnashroot: arm half-width 3.5 at scale 1 -> slam hit girth ~7 studs; taper by u toward the hand")
+    print("HANDOFF gnashroot: arm half-width %.1f at scale 1 -> slam hit girth ~%.0f studs; taper by u toward the hand"
+          % (max(hw for _, _, hw, _ in GN_ARM), 2 * max(hw for _, _, hw, _ in GN_ARM)))
     return objects
+
 
 # ================================================================ noctyss
 #
@@ -4671,7 +4836,7 @@ def _place_gnashroot(objects, scale=1.0):
         return copy
 
     # The body is ONE CFrame - every piece was authored in the same space.
-    for part in ("Mass", "Legs", "Head", "Jaw", "Maw", "Fangs", "Eyes", "Core", "Stones", "Drips"):
+    for part in ("Mass", "Legs", "Head", "Jaw", "Maw", "Teeth", "Fangs", "Eyes", "Core", "Stones", "Drips"):
         place(by_name[part], Vector((0, 0, 0)), None, scale)
 
     seg, knot, hand = by_name["Arm"], by_name["ArmKnot"], by_name["Hand"]
