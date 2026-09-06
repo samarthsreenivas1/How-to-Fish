@@ -4028,6 +4028,16 @@ def _spire_radius(z):
 # quietly disagreed with the game would be worse than no render. The Luau is
 # the source of truth; if you change one, change both.
 #
+# COVERAGE, so nobody has to guess: this port carries EVERY pose kind the Luau
+# has - the rest pose, the whipping sweep arm, the slump, and all six attack
+# kinds (lunge / undertow / belltoll / rear / spiral / collapse) off the same
+# (AttackKind, AttackU, AimX, AimZ) channel. Verified numerically against the
+# shipped math at 481 body positions x 11 pose states: worst divergence
+# 1.4e-14 studs. Two constants that HAD drifted were corrected in the same
+# pass - BJ_SWEEP_HIGH (5.4 against the Luau's 8.5) and the coil drop, which
+# was missing the clamp to the beach and rendered the third stance 16 studs
+# and the collapse 26.6 studs away from the pose the game holds.
+#
 # Roblox is Y-up and Blender is Z-up, so the mapping throughout is
 # Luau (x, y, z) -> Blender (x, z, y): the helix is the same circle, and
 # "height" moves from the Luau's Y to Blender's Z.
@@ -4035,9 +4045,48 @@ def _spire_radius(z):
 BJ_SWEEP_REACH = 66.0
 BJ_SWEEP_INNER = 13.0
 BJ_SWEEP_LOW = 1.6
-BJ_SWEEP_HIGH = 5.4
+# 8.5, NOT 5.4. This was a hand-copy that never got the fix: the Luau raised
+# HIGH from 5.4 because |3.0 - 5.4| = 2.4 sits INSIDE girth 3.6, so standing
+# under a high sweep was hit and half the mechanic taught the opposite of
+# what it means. A render at 5.4 would show a sweep nobody can stand under.
+BJ_SWEEP_HIGH = 8.5
 BJ_MAX_COIL = 3
 BJ_COIL_DROP = (BJ_REST["top_z"] - BJ_REST["bottom_z"]) / BJ_REST["turns"]
+
+# THE ATTACK CHANNEL, ported whole from BrinejawPath's contract header: the
+# server publishes (AttackKind, AttackU, AimX, AimZ) alongside the original
+# six attributes, and every pose below is a function of those ten values. The
+# Luau is the source of truth for all of it; read that file's header for what
+# U means per kind, and keep these numbers equal to it.
+#
+# Blender is Z-up, so the Luau's BELL (x, y, z) = (8.6, 53.0, -2.8) arrives
+# here as (x, y, z) = (8.6, -2.8, 53.0) - the bell hung off the lighthouse
+# gallery by arena_gen's build_bj_dressing, NOT the half-buried one on the
+# sand that the first draft struck.
+BJ_BELL = (8.6, -2.8, 53.0)
+BJ_AIM_MIN, BJ_AIM_MAX = 16.0, 58.0
+BJ_LUNGE_COCK_U, BJ_LUNGE_IMPACT_U = 0.35, 0.50
+BJ_LUNGE_COCK_R, BJ_LUNGE_RISE, BJ_LUNGE_SIT = 16.0, 12.0, 2.4
+BJ_BELL_WINDUP_U, BJ_BELL_IMPACT_U, BJ_BELL_LIFT = 0.35, 0.55, 1.7
+BJ_BELL_COCK_R, BJ_BELL_RISE = 15.0, 14.0
+BJ_REAR_U, BJ_REAR_OUT, BJ_REAR_LIFT = 0.30, 10.0, 24.0
+BJ_UNDER_T0, BJ_UNDER_T1 = 0.34, 0.67
+BJ_UNDER_INNER, BJ_UNDER_OVERRUN = 10.0, 10.0
+BJ_UNDER_DEPTH, BJ_UNDER_HUMP, BJ_UNDER_SIGMA = 4.5, 7.1, 6.0
+BJ_SPIRAL_CLOSE = 8.0
+# The whip. drag(r) = BJ_WHIP_DRAG * (r - inner) * rate, so the arm TRAILS its
+# base bearing: 28.2 degrees at the tip at the book's fastest sweep. A render
+# has no angular velocity of its own, so `sweep_rate` is just another field of
+# the state dict - set it to see the arm curve.
+BJ_WHIP_DRAG, BJ_WHIP_RATE_MAX = 0.0039, 3.0
+BJ_ATTACK = {
+    "lunge": {"mode": "neck", "span": 0.26, "entry": 0.10, "exit": 0.28, "arch": 5.0},
+    "belltoll": {"mode": "neck", "span": 0.24, "entry": 0.10, "exit": 0.14, "arch": 7.0},
+    "rear": {"mode": "rear", "span": 0.50, "entry": 0.16, "exit": 0.16},
+    "undertow": {"mode": "undertow", "entry": 0.30, "exit": 0.30},
+    "spiral": {"mode": "sweep"},
+    "collapse": {"mode": "fall"},
+}
 
 
 def _bj_sand_z(r):
@@ -4062,19 +4111,75 @@ def bj_state(**overrides):
         "unwind": 0.0,
         "sweep_angle": 0.0,
         "sweep_height": BJ_SWEEP_LOW,
+        # DERIVED on both sides from sweep_angle, never replicated - see the
+        # Luau's contract header. A still render just sets it.
+        "sweep_rate": 0.0,
         "slump": 0.0,
         "face_angle": BJ_REST["bearing"] - 0.8,
+        "attack_kind": "",
+        "attack_u": 0.0,
+        "aim_x": 0.0,
+        "aim_z": 0.0,
         "time": 0.0,
     }
     state.update(overrides)
     return state
 
 
+def _wrap(a):
+    return (a + math.pi) % TAU - math.pi
+
+
+def _bj_cyl_of(p):
+    """(bearing, radius, height) - Blender's Z is the Luau's Y."""
+    r = math.hypot(p.x, p.y)
+    return (math.atan2(p.y, p.x) if r > 1e-4 else 0.0), r, p.z
+
+
+def _bj_from_cyl(th, r, z):
+    return Vector((math.cos(th) * r, math.sin(th) * r, z))
+
+
+def _bj_rest_bearing_ref(t):
+    """The bearing the rest pose is WINDING THROUGH at t - continuous, and
+    growing past +-pi rather than wrapping. Cylindrical blends MUST use this:
+    the pose is a three-turn helix, so neighbouring vertebrae sit up to a full
+    turn apart and a per-point 'short way round' tears the curve (measured in
+    the Luau as a 144-degree kink in the tail at half weight)."""
+    rest = BJ_REST
+    if t <= rest["helix_end"]:
+        k = max(0.0, min(1.0, (t - rest["neck_end"]) / (rest["helix_end"] - rest["neck_end"])))
+        return rest["bearing"] + rest["turns"] * TAU * k
+    k = (t - rest["helix_end"]) / (1.0 - rest["helix_end"])
+    return rest["bearing"] + rest["turns"] * TAU + rest["tail_turn"] * TAU * k
+
+
+def _bj_rest_bearing(t, wrapped):
+    ref = _bj_rest_bearing_ref(t)
+    return ref + _wrap(wrapped - ref)
+
+
+def _bj_cyl_blend(th, r, z, t_th, t_r, t_z, w):
+    return _bj_from_cyl(th + (t_th - th) * w, r + (t_r - r) * w, z + (t_z - z) * w)
+
+
+def _bj_coil_offset(state):
+    """How far the whole stack has slid down the tower, in studs - CLAMPED to
+    the beach, exactly as the Luau does. Unclamped (which is what this port
+    carried) the third stance puts 43% of the body underground and the death
+    collapse buries two thirds of it 22 studs into the sand: measured 16.0
+    studs of divergence at coil=1 and 26.6 during a collapse, so a render of
+    either state was showing a pose the game does not have."""
+    drop = (BJ_MAX_COIL - state["coil"]) * BJ_COIL_DROP
+    floor = BJ_REST["bottom_z"] - _bj_sand_z(0) - BJ_REST["clearance"]
+    return max(0.0, min(drop, max(floor, 0.0)))
+
+
 def _bj_rest_path(t, state=None):
     """Head (t=0) to rattle (t=1) in arena-local space, waterline at z=0."""
     rest = BJ_REST
     state = state or bj_state()
-    drop = (BJ_MAX_COIL - state["coil"]) * BJ_COIL_DROP
+    drop = _bj_coil_offset(state)
     neck_end, helix_end = rest["neck_end"], rest["helix_end"]
 
     def helix(k):
@@ -4138,24 +4243,175 @@ def _bj_rest_path(t, state=None):
     return p0 * (2 * k3 - 3 * k2 + 1) + m0 * (k3 - 2 * k2 + k) + p1 * (3 * k2 - 2 * k3) + m1 * (k3 - k2)
 
 
-def _bj_swept_point(state, t, blend_start):
-    """The tail laid out along one bearing at sweep height - the arm."""
+def _bj_sweep_reach(state):
+    """How far out the arm reaches. `spiral` contracts it with U, and this one
+    function is read by the drawn tip AND by the Luau's hit test."""
+    if state.get("attack_kind", "") != "spiral":
+        return BJ_SWEEP_REACH
+    closed = BJ_SWEEP_INNER + BJ_SPIRAL_CLOSE
+    return BJ_SWEEP_REACH + (closed - BJ_SWEEP_REACH) * _smoothstep(
+        max(0.0, min(1.0, state.get("attack_u", 0.0)))
+    )
+
+
+def _bj_sweep_bearing_at(state, r):
+    """THE ARM IS A DRAG CURVE, NOT A SPOKE. The bearing at radius r trails
+    the base bearing in proportion to how far out it is and how fast the base
+    is turning - a rigid rotating line has no tail in it."""
+    rate = max(-BJ_WHIP_RATE_MAX, min(BJ_WHIP_RATE_MAX, state.get("sweep_rate", 0.0)))
+    return state["sweep_angle"] - BJ_WHIP_DRAG * max(r - BJ_SWEEP_INNER, 0.0) * rate
+
+
+def _bj_swept_cyl(state, t, blend_start):
+    """The arm at t, as (UNWRAPPED bearing, radius, height). The branch is
+    picked once per state AT THE TIP, because the tip is the part that
+    actually swings and so the part that must take the short way round."""
     k = max(0.0, min(1.0, (t - blend_start) / max(1 - blend_start, 1e-3)))
-    r = BJ_SWEEP_INNER + (BJ_SWEEP_REACH - BJ_SWEEP_INNER) * k
-    theta = state["sweep_angle"]
-    return Vector((math.cos(theta) * r, math.sin(theta) * r, _bj_sand_z(r) + state["sweep_height"]))
+    reach = _bj_sweep_reach(state)
+    r = BJ_SWEEP_INNER + (reach - BJ_SWEEP_INNER) * k
+    turns = round((_bj_rest_bearing_ref(1.0) - _bj_sweep_bearing_at(state, reach)) / TAU)
+    return _bj_sweep_bearing_at(state, r) + turns * TAU, r, _bj_sand_z(r) + state["sweep_height"]
+
+
+def _bj_swept_point(state, t, blend_start):
+    return _bj_from_cyl(*_bj_swept_cyl(state, t, blend_start))
+
+
+def _bj_fall_amount(state):
+    """How far into the death fall. DERIVED from the attack channel - kind
+    'collapse' means fall = U - because the Luau's `fall` used to be read by
+    the slump and written by nobody, so the collapse eased four values that
+    were already at their targets."""
+    if state.get("attack_kind", "") == "collapse":
+        return max(0.0, min(1.0, state.get("attack_u", 0.0)))
+    return max(0.0, min(1.0, state.get("fall", 0.0)))
 
 
 def _bj_slump_point(state, t):
     """Where the head goes when it loses its grip: down, onto the sand."""
     rest = BJ_REST
-    drop = (BJ_MAX_COIL - state["coil"]) * BJ_COIL_DROP
+    drop = _bj_coil_offset(state)
     theta = state["face_angle"]
-    reach = 26.0
+    fall = _bj_fall_amount(state)
+    reach = 26.0 + 8.0 * fall
     k = max(0.0, min(1.0, t / 0.30))
     bottom = rest["bottom_z"] - drop
     r = reach - (reach - (_spire_radius(bottom) + rest["clearance"])) * k
-    return Vector((math.cos(theta) * r, math.sin(theta) * r, _bj_sand_z(r) + 2.6 + 9.0 * k**1.5))
+    z = _bj_sand_z(r) + 2.6 - 1.8 * fall + 9.0 * k**1.5
+    return Vector((math.cos(theta) * r, math.sin(theta) * r, z))
+
+
+# ------------------------------------------------------------ attack shapes
+#
+# Ported whole from BrinejawPath.luau. Every bearing below is UNWRAPPED and
+# continuous in U: each target is the rest head's own bearing plus a swing
+# that never wraps. Wrapping here put a 180-degree flip in the middle of the
+# bell's recoil - 15.6 studs of body in one step of U.
+
+
+def _bj_progress(state):
+    return max(0.0, min(1.0, state.get("attack_u", 0.0)))
+
+
+def _bj_envelope(u, entry, exit_):
+    """The fade in and out. An attack whose kind is cleared at U < 1 SNAPS."""
+    return min(_smoothstep(u / max(entry, 1e-3)), _smoothstep((1 - u) / max(exit_, 1e-3)))
+
+
+def _bj_aim_cyl(state):
+    ax, az = state.get("aim_x", 0.0), state.get("aim_z", 0.0)
+    r = math.hypot(ax, az)
+    if r < 1e-3:
+        return state["face_angle"], BJ_AIM_MIN
+    return math.atan2(az, ax), max(BJ_AIM_MIN, min(BJ_AIM_MAX, r))
+
+
+def _bj_head_rest_cyl(state):
+    wrapped, r, z = _bj_cyl_of(_bj_rest_path(0.0, state))
+    return _bj_rest_bearing(0.0, wrapped), r, z
+
+
+def _bj_neck_arc(state, target, target_theta, span, arch, t):
+    """The neck, one cylindrical arc from the head's target to where the body
+    still grips the tower. LINEAR in k so the arc's tangent DIRECTION is
+    constant along its length; ease it and the neck stands itself vertical at
+    the joint, which is where ChainPose's frame is undefined."""
+    k = max(0.0, min(1.0, t / max(span, 1e-3)))
+    a_wrapped, r1, z1 = _bj_cyl_of(_bj_rest_path(span, state))
+    t1 = _bj_rest_bearing(span, a_wrapped)
+    _, r0, z0 = _bj_cyl_of(target)
+    z = z0 + (z1 - z0) * k + arch * math.sin(math.pi * k)
+    r = r0 + (r1 - r0) * k
+    return (
+        target_theta + (t1 - target_theta) * k,
+        max(r, _spire_radius(z) + BJ_REST["clearance"]),
+        z,
+    )
+
+
+def _bj_lunge_target(state, u):
+    aim_t, aim_r = _bj_aim_cyl(state)
+    th0, r0, z0 = _bj_head_rest_cyl(state)
+    swing = _wrap(aim_t - th0)
+    cock = BJ_LUNGE_COCK_U
+    if u <= cock:
+        a = _smoothstep(u / cock)
+        return th0 + swing * a, Vector((r0 + (BJ_LUNGE_COCK_R - r0) * a, 0.0, z0 + BJ_LUNGE_RISE * a))
+    b = _smoothstep(max(0.0, min(1.0, (u - cock) / (BJ_LUNGE_IMPACT_U - cock))))
+    z_top = z0 + BJ_LUNGE_RISE
+    z_land = _bj_sand_z(aim_r) + BJ_LUNGE_SIT
+    return th0 + swing, Vector(
+        (BJ_LUNGE_COCK_R + (aim_r - BJ_LUNGE_COCK_R) * b, 0.0, z_top + (z_land - z_top) * b)
+    )
+
+
+def _bj_bell_strike():
+    return Vector((BJ_BELL[0], BJ_BELL[1], BJ_BELL[2] + BJ_BELL_LIFT))
+
+
+def _bj_bell_target(state, u):
+    b_t, b_r, b_z = _bj_cyl_of(_bj_bell_strike())
+    th0, r0, z0 = _bj_head_rest_cyl(state)
+    swing = _wrap(b_t - th0)
+    cock_r, cock_z = BJ_BELL_COCK_R, z0 + BJ_BELL_RISE
+    windup, impact = BJ_BELL_WINDUP_U, BJ_BELL_IMPACT_U
+    if u <= windup:
+        a = _smoothstep(u / windup)
+        return th0 + swing * 0.55 * a, Vector((r0 + (cock_r - r0) * a, 0.0, z0 + (cock_z - z0) * a))
+    if u <= impact:
+        b = _smoothstep((u - windup) / (impact - windup))
+        return th0 + swing * (0.55 + 0.45 * b), Vector(
+            (cock_r + (b_r - cock_r) * b, 0.0, cock_z + (b_z - cock_z) * b)
+        )
+    c = _smoothstep((u - impact) / (1 - impact))
+    return th0 + swing * (1 - c), Vector((b_r + (r0 - b_r) * c, 0.0, b_z + (z0 - b_z) * c))
+
+
+def _bj_rear_offset(state, t):
+    """`rear` DISPLACES the front half outward and upward and touches no
+    bearing at all, so the coils rear with it. A 'straighten the front into an
+    arc' version had to unwind 1.86 turns of coil to reach a straight neck,
+    which is both wrong and the fastest way to stand a limb dead vertical."""
+    shape = BJ_ATTACK["rear"]
+    u = _bj_progress(state)
+    rise = _smoothstep(max(0.0, min(1.0, u / BJ_REAR_U))) * _bj_envelope(u, shape["entry"], shape["exit"])
+    fade = 1 - _smoothstep(max(0.0, min(1.0, t / shape["span"])))
+    return BJ_REAR_OUT * rise * fade, BJ_REAR_LIFT * rise * fade
+
+
+def _bj_undertow_cyl(state, t):
+    """The buried run: the middle third rides under the beach except where the
+    travelling bulge lifts it proud. The run EXTENDS with the bulge rather
+    than being laid out to full length at U = 0."""
+    aim_t, aim_r = _bj_aim_cyl(state)
+    inner = BJ_UNDER_INNER
+    k = max(0.0, min(1.0, (t - BJ_UNDER_T0) / (BJ_UNDER_T1 - BJ_UNDER_T0)))
+    travel = inner + (aim_r - inner) * _bj_progress(state)
+    r = inner + ((travel + BJ_UNDER_OVERRUN) - inner) * k
+    d = r - travel
+    hump = BJ_UNDER_HUMP * math.exp(-(d * d) / (2 * BJ_UNDER_SIGMA * BJ_UNDER_SIGMA))
+    ref = _bj_rest_bearing_ref(0.5 * (BJ_UNDER_T0 + BJ_UNDER_T1))
+    return ref + _wrap(aim_t - ref), r, _bj_sand_z(r) - BJ_UNDER_DEPTH + hump
 
 
 def bj_pose_path(state):
@@ -4164,17 +4420,52 @@ def bj_pose_path(state):
     def path(t):
         t = max(0.0, min(1.0, t))
         point = _bj_rest_path(t, state)
+        kind = state.get("attack_kind", "")
+        shape = BJ_ATTACK.get(kind)
+        mode = shape["mode"] if shape else None
 
+        # EVERY CYLINDRICAL BLEND IS GUARDED BY w > 0, and not just for speed:
+        # a round trip through atan2/cos/sin would move the rest pose by a
+        # float ulp for nothing. Guarded, the idle pose is bit-identical.
         unwind = state["unwind"]
         if unwind > 0:
             blend_start = 1.0 - 0.40 * unwind
             w = _smoothstep((t - blend_start) / 0.14) * unwind
             if w > 0:
-                point = point.lerp(_bj_swept_point(state, t, blend_start), w)
+                # CYLINDRICAL, because a positional lerp between a body coiled
+                # at bearing 300 and an arm parked at 120 goes straight
+                # through the lighthouse - measured 7.98 studs inside the
+                # masonry, passing 0.24 studs from the axis.
+                th, r, z = _bj_cyl_of(point)
+                a_th, a_r, a_z = _bj_swept_cyl(state, t, blend_start)
+                point = _bj_cyl_blend(_bj_rest_bearing(t, th), r, z, a_th, a_r, a_z, w)
 
         slump = state["slump"]
         if slump > 0 and t < 0.34:
             point = point.lerp(_bj_slump_point(state, t), _smoothstep((0.34 - t) / 0.34) * slump)
+
+        if mode == "neck":
+            u = _bj_progress(state)
+            w = _bj_envelope(u, shape["entry"], shape["exit"]) * _smoothstep((shape["span"] - t) / shape["span"])
+            if w > 0:
+                target_th, target = (_bj_lunge_target if kind == "lunge" else _bj_bell_target)(state, u)
+                th, r, z = _bj_cyl_of(point)
+                a_th, a_r, a_z = _bj_neck_arc(state, target, target_th, shape["span"], shape["arch"], t)
+                point = _bj_cyl_blend(_bj_rest_bearing(t, th), r, z, a_th, a_r, a_z, w)
+        elif mode == "undertow" and BJ_UNDER_T0 < t < BJ_UNDER_T1:
+            edge = 0.06
+            w = _bj_envelope(_bj_progress(state), shape["entry"], shape["exit"]) * _smoothstep(
+                min((t - BJ_UNDER_T0) / edge, (BJ_UNDER_T1 - t) / edge)
+            )
+            if w > 0:
+                th, r, z = _bj_cyl_of(point)
+                a_th, a_r, a_z = _bj_undertow_cyl(state, t)
+                point = _bj_cyl_blend(_bj_rest_bearing(t, th), r, z, a_th, a_r, a_z, w)
+        elif mode == "rear":
+            dr, dz = _bj_rear_offset(state, t)
+            if dr > 0 or dz > 0:
+                th, r, z = _bj_cyl_of(point)
+                point = _bj_from_cyl(th, r + dr, z + dz)
 
         # Mirrors BrinejawPath: amplitude grows toward the tail so the body
         # whips rather than wobbling, and the last tenth flicks sideways so

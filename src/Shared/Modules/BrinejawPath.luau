@@ -31,6 +31,151 @@
 -- (assets/arena_gen.py). Before that mesh is imported the arena is a flat
 -- procedural disc, so a resting tail rides a couple of studs high - cosmetic,
 -- and it corrects itself the moment the real arena lands.
+--
+-- ==========================================================================
+-- THE REPLICATED STATE CONTRACT
+-- ==========================================================================
+--
+-- TEN ATTRIBUTES ON THE BOSS MODEL, AND NOTHING ELSE. The server writes
+-- them; the client eases toward them and draws; both sides feed the SAME
+-- state table to the SAME functions in this file. Every shape below has an
+-- analytic hit-test twin here, computed from these ten values and nothing
+-- more - that is the prime law of this boss, and every one of the fourteen
+-- defects the 2026-08-30 audits found was a value that lived in one place
+-- and was needed in another. If you need a new number, DERIVE it here.
+--
+--   attribute      state field    meaning
+--   -----------    -----------    ---------------------------------------
+--   Coil           coil           3..0, how many turns still grip the tower
+--   Unwind         unwind         0 coiled, 1 tail fully off the tower
+--   SweepAngle     sweepAngle     the sweep arm's BASE bearing, radians
+--   SweepHeight    sweepHeight    the arm's centre height above the sand
+--   Slump          slump          0 reared, 1 head down (the punish window)
+--   FaceAngle      faceAngle      who it is watching, radians
+--   AttackKind     attackKind     "" when idle, else one of ATTACK below
+--   AttackU        attackU        0..1, progress through the CURRENT attack
+--   AimX           aimX           arena-LOCAL x of the aim point, 0 if none
+--   AimZ           aimZ           arena-LOCAL z of the aim point, 0 if none
+--
+-- Aim is arena-local (relative to `state.center`, the tower's FOOT), because
+-- `center` is already replicated as PoseCenter and a world-space aim would
+-- be the same number written twice.
+--
+-- TWO FIELDS ARE NOT ATTRIBUTES, ON PURPOSE:
+--
+--   state.time       each side's own clock; only ambient sway reads it, and
+--                    sway is deliberately not authoritative.
+--
+--   state.sweepRate  the arm's SIGNED ANGULAR VELOCITY (rad/s), which is the
+--                    whip's drag term. It is NOT replicated because it is
+--                    the derivative of SweepAngle, which already is: adding
+--                    an attribute for it would be the exact "one value, two
+--                    homes" bug this contract exists to prevent. BOTH SIDES
+--                    DIFFERENTIATE THE SAME SweepAngle and hand the result
+--                    in as a CALLER-SUPPLIED FIELD, through the one filter
+--                    below so the two derivatives cannot diverge:
+--
+--                      server: BrinejawPath.stepSweepRate(state, dir * arc /
+--                              duration, dt)     -- it knows the exact rate
+--                      client: BrinejawPath.stepSweepRate(state,
+--                              wrapAngle(eased - lastEased) / dt, dt)
+--
+--                    `stepSweepRate` low-passes with WHIP_TAU. That is what
+--                    makes the two agree: the client's eased angle responds
+--                    to a step in the server's rate with a 1/55 s lag, so the
+--                    two raw rates disagree badly for the first frames of
+--                    every sweep. Running BOTH through one 0.35 s filter puts
+--                    the worst-case tip divergence at 0.876 studs, against
+--                    1.70 for half the LOW sweep's girth - so no player is
+--                    ever hit by a curve they were not shown. Measured over
+--                    all four sweeps in the book at 60 Hz, with the two
+--                    controls that must fail: unfiltered raw rates diverge
+--                    12.98 studs, and WHIP_TAU = 0.16 gives 1.71.
+--                    A caller that supplies nothing gets rate 0: a straight
+--                    arm that still matches its own hit test, which is wrong
+--                    but never unfair.
+--
+-- PER-KIND SEMANTICS OF AttackU AND Aim. U is progress through the WHOLE
+-- attack, 0 at the first windup frame and 1 when the boss is back at rest;
+-- the server must RUN U TO 1 before clearing AttackKind, because the exit
+-- ramp lives in the last few percent. Clearing the kind at U < 1 snaps.
+--
+--   "lunge"     head+neck leave the coil and strike DOWN at the aim point.
+--               Aim = where the skull lands, on the sand.
+--               U 0..0.35  rear and track: the head rises and swings onto
+--                          the aim bearing (still trackable - the server may
+--                          keep rewriting Aim through this window).
+--               U 0.35..0.50 strike: fast descent. THE BLOW LANDS AT 0.50
+--                          (LUNGE_IMPACT_U), so the tell's countdown must
+--                          end there and not at the end of the windup.
+--               U 0.50..0.72 held: the skull is planted on the sand at the
+--                          aim point, 2.4 studs up - level with a standing
+--                          R15 root. THE PUNISH WINDOW. Aim must be frozen
+--                          from 0.35 on or the head slides sideways.
+--               U 0.72..1  recover: the head peels back up the tower. This
+--                          is the attack's `exit` ramp and it is 28% of U
+--                          because the skull has 56 studs to climb: at the
+--                          8% a first draft used, the body moved 5.1 studs
+--                          in one step of U at 240 steps, and at 28% it
+--                          moves 1.00. The punish window is therefore
+--                          0.50..0.72, NOT 0.50..1 - hold U at 0.72 if you
+--                          want it open longer.
+--               Twins: lungeHeadPosition (park the authority model on it),
+--               lungeImpactPoint, lungeHits.
+--
+--   "undertow"  a bulge travels BENEATH the sand from the tower's foot out
+--               to the aim point at constant speed; the middle third of the
+--               body is submerged either side of it.
+--               Aim = the far end of the run. U 0..1 is the travel, LINEAR
+--               in distance (constant speed is the read), so the bulge sits
+--               at radius UNDER_INNER + (aimR - UNDER_INNER) * U the whole
+--               way. Aim must be frozen at U = 0. The first and last 30% of
+--               U are the body DIVING under the beach and surfacing again -
+--               declared fast phases, like a strike (4.10 studs a step at
+--               240 steps), because a third of a colossus has to unwind a
+--               turn and a half of coil to get there.
+--               Twins: undertowPoint (world XZ + progress - server damage
+--               and client dust ride the SAME point), undertowHits.
+--
+--   "belltoll"  the head strikes the keeper's bell (REST.BELL).
+--               Aim is UNUSED (write 0, 0).
+--               U 0..0.35  windup, 0.35..0.55 strike, 0.55..1 recoil. THE
+--               BELL IS STRUCK AT 0.55 (BELL_IMPACT_U). The rings are the
+--               server's and the client's business; this file only poses the
+--               head. Twin: bellStrikePoint.
+--
+--   "rear"      the whole front half rears to full height and HOLDS - the
+--               Tidal Surge set-piece. Aim unused; it rears on the bearings
+--               it already has, DISPLACING the front half outward and upward
+--               rather than replacing its shape, so the coils rear with it.
+--               U 0..0.30 rise, 0.30..0.84 hold, 0.84..1 come down. To hold
+--               longer, hold U at 0.5; to come down, run U to 1.
+--               Twin: rearHeadPosition.
+--
+--   "spiral"    constrict's new form. The SWEEP ARM's reach contracts with
+--               U, so the lethal band closes in as the arm circles. This
+--               kind does NOT pose the body on its own: the server drives
+--               Unwind/SweepAngle/SweepHeight exactly as for a plain sweep
+--               and this kind only shortens the arm. Aim unused.
+--               U 0..1 maps reach SWEEP_REACH -> SWEEP_INNER + SPIRAL_CLOSE.
+--               Twins: sweepReach, sweepHits/spiralHits (the same function).
+--
+--   "collapse"  THE DEATH FALL, and the closed loop for `state.fall`, which
+--               used to be read by slumpPoint and written by nobody. `fall`
+--               is now DERIVED: kind "collapse" means fall = U. Nothing on
+--               either side writes state.fall; if you find code that does,
+--               it is the bug. Drive Slump to 1 and AttackKind to "collapse"
+--               and run U 0..1 over the collapse's duration.
+--               Twin: fallAmount.
+--
+-- THE HIT TEST IS THE DRAWN CURVE. `sweepHits` no longer tests a radial
+-- spoke: it asks `sweepBearingAt(state, r)` where the arm is at the player's
+-- own radius, which is the same call `sweptCyl` makes to place the body.
+-- CONSEQUENCE FOR THE SERVER WRITER: a probe table assembled by hand and
+-- missing `sweepRate` (or `attackKind`/`attackU`) hit-tests a STRAIGHT arm
+-- against a CURVED one and silently under-hits by up to 35 degrees of
+-- bearing. Build probes with `BrinejawPath.sweepProbe(state, angle)`, which
+-- carries every field the twins read, and never by table literal.
 
 local BrinejawPath = {}
 
@@ -97,6 +242,23 @@ BrinejawPath.REST = {
 	BEARING = math.rad(342.0),
 	TAIL_OUT = 31.0,
 	TAIL_TURN = 0.85,
+	-- THE KEEPER'S BELL, arena-local, and it HANGS OFF THE GALLERY. It used to
+	-- lie half-buried in the sand at Roblox (26.0, 0.6, 38.0) - radius 46, out
+	-- past the mid-beach - and Bell Toll is a head strike that rings the tower,
+	-- so a bell 46 studs away from the tower could not be the thing struck.
+	-- The arena pass moved it: arena_gen's `build_bj_dressing` now hangs it
+	-- from a yoke off the lighthouse gallery on this same BEARING (342 deg),
+	-- the bearing the head already rests over, so the strike reads without the
+	-- rest pose moving at all.
+	--
+	-- BossArenas.items.tropical.bell IS THE TRUTH and this is its mirror, kept
+	-- here rather than read off the Instance because the server hit-tests the
+	-- bell before the model exists and the client draws it in the same frame
+	-- the mesh streams in. MEASURED off the build (r 9.0 at 18 deg in Blender,
+	-- z 53.0), not derived - re-key from arena_gen's `Bell ROBLOX rel` HANDOFF
+	-- line and from that row, together, or the serpent tolls a bell that is
+	-- somewhere else.
+	BELL = Vector3.new(8.6, 53.0, -2.8),
 }
 
 -- One turn's pitch: what a lost grip costs it, and how far the head drops.
@@ -148,10 +310,223 @@ BrinejawPath.HEAD_TURN = math.rad(125)
 local function wrapAngle(a: number): number
 	return (a + math.pi) % (math.pi * 2) - math.pi
 end
+BrinejawPath.wrapAngle = wrapAngle
 
 local function smoothstep(x: number): number
 	x = math.clamp(x, 0, 1)
 	return x * x * (3 - 2 * x)
+end
+
+-- ------------------------------------------------------- cylindrical space
+--
+-- The spire axis is the arena-local Y axis, so "around the tower" is just
+-- (theta, r, y). EVERY BLEND THAT CAN STRADDLE THE MASONRY RUNS HERE rather
+-- than in world XYZ: a straight lerp between two points on opposite sides of
+-- the lighthouse passes through the lighthouse, and the retraction at the end
+-- of a sweep does exactly that whenever the arm stops far from the coil's
+-- bearing. Measured, over 24 park bearings x 61 retraction steps x 241 body
+-- positions: the positional lerp this replaces passed 7.98 studs INSIDE the
+-- masonry (worst point 0.24 studs off the axis - straight through the
+-- lantern); in cylindrical space the same sweep never comes nearer than 5.04
+-- studs outside it. The binding minimum for the whole body is 1.14 studs and
+-- it belongs to the REST pose's slack tail at t=0.85, which is pre-existing
+-- and untouched (rest alone measures 1.05).
+--
+-- AND THE TRAP, because it cost an afternoon: A CYLINDRICAL BLEND MUST USE
+-- UNWRAPPED BEARINGS. The obvious form - atan2 both points, lerp the short
+-- way round - is DISCONTINUOUS along the body, because the rest pose is a
+-- three-turn helix: neighbouring vertebrae sit up to a full turn apart in
+-- bearing, so they pick opposite ways round and the curve tears. It measured
+-- as a 144-degree kink in the middle of the tail at half weight. So the rest
+-- side is unwrapped against the helix's own analytic winding (restBearing)
+-- and every attack side is expressed on a branch chosen ONCE per state, never
+-- per body position.
+local function cylOf(p: Vector3): (number, number, number)
+	local r = math.sqrt(p.X * p.X + p.Z * p.Z)
+	return (if r > 1e-4 then math.atan2(p.Z, p.X) else 0), r, p.Y
+end
+
+local function fromCyl(theta: number, r: number, y: number): Vector3
+	return Vector3.new(math.cos(theta) * r, y, math.sin(theta) * r)
+end
+
+-- The bearing the rest pose is WINDING THROUGH at `t` - continuous, and
+-- growing without bound down the helix rather than wrapping at +-pi. The
+-- reference is the pose's own analytic spiral; the measured curve never
+-- strays half a turn from it, so one wrap against the reference recovers the
+-- true branch for the neck, the coils and the slack tail alike.
+local function restBearingRef(t: number): number
+	local rest = BrinejawPath.REST
+	if t <= rest.HELIX_END then
+		local k = math.clamp((t - rest.NECK_END) / (rest.HELIX_END - rest.NECK_END), 0, 1)
+		return rest.BEARING + rest.TURNS * TAU * k
+	end
+	local k = (t - rest.HELIX_END) / (1 - rest.HELIX_END)
+	return rest.BEARING + rest.TURNS * TAU + rest.TAIL_TURN * TAU * k
+end
+
+local function restBearing(t: number, wrapped: number): number
+	local ref = restBearingRef(t)
+	return ref + wrapAngle(wrapped - ref)
+end
+
+-- Blend a rest point (already in unwrapped cylindrical form) toward a target
+-- in the same space. One place, so no caller can reinvent the wrap.
+local function cylBlend(theta, r, y, tTheta, tR, tY, w): Vector3
+	return fromCyl(theta + (tTheta - theta) * w, r + (tR - r) * w, y + (tY - y) * w)
+end
+
+-- ------------------------------------------------------- the attack channel
+
+-- Per-kind spans and ramps. `span` is how far down the body the pose reaches
+-- (t = 0 at the snout); `entry`/`exit` are the fractions of U spent fading in
+-- and out, which is why the server must run U all the way to 1.
+--
+-- THE RAMPS ARE SIZED FROM THE CONTINUITY AUDIT, not from taste. Each is the
+-- shortest fade that keeps the worst single-step body jump under 1.5 studs
+-- over U swept at 240 steps: the head has 56 studs to climb back up the tower
+-- at the end of a lunge, so an 8% exit moved it 5.1 studs a step and a 28%
+-- exit moves it 1.00. `mode` picks which mechanism poses the body:
+--   "neck"     replace the front `span` with an arc to a head target
+--   "rear"     DISPLACE the front `span` outward and upward, coils and all
+--   "undertow" replace the middle third with a buried run
+--   "sweep"    no body pose of its own; it re-shapes the sweep arm
+--   "fall"     no body pose of its own; it drives `fall` for slumpPoint
+BrinejawPath.ATTACK = {
+	lunge = { mode = "neck", span = 0.26, entry = 0.10, exit = 0.28, arch = 5.0 },
+	belltoll = { mode = "neck", span = 0.24, entry = 0.10, exit = 0.14, arch = 7.0 },
+	rear = { mode = "rear", span = 0.50, entry = 0.16, exit = 0.16 },
+	undertow = { mode = "undertow", entry = 0.30, exit = 0.30 },
+	spiral = { mode = "sweep" },
+	collapse = { mode = "fall" },
+}
+
+-- Where the aim point may be. The head cannot reach the tower's own foot and
+-- cannot reach past the reef, and an unclamped aim is how a neck ends up
+-- threaded through the masonry (AIM_MIN is outside spireRadius(sand) +
+-- CLEARANCE = 11.9, with 4 studs of slack).
+BrinejawPath.AIM_MIN = 16.0
+BrinejawPath.AIM_MAX = 58.0
+
+BrinejawPath.LUNGE_COCK_U = 0.35 -- rear/aim ends, the strike begins
+BrinejawPath.LUNGE_IMPACT_U = 0.50 -- the skull lands HERE, not at windup's end
+BrinejawPath.LUNGE_COCK_R = 16.0 -- how far out it draws the head back to
+BrinejawPath.LUNGE_RISE = 12.0 -- how far above the rest head it cocks
+BrinejawPath.LUNGE_SIT = 2.4 -- skull centre above the sand once planted:
+-- low enough that an R15 root at ~3.0 is level with it, which is the whole
+-- point of the punish window. Raise this and melee starts whiffing upward.
+
+BrinejawPath.BELL_WINDUP_U = 0.35
+BrinejawPath.BELL_IMPACT_U = 0.55 -- the bell is STRUCK here
+-- Where on the bell the skull lands, above REST.BELL's centre. The bell is no
+-- longer buried (see REST.BELL): the authored body runs z 50.5..55.5 with the
+-- crown and yoke above that, so +1.7 puts the impact on its upper shoulder,
+-- inside the mesh rather than on the sand it used to be sunk in. The value
+-- survives the move unchanged; the reason for it does not.
+BrinejawPath.BELL_LIFT = 1.7
+BrinejawPath.BELL_COCK_R = 15.0
+BrinejawPath.BELL_RISE = 14.0
+
+BrinejawPath.REAR_U = 0.30 -- U at which the rear reaches full height
+BrinejawPath.REAR_OUT = 10.0 -- how much further off the tower the front leans
+BrinejawPath.REAR_LIFT = 24.0 -- how much higher the snout stands: 60 + 24
+-- REAR IS A DISPLACEMENT, NOT A REPLACEMENT POSE, and that is the whole
+-- reason it is safe. A "straighten the front half into an arc" version had to
+-- unwind 1.86 turns of coil to reach a straight neck, which is both wrong
+-- (a serpent rears off its coils, it does not shed them) and the fastest way
+-- to stand a limb dead vertical. Pushing (r, y) outward and upward while
+-- LEAVING EVERY BEARING ALONE keeps the coil's own pitch under the lift, so
+-- nothing can corkscrew and nothing can wrap.
+--
+-- CAPPED all the same, and this is ChainPose's documented limit, not a taste
+-- call: `alongX` picks its frame off the tangent's AZIMUTH, which is
+-- undefined at exactly vertical, so a body that reaches |tangent.Y| = 1 gets
+-- one frame of arbitrary roll. Measured over U 0..1 x the whole body, the
+-- steepest tangent this pose produces is 77.8 degrees (|tangent.Y| = 0.9772),
+-- inside the ~85 cap with room for the ambient bob - and note the rest pose
+-- already reaches 77.7 at the snout, so the rear adds almost nothing to the
+-- risk. Raise REAR_LIFT or drop REAR_OUT and re-measure.
+
+BrinejawPath.UNDER_T0 = 0.34 -- the middle third of the body, and only it
+BrinejawPath.UNDER_T1 = 0.67
+BrinejawPath.UNDER_INNER = 10.0 -- the run starts just clear of the foot
+-- The buried body EXTENDS with the bulge - it runs from the foot to the crest
+-- plus this, not out to the aim point from the first frame. Laying the whole
+-- line out at U = 0 made the dive travel 6.3 studs a step at 240 steps
+-- (the mid-body had to unwind a turn and a half of coil AND reach 68 studs
+-- out before the bulge had moved at all); growing it puts the same dive at
+-- 4.10 and is what a body shoving itself under a beach actually does.
+BrinejawPath.UNDER_OVERRUN = 10.0
+BrinejawPath.UNDER_DEPTH = 4.5 -- how far under the beach the body rides
+BrinejawPath.UNDER_HUMP = 7.1 -- so the crest sits 2.6 PROUD of the sand
+BrinejawPath.UNDER_SIGMA = 6.0 -- the hump's width; wider reads as a swell
+
+BrinejawPath.SPIRAL_CLOSE = 8.0 -- the arm's final reach is SWEEP_INNER + this
+
+-- ---------------------------------------------------------------- the whip
+--
+-- THE ARM IS A DRAG CURVE, NOT A SPOKE. A radial arm rotating about the
+-- tower is the single thing the user called out ("the tail is completely
+-- stiff while it just rotates"): a rigid line has no tail in it. So the
+-- bearing at radius r TRAILS the base bearing in proportion to how far out
+-- it is and how fast the base is turning:
+--
+--   theta(r) = SweepAngle - WHIP_DRAG * (r - SWEEP_INNER) * sweepRate
+--
+-- WHIP_DRAG is set from the fastest sweep in the book (sweeppair, 300 deg
+-- over 2.2 s = 2.380 rad/s): 0.0039 * (66 - 13) * 2.380 = 28.2 degrees of
+-- trail at the tip, inside the 20-35 the design asks for. Constrict's slower
+-- 1.587 rad/s gives 18.8, which is right - a slow squeeze should look less
+-- whip-like. WHIP_RATE_MAX caps the curve at 35.5 degrees so a hitch or a
+-- scripted snap can never coil the arm into something unreadable.
+--
+-- WHIP_TAU IS LOAD-BEARING AND IS NOT A FEEL KNOB. The server knows its own
+-- angular rate exactly; the client can only differentiate the angle it is
+-- easing toward SweepAngle at 55/s, so its rate lags by ~18 ms after any
+-- step. Feeding those two different rates into the same drag term puts the
+-- drawn arm and the hit arm 12.98 studs apart at the tip for the first
+-- frames of every sweep. Running BOTH through one first-order filter fixes
+-- it, because the filter becomes the slow pole and the 18 ms lag disappears
+-- underneath it: worst-case tip divergence falls to 0.876 studs at r = 66,
+-- against 1.70 for half the LOW sweep's 3.4-stud girth. At WHIP_TAU = 0.16
+-- it is 1.71 and players eat hits from a curve they were never shown. It is
+-- also the whole springback: the filtered rate decays through zero when the
+-- sweep stops, so the tip unwinds over about a third of a second instead of
+-- snapping flat.
+BrinejawPath.WHIP_DRAG = 0.0039
+BrinejawPath.WHIP_RATE_MAX = 3.0
+BrinejawPath.WHIP_TAU = 0.35
+
+-- Advance the shared angular-rate estimate. BOTH sides call this, with their
+-- own raw rate, so the low-pass is identical on both. EXPONENTIAL, not
+-- `rate * dt`: on a hitch the linear form races past its target, and a rate
+-- that overshoots draws a curve nobody is standing in.
+function BrinejawPath.stepSweepRate(state, rawRate: number, dt: number): number
+	local previous = state.sweepRate or 0
+	local a = 1 - math.exp(-math.max(dt, 0) / BrinejawPath.WHIP_TAU)
+	state.sweepRate = previous + (rawRate - previous) * a
+	return state.sweepRate
+end
+
+-- How far out the arm reaches right now. ONE function, so the drawn tip and
+-- the lethal band cannot disagree - `spiral` contracts it with U and both
+-- `sweptCyl` and `sweepHits` read it here.
+function BrinejawPath.sweepReach(state): number
+	if (state.attackKind or "") ~= "spiral" then
+		return BrinejawPath.SWEEP_REACH
+	end
+	local closed = BrinejawPath.SWEEP_INNER + BrinejawPath.SPIRAL_CLOSE
+	return BrinejawPath.SWEEP_REACH
+		+ (closed - BrinejawPath.SWEEP_REACH) * smoothstep(math.clamp(state.attackU or 0, 0, 1))
+end
+
+-- THE ARM'S BEARING AT RADIUS `r`. The hit test and the drawing both call
+-- this and nothing else, which is what makes the hitbox literally be the
+-- curve on screen.
+function BrinejawPath.sweepBearingAt(state, r: number): number
+	local rate = math.clamp(state.sweepRate or 0, -BrinejawPath.WHIP_RATE_MAX, BrinejawPath.WHIP_RATE_MAX)
+	local lead = math.max(r - BrinejawPath.SWEEP_INNER, 0)
+	return (state.sweepAngle or 0) - BrinejawPath.WHIP_DRAG * lead * rate
 end
 
 -- A fresh pose state. `coil` counts DOWN as it loses its grip.
@@ -162,8 +537,13 @@ function BrinejawPath.newState(center: Vector3)
 		unwind = 0, -- 0 coiled, 1 tail fully off the tower
 		sweepAngle = 0,
 		sweepHeight = BrinejawPath.SWEEP_LOW,
+		sweepRate = 0, -- DERIVED from sweepAngle; see the contract header
 		slump = 0, -- 0 reared, 1 head down on the sand (the punish window)
 		faceAngle = BrinejawPath.REST.BEARING - 0.8, -- who it is watching
+		attackKind = "",
+		attackU = 0,
+		aimX = 0,
+		aimZ = 0,
 		time = 0,
 	}
 end
@@ -275,13 +655,37 @@ local function restPoint(state, t: number): Vector3
 end
 
 -- The swept pose: the tail laid out along one bearing, at sweep height. `t`
--- is remapped so the further down the body you are, the further out you lie.
-local function sweptPoint(state, t: number, blendStart: number): Vector3
+-- is remapped so the further down the body you are, the further out you lie -
+-- and the bearing now comes from `sweepBearingAt`, so the arm DRAGS.
+-- Returned in UNWRAPPED cylindrical form, because the caller has to blend it
+-- against a helix that has wound three turns. The branch (`turns`) is chosen
+-- once per state, AT THE TIP: the tip is the part of the body that actually
+-- swings, so it is the part that must take the short way round. Anchoring the
+-- branch at the blend's start instead sent the tip 288 degrees the long way
+-- for exactly the sweeps that end behind the coil. Everything nearer the
+-- tower unwinds smoothly along the way, which is what peeling off a tower
+-- looks like.
+local function sweptCyl(state, t: number, blendStart: number): (number, number, number)
 	local k = math.clamp((t - blendStart) / math.max(1 - blendStart, 1e-3), 0, 1)
-	local r = BrinejawPath.SWEEP_INNER + (BrinejawPath.SWEEP_REACH - BrinejawPath.SWEEP_INNER) * k
-	local theta = state.sweepAngle or 0
+	local reach = BrinejawPath.sweepReach(state)
+	local r = BrinejawPath.SWEEP_INNER + (reach - BrinejawPath.SWEEP_INNER) * k
+	local turns = math.round((restBearingRef(1.0) - BrinejawPath.sweepBearingAt(state, reach)) / TAU)
 	local y = BrinejawPath.sandY(r) + (state.sweepHeight or BrinejawPath.SWEEP_LOW)
-	return Vector3.new(math.cos(theta) * r, y, math.sin(theta) * r)
+	return BrinejawPath.sweepBearingAt(state, r) + turns * TAU, r, y
+end
+
+-- HOW FAR INTO THE DEATH FALL, and the only reader of it. `state.fall` used
+-- to be read here and written by nobody: the collapse eased four values that
+-- were already at their targets and the killer watched a motionless skull for
+-- 2.5 seconds. It is DERIVED now - kind "collapse" means fall = U - so the
+-- loop is closed by the same channel every other attack rides. The raw field
+-- is still honoured for a caller that has some other reason to drive it, but
+-- nothing in the shipped code writes it.
+function BrinejawPath.fallAmount(state): number
+	if (state.attackKind or "") == "collapse" then
+		return math.clamp(state.attackU or 0, 0, 1)
+	end
+	return math.clamp(state.fall or 0, 0, 1)
 end
 
 -- Where the head slumps when it loses its grip: off the tower, onto the sand,
@@ -291,11 +695,9 @@ local function slumpPoint(state, t: number): Vector3
 	-- It slumps toward whoever it was facing, so the punish window opens
 	-- where the party already is instead of across the ring.
 	local theta = state.faceAngle or (rest.BEARING - 0.8)
-	-- `fall` is written only by the death collapse: the head slides further
-	-- out and settles lower as the grip finally goes. Without it the collapse
-	-- eases four values that are all already at their targets, and the killer
-	-- watches a motionless skull for 2.5 seconds.
-	local fall = math.clamp(state.fall or 0, 0, 1)
+	-- The death collapse slides the head further out and settles it lower as
+	-- the grip finally goes.
+	local fall = BrinejawPath.fallAmount(state)
 	local reach = 26.0 + 8.0 * fall
 	local k = math.clamp(t / 0.30, 0, 1) -- the front 30% of the body comes down
 	local bottomY = rest.BOTTOM_Y - coilOffset(state)
@@ -304,14 +706,165 @@ local function slumpPoint(state, t: number): Vector3
 	return Vector3.new(math.cos(theta) * r, y, math.sin(theta) * r)
 end
 
+-- ------------------------------------------------------------ attack shapes
+
+local function attackProgress(state): number
+	return math.clamp(state.attackU or 0, 0, 1)
+end
+
+-- Fade in and out of an attack. `entry`/`exit` are fractions of U, so an
+-- attack whose kind is cleared at U < 1 SNAPS - which is why the contract
+-- makes running U to 1 the server's job, not a nicety.
+local function attackEnvelope(u: number, entry: number, exit: number): number
+	return math.min(smoothstep(u / math.max(entry, 1e-3)), smoothstep((1 - u) / math.max(exit, 1e-3)))
+end
+
+-- Aim as (bearing, radius), arena-local and clamped to the reachable ring.
+local function aimCyl(state): (number, number)
+	local ax, az = state.aimX or 0, state.aimZ or 0
+	local r = math.sqrt(ax * ax + az * az)
+	if r < 1e-3 then
+		-- No aim written: strike where it is already looking, so a server
+		-- that forgets AimX/AimZ gets a wrong-but-coherent attack rather
+		-- than a head teleported to the tower's own axis.
+		return state.faceAngle or (BrinejawPath.REST.BEARING - 0.8), BrinejawPath.AIM_MIN
+	end
+	return math.atan2(az, ax), math.clamp(r, BrinejawPath.AIM_MIN, BrinejawPath.AIM_MAX)
+end
+
+-- THE NECK, as one cylindrical arc from wherever the head is going to
+-- wherever the body still grips the tower.
+--
+-- Cylindrical for the same reason the retraction is: a head striking a point
+-- 170 degrees round from the coil it hangs off has to go AROUND the
+-- lighthouse, and a straight lerp goes through it. LINEAR in k, not
+-- smoothstepped: with all three of (theta, r, y) on the same parameter the
+-- arc's tangent DIRECTION is constant along its length. Ease the parameter
+-- instead and the r/theta terms flatten near the ends while the arch term
+-- does not, and the neck stands itself dead vertical at exactly the joint.
+--
+-- `targetTheta` arrives UNWRAPPED and continuous in U (see the target
+-- functions), and the anchor is unwrapped against the helix, so the arc
+-- inherits the coil's winding and cannot flip branch. A head aiming behind
+-- the tower therefore reaches round it rather than snapping through it, and
+-- the neck carries whatever fraction of a turn that costs.
+local function neckArc(state, target: Vector3, targetTheta: number, span: number, arch: number, t: number)
+	local k = math.clamp(t / math.max(span, 1e-3), 0, 1)
+	local aWrapped, r1, y1 = cylOf(restPoint(state, span))
+	local t1 = restBearing(span, aWrapped)
+	local _, r0, y0 = cylOf(target)
+	local y = y0 + (y1 - y0) * k + arch * math.sin(math.pi * k)
+	local r = r0 + (r1 - r0) * k
+	-- A guard, not a shape: both endpoints stand clear of the masonry, so
+	-- this only ever fires if someone widens AIM_MIN past its comment.
+	return targetTheta + (t1 - targetTheta) * k,
+		math.max(r, BrinejawPath.spireRadius(y) + BrinejawPath.REST.CLEARANCE),
+		y
+end
+
+-- Where the skull is headed, per kind: (UNWRAPPED bearing, a point carrying
+-- r and y). Each returns the rest pose's own head at U = 0 (and `belltoll`
+-- again at U = 1), so the entry ramp has nothing to hide - and each expresses
+-- its bearing as the rest head's plus a swing that never wraps, which is what
+-- makes them continuous in U. Wrapping here put a 180-degree flip in the
+-- middle of the bell's recoil: 15.6 studs of body in one step of U.
+local function headRestCyl(state): (number, number, number)
+	local wrapped, r, y = cylOf(restPoint(state, 0))
+	return restBearing(0, wrapped), r, y
+end
+
+local function lungeTarget(state, u: number): (number, Vector3)
+	local aimT, aimR = aimCyl(state)
+	local th0, r0, y0 = headRestCyl(state)
+	local swing = wrapAngle(aimT - th0)
+	local cock = BrinejawPath.LUNGE_COCK_U
+	if u <= cock then
+		local a = smoothstep(u / cock)
+		return th0 + swing * a, fromCyl(0, r0 + (BrinejawPath.LUNGE_COCK_R - r0) * a, y0 + BrinejawPath.LUNGE_RISE * a)
+	end
+	local b = smoothstep(math.clamp((u - cock) / (BrinejawPath.LUNGE_IMPACT_U - cock), 0, 1))
+	local yTop = y0 + BrinejawPath.LUNGE_RISE
+	local yLand = BrinejawPath.sandY(aimR) + BrinejawPath.LUNGE_SIT
+	return th0 + swing,
+		fromCyl(0, BrinejawPath.LUNGE_COCK_R + (aimR - BrinejawPath.LUNGE_COCK_R) * b, yTop + (yLand - yTop) * b)
+end
+
+local function bellStrikeLocal(): Vector3
+	local bell = BrinejawPath.REST.BELL
+	return Vector3.new(bell.X, bell.Y + BrinejawPath.BELL_LIFT, bell.Z)
+end
+
+local function bellTarget(state, u: number): (number, Vector3)
+	local bT, bR, bY = cylOf(bellStrikeLocal())
+	local th0, r0, y0 = headRestCyl(state)
+	local swing = wrapAngle(bT - th0)
+	-- The windup cocks PART OF THE WAY round toward the bell, so the strike
+	-- reads as aimed rather than as a head that suddenly appears over it.
+	local cockR, cockY = BrinejawPath.BELL_COCK_R, y0 + BrinejawPath.BELL_RISE
+	local windup, impact = BrinejawPath.BELL_WINDUP_U, BrinejawPath.BELL_IMPACT_U
+	if u <= windup then
+		local a = smoothstep(u / windup)
+		return th0 + swing * 0.55 * a, fromCyl(0, r0 + (cockR - r0) * a, y0 + (cockY - y0) * a)
+	elseif u <= impact then
+		local b = smoothstep((u - windup) / (impact - windup))
+		return th0 + swing * (0.55 + 0.45 * b), fromCyl(0, cockR + (bR - cockR) * b, cockY + (bY - cockY) * b)
+	end
+	local c = smoothstep((u - impact) / (1 - impact))
+	return th0 + swing * (1 - c), fromCyl(0, bR + (r0 - bR) * c, bY + (y0 - bY) * c)
+end
+
+-- `rear` is a DISPLACEMENT in (r, y) and touches no bearing at all - see the
+-- REAR_* header. Returns how far out and how far up this body position is
+-- pushed; both fade to nothing by REAR_SPAN, so the back half never moves.
+local function rearOffset(state, t: number): (number, number)
+	local shape = BrinejawPath.ATTACK.rear
+	local u = attackProgress(state)
+	local rise = smoothstep(math.clamp(u / BrinejawPath.REAR_U, 0, 1)) * attackEnvelope(u, shape.entry, shape.exit)
+	local fade = 1 - smoothstep(math.clamp(t / shape.span, 0, 1))
+	return BrinejawPath.REAR_OUT * rise * fade, BrinejawPath.REAR_LIFT * rise * fade
+end
+
+-- The submerged run, in UNWRAPPED cylindrical form. The middle third rides
+-- UNDER the beach except where the travelling bulge lifts it proud - one
+-- gaussian, so the hump has no corner anywhere and the body either side of it
+-- is genuinely buried (sandY(r) - 4.5, i.e. 2.5 studs below the "< sandY - 2"
+-- the design asks for, everywhere outside 8.7 studs of the crest).
+--
+-- The branch is chosen once, against the reference bearing at the middle of
+-- the affected span, so the two ends of the run each unwind at most half a
+-- turn - and they unwind where the edge weight is smallest.
+local function undertowCyl(state, t: number): (number, number, number)
+	local aimT, aimR = aimCyl(state)
+	local inner = BrinejawPath.UNDER_INNER
+	local k = math.clamp((t - BrinejawPath.UNDER_T0) / (BrinejawPath.UNDER_T1 - BrinejawPath.UNDER_T0), 0, 1)
+	local travel = inner + (aimR - inner) * attackProgress(state)
+	local r = inner + ((travel + BrinejawPath.UNDER_OVERRUN) - inner) * k
+	local d = r - travel
+	local hump = BrinejawPath.UNDER_HUMP
+		* math.exp(-(d * d) / (2 * BrinejawPath.UNDER_SIGMA * BrinejawPath.UNDER_SIGMA))
+	local ref = restBearingRef(0.5 * (BrinejawPath.UNDER_T0 + BrinejawPath.UNDER_T1))
+	return ref + wrapAngle(aimT - ref), r, BrinejawPath.sandY(r) - BrinejawPath.UNDER_DEPTH + hump
+end
+
 -- ---------------------------------------------------------------- public
 
 -- Where body position `t` (0 = snout, 1 = rattle) is right now, in world
--- space. Blends rest -> swept for the tail, rest -> slumped for the head.
+-- space. Blends rest -> swept for the tail, rest -> slumped for the head,
+-- rest -> attack for whichever span the current kind owns.
 function BrinejawPath.pointAt(state, t: number): Vector3
 	t = math.clamp(t, 0, 1)
 	local point = restPoint(state, t)
 
+	local kind = state.attackKind or ""
+	local shape = BrinejawPath.ATTACK[kind]
+	local mode = if shape then shape.mode else nil
+
+	-- EVERY CYLINDRICAL BLEND BELOW IS GUARDED BY `w > 0`, and that is not
+	-- just a shortcut. `fromCyl(cylOf(p))` is a round trip through atan2 and
+	-- cos/sin, so entering cylindrical space when nothing is blending would
+	-- move the rest pose by a float ulp or two for no reason at all. Guarded,
+	-- the idle serpent and the slump come out BIT-IDENTICAL to what shipped
+	-- (measured: 0 studs over 24 rest states and 36 slump states).
 	local unwind = state.unwind or 0
 	if unwind > 0 then
 		-- The higher the unwind, the further UP the body the peel reaches, so
@@ -319,7 +872,16 @@ function BrinejawPath.pointAt(state, t: number): Vector3
 		local blendStart = 1.0 - 0.40 * unwind
 		local w = smoothstep((t - blendStart) / 0.14) * unwind
 		if w > 0 then
-			point = point:Lerp(sweptPoint(state, t, blendStart), w)
+			-- CYLINDRICAL. The user's second complaint - the tail "moves back
+			-- through the tower" - was this lerp: a positional blend between
+			-- a point coiled at bearing 300 and an arm parked at bearing 120
+			-- passes straight through the masonry. Measured worst case, over
+			-- 24 park bearings: 7.98 studs INSIDE it, the body passing 0.24
+			-- studs from the axis. In (theta, r, y) the same retraction never
+			-- comes nearer than 5.04 studs OUTSIDE.
+			local theta, r, y = cylOf(point)
+			local aTheta, aR, aY = sweptCyl(state, t, blendStart)
+			point = cylBlend(restBearing(t, theta), r, y, aTheta, aR, aY, w)
 		end
 	end
 
@@ -327,6 +889,37 @@ function BrinejawPath.pointAt(state, t: number): Vector3
 	if slump > 0 and t < 0.34 then
 		local w = smoothstep((0.34 - t) / 0.34) * slump
 		point = point:Lerp(slumpPoint(state, t), w)
+	end
+
+	if mode == "neck" then
+		local u = attackProgress(state)
+		local w = attackEnvelope(u, shape.entry, shape.exit) * smoothstep((shape.span - t) / shape.span)
+		if w > 0 then
+			local targetTheta, target
+			if kind == "lunge" then
+				targetTheta, target = lungeTarget(state, u)
+			else
+				targetTheta, target = bellTarget(state, u)
+			end
+			local theta, r, y = cylOf(point)
+			local aTheta, aR, aY = neckArc(state, target, targetTheta, shape.span, shape.arch, t)
+			point = cylBlend(restBearing(t, theta), r, y, aTheta, aR, aY, w)
+		end
+	elseif mode == "undertow" and t > BrinejawPath.UNDER_T0 and t < BrinejawPath.UNDER_T1 then
+		local edge = 0.06
+		local w = attackEnvelope(attackProgress(state), shape.entry, shape.exit)
+			* smoothstep(math.min((t - BrinejawPath.UNDER_T0) / edge, (BrinejawPath.UNDER_T1 - t) / edge))
+		if w > 0 then
+			local theta, r, y = cylOf(point)
+			local aTheta, aR, aY = undertowCyl(state, t)
+			point = cylBlend(restBearing(t, theta), r, y, aTheta, aR, aY, w)
+		end
+	elseif mode == "rear" then
+		local dr, dy = rearOffset(state, t)
+		if dr > 0 or dy > 0 then
+			local theta, r, y = cylOf(point)
+			point = fromCyl(theta, r + dr, y + dy)
+		end
 	end
 
 	-- Ambient: a bulge travelling down the body, so it breathes even when
@@ -343,7 +936,9 @@ function BrinejawPath.pointAt(state, t: number): Vector3
 	-- stare at longest, was the deadest in the fight: 0.9 studs and 0.7
 	-- degrees of yaw over eight seconds. This is the idiom ChainPose's header
 	-- prescribes, and the bug it warns about, committed by the person who
-	-- wrote the warning.
+	-- wrote the warning. EVERY attack kind added since rides outside these
+	-- two blocks for the same reason: a lunged head planted on the sand for
+	-- four seconds is the punish window all over again.
 	local neckEnd = BrinejawPath.REST.NECK_END
 	if t <= neckEnd then
 		local k = 1 - t / neckEnd -- full at the snout, gone by the top coil
@@ -383,28 +978,119 @@ function BrinejawPath.headPosition(state): Vector3
 	return BrinejawPath.pointAt(state, 0)
 end
 
--- Is `position` caught by the sweep the state describes? Pure geometry: the
--- arm is radial, so a hit is "on this bearing, out on the sand, at the wrong
--- height". A LOW sweep is jumped (get above it); a HIGH one is stood under.
+-- ------------------------------------------------------------ the hit twins
+--
+-- One rule below: every one of these is computed from the ten replicated
+-- values and calls the SAME helpers the body curve calls. Nothing here has
+-- its own copy of a radius, a height or a bearing.
+
+-- Build the probe a stepped hit test needs. USE THIS, never a table literal:
+-- the wedge-stepping loop in CreatureService assembles a probe by hand, and
+-- the moment the arm gained a drag term a probe missing `sweepRate` began
+-- testing a straight line against a curve that trails it by up to 35
+-- degrees. Pass the bearing the step is testing; everything else is copied.
+function BrinejawPath.sweepProbe(state, sweepAngle: number?)
+	return {
+		center = state.center,
+		sweepAngle = sweepAngle or state.sweepAngle or 0,
+		sweepHeight = state.sweepHeight,
+		sweepRate = state.sweepRate,
+		attackKind = state.attackKind,
+		attackU = state.attackU,
+	}
+end
+
+-- Is `position` caught by the sweep the state describes? Pure geometry, and
+-- now against the CURVED arm: the bearing it compares against is the one
+-- `sweptCyl` places the body on at this player's own radius, so the lane
+-- you have to leave is exactly the lane you can see.
 function BrinejawPath.sweepHits(state, position: Vector3, girth: number): boolean
 	local center = state.center or Vector3.zero
 	local dx, dz = position.X - center.X, position.Z - center.Z
 	local r = math.sqrt(dx * dx + dz * dz)
-	if r < BrinejawPath.SWEEP_INNER or r > BrinejawPath.SWEEP_REACH then
+	if r < BrinejawPath.SWEEP_INNER or r > BrinejawPath.sweepReach(state) then
 		return false
 	end
 	-- Angular half-width shrinks with radius so the arm's real thickness is
 	-- constant - being far out must not mean being easier to clip.
 	local half = math.atan2(girth, math.max(r, 1))
-	local delta = math.abs((math.atan2(dz, dx) - (state.sweepAngle or 0)) % TAU)
-	if delta > math.pi then
-		delta = TAU - delta
-	end
+	local delta = math.abs(wrapAngle(math.atan2(dz, dx) - BrinejawPath.sweepBearingAt(state, r)))
 	if delta > half then
 		return false
 	end
 	local armY = center.Y + BrinejawPath.sandY(r) + (state.sweepHeight or BrinejawPath.SWEEP_LOW)
 	return math.abs(position.Y - armY) <= girth
+end
+
+-- `spiral` IS a sweep with a contracting reach, so it is the same test. The
+-- alias exists so a caller reading the attack book finds the name it expects
+-- and cannot invent a second, drifting copy.
+function BrinejawPath.spiralHits(state, position: Vector3, girth: number): boolean
+	return BrinejawPath.sweepHits(state, position, girth)
+end
+
+-- Where the lunging skull is: the head of the body curve, which is the same
+-- point the client draws, ambient sway and all. Park the authority model on
+-- this and the thing you swing at is the thing you see.
+function BrinejawPath.lungeHeadPosition(state): Vector3
+	return BrinejawPath.pointAt(state, 0)
+end
+
+-- The blow's centre on the sand - analytic, so the damage test does not
+-- inherit the head's 2-stud idle sway.
+function BrinejawPath.lungeImpactPoint(state): Vector3
+	local aimT, aimR = aimCyl(state)
+	local center = state.center or Vector3.zero
+	return center + fromCyl(aimT, aimR, BrinejawPath.sandY(aimR))
+end
+
+-- Caught by the plant? A disc on the sand, live from the strike onward.
+function BrinejawPath.lungeHits(state, position: Vector3, radius: number): boolean
+	if (state.attackKind or "") ~= "lunge" or attackProgress(state) < BrinejawPath.LUNGE_COCK_U then
+		return false
+	end
+	local at = BrinejawPath.lungeImpactPoint(state)
+	local dx, dz = position.X - at.X, position.Z - at.Z
+	if dx * dx + dz * dz > radius * radius then
+		return false
+	end
+	return math.abs(position.Y - at.Y) <= 8.0
+end
+
+-- WHERE THE BULGE IS, and its progress. The server's damage disc and the
+-- client's dust plume both ride this - one call, one point, no second copy
+-- of "how fast does it travel".
+function BrinejawPath.undertowPoint(state): (Vector3, number)
+	local aimT, aimR = aimCyl(state)
+	local u = attackProgress(state)
+	local travel = BrinejawPath.UNDER_INNER + (aimR - BrinejawPath.UNDER_INNER) * u
+	local center = state.center or Vector3.zero
+	return center + fromCyl(aimT, travel, BrinejawPath.sandY(travel)), u
+end
+
+function BrinejawPath.undertowHits(state, position: Vector3, radius: number): boolean
+	if (state.attackKind or "") ~= "undertow" then
+		return false
+	end
+	local at = BrinejawPath.undertowPoint(state)
+	local dx, dz = position.X - at.X, position.Z - at.Z
+	if dx * dx + dz * dz > radius * radius then
+		return false
+	end
+	-- Generous vertically: the crest lifts 2.6 studs proud and a player it
+	-- passes under is thrown, not brushed.
+	return math.abs(position.Y - at.Y) <= 6.0
+end
+
+-- The bell's crown, in world space. The rings are server/client territory;
+-- this is only where the head lands and when (BELL_IMPACT_U).
+function BrinejawPath.bellStrikePoint(state): Vector3
+	return (state.center or Vector3.zero) + bellStrikeLocal()
+end
+
+-- The reared skull, for a camera to frame or a model to sit on.
+function BrinejawPath.rearHeadPosition(state): Vector3
+	return BrinejawPath.pointAt(state, 0)
 end
 
 return BrinejawPath
