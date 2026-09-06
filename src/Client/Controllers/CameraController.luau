@@ -49,12 +49,25 @@ local thirdPerson = false
 -- there and the island test above can never fire for it.
 local BIRDSEYE_ARENAS = { wreck = true }
 
--- How far from the arena centre the mode holds. The Careenage's shoal is
--- walkable to r 78 inside a palisade of half-sunk hulls at r 80-88, so 130
--- covers the whole fight and the water you get blown into. The nearest other
--- content is thousands of studs away, so this only has to be bigger than the
--- arena - it never has to be precise.
-local BIRDSEYE_REACH = 130
+-- How far from the arena centre the mode holds. THE CAREENAGE AS REBUILT
+-- (arena_gen.py, the WK_ profile): walkable sand to r 132, then an awash flat
+-- carrying the palisade of grounded hulls out to r 160, a foam ring to 167.5,
+-- and the shoal's own rim at 172. The fight agrees with the floor - Wrack
+-- opens on anyone inside `aggro` 165 and his broadsides retire at `bound` 140
+-- (Bosses admiral_wrack) - so every place the fight can put a player, standing
+-- or swimming, is inside 172.
+--
+-- 200 puts the mode's edge 28 studs past that rim, in open water with no floor
+-- under it and no fight left to read. THAT MARGIN IS THE WHOLE REQUIREMENT,
+-- because this test has no hysteresis - a bare `d <= BIRDSEYE_REACH`
+-- re-evaluated every frame - so an edge falling anywhere the player fights
+-- would flip the camera mid-dodge. 130 did exactly that: it was sized for the
+-- old 78-stud shoal and outlived it, cutting the mode two studs INSIDE the
+-- sand's own edge in a fight whose entire answer is walking. Erring wide is
+-- free out here - the nearest other content is thousands of studs away
+-- (Wreckwater itself is 8.3k) - so this only has to be bigger than the arena,
+-- and never has to be precise.
+local BIRDSEYE_REACH = 200
 
 -- The orbit. At 58 studs and the default 70 FOV roughly one arena width of
 -- ground crosses the frame, so a rank entering from the far side is visible
