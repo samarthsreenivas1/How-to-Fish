@@ -3153,16 +3153,6 @@ function CreatureEventController.init()
 		end
 		sweepPool[slot] = pool
 	end
-	-- The choir's beam: a widening ladder of lit ground per concurrent sweep,
-	-- plus the shaft that ties it back to the lantern casting it.
-	for slot = 1, BEAM_SLOTS do
-		local pool = { rungs = {} }
-		for i = 1, BEAM_RUNGS do
-			pool.rungs[i] = makeMarker("BeamRung", LURE_LIGHT, true)
-		end
-		pool.shaft = makeMarker("BeamShaft", LURE_LIGHT, true)
-		beamPool[slot] = pool
-	end
 
 	staggerRing = makeMarker("StaggerWindow", BRINE.window, true)
 	staggerRing.Shape = Enum.PartType.Cylinder
@@ -3244,7 +3234,6 @@ function CreatureEventController.start()
 		stepPull(now)
 		stepEffects(now)
 		stepSweeps(now)
-		stepBeams(now)
 		stepStagger(now)
 		stepWash(now)
 		stepWedges(now)
