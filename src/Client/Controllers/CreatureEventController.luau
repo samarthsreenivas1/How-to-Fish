@@ -41,6 +41,13 @@ local Workspace = game:GetService("Workspace")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Remotes = require(Shared.Net.Remotes)
 local World = require(Shared.Config.World)
+-- The arena layout every side of the game agrees on. Read here for exactly
+-- one number: where Rimefang's carousel turns. BossService.arenaPosition
+-- spawns a lair boss at BossArenas.centerFor(islandId), updateBoss keeps that
+-- point as `creature.anchor`, and `undertow` centres its drag and its falling
+-- bergs on the anchor - so this table is the same authority the pull uses,
+-- rather than the boss's pivot the stock telegraph is fired from.
+local BossArenas = require(Shared.Config.BossArenas)
 -- Brinejaw's geometry. Its sweep markers are drawn off the SAME sand profile
 -- the server's hit test measures against (BrinejawPath.sandY), so the band you
 -- see on the ground is the band that hits you - the arm itself is drawn from
@@ -89,7 +96,16 @@ local COLOR = {
 local SKIN = {
 	peat = Color3.fromRGB(116, 118, 52), -- Gnashroot's churned bog sludge
 	root = Color3.fromRGB(122, 220, 96), -- his snare-roots (glow moss)
-	frost = Color3.fromRGB(160, 225, 255), -- Rimefang
+	-- DARK, deliberately. This palette paints every telegraph, pool ring, chill
+	-- puff and strike marker of a fight staged on white sea ice, and the pale
+	-- value it used to carry measured 1.49:1 against the authored floe and
+	-- 1.05:1 against the procedural one - against a 3:1 minimum for a graphic
+	-- that carries meaning. The markers ARE the language of a position fight;
+	-- they were being spoken in the colour the ground already wears. This
+	-- reads 5.5:1 and 8.6:1, and a dark marker is the only kind that survives
+	-- the whiteout's own white fog. (arena_gen.py's header learned the same
+	-- lesson for the terrain: "white on white is what killed the first render".)
+	frost = Color3.fromRGB(18, 58, 96), -- Rimefang
 	lava = Color3.fromRGB(255, 122, 40), -- Pyrelisk
 	ink = Color3.fromRGB(158, 112, 228), -- Noctyss's dark (violet so it reads)
 	lure = Color3.fromRGB(255, 214, 120), -- her lantern-gold lights
@@ -142,6 +158,11 @@ local globCursor = 1
 local tracked: { [Model]: any } = {}
 
 local flashFrame: Frame
+-- The gloom fight's blackout owns its own surface: `flashFrame` is written by
+-- every blast in the game, and the dousehunt's whole point is that the dark
+-- HOLDS while you are being hit.
+local darkFrame: Frame
+local darkTween: Tween? = nil
 
 -- The lure pull in progress on the local character, if any.
 local pull: {
@@ -154,6 +175,12 @@ local pull: {
 	start: number,
 }? =
 	nil
+
+-- Rimefang's four hooks into the shared moments below: the wave wash's crest,
+-- the breach's launch splash and its crashes, and its whale-shaped tells.
+-- Forward-declared because the handlers that hand off to them are written
+-- above the section that defines them (see "Rimefang (the floe boss)").
+local startWash, startBreachSplash, rimeSlam, rimeTelegraph
 
 -- ---------------------------------------------------------------- helpers
 
@@ -678,6 +705,12 @@ end
 -- The glob's splash (the server's hit moment; the glob itself lands on the
 -- client's own clock, so this is just a wider ring where it counted).
 EVENTS.splash = function(position: Vector3, extra)
+	-- The `charge` handler fires this the instant Rimefang leaves the water,
+	-- which is the only frame-accurate launch cue the breach has. Armed by its
+	-- telegraph, so nothing else's splash can be mistaken for it.
+	if startBreachSplash(position) then
+		return
+	end
 	local radius = tonumber(extra.radius) or 5
 	Vfx.ring(position + Vector3.new(0, 0.15, 0), 1, radius, 0.5, COLOR.acid)
 end
@@ -786,6 +819,13 @@ EVENTS.telegraph = function(position: Vector3, extra)
 	local kind = tostring(extra.kind)
 	local duration = tonumber(extra.duration) or 0.8
 	local radius = tonumber(extra.radius)
+	-- Rimefang borrows six of the kinds below, and the stock draws are right
+	-- for the bosses they were built for. A whale-shaped version of each is
+	-- drawn instead when the payload is one of its (see RIME_TELL); anything
+	-- it does not recognise falls through here untouched.
+	if rimeTelegraph(kind, position, extra) then
+		return
+	end
 	Sfx.play("bossTell", position)
 	if kind == "slam" and radius then
 		local point = surfaceUnder(position)
@@ -899,6 +939,11 @@ end
 
 -- The tidal slam: the big one.
 EVENTS.slam = function(position: Vector3, extra)
+	-- A whale landing flat on sea ice is not a tidal slam: it BREAKS THE
+	-- SHEET, and the cracks stay for the window it opens.
+	if rimeSlam(position, extra) then
+		return
+	end
 	local radius = tonumber(extra.radius) or 20
 	local point = surfaceUnder(position)
 	Vfx.flash(position, COLOR.ember, 6, 0.15)
@@ -1010,8 +1055,26 @@ EVENTS.gust = function(position: Vector3, extra)
 			end
 		end
 	end
+	-- Rimefang's wash names the players its arena sheltered (the server owns
+	-- that call - it raycasts the bergs and the wreck): cover has to stop the
+	-- SHOVE, not merely the damage, or the furniture is decoration.
+	if inRange and type(extra.sheltered) == "table" then
+		for _, userId in extra.sheltered do
+			if userId == player.UserId then
+				inRange = false
+				break
+			end
+		end
+	end
 	if inRange then
 		beginPull(position, radius, -push, duration)
+	end
+	-- Rimefang's wash is a WALL, not a ring: it draws its own advancing crest
+	-- and takes the moment, because a radial shockwave over the top of it
+	-- would teach the wrong answer (leave the circle, rather than get behind
+	-- something). Every other gust falls straight through, unchanged.
+	if startWash(position, extra) then
+		return
 	end
 	local color = skinColor(extra)
 	Vfx.shockwave(position + Vector3.new(0, 2, 0), 2, radius, duration, color, 0.35)
@@ -1776,6 +1839,1283 @@ EVENTS.bossCollapse = function(position: Vector3, extra)
 	end)
 end
 
+-- ------------------------------------------------- Rimefang (the floe boss)
+--
+-- The killer whale under the pack ice. Like the serpent, nothing it throws is
+-- a projectile - this is a POSITION fight, so every effect below answers one
+-- of three questions and nothing else:
+--
+--   WHERE IS IT    while it is under the sheet you never see it and always
+--                  know where it is: a dorsal wake, a cold glow tracking
+--                  beneath the ice, and a spout when it comes up (the wake)
+--   WHICH WAY      the wash is a WALL of slush shouldered across the floe
+--                  along ONE bearing. A ring would be a lie: a ring says
+--                  "leave the circle", and the answer to this is "put a berg
+--                  between it and you", which only a travelling wall says
+--   IS IT OPEN     the breach puts it ON the ice, beached for four seconds.
+--                  That is the punish window and the whole party has to see
+--                  it, so the ground under the animal carries the clock
+--
+-- THE TELL KINDS ARE BORROWED, and that is the awkward part. Rimefang's book
+-- fires stock telegraph kinds (mark / burst / ringTell / gustTell / snap), so
+-- the only thing in a payload that says WHICH whale-sized move is coming is
+-- its RADIUS - the attack rows' own numbers. RIME_TELL mirrors them and
+-- matches with a tight tolerance; a retuned row falls back to the stock frost
+-- draw rather than breaking, and the ice island's frost-skinned hostiles
+-- (brinecoil marks at r6) match nothing here.
+--
+-- ALL OF IT IS ABSENCE-SAFE. The mesh pack is a pending import and the pose
+-- attributes may not be published yet: every read is nil-checked and the
+-- worst case is an effect that does not draw.
+
+-- Its own parts, so colouring them is fine - the no-Color rule is about
+-- CREATURE parts, whose colours CombatFeedbackController owns.
+local RIME = {
+	crest = Color3.fromRGB(206, 240, 255), -- the wall's lit spray
+	slush = Color3.fromRGB(158, 194, 216), -- the churned ice it drags behind
+	wake = Color3.fromRGB(150, 216, 250), -- the dorsal line on the sheet
+	glow = Color3.fromRGB(92, 168, 220), -- the cold light under it
+	crack = Color3.fromRGB(232, 248, 255), -- split sheet
+	-- "IT HAS PICKED YOU", and deliberately NOT BRINE.window. That gold is
+	-- the game's one universal "hit it NOW" signal - the serpent's stagger
+	-- disc, and forty studs away in this very fight the beached window's
+	-- clock - and the spy-hop's mark means the opposite: it is the animal
+	-- naming its next victim. Two golds with opposite meanings inside one
+	-- arena is worse than no colour at all. Dark for the same reason
+	-- SKIN.frost is: 4.6:1 against the authored floe, 7.2:1 against the
+	-- procedural one, where the old gold measured 1.4:1 and 2.2:1.
+	mark = Color3.fromRGB(122, 30, 96),
+}
+-- The punish window is BRINE.window on purpose: one colour means "hit it now"
+-- across every boss in the game, and a player only learns that once.
+
+local RIME_ID = "rimefang" -- Bosses.luau rimefang.creature, the row id on the model
+local ATTR_CREATURE_ID = "CreatureId" -- CreatureService's ATTR_ID
+local ATTR_SUBMERGE = "Submerge" -- 0..1 under the sheet (RimefangBodyController's pose)
+local BOSS_ARENA_FOLDER = "BossArenas" -- BossArenaService.FOLDER_NAME: the furniture that is cover
+local RIME_CULL = 240 -- flat draw range for the arena-wide moments
+local RIME_MARGIN = 70 -- how far outside its own footprint an effect still draws
+
+-- Which move a borrowed tell belongs to, by its radius (Bosses.luau,
+-- rimefang.attacks). The tolerance is deliberately tighter than the gap to
+-- the nearest neighbour on the list AND to the ice hostiles' r6 marks.
+local RIME_TELL = {
+	bite = 17, -- "snap": the jaws, and the only move that is always coming
+	spyhop = 7, -- "mark": it stands up and picks someone
+	whiteout = 9, -- "mark": the storm closes
+	breach = 15, -- "burst": it is leaving the sheet, to land 46 studs on
+	flukeslam = 24, -- "burst": the tail comes up through a hole and hammers
+	carousel = 30, -- "ringTell": the current starts to turn
+	wash = 34, -- "gustTell": the wall of slush
+}
+local RIME_TELL_TOL = 0.75
+
+-- WHOSE MOMENT IS THIS. A radius is not evidence: Old Ribbonjaw prowls the
+-- same island frost-skinned, and both `ribbonlash` and `vanish` carry r7 -
+-- the spy-hop's number, inside the tolerance above. Matching on skin and a
+-- number therefore stole a thief's tells and drew a whale's. The ANIMAL is
+-- the evidence, so every whale-shaped draw asks rimeOwns() first, and an ice
+-- hostile falls straight back through to the stock telegraph it always had.
+-- The range is its own aggro (90) with room to spare, and eight THOUSAND
+-- studs short of the ice island the hostiles live on (BossArenas.items.ice).
+local RIME_ARENA = 200
+local RIME_ISLAND = "ice" -- Bosses.luau rimefang.islandId
+-- How far the shared arena row may sit from a payload before the client stops
+-- believing it describes this fight (the roam disc, 28, with margin).
+local RIME_ANCHOR_TRUST = 120
+
+-- The live pose the whale is actually in, published every frame by
+-- CreatureService's rimefangDrive.
+local RF_ATTR_FACE = "FaceAngle" -- = creature.yaw0, which bossFacing() reads
+
+-- THE BITE, from Bosses.luau rimefang.attacks.bite - and none of it except
+-- `radius` is in the telegraph payload, because the stock tell sends only
+-- kind/duration/radius/facing/skin. See the REPORT.
+--   radius 17, cone rad(65)   a 130-degree mouth
+--   lunge 14 over a 0.35s strike, and ATTACK_HANDLERS.snap fires at u >= 0.4
+-- So the jaws close 0.14s AFTER the tell's own clock has run out, from a
+-- point 5.6 studs further forward than the tell began at: the ground that
+-- will be bitten reaches 22.6 studs from where the boss stands at the start
+-- of the windup, closing to the bare 17 at the moment of the bite.
+local BITE_CONE = math.rad(65)
+local BITE_RADIUS = 17
+local BITE_LUNGE = 14
+local BITE_STRIKE = 0.35
+local BITE_LEAD = BITE_STRIKE * 0.4 -- strike time before the jaws close
+
+-- ONE MARKER FOR THE TWO CONES: the bite's mouth and the wash's gathering
+-- wall. Both make the same claim - "this ground, out to here, inside this
+-- angle, is about to be hit" - and both are drawn from the boss's LIVE
+-- bearing rather than the one latched into the payload, because updateBoss
+-- keeps turning the animal through the whole windup (turnRate * 1.5, up to
+-- 84 degrees across the bite's 0.7s) and its cone tests read the live one.
+-- ...and one shape that is not a cone at all but wants every other line of
+-- this machinery: the breach's CORRIDOR. `charge` no longer rings the head -
+-- `bodyContact` walks all nine spine nodes and each one ploughs the floe
+-- within `width` of itself, so what the leap damages is the lane the animal
+-- travels, 46 studs of it, and the marker has to be that lane.
+local WEDGE_BITE = 1
+local WEDGE_WASH = 2
+local WEDGE_BREACH = 3
+local WEDGE_SLOTS = 3
+local WEDGE_SLABS = 9 -- the fan; nine boxes close the 130-degree arc exactly
+local WEDGE_RIM_THICK = 1.1 -- the boundary arc: the line to be standing outside
+local WEDGE_FADE = 0.18
+
+local BREACH_LENGTH = 46 -- Bosses.luau rimefang.breach.length, for the runway
+local BREACH_WIDTH = 11 -- rimefang.breach.width: bodyContact's reach off each node
+local BREACH_TRAVEL = 1.0 -- rimefang.breach.duration: how long the lane is being ploughed
+local BEACHED_WINDOW = 4.0 -- rimefang.breach.expose: how long the ice holds it
+local BEACHED_RADIUS = 15
+local BEACHED_THRASH_GAP = 1.05 -- ~4 thrashes across the window, not a loop
+
+-- The wall. Slabs laid along the wedge the server's own hit test uses
+-- (inside `radius`, inside `cone` of `facing`), marching out from the boss:
+-- what you see arrive is what counted.
+local WASH_SLABS = 16
+local WASH_INNER = 7 -- born at the whale's shoulder, not at its pivot
+local WASH_HEIGHT = 6.2 -- OVER eye height: a wall you cannot see past is the read
+local WASH_THICK = 2.4
+local WASH_APRON_LAG = 5.5 -- the churned slush trailing the crest
+local WASH_CONE = math.rad(70) -- rimefang.wash.cone, if a payload ever omits it
+local WASH_FADE = 0.3
+-- HOW LONG THE CREST TAKES TO CROSS THE WHOLE WEDGE, and deliberately NOT the
+-- payload's `duration`. ATTACK_HANDLERS.wash damages and shoves everyone
+-- inside the cone in ONE frame, at the end of the windup - there is no
+-- travelling hit to draw, and driving the crest off `duration` (0.9s) meant a
+-- player at 30 studs watched their health drop 0.77 SECONDS before the wall
+-- that took it reached them. The wall cannot arrive before it is drawn, so
+-- the honest client-side floor on the lie is "as fast as still reads as a
+-- wall": 34 studs in 0.22s puts the worst case at 0.19s, inside the frame
+-- budget a player can attribute. `duration` still owns the slush's lifetime,
+-- which is aftermath and is allowed to take its time. The REAL fix is
+-- server-side (stagger the damage along the wedge) - see the REPORT.
+local WASH_SWEEP = 0.22
+local WASH_SPRAY_GAP = 0.07
+
+-- The sheet it breaks: cracks radiating from a crash, which stay put for the
+-- punish window because broken ice does not heal in four seconds.
+local CRACK_SLABS = 16
+local CRACK_HOLD = 3.2
+local CRACK_FADE = 1.4
+
+-- The wake: a knuckle over the head and two arms splaying back off it.
+local WAKE_ARMS = 6 -- per side
+local WAKE_SPLAY = math.rad(27)
+local WAKE_STEP = 3.4 -- distance between one arm slab and the next
+local WAKE_SPRAY_GAP = 0.4
+local WAKE_SPOUT_AT = 0.35 -- Submerge below this and it is breaking the surface
+
+local wash: any = nil
+local washPool = { crest = {}, apron = {} }
+local wedges: { any } = {}
+local wedgePool: { any } = {}
+local crackPool: { Part } = {}
+local wakePool: any = nil
+local wake: any = nil
+local beached: any = nil
+local beachedRing: Part
+-- The breach's launch: armed by its telegraph so the stock `splash` the
+-- charge handler fires at that instant can be recognised (see EVENTS.splash).
+local breachArm: { at: Vector3, until_: number }? = nil
+
+-- ---------------------------------------------------------------- the floe
+
+local rimeParams: RaycastParams? = nil
+local rimeFilterAt = 0
+
+-- The sheet's surface at (x, z). NOT surfaceUnder: that casts 8 studs from
+-- just above the point it is given, and this has to work when the whale it is
+-- drawing for is eighteen studs UNDER the ice. Everything drawn - the client
+-- body, this controller's markers, the Vfx parts - is excluded, or the "floe"
+-- found would be the whale's own back.
+local function sheetY(x: number, z: number, guessY: number): number
+	local params = rimeParams
+	if not params then
+		params = RaycastParams.new()
+		params.FilterType = Enum.RaycastFilterType.Exclude
+		rimeParams = params
+	end
+	local now = os.clock()
+	if now >= rimeFilterAt then
+		rimeFilterAt = now + 1
+		local ignore: { Instance } = { folder }
+		for _, name in { CREATURES_FOLDER, "RimefangBody", "ClientVfx" } do
+			local found = Workspace:FindFirstChild(name)
+			if found then
+				table.insert(ignore, found)
+			end
+		end
+		for _, other in Players:GetPlayers() do
+			if other.Character then
+				table.insert(ignore, other.Character)
+			end
+		end
+		params.FilterDescendantsInstances = ignore
+	end
+	local hit = Workspace:Raycast(Vector3.new(x, guessY + 30, z), Vector3.new(0, -70, 0), params)
+	return if hit then hit.Position.Y else World.WATER_Y
+end
+
+local rimeModel: Model? = nil
+local rimeScanAt = 0
+
+-- The boss itself, out of the same `tracked` set every other state effect
+-- watches. Re-scanned twice a second rather than per frame: there is at most
+-- one of these in the world.
+local function rimefang(now: number): Model?
+	local model = rimeModel
+	if model and model.Parent then
+		return model
+	end
+	rimeModel = nil
+	if now < rimeScanAt then
+		return nil
+	end
+	rimeScanAt = now + 0.5
+	for candidate in tracked do
+		if candidate.Parent and candidate:GetAttribute(ATTR_CREATURE_ID) == RIME_ID then
+			rimeModel = candidate
+			return candidate
+		end
+	end
+	return nil
+end
+
+-- Is the whale itself standing at `position`? For the moments it fires
+-- through a SHARED handler that stamps no skin (the stock `slam` its fluke
+-- rides): the boss's own body is then the only thing in the payload's
+-- neighbourhood that can confirm whose moment this is. Nil-safe - if the boss
+-- is not tracked, the caller falls back to the generic drawing.
+local function rimeNear(position: Vector3, range: number): boolean
+	local model = rimefang(os.clock())
+	return model ~= nil and (model:GetPivot().Position - position).Magnitude <= range
+end
+
+-- Which of its moves a borrowed tell is, or nil.
+local function rimeMove(radius: number?): string?
+	if not radius then
+		return nil
+	end
+	for name, r in RIME_TELL do
+		if math.abs(radius - r) <= RIME_TELL_TOL then
+			return name
+		end
+	end
+	return nil
+end
+
+-- Is this Rimefang's moment at all? The identity gate every whale-shaped
+-- draw starts with (see RIME_ARENA): the boss has to be tracked in the world
+-- AND the payload has to have come from inside its arena.
+local function rimeOwns(position: Vector3): boolean
+	return rimeNear(position, RIME_ARENA)
+end
+
+-- WHERE IT IS AND WHICH WAY ITS HIT TESTS POINT, THIS FRAME. The model's
+-- pivot IS `creature.pos` (every attack phase pivots through poseCFrame) and
+-- FaceAngle IS `yaw0`, so this reproduces the server's own bossFacing()
+-- exactly - unlike the bearing latched into a telegraph payload at the START
+-- of a windup the boss then spends turning. Returns nils when the boss is not
+-- tracked or the pose is not published yet, and the caller falls back to the
+-- payload: absence draws something, never nothing.
+local function rimeAim(): (Vector3?, number?)
+	local model = rimefang(os.clock())
+	if not model then
+		return nil, nil
+	end
+	local at = model:GetPivot().Position
+	local yaw = tonumber(model:GetAttribute(RF_ATTR_FACE))
+	if not yaw then
+		return at, nil
+	end
+	-- bossFacing = (cos yaw, 0, -sin yaw), in the (X, Z) bearing convention
+	-- the wash's own angle already uses.
+	return at, math.atan2(-math.sin(yaw), math.cos(yaw))
+end
+
+-- A payload's bearing as an (X, Z) angle, or nil if it carries none.
+local function flatAngle(facing: any): number?
+	if typeof(facing) ~= "Vector3" then
+		return nil
+	end
+	local flat = Vector3.new(facing.X, 0, facing.Z)
+	if flat.Magnitude < 1e-3 then
+		return nil
+	end
+	return math.atan2(flat.Z, flat.X)
+end
+
+-- WHERE THE CAROUSEL ACTUALLY TURNS. `undertow` centres both the drag and the
+-- bergs it drops on `creature.anchor`, which updateBoss sets to the point the
+-- boss rose at - and for a lair island that is BossArenas.centerFor(islandId)
+-- exactly (BossService.arenaPosition). The stock tell is fired from the
+-- boss's PIVOT instead, and the two are up to a roam disc apart (28 studs).
+-- Sanity-checked rather than trusted: if the shared row and the payload
+-- disagree by more than the disc plus margin, the row is not describing this
+-- fight and the payload wins.
+local function rimeArenaCenter(position: Vector3): Vector3
+	local center = BossArenas.centerFor(RIME_ISLAND)
+	if
+		center
+		and (Vector3.new(center.X, 0, center.Z) - Vector3.new(position.X, 0, position.Z)).Magnitude
+			<= RIME_ANCHOR_TRUST
+	then
+		return Vector3.new(center.X, position.Y, center.Z)
+	end
+	return position
+end
+
+-- ---------------------------------------------------------------- the wedges
+--
+-- A cone of ground, drawn as the ground it is. `reach` is the distance the
+-- attack will actually cover from the boss's CURRENT position, `cone` its
+-- half-angle, and the fan below fills that footprint out to a boundary arc:
+-- the whole read is "be outside this line, or behind something". The clock is
+-- the strobe rate, the idiom the beached window's disc already establishes.
+local function stepWedges(now: number)
+	for slot = 1, WEDGE_SLOTS do
+		local w = wedges[slot]
+		local pool = wedgePool[slot]
+		if w and pool then
+			local elapsed = now - w.start
+			if elapsed > w.life + WEDGE_FADE then
+				wedges[slot] = nil
+				parkParts(pool.fan)
+				parkParts(pool.rim)
+			else
+				-- The cones READ THE ANIMAL every frame, because the server
+				-- keeps turning it and tests the live bearing. The corridor
+				-- does the opposite on purpose: `charge` latches `a.dir` on
+				-- its first windup frame and never re-aims, so the lane is
+				-- fixed from the moment it is drawn - and it must not follow
+				-- the whale, which is about to travel down it.
+				local at, angle = nil, nil
+				if w.live then
+					at, angle = rimeAim()
+				end
+				local center = at or w.center
+				angle = angle or w.angle
+				-- The bite's footprint closes as the animal lunges through
+				-- it: what is left to be bitten, measured from where the boss
+				-- is standing right now.
+				local reach = w.reach
+				if w.kind == "bite" then
+					local into = math.clamp(elapsed - w.windup, 0, BITE_LEAD)
+					reach += BITE_LUNGE * (BITE_LEAD - into) / BITE_STRIKE
+				end
+				local u = math.clamp(elapsed / math.max(w.windup, 1e-3), 0, 1)
+				local fade = math.clamp((elapsed - w.life) / WEDGE_FADE, 0, 1)
+				local strobe = 0.5 + 0.5 * math.sin(now * (2.4 + 7 * u) * math.pi * 2)
+				local fanAlpha = math.min((0.62 - 0.22 * u) + 0.08 * strobe + fade, 1)
+				local rimAlpha = math.min((0.34 - 0.2 * u) + 0.08 * strobe + fade, 1)
+				local ground = sheetY(center.X, center.Z, center.Y) + 0.1
+				local ct, st = math.cos(angle), math.sin(angle)
+				local facing = CFrame.Angles(0, -angle, 0)
+
+				if w.kind == "corridor" then
+					-- The lane, tiled end to end: `reach` long, `w.width` to
+					-- either side of the line, which is exactly what
+					-- bodyContact tests against every node that goes down it.
+					local step = reach / WEDGE_SLABS
+					for i = 1, WEDGE_SLABS do
+						local d = (i - 0.5) * step
+						local slab = pool.fan[i]
+						slab.Size = Vector3.new(step, 0.12, w.width * 2)
+						slab.CFrame = CFrame.new(center.X + ct * d, ground, center.Z + st * d) * facing
+						slab.Transparency = fanAlpha
+					end
+					-- ...and its two rails, because the lane's EDGE is the
+					-- whole read: four segments a side, and a bar across the
+					-- far end where the animal comes down.
+					local railStep = reach / 4
+					for i = 1, 8 do
+						local side = if i <= 4 then 1 else -1
+						local k = if i <= 4 then i else i - 4
+						local d = (k - 0.5) * railStep
+						local rim = pool.rim[i]
+						rim.Size = Vector3.new(railStep * 0.86, 0.18, WEDGE_RIM_THICK)
+						rim.CFrame = CFrame.new(center.X + ct * d, ground + 0.05, center.Z + st * d)
+							* facing
+							* CFrame.new(0, 0, side * w.width)
+						rim.Transparency = rimAlpha
+					end
+					local cap = pool.rim[9]
+					cap.Size = Vector3.new(WEDGE_RIM_THICK, 0.18, w.width * 2)
+					cap.CFrame = CFrame.new(
+						center.X + ct * (reach - WEDGE_RIM_THICK * 0.5),
+						ground + 0.05,
+						center.Z + st * (reach - WEDGE_RIM_THICK * 0.5)
+					) * facing
+					cap.Transparency = rimAlpha
+				else
+					local span = (2 * w.cone * reach) / WEDGE_SLABS
+					for i = 1, WEDGE_SLABS do
+						local t = (i - 0.5) / WEDGE_SLABS * 2 - 1 -- -1..1 across the mouth
+						local theta = angle + w.cone * t
+						local ctt, stt = math.cos(theta), math.sin(theta)
+						local spoke = CFrame.Angles(0, -theta, 0)
+						-- Local X is radial and local Z tangential, the same
+						-- frame the wash's crest slabs are laid in.
+						local slab = pool.fan[i]
+						slab.Size = Vector3.new(reach, 0.12, span)
+						slab.CFrame = CFrame.new(center.X + ctt * reach * 0.5, ground, center.Z + stt * reach * 0.5)
+							* spoke
+						slab.Transparency = fanAlpha
+
+						local edge = reach - WEDGE_RIM_THICK * 0.5
+						local rim = pool.rim[i]
+						rim.Size = Vector3.new(WEDGE_RIM_THICK, 0.18, span * 1.06)
+						rim.CFrame = CFrame.new(center.X + ctt * edge, ground + 0.05, center.Z + stt * edge) * spoke
+						rim.Transparency = rimAlpha
+					end
+				end
+			end
+		end
+	end
+end
+
+-- ---------------------------------------------------------------- the wash
+
+-- THE SIGNATURE. Taken out of EVENTS.gust: the shove is the kit engine's and
+-- stays exactly as it is (cover already stops it), but the PICTURE cannot be
+-- a radial shockwave. An orca shoulders a wall of water over the ice and the
+-- seal is washed off; the wall arrives from one bearing, and getting behind
+-- something is the answer. Returns true when it has taken the moment, so the
+-- generic ring never draws over the top of it.
+startWash = function(position: Vector3, extra): boolean
+	local radius = tonumber(extra.radius) or 34
+	local cone = tonumber(extra.cone)
+	-- A wall, not a puff of wind: frost-skinned, aimed, and arena-sized. The
+	-- ice island's own frost hostiles have no gust in their book at all, so
+	-- this cannot be stolen off a lesser creature.
+	if extra.skin ~= "frost" or typeof(extra.facing) ~= "Vector3" or not cone or radius < 20 then
+		return false
+	end
+	local facing = extra.facing :: Vector3
+	local flat = Vector3.new(facing.X, 0, facing.Z)
+	if flat.Magnitude < 1e-3 then
+		return false
+	end
+	if not nearCamera(position, radius + RIME_MARGIN) then
+		return true -- its moment, simply not ours to watch
+	end
+	local sheltered = false
+	if type(extra.sheltered) == "table" then
+		for _, userId in extra.sheltered do
+			if userId == player.UserId then
+				sheltered = true
+				break
+			end
+		end
+	end
+	flat = flat.Unit
+	wash = {
+		center = position,
+		angle = math.atan2(flat.Z, flat.X),
+		cone = math.clamp(cone, math.rad(12), math.rad(165)),
+		radius = radius,
+		duration = math.clamp(tonumber(extra.duration) or 0.9, 0.25, 6),
+		start = os.clock(),
+		nextSprayAt = 0,
+		sheltered = sheltered,
+		passed = false,
+	}
+	return true
+end
+
+-- The crest passing the local player: the one frame where the fight tells you
+-- whether your cover held. Shoved or sheltered, the wall goes by either way -
+-- what differs is whether it breaks over you or over the berg in front.
+local function washPass(center: Vector3, sheltered: boolean)
+	local root = localRoot()
+	if not root then
+		return
+	end
+	local at = root.Position
+	if sheltered then
+		-- It broke on something. Spray comes over the top of the cover, from
+		-- the side the wall did, and nothing touches you.
+		local from = Vector3.new(center.X - at.X, 0, center.Z - at.Z)
+		local dir = if from.Magnitude > 0.05 then from.Unit else Vector3.zAxis
+		Vfx.puff(at + dir * 2.5 + Vector3.new(0, 3.5, 0), RIME.crest, 2.2)
+		Vfx.burst(at + dir * 2 + Vector3.new(0, 3, 0), RIME.crest, 16)
+	else
+		Vfx.puff(at, RIME.slush, 2.4)
+		Vfx.burst(at + Vector3.new(0, 1, 0), RIME.crest, 22)
+		CombatVfxController.kick(math.rad(2.5), 0, 0.28)
+	end
+end
+
+-- Is there arena furniture between the boss and this piece of the crest?
+-- The SAME test the server runs against a player's root before it decides
+-- who the wash sheltered (CreatureService.washSheltered, down to the
+-- `_Base`/`_Floor` name check that stops a graze along the domed floe from
+-- counting): the bergs and the frozen whaler break the wall where they stand,
+-- so the shape of the safe ground is drawn by the wall itself rather than
+-- learned by dying behind the wrong rock.
+local washParams: RaycastParams? = nil
+local washFilterAt = 0
+
+local function washCovered(from: Vector3, to: Vector3): boolean
+	local params = washParams
+	if not params then
+		params = RaycastParams.new()
+		params.FilterType = Enum.RaycastFilterType.Include
+		washParams = params
+	end
+	local now = os.clock()
+	if now >= washFilterAt then
+		washFilterAt = now + 1
+		local arenas = Workspace:FindFirstChild(BOSS_ARENA_FOLDER)
+		params.FilterDescendantsInstances = if arenas then { arenas } else {}
+	end
+	local origin = from + Vector3.new(0, 2.5, 0)
+	local hit = Workspace:Raycast(origin, to - origin, params)
+	if not hit then
+		return false
+	end
+	local name = hit.Instance.Name
+	return not (string.find(name, "_Base", 1, true) or string.find(name, "Floor", 1, true))
+end
+
+local function stepWash(now: number)
+	if not wash then
+		return
+	end
+	-- THE HIT LANDED WHEN THE EVENT DID. The server damages and shoves the
+	-- whole cone in the frame this payload was sent from, so the local
+	-- player's answer - "it broke over you" or "your cover held" - is owed on
+	-- the FIRST frame, not whenever a slab happens to reach them. This used to
+	-- wait for the crest, which at 30 studs was 0.77s of standing there
+	-- already hurt with nothing on screen to say why.
+	if not wash.passed then
+		wash.passed = true
+		local root = localRoot()
+		local to = if root
+			then Vector3.new(root.Position.X - wash.center.X, 0, root.Position.Z - wash.center.Z)
+			else Vector3.zero
+		-- The server's own test, to the stud: inside `radius`, inside `cone`
+		-- of the bearing. A player standing behind the boss is never told a
+		-- wall went over them.
+		if to.Magnitude > 0.05 and to.Magnitude <= wash.radius then
+			local bearing = math.atan2(to.Z, to.X) - wash.angle
+			bearing = math.abs((bearing + math.pi) % (math.pi * 2) - math.pi)
+			if bearing <= wash.cone then
+				washPass(wash.center, wash.sheltered)
+			end
+		end
+	end
+	local elapsed = now - wash.start
+	-- The crest is over once it has crossed; the slush it dumped stays for
+	-- the payload's duration, which is what that number is actually for.
+	local life = math.max(WASH_SWEEP + WASH_FADE, wash.duration)
+	if elapsed > life + WASH_FADE then
+		wash = nil
+		parkParts(washPool.crest)
+		parkParts(washPool.apron)
+		return
+	end
+	local u = math.clamp(elapsed / WASH_SWEEP, 0, 1)
+	local fade = math.clamp((elapsed - WASH_SWEEP) / WASH_FADE, 0, 1)
+	local slushFade = math.clamp((elapsed - wash.duration) / WASH_FADE, 0, 1)
+	local r = WASH_INNER + (wash.radius - WASH_INNER) * u
+	local cos, sin = math.cos(wash.angle), math.sin(wash.angle)
+	-- One sample, on the crest's centre line: a floe is flat, and sixteen
+	-- rays a frame to prove it would be sixteen rays a frame wasted.
+	local ground = sheetY(wash.center.X + cos * r, wash.center.Z + sin * r, wash.center.Y)
+	local pulse = 0.5 + 0.5 * math.sin(now * 14)
+	local alpha = math.min((0.2 + 0.1 * pulse) + 0.8 * fade, 1)
+	local slush = math.min((0.52 + 0.08 * pulse) + 0.48 * slushFade, 1)
+	local span = (2 * wash.cone * r) / WASH_SLABS
+	-- The slush covers the ground the wall has ALREADY been over - which, the
+	-- moment the crest is out at `radius`, is the whole damaged footprint. It
+	-- used to be a lagging band 5.5 studs deep, so the wedge the server hit
+	-- was left unmarked behind the crest as well as in front of it.
+	local back = 0.5 * (WASH_INNER + math.max(r - WASH_APRON_LAG * (1 - u), WASH_INNER + 0.5))
+	local depth = math.max(r - WASH_APRON_LAG * (1 - u) - WASH_INNER, 1)
+
+	for i = 1, WASH_SLABS do
+		local t = (i - 0.5) / WASH_SLABS * 2 - 1 -- -1..1 across the wedge
+		local theta = wash.angle + wash.cone * t
+		local ct, st = math.cos(theta), math.sin(theta)
+		-- Tallest on the bearing it was aimed down and lower at the shoulders,
+		-- so a wall crossing 140 degrees of arena still reads as ONE thing
+		-- coming from somewhere rather than as weather.
+		local height = WASH_HEIGHT * (1 - 0.28 * u) * (0.62 + 0.38 * math.cos(t * math.pi * 0.5))
+		local at = Vector3.new(wash.center.X + ct * r, ground + 1.6, wash.center.Z + st * r)
+		-- A berg or the whaler standing in the way breaks the wall where it
+		-- stands: what is left is a NOTCH in the crest, wide enough to stand
+		-- in, and standing in it is the whole counterplay.
+		local shaded = washCovered(wash.center, at)
+		if shaded then
+			height *= 0.22
+		end
+		local slab = washPool.crest[i]
+		slab.Size = Vector3.new(WASH_THICK, height, span * 1.12)
+		slab.CFrame = CFrame.new(wash.center.X + ct * r, ground + height * 0.5, wash.center.Z + st * r)
+			* CFrame.Angles(0, -theta, 0)
+		slab.Transparency = if shaded then math.min(alpha + 0.35, 1) else alpha
+
+		-- ...and the slush it has dumped on the ice behind the crest: the wall
+		-- passing is a moment, the mess it leaves is how you know which way it
+		-- went after it has gone - and how you know how much of the floe it
+		-- just had.
+		local apron = washPool.apron[i]
+		apron.Size = Vector3.new(depth, 0.35, (2 * wash.cone * back) / WASH_SLABS * 1.3)
+		apron.CFrame = CFrame.new(wash.center.X + ct * back, ground + 0.18, wash.center.Z + st * back)
+			* CFrame.Angles(0, -theta, 0)
+		apron.Transparency = slush
+	end
+
+	if fade <= 0 and now >= wash.nextSprayAt then
+		wash.nextSprayAt = now + WASH_SPRAY_GAP
+		for _ = 1, 2 do
+			local theta = wash.angle + wash.cone * (math.random() * 2 - 1)
+			local at = Vector3.new(
+				wash.center.X + math.cos(theta) * r,
+				ground + randomBetween(1.5, WASH_HEIGHT),
+				wash.center.Z + math.sin(theta) * r
+			)
+			Vfx.puff(at, RIME.crest, 1.5)
+		end
+	end
+end
+
+-- ------------------------------------------------------------- broken sheet
+
+-- Cracks thrown out from something enormous landing on the ice. They GROW
+-- (the split running outward is the whole read) and then stay, because the
+-- sheet does not heal inside the punish window they open.
+local function drawFloeCracks(position: Vector3, radius: number)
+	local y = sheetY(position.X, position.Z, position.Y) + 0.09
+	for i = 1, CRACK_SLABS do
+		local slab = crackPool[i]
+		local theta = (i / CRACK_SLABS) * math.pi * 2 + randomBetween(-0.14, 0.14)
+		local length = radius * randomBetween(0.65, 1.35)
+		local width = randomBetween(0.35, 0.9)
+		local ct, st = math.cos(theta), math.sin(theta)
+		local facing = CFrame.Angles(0, -theta, 0)
+		slab.Size = Vector3.new(2, 0.16, width)
+		slab.CFrame = CFrame.new(position.X + ct * 1, y, position.Z + st * 1) * facing
+		slab.Transparency = 0.08
+		TweenService:Create(slab, TweenInfo.new(0.24, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+			Size = Vector3.new(length, 0.16, width),
+			CFrame = CFrame.new(position.X + ct * length * 0.5, y, position.Z + st * length * 0.5) * facing,
+		}):Play()
+		TweenService:Create(
+			slab,
+			TweenInfo.new(CRACK_FADE, Enum.EasingStyle.Quad, Enum.EasingDirection.In, 0, false, CRACK_HOLD),
+			{ Transparency = 1 }
+		):Play()
+	end
+end
+
+-- ------------------------------------------------------------- the breach
+
+-- The whole animal leaving the water. The `charge` handler fires the stock
+-- `splash` at the instant it goes, which is the only frame-accurate launch
+-- cue there is - so the breach's telegraph arms this, and EVENTS.splash hands
+-- that moment over here instead of drawing a cod's ring.
+startBreachSplash = function(position: Vector3): boolean
+	local arm = breachArm
+	if not arm or os.clock() > arm.until_ then
+		breachArm = nil
+		return false
+	end
+	if (Vector3.new(position.X, 0, position.Z) - Vector3.new(arm.at.X, 0, arm.at.Z)).Magnitude > 25 then
+		-- SPENT EITHER WAY. Leaving the arm standing on the reject path meant
+		-- the NEXT splash inside 25 studs of the armed point - a cod's spit
+		-- landing, a swimmer, anything - was promoted into a full breach
+		-- launch (crash, cracks, camera kick) for the rest of the ~2s window.
+		-- A missed cue costs the player one beat of anticipation; a fabricated
+		-- one tells them a 46-stud leap is coming when nothing is.
+		breachArm = nil
+		return false
+	end
+	breachArm = nil
+	if not nearCamera(position, RIME_CULL) then
+		return true
+	end
+	local at = Vector3.new(position.X, sheetY(position.X, position.Z, position.Y) + 0.2, position.Z)
+	Sfx.play("rimeBreachLaunch", at)
+	Vfx.splash(at, 5)
+	Vfx.burst(at, RIME.crest, 70)
+	Vfx.puff(at + Vector3.new(0, 2, 0), RIME.slush, 4)
+	Vfx.shockwave(at + Vector3.new(0, 0.4, 0), 2, 20, 0.5, RIME.crest, 0.5)
+	Vfx.ring(at, 3, 22, 0.7, RIME.slush)
+	-- The hole it came out of, still throwing water a beat later.
+	for i = 1, 3 do
+		task.delay(i * 0.11, function()
+			Vfx.splash(at + Vector3.new(randomBetween(-5, 5), 0, randomBetween(-5, 5)), 2)
+		end)
+	end
+	drawFloeCracks(at, 13)
+	feelBlast(at, 26, SHAKE_RISE, 0.45, Color3.fromRGB(214, 240, 255))
+	return true
+end
+
+-- Something whale-sized landing on the sheet: the breach's crash (r15) or the
+-- fluke coming down through a hole (r24). Both break the ice, which is why
+-- they share a drawing; what tells them apart is weight and sound.
+rimeSlam = function(position: Vector3, extra): boolean
+	local radius = tonumber(extra.radius) or 15
+	local move = rimeMove(radius)
+	if move ~= "breach" and move ~= "flukeslam" then
+		return false
+	end
+	-- The breach's crash comes out of the `charge` handler, which stamps the
+	-- skin. The fluke rides the stock `slam`, which stamps nothing - so that
+	-- one is confirmed against the animal standing there instead.
+	if extra.skin ~= "frost" and not rimeNear(position, 40) then
+		return false
+	end
+	if not nearCamera(position, radius + RIME_MARGIN) then
+		return true
+	end
+	local crash = move == "breach"
+	local at = Vector3.new(position.X, sheetY(position.X, position.Z, position.Y) + 0.15, position.Z)
+
+	-- CRACK then BOOM: the sheet splitting arrives fractionally before the
+	-- tonnage does, the way killCrack sits ahead of killThump.
+	Sfx.play("rimeFloeCrack", at)
+	task.delay(0.05, function()
+		Sfx.play(if crash then "rimeBreachCrash" else "rimeFlukeSlam", at)
+	end)
+
+	drawFloeCracks(at, radius * (if crash then 1.5 else 1.0))
+	Vfx.flash(at + Vector3.new(0, 2, 0), RIME.crack, if crash then 9 else 6, 0.22)
+	Vfx.shockwave(at + Vector3.new(0, 0.4, 0), 2, radius, 0.5, RIME.crest, 0.7)
+	Vfx.ring(at, 2, radius * 1.3, 0.8, RIME.slush)
+	Vfx.puff(at, RIME.slush, if crash then 5 else 3.4)
+	Vfx.burst(at, RIME.crest, if crash then 70 else 40)
+	for i = 1, 6 do
+		local a = (i / 6) * math.pi * 2
+		Vfx.splash(at + Vector3.new(math.cos(a) * radius * 0.5, 0.2, math.sin(a) * radius * 0.5), 2)
+	end
+	feelBlast(at, radius, if crash then SHAKE_SLAM else SHAKE_PULSE, 0.5, Color3.fromRGB(220, 242, 255))
+	return true
+end
+
+-- ------------------------------------------------------- the punish window
+
+local function closeBeached()
+	if not beached then
+		return
+	end
+	local at = beached.at
+	beachedRing.Transparency = 1
+	beachedRing.CFrame = PARKED
+	beached = nil
+	-- It works itself over the edge and is gone.
+	Sfx.play("rimeThrash", at)
+	Vfx.splash(at, 3)
+	Vfx.puff(at, RIME.slush, 4)
+end
+
+-- FOUR SECONDS. It is on the ice, it cannot answer, and it is the only
+-- window in the fight wide enough to kill it in - so the ground under the
+-- animal carries the clock in the same gold the serpent's stagger uses, and
+-- the detail (slush off its flanks, the thrash) lives at the body, where the
+-- audio pass put it too: the window should pay for walking to it.
+local function stepBeached(now: number)
+	local model = rimefang(now)
+	-- Gated on the window's own DEADLINE, never on ATTR_EXPOSED: that
+	-- attribute has no expiry for a plain boss archetype, so it latches true
+	-- after the first breach. This cue used to strobe for the rest of the
+	-- fight and no later breach could reopen it.
+	local openUntil = model and tonumber(model:GetAttribute("OpenUntil")) or 0
+	if not model or openUntil <= Workspace:GetServerTimeNow() then
+		closeBeached()
+		return
+	end
+	local at = model:GetPivot().Position
+	if not nearCamera(at, RIME_CULL) then
+		return
+	end
+	if not beached then
+		beached = {
+			at = at,
+			until_ = now + BEACHED_WINDOW,
+			duration = BEACHED_WINDOW,
+			nextThrashAt = now,
+			nextPuffAt = 0,
+		}
+		Vfx.flash(at + Vector3.new(0, 4, 0), BRINE.window, 8, 0.5)
+		Vfx.burst(at + Vector3.new(0, 2, 0), BRINE.window, 45)
+	end
+	beached.at = at
+
+	-- The disc IS the clock: it closes as the window does and strobes faster
+	-- the less of it there is left. Readable from anywhere on the floe with
+	-- no HUD and no text.
+	local left = math.max(beached.until_ - now, 0)
+	local u = math.clamp(left / beached.duration, 0, 1)
+	local r = BEACHED_RADIUS * (0.2 + 0.8 * u)
+	beachedRing.Size = Vector3.new(0.16, r * 2, r * 2)
+	beachedRing.CFrame = CFrame.new(at.X, sheetY(at.X, at.Z, at.Y) + 0.16, at.Z) * CFrame.Angles(0, 0, math.rad(90))
+	local rate = 2.2 + 6 * (1 - u)
+	beachedRing.Transparency = 0.5 + 0.28 * (0.5 + 0.5 * math.sin(now * rate * math.pi * 2))
+
+	if now >= beached.nextThrashAt then
+		beached.nextThrashAt = now + BEACHED_THRASH_GAP
+		Sfx.play("rimeThrash", at)
+		Vfx.burst(at + Vector3.new(0, 1.5, 0), BRINE.window, 16)
+	end
+	if now >= beached.nextPuffAt then
+		beached.nextPuffAt = now + 0.28
+		-- Slush thrown off it as it works itself back toward the water.
+		local jitter = Vector3.new(randomBetween(-7, 7), randomBetween(0, 3), randomBetween(-7, 7))
+		Vfx.puff(at + jitter, RIME.slush, 1.6)
+	end
+end
+
+-- ---------------------------------------------------------------- the wake
+
+-- ITS IDENTITY. Under the sheet it is never visible and never lost: a knuckle
+-- of raised ice over the head, two arms splaying back off it, and a cold
+-- light travelling under the floe. Everything reads off `Submerge` (0..1) and
+-- the model's own position, so the moment the server stops publishing the
+-- pose this simply stops drawing.
+-- THE SPOUT. It comes up somewhere on the ring and breathes out: this fight's
+-- locator, and most players will hear it before they turn - so the sound goes
+-- out whether or not the breath is on screen.
+local function spoutAt(head: Vector3)
+	Sfx.play("rimeSpout", head)
+	if not nearCamera(head, RIME_CULL) then
+		return
+	end
+	local y = sheetY(head.X, head.Z, head.Y)
+	Vfx.splash(Vector3.new(head.X, y + 0.2, head.Z), 2.5)
+	for i = 0, 3 do
+		task.delay(i * 0.05, function()
+			Vfx.puff(Vector3.new(head.X, y + 1.5 + i * 2.6, head.Z), RIME.crest, 1.6 - i * 0.2)
+		end)
+	end
+end
+
+local function stepWake(now: number)
+	local model = rimefang(now)
+	local depth = if model then tonumber(model:GetAttribute(ATTR_SUBMERGE)) else nil
+	-- Checked BEFORE the wake is parked, and off the raw attribute: a server
+	-- that snaps Submerge straight to 0 would otherwise surface the animal in
+	-- silence, and the breath is the one cue that says "it is up, and there".
+	if model and wake and depth and depth <= WAKE_SPOUT_AT and not wake.spouted then
+		wake.spouted = true
+		spoutAt(model:GetPivot().Position)
+	end
+	if not model or not depth or depth <= 0.05 or not nearCamera(model:GetPivot().Position, RIME_CULL) then
+		if wake then
+			wake = nil
+			parkParts(wakePool.arms)
+			wakePool.knuckle.Transparency = 1
+			wakePool.knuckle.CFrame = PARKED
+			wakePool.glow.Transparency = 1
+			wakePool.glow.CFrame = PARKED
+			wakePool.light.Enabled = false
+		end
+		return
+	end
+	depth = math.clamp(depth, 0, 1)
+
+	local head = model:GetPivot().Position
+	if not wake then
+		wake = { dir = Vector3.zAxis, lastPos = head, nextSprayAt = 0, spouted = false }
+	end
+	local moved = Vector3.new(head.X - wake.lastPos.X, 0, head.Z - wake.lastPos.Z)
+	wake.lastPos = head
+	if moved.Magnitude > 0.04 then
+		-- Eased, not snapped: a wake is water and water does not turn on a
+		-- frame, and a jittering V would read as a bug rather than an animal.
+		local blended = wake.dir + (moved.Unit - wake.dir) * 0.2
+		if blended.Magnitude > 1e-3 then
+			wake.dir = blended.Unit
+		end
+	end
+
+	local y = sheetY(head.X, head.Z, head.Y)
+	local frame = CFrame.lookAt(Vector3.new(head.X, y + 0.14, head.Z), Vector3.new(head.X, y + 0.14, head.Z) + wake.dir)
+	local swell = 0.5 + 0.5 * math.sin(now * 3.1)
+	-- Deeper is fainter and wider: how hard the wake is to see IS the depth.
+	local faint = 0.18 + 0.5 * depth
+
+	local knuckle = wakePool.knuckle
+	knuckle.Size = Vector3.new(3.4, 0.5 + 0.25 * swell, 5.2 + 1.2 * (1 - depth))
+	knuckle.CFrame = frame
+	knuckle.Transparency = math.clamp(faint, 0, 0.95)
+
+	for side = 0, 1 do
+		local sign = if side == 0 then 1 else -1
+		for k = 1, WAKE_ARMS do
+			local slab = wakePool.arms[side * WAKE_ARMS + k]
+			slab.Size = Vector3.new(0.5 + 0.09 * k, 0.3, WAKE_STEP * 1.08)
+			slab.CFrame = frame * CFrame.Angles(0, sign * WAKE_SPLAY, 0) * CFrame.new(0, 0, k * WAKE_STEP)
+			slab.Transparency = math.clamp(faint + 0.05 * k, 0, 1)
+		end
+	end
+
+	-- The cold light beneath the ice. Wide, weak and never sharp: you are
+	-- meant to be sure where it is and never sure what you are looking at.
+	local glowR = 7 + 11 * depth
+	local glow = wakePool.glow
+	glow.Size = Vector3.new(0.12, glowR * 2, glowR * 2)
+	glow.CFrame = CFrame.new(head.X, y + 0.05, head.Z) * CFrame.Angles(0, 0, math.rad(90))
+	glow.Transparency = math.clamp(0.82 + 0.06 * swell, 0, 1)
+	wakePool.light.Enabled = true
+	wakePool.light.Brightness = 1.4 + 1.6 * (1 - depth)
+	wakePool.light.Range = glowR * 2
+
+	if now >= wake.nextSprayAt and moved.Magnitude > 0.04 then
+		wake.nextSprayAt = now + WAKE_SPRAY_GAP
+		Vfx.puff(Vector3.new(head.X, y + 0.3, head.Z), RIME.wake, 1.0 * (1 - depth * 0.5))
+		Vfx.ring(Vector3.new(head.X, y + 0.16, head.Z), 1.5, 6, 0.5, RIME.wake)
+	end
+
+	-- Back down under the sheet: the next time it comes up, it breathes again.
+	if depth > 0.6 then
+		wake.spouted = false
+	end
+end
+
+-- ------------------------------------------------------------- the tells
+--
+-- Rimefang borrows the stock telegraph kinds. The stock draws are right for
+-- the bosses they were built for and wrong for a whale, so each one gets a
+-- whale-shaped version here and everything unrecognised falls straight back
+-- through to the generic frost draw.
+--
+-- TWO THINGS HAVE TO BE TRUE BEFORE ANY OF THEM DRAWS, in this order:
+--   1. rimeBranch names a draw for this (kind, move, aimed). Resolved FIRST,
+--      before any range test - see the note on rimeBranch.
+--   2. rimeOwns says the payload came from the whale, not from something else
+--      wearing frost at a radius that happens to collide - see RIME_ARENA.
+
+-- The look. It stands vertically out of the water, half its body clear, and
+-- picks somebody - the one beat in the fight where nothing is coming. The
+-- audio pass already gives this the only bright cue in the whole fight, so
+-- this stays clean and VERTICAL rather than loud: everything else in the
+-- fight travels sideways.
+local function spyhopRise(position: Vector3, duration: number)
+	-- The low tell for the standing-up; the fight's one BRIGHT cue is saved
+	-- for the mark a beat later, because the mark is the party information.
+	Sfx.play("bossTell", position)
+	local point = surfaceUnder(position)
+	Vfx.splash(Vector3.new(position.X, point.Y + 0.2, position.Z), 3)
+	for i = 0, 4 do
+		task.delay(i * 0.07, function()
+			Vfx.flash(position + Vector3.new(0, 1 + i * 2.6, 0), RIME.crest, 3.4 - i * 0.35, 0.3)
+		end)
+	end
+	Vfx.ring(Vector3.new(position.X, point.Y + 0.18, position.Z), 3, 16, math.min(duration, 1.1), RIME.wake)
+end
+
+-- ...and this is who it picked. It rides the player rather than the ground it
+-- fired at: a mark on the FLOOR is a place, and this one is a person.
+local function chosenMark(position: Vector3, duration: number)
+	local best, bestDist = nil, 8
+	for _, other in Players:GetPlayers() do
+		local character = other.Character
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+		if root and root:IsA("BasePart") then
+			local d = (root.Position - position).Magnitude
+			if d < bestDist then
+				best, bestDist = root, d
+			end
+		end
+	end
+	local mine = best ~= nil and best == localRoot()
+	Sfx.play("rimeSpyHop", position)
+	if mine then
+		-- A chill down the back of the neck, and nothing that could be
+		-- mistaken for taking a hit.
+		CombatVfxController.kick(math.rad(1.6), 0, 0.5)
+	end
+	local pulses = math.max(2, math.floor(duration / 0.24))
+	for i = 0, pulses - 1 do
+		task.delay(i * 0.24, function()
+			local at = if best and best.Parent then best.Position else position
+			-- Rings CLOSING on them, not spreading off them: the attention is
+			-- travelling inward, toward one person.
+			-- RIME.mark, never BRINE.window: this fight already spends that
+			-- gold on the beached window, forty studs away and often on
+			-- screen at the same time, and gold means "hit it now" in every
+			-- other arena in the game. Being chosen is the opposite news.
+			Vfx.ring(at - Vector3.new(0, 2.6, 0), 7 - i * 0.9, 1.6, 0.3, RIME.mark)
+			Vfx.burst(at + Vector3.new(0, 2.4, 0), RIME.mark, if mine then 14 else 8)
+			Vfx.flash(at + Vector3.new(0, 4.5, 0), RIME.mark, 1.6, 0.24)
+		end)
+	end
+end
+
+-- WHICH WHALE-SHAPED DRAW A PAYLOAD IS, or nil when this file has nothing
+-- better than the stock one for it.
+--
+-- RESOLVED BEFORE ANY RANGE TEST, and that ordering is the whole point. The
+-- old code asked "is it near enough to watch?" first and answered `true`
+-- ("handled, drew nothing") when it was not - so a frost payload whose radius
+-- matched a RIME_TELL number but whose KIND had no branch here drew its stock
+-- telegraph when you were close and nothing whatsoever when you were far: no
+-- ring, no `bossTell`. A tell that only exists inside its own radius is not a
+-- tell. Now an unrecognised payload is handed back to the stock draw at every
+-- distance, and only a branch that will really draw claims the moment.
+local function rimeBranch(kind: string, move: string?, aimed: boolean): string?
+	if move == "bite" then
+		-- A cone with no bearing is not a cone. Both wedges below REQUIRE the
+		-- payload's `facing` (every stock tell carries one) and hand the
+		-- moment back if it is ever missing, rather than drawing a mouth
+		-- pointing down the X axis.
+		return if kind == "snap" and aimed then "bite" else nil
+	elseif move == "spyhop" and kind == "mark" then
+		-- Two marks come out of the spy-hop and only `facing` tells them
+		-- apart: the stock windup tell at the boss (every stock tell carries a
+		-- bearing) and ATTACK_HANDLERS.spyhop's own, fired at the player it
+		-- picked, which carries none.
+		return if aimed then "rise" else "chosen"
+	elseif move == "whiteout" and kind == "mark" then
+		-- ...and the same test, for the opposite reason: the AIMED one is the
+		-- windup tell at the boss, where no icicle ever lands. The unaimed
+		-- ones are queueStrike's real per-player landing marks, and they are
+		-- deliberately left to the stock draw, which is exactly right for
+		-- them.
+		return if aimed then "whiteout" else nil
+	elseif move == "carousel" and kind == "mark" then
+		return "carousel"
+	elseif move == "breach" and kind == "burst" then
+		return "breach"
+	elseif move == "flukeslam" and kind == "burst" then
+		return "fluke"
+	elseif move == "wash" and kind == "gustTell" and aimed then
+		return "wash"
+	end
+	return nil
+end
+
+rimeTelegraph = function(kind: string, position: Vector3, extra): boolean
+	if extra.skin ~= "frost" then
+		return false
+	end
+	local radius = tonumber(extra.radius)
+	local aimed = typeof(extra.facing) == "Vector3"
+	local branch = rimeBranch(kind, rimeMove(radius), aimed)
+	if not branch then
+		return false
+	end
+	-- THE ANIMAL, NOT THE SKIN AND THE NUMBER. Old Ribbonjaw prowls the same
+	-- island frost-skinned with `ribbonlash` and `vanish` both at r7 - the
+	-- spy-hop's radius, inside RIME_TELL_TOL - so `snap` and `phantom` tells
+	-- that belong to a thief were being answered by a whale's book (and, past
+	-- the old early-out, swallowed entirely). A radius is a coincidence; the
+	-- boss standing in the arena is evidence.
+	if not rimeOwns(position) then
+		return false
+	end
+	local duration = math.clamp(tonumber(extra.duration) or 1, 0.15, 8)
+	if not nearCamera(position, (radius or 20) + RIME_MARGIN) then
+		return true -- its moment, simply not ours to watch
+	end
+
+	if branch == "bite" then
+		-- THE MOUTH, DRAWN AS GROUND. This is the most frequent attack in the
+		-- book (cooldown 1.8) and the stock `snap` draw is a 3-stud near-white
+		-- flash at the pivot - no claim on any ground at all, in the one
+		-- palette the floe already wears. Worse, the bite's real reach (22.6
+		-- studs, jaws plus lunge) is longer than melee range, so a player
+		-- hitting the animal is inside the cone BY CONSTRUCTION and the only
+		-- honest thing to draw is the way out of it.
+		Sfx.play("bossTell", position)
+		wedges[WEDGE_BITE] = {
+			kind = "bite",
+			live = true, -- the jaws follow the animal; it is still turning
+			center = position,
+			angle = flatAngle(extra.facing) or 0,
+			cone = BITE_CONE,
+			reach = radius or BITE_RADIUS,
+			start = os.clock(),
+			windup = duration,
+			-- ...and it stays up through the 0.14s of strike before the jaws
+			-- actually close, shrinking as the boss lunges through it.
+			life = duration + BITE_LEAD,
+		}
+		return true
+	elseif branch == "rise" then
+		spyhopRise(position, duration)
+		return true
+	elseif branch == "chosen" then
+		chosenMark(position, duration)
+		return true
+	elseif branch == "whiteout" then
+		-- The storm closing. A bed under the barrage, not an event: the
+		-- strikes are what you dodge, the wind is only why you cannot see them
+		-- coming. It draws NO landing marker, because nothing lands here - the
+		-- stock 9-stud `mark` this used to fall through to was painted at the
+		-- boss's pivot in the same visual language as the real per-player
+		-- icicle marks, which is a marker for ground that is never hit.
+		local center = rimeArenaCenter(position)
+		Sfx.play("rimeWhiteout", position)
+		for i = 0, 3 do
+			task.delay(i * (duration / 4), function()
+				Vfx.puff(
+					center + Vector3.new(randomBetween(-26, 26), randomBetween(1, 9), randomBetween(-26, 26)),
+					RIME.crest,
+					3.2
+				)
+			end)
+		end
+		return true
+	elseif branch == "carousel" then
+		-- THE CURRENT TURNS, AND IT TURNS AROUND THE ARENA. `undertow` centres
+		-- both the drag and the bergs it drops on `creature.anchor`, and this
+		-- had NO branch at all: RIME_TELL.carousel resolved and then fell
+		-- through every arm to the stock draw, which is an EXPANDING ring -
+		-- and an expanding ring says "the edge is coming, get inside". The
+		-- pull reaches the whole radius and a berg can land anywhere in it, so
+		-- there is no safe middle to promise and the only answer is to be
+		-- outside. Rings run INWARD off the boundary instead: the water is
+		-- being dragged to the middle, and so are you.
+		local center = rimeArenaCenter(position)
+		local r = radius or 30
+		local ground = sheetY(center.X, center.Z, center.Y) + 0.16
+		local at = Vector3.new(center.X, ground, center.Z)
+		Sfx.play("bossTell", at)
+		local pulses = math.max(2, math.floor(duration / 0.24))
+		for i = 0, pulses - 1 do
+			task.delay(i * 0.24, function()
+				-- Redrawn every beat, so the boundary is on screen the whole
+				-- windup rather than only at the instant a pulse is born.
+				Vfx.ring(at, r, r * 0.22, 0.44, SKIN.frost)
+				-- ...and the water going with it.
+				for k = 1, 5 do
+					local theta = randomBetween(0, math.pi * 2)
+					Vfx.puff(
+						at + Vector3.new(math.cos(theta) * r * 0.8, 0.6, math.sin(theta) * r * 0.8),
+						RIME.slush,
+						1.6 + 0.2 * k
+					)
+				end
+			end)
+		end
+		return true
+	elseif branch == "breach" then
+		-- It has gone under and it is coming UP. The runway is the read: it
+		-- lands flat, forty-six studs along the bearing it is pointed down,
+		-- so what matters is not the circle it is in now.
+		breachArm = { at = position, until_ = os.clock() + duration + 0.9 }
+		Sfx.play("bossTell", position)
+		local dir = if aimed then Vector3.new(extra.facing.X, 0, extra.facing.Z) else Vector3.zero
+		local point = surfaceUnder(position)
+		-- THE LANE, not the circle it is standing in. `charge` latches its
+		-- bearing on the first windup frame and never re-aims, so this
+		-- `facing` is the line the leap will actually take; and the damage is
+		-- no longer a ring at the head but `bodyContact` walking all nine
+		-- spine nodes, each ploughing the floe within `width` of itself for
+		-- the whole 46-stud travel. The ground that gets hit is therefore a
+		-- CORRIDOR, and the stock 15-stud `burst` at the pivot marked neither
+		-- its length nor its width. Drawn only when the bearing is known -
+		-- a corridor down an unknown line would be worse than none.
+		if dir.Magnitude > 1e-3 then
+			wedges[WEDGE_BREACH] = {
+				kind = "corridor",
+				live = false, -- latched, and the whale is about to leave it
+				center = position,
+				angle = flatAngle(extra.facing) or 0,
+				cone = 0,
+				width = tonumber(extra.width) or BREACH_WIDTH,
+				reach = BREACH_LENGTH,
+				start = os.clock(),
+				windup = duration,
+				-- Held through the leap itself: the lane is being ploughed for
+				-- `duration` after the tell's clock runs out, and a marker
+				-- that vanished at takeoff would clear the floe of warnings
+				-- exactly while the whale was crossing it.
+				life = duration + BREACH_TRAVEL,
+			}
+		end
+		local pulses = math.max(2, math.floor(duration / 0.2))
+		for i = 0, pulses - 1 do
+			task.delay(i * 0.2, function()
+				-- The sheet heaving where it is about to come through...
+				Vfx.ring(point + Vector3.new(0, 0.16, 0), (radius or 15) * 1.1, 2, 0.22, RIME.crest)
+				Vfx.puff(point + Vector3.new(0, 0.4, 0), RIME.slush, 2)
+				-- ...and where it is going to come down.
+				if dir.Magnitude > 1e-3 then
+					local aim = dir.Unit
+					for step = 1, 3 do
+						local mark = position + aim * (BREACH_LENGTH * step / 3)
+						local landing = surfaceUnder(mark)
+						Vfx.ring(landing + Vector3.new(0, 0.16, 0), 2, 4 + step * 2, 0.24, RIME.crack)
+					end
+				end
+			end)
+		end
+		return true
+	elseif branch == "fluke" then
+		-- A hole opens beside you and the tail comes out of it. The ring
+		-- CONTRACTS onto the point: this one is not somewhere to run from,
+		-- it is somewhere to not be standing. ATTACK_HANDLERS.flukeslam now
+		-- fires this from the fluke's own landing point rather than the nose,
+		-- so `position` is finally the ground that gets hit.
+		local point = surfaceUnder(position)
+		Sfx.play("bossTell", position)
+		local pulses = math.max(2, math.floor(duration / 0.22))
+		for i = 0, pulses - 1 do
+			task.delay(i * 0.22, function()
+				Vfx.ring(point + Vector3.new(0, 0.16, 0), (radius or 24), (radius or 24) * 0.25, 0.26, RIME.crest)
+				Vfx.puff(point + Vector3.new(0, 0.3, 0), RIME.slush, 1.8)
+			end)
+		end
+		return true
+	elseif branch == "wash" then
+		-- THE WALL, GATHERING - AND ALL OF IT. The answer to the wash is
+		-- cover, so the read has to start on the windup and be complete before
+		-- the crest exists. The old tell was spray alone and it reached 23
+		-- studs against a 34-stud attack: 54% of the footprint BY AREA carried
+		-- no warning at all, which is most of the floe the wall was about to
+		-- take. The wedge below is the server's own hit test drawn on the
+		-- ground - inside `radius`, inside `cone` of the bearing - at full
+		-- size for the whole windup, because a footprint that grows into
+		-- honesty is dishonest until it gets there.
+		Sfx.play("rimeWash", position)
+		local reach = radius or 34
+		wedges[WEDGE_WASH] = {
+			kind = "wash",
+			live = true, -- ...and so does the wall, right up to `a.dir`
+			center = position,
+			angle = flatAngle(extra.facing) or 0,
+			-- The payload carries no cone (the stock tell sends none), so the
+			-- row's own number stands in. See the REPORT.
+			cone = tonumber(extra.cone) or WASH_CONE,
+			reach = reach,
+			start = os.clock(),
+			windup = duration,
+			life = duration,
+		}
+		-- ...and the spray coming up along the front it is about to shoulder
+		-- across, which was the only part of the old tell that was not a lie.
+		local base = flatAngle(extra.facing) or 0
+		local ground = sheetY(position.X, position.Z, position.Y)
+		local pulses = math.max(2, math.floor(duration / 0.24))
+		for i = 0, pulses - 1 do
+			task.delay(i * 0.24, function()
+				local r = WASH_INNER + (reach - WASH_INNER) * ((i + 1) / pulses)
+				for k = 1, 7 do
+					local theta = base + WASH_CONE * ((k - 0.5) / 7 * 2 - 1)
+					Vfx.puff(
+						Vector3.new(
+							position.X + math.cos(theta) * r,
+							ground + 0.6 + i * 0.5,
+							position.Z + math.sin(theta) * r
+						),
+						RIME.crest,
+						1.5
+					)
+				end
+			end)
+		end
+		return true
+	end
+	return false
+end
+
 local warnedKinds = {}
 
 local function onCreatureEvent(kind, position, extra)
@@ -1813,8 +3153,60 @@ function CreatureEventController.init()
 		end
 		sweepPool[slot] = pool
 	end
+	-- The choir's beam: a widening ladder of lit ground per concurrent sweep,
+	-- plus the shaft that ties it back to the lantern casting it.
+	for slot = 1, BEAM_SLOTS do
+		local pool = { rungs = {} }
+		for i = 1, BEAM_RUNGS do
+			pool.rungs[i] = makeMarker("BeamRung", LURE_LIGHT, true)
+		end
+		pool.shaft = makeMarker("BeamShaft", LURE_LIGHT, true)
+		beamPool[slot] = pool
+	end
+
 	staggerRing = makeMarker("StaggerWindow", BRINE.window, true)
 	staggerRing.Shape = Enum.PartType.Cylinder
+
+	-- Rimefang's markers. The wash's wall (a crest of slabs on the wedge the
+	-- server's own hit test measures, plus the slush apron trailing it), the
+	-- cracks a landing leaves in the sheet, the wake that tracks it under the
+	-- ice, and the punish window's closing disc.
+	for i = 1, WASH_SLABS do
+		washPool.crest[i] = makeMarker("WashCrest", RIME.crest, true)
+		washPool.apron[i] = makeMarker("WashSlush", RIME.slush, false)
+	end
+	for i = 1, CRACK_SLABS do
+		crackPool[i] = makeMarker("FloeCrack", RIME.crack, true)
+	end
+	-- The bite's mouth, the wash's gathering wall and the breach's lane: a
+	-- fan (or a run) of ground slabs each, plus the boundary the player has
+	-- to be standing outside of. SKIN.frost for the same reason everything
+	-- else in this fight is - a marker on sea ice has to be DARK or it is not
+	-- a marker.
+	for slot = 1, WEDGE_SLOTS do
+		local pool = { fan = {}, rim = {} }
+		for i = 1, WEDGE_SLABS do
+			pool.fan[i] = makeMarker("RimeWedge", SKIN.frost, true)
+			pool.rim[i] = makeMarker("RimeWedgeEdge", SKIN.frost, true)
+		end
+		wedgePool[slot] = pool
+	end
+	wakePool = { arms = {}, knuckle = makeMarker("WakeKnuckle", RIME.wake, true) }
+	for i = 1, WAKE_ARMS * 2 do
+		wakePool.arms[i] = makeMarker("WakeArm", RIME.wake, true)
+	end
+	wakePool.glow = makeMarker("WakeGlow", RIME.glow, true)
+	wakePool.glow.Shape = Enum.PartType.Cylinder
+	local wakeLight = Instance.new("PointLight")
+	wakeLight.Color = RIME.glow
+	wakeLight.Brightness = 0
+	wakeLight.Range = 20
+	wakeLight.Enabled = false
+	wakeLight.Parent = wakePool.glow
+	wakePool.light = wakeLight
+
+	beachedRing = makeMarker("RimeBeachedWindow", BRINE.window, true)
+	beachedRing.Shape = Enum.PartType.Cylinder
 
 	-- The in-the-blast screen flash.
 	local gui = Instance.new("ScreenGui")
@@ -1829,6 +3221,16 @@ function CreatureEventController.init()
 	flashFrame.BorderSizePixel = 0
 	flashFrame.ZIndex = 0
 	flashFrame.Parent = gui
+	darkFrame = Instance.new("Frame")
+	darkFrame.Name = "Dark"
+	darkFrame.Size = UDim2.fromScale(1, 1)
+	darkFrame.BackgroundColor3 = Color3.fromRGB(2, 2, 4)
+	darkFrame.BackgroundTransparency = 1
+	darkFrame.BorderSizePixel = 0
+	-- Over the flash: when the trench puts the lights out, that is the last
+	-- word on what the player can see.
+	darkFrame.ZIndex = 2
+	darkFrame.Parent = darkFrame.Parent or gui
 	gui.Parent = player:WaitForChild("PlayerGui")
 end
 
@@ -1842,7 +3244,12 @@ function CreatureEventController.start()
 		stepPull(now)
 		stepEffects(now)
 		stepSweeps(now)
+		stepBeams(now)
 		stepStagger(now)
+		stepWash(now)
+		stepWedges(now)
+		stepWake(now)
+		stepBeached(now)
 	end)
 
 	-- A respawn drops any pull/chill/snare/chain with the old character.

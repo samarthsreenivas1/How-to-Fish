@@ -25,6 +25,15 @@
 -- bar behaves exactly as it did before - the seal must never read on a boss
 -- that hasn't got one.
 --
+-- WHOSE FIGHT (2026-09-01). Everything below is scoped to the fight this
+-- client is actually in - see "the bound" further down. The bar used to
+-- belong to the NEAREST live boss with nothing bounding "nearest", and the
+-- cards threw away the position they arrive with, so one party's summon put
+-- a health bar across every screen in the server and told every player the
+-- next island was open. That was survivable while the bosses fought beside
+-- their islands; the lair arenas (Shared/Config/BossArenas) put them
+-- thousands of studs out in open water and it stopped being survivable.
+--
 -- Sits below the fishing grade banner (y=40) and the level-up banner (y=84)
 -- so the three never overlap.
 
@@ -128,6 +137,26 @@ local pulses: { Tween } = {}
 -- The cards live at the bottom of the file, but a window opening is a card
 -- and that is noticed up here in the bar's refresh.
 local showCard
+
+-- WHEN THIS CLIENT LAST HELD A GIVEN BOSS'S BAR, so the fall card can still
+-- reach a fighter who is no longer standing there - the one who DIED. The
+-- server pays the unlock to every player who damaged the boss, wherever they
+-- ended up (BossService.onKilled builds `winners` from the damage
+-- participants and never asks where they are), while dying puts you back at
+-- the world spawn ~15k studs from the arena with no ride back. Distance
+-- alone would therefore hand that player the island in silence. Consumed on
+-- use, and short enough that it cannot speak for a fight long abandoned.
+local ENGAGED_MEMORY = 300
+local engagedAt: { [string]: number } = {}
+
+-- A rise card can arrive BEFORE its audience does. BossService.summonFor
+-- raises the boss FIRST and only then task.defers the party out to the arena,
+-- so the event can be in flight while the challengers are still standing on
+-- their island. Rather than guess from a position they have not reached yet,
+-- the card waits for the bar: if this client picks that boss up within the
+-- grace, the rise was ours after all.
+local RISE_GRACE = 6
+local pendingRise: { name: string, expires: number }? = nil
 
 -- Creature row id -> its Bosses entry. The boss models carry CreatureId, and
 -- BossName is a fallback for anything that somehow spawned without one.
@@ -400,30 +429,109 @@ local function track(model: Model)
 	sealDrawn = sealOf(model)
 	drawSeal(sealDrawn)
 	refresh()
+
+	-- The rise that was in flight before we got here (RISE_GRACE): taking up
+	-- this boss's bar is the proof it was addressed to us.
+	if pendingRise then
+		local mine = model:GetAttribute(ATTR_BOSS_NAME)
+		if os.clock() > pendingRise.expires then
+			pendingRise = nil
+		elseif type(mine) == "string" and pendingRise.name == mine then
+			local name = pendingRise.name
+			pendingRise = nil
+			showCard(string.upper(name), "rises from the deep", BAR_COLOR)
+		end
+	end
 end
 
--- With seven islands, two bosses can be alive at once (each summoned on
--- its own island). The bar belongs to the NEAREST live boss - islands sit
--- 3000 studs apart, so "nearest" is always the one this player is
--- fighting - and every add/remove RE-TARGETS instead of last-writer-wins:
--- a boss dying elsewhere must never hide the bar of the one still trying
--- to eat you (review finding, 2026-08-25).
-local creaturesFolder: Instance? = nil
+-- ---------------------------------------------------------------- the bound
+--
+-- With seven islands, several bosses can be alive at once, and the bar
+-- belongs to the nearest one - but only if that one is CLOSE, which is the
+-- half this used to be missing. "Nearest" with nothing bounding it was a
+-- safe answer only while every boss fought beside its own island, 3000 studs
+-- from the next; the lair arenas (Shared/Config/BossArenas) moved them
+-- thousands of studs out into open water, and an unbounded nearest then
+-- handed every client in the server a bar for a fight it was nowhere near.
+--
+-- Measured from the CAMERA, which is what CreatureEventController gates its
+-- own effects on (`nearCamera`) and for the reason it gives there: a player
+-- watching from a boat or waiting to respawn is still at the fight and their
+-- character is not. Horizontal only - an arena floor can be 292 studs up
+-- (the Ashfall Throne) and the Kraken sits down in a whirlpool.
+--
+--   ENGAGE    - how close a boss must be to be PICKED UP.
+--   DISENGAGE - how far the one already held must get to be DROPPED. The
+--               gap between them is hysteresis: a bar must not flicker off
+--               and on while you fight along a boundary.
+--
+-- Both are enormous next to any fight and small next to the gap between two
+-- fights, which is what makes them safe in BOTH directions:
+--   * the widest a fight ever gets is the Ashfall Throne. Pyrelisk is
+--     entrenched at the centre, the walkable rim path runs to r232 and its
+--     longest rake reads r250 (Bosses.luau) - so a legitimate fighter is at
+--     most ~250 studs from the boss. Every other arena roams inside r152 and
+--     sets its party down on a ring of radius + 8 (BossService.summonFor).
+--   * the two closest arena centres are the swamp's (22200, 9000) and the
+--     volcano's (23400, 5200): 3985 studs apart, and BossArenas guarantees
+--     every arena 8k+ studs of clear water to the nearest island. So a
+--     player standing in one fight is >3700 studs from any other boss.
+-- 250 and 3700 leave a wide band, and these two numbers sit in the middle of
+-- it; there is no value in between for them to collide on.
+local ENGAGE_RADIUS = 1000
+local DISENGAGE_RADIUS = 1800
+local RETARGET_INTERVAL = 0.5
 
+local creaturesFolder: Instance? = nil
+local camera = Workspace.CurrentCamera
+
+-- Where this player is watching from, or nil if there is nothing to ask yet.
+local function viewPoint(): Vector3?
+	local cam = camera or Workspace.CurrentCamera
+	if cam then
+		camera = cam
+		return cam.CFrame.Position
+	end
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	return if root and root:IsA("BasePart") then root.Position else nil
+end
+
+local function flatDistance(a: Vector3, b: Vector3): number
+	return (Vector3.new(a.X, 0, a.Z) - Vector3.new(b.X, 0, b.Z)).Magnitude
+end
+
+-- Is `position` the fight this player is in? What the cards ask, on the
+-- generous radius - a card is a moment, not a fixture on the screen.
+local function atMyFight(position: Vector3?): boolean
+	if typeof(position) ~= "Vector3" then
+		return false
+	end
+	local from = viewPoint()
+	return from ~= nil and flatDistance(from, position) <= DISENGAGE_RADIUS
+end
+
+-- Every add / remove / tick RE-TARGETS instead of last-writer-wins: a boss
+-- dying elsewhere must never hide the bar of the one still trying to eat you
+-- (review finding, 2026-08-25). The boss already held is measured against the
+-- wider radius, so holding it is strictly easier than picking it up.
 local function nearestBoss(): Model?
 	if not creaturesFolder then
 		return nil
 	end
-	local character = player.Character
-	local root = character and character:FindFirstChild("HumanoidRootPart")
+	local from = viewPoint()
+	if not from then
+		-- Nowhere to measure from. Hold whatever the bar has rather than
+		-- guess: dropping it here would be losing your bar for nothing.
+		return current
+	end
 	local best: Model? = nil
 	local bestDist = math.huge
 	for _, child in creaturesFolder:GetChildren() do
 		if child:IsA("Model") and child:GetAttribute(ATTR_BOSS_NAME) then
-			local dist = if root and root:IsA("BasePart")
-				then (child:GetPivot().Position - root.Position).Magnitude
-				else 0
-			if dist < bestDist then
+			local dist = flatDistance(child:GetPivot().Position, from)
+			local limit = if child == current then DISENGAGE_RADIUS else ENGAGE_RADIUS
+			if dist <= limit and dist < bestDist then
 				best = child
 				bestDist = dist
 			end
@@ -434,13 +542,20 @@ end
 
 local function retarget()
 	local best = nearestBoss()
-	if best == current then
-		return
+	if best ~= current then
+		if best then
+			track(best)
+		else
+			untrack()
+		end
 	end
-	if best then
-		track(best)
-	else
-		untrack()
+	-- Holding the bar is what "I am in this fight" MEANS on this client, so
+	-- that is where the fall card's memory is written from (ENGAGED_MEMORY).
+	if current then
+		local name = current:GetAttribute(ATTR_BOSS_NAME)
+		if type(name) == "string" then
+			engagedAt[name] = os.clock()
+		end
 	end
 end
 
@@ -502,20 +617,65 @@ local function noteRing(open: boolean, name: any)
 	refresh()
 end
 
-local function onCreatureEvent(kind, _position, extra)
+-- A moment INSIDE a fight - a window opening, the arms coming back - is ours
+-- when it belongs to the boss whose bar we are holding. Holding the bar
+-- already means being inside the bound, so there is no second distance test
+-- here; the name is only there to keep two live bosses apart.
+local function mineNow(name: any): boolean
+	if not current then
+		return false
+	end
+	local mine = current:GetAttribute(ATTR_BOSS_NAME)
+	return name == nil or mine == nil or tostring(name) == tostring(mine)
+end
+
+-- The FALL card is the one that must not be gated on presence alone: it
+-- carries the unlock, and the server pays that unlock to people who are no
+-- longer standing there (see ENGAGED_MEMORY). So it is ours if we are at the
+-- fight now, OR if we held this boss's bar recently enough to be one of the
+-- players it just paid. Either way the memory is spent - the fight is over.
+local function ownsFall(name: any, position: Vector3?): boolean
+	local remembered: number? = nil
+	if type(name) == "string" then
+		remembered = engagedAt[name]
+		engagedAt[name] = nil
+	end
+	if atMyFight(position) then
+		return true
+	end
+	return remembered ~= nil and (os.clock() - remembered) <= ENGAGED_MEMORY
+end
+
+-- These arrive on a FireAllClients, so every one of them starts by asking
+-- whether it is addressed to this player at all.
+local function onCreatureEvent(kind, position, extra)
 	if type(extra) ~= "table" then
 		extra = {}
 	end
 	if kind == "bossRise" then
-		showCard(string.upper(tostring(extra.name or "THE BOSS")), "rises from the deep", BAR_COLOR)
+		local name = extra.name
+		if atMyFight(position) then
+			pendingRise = nil
+			showCard(string.upper(tostring(name or "THE BOSS")), "rises from the deep", BAR_COLOR)
+		elseif type(name) == "string" then
+			-- Not there YET - the party is still mid-teleport. RISE_GRACE.
+			pendingRise = { name = name, expires = os.clock() + RISE_GRACE }
+		end
 	elseif kind == "exposed" then
 		-- The Kraken: the last tentacle is down and the head can be hurt.
 		noteRing(true, extra.name)
-		showCard("THE MAW IS EXPOSED", "every arm is down - strike now", Theme.Color.gold)
+		if mineNow(extra.name) then
+			showCard("THE MAW IS EXPOSED", "every arm is down - strike now", Theme.Color.gold)
+		end
 	elseif kind == "regrow" then
 		noteRing(false, extra.name)
-		showCard("THE ARMS REGROW", "bring them down again", Theme.Color.red)
+		if mineNow(extra.name) then
+			showCard("THE ARMS REGROW", "bring them down again", Theme.Color.red)
+		end
 	elseif kind == "bossDown" then
+		if not ownsFall(extra.name, position) then
+			return
+		end
 		if extra.finale then
 			-- The Kraken. There is no next island; this is the saga's end.
 			showCard(
@@ -560,6 +720,20 @@ function BossHudController.start()
 		end)
 		for _, existing in creatures:GetChildren() do
 			consider(existing)
+		end
+
+		-- The bound has to be re-tested as the fight moves, not only when a
+		-- boss appears or dies. BossService.summonFor raises the boss FIRST
+		-- and task.defers the party out to the arena after, so at the instant
+		-- the model lands every one of its challengers is still standing on
+		-- their island thousands of studs away: a one-shot test there would
+		-- take the bar off the WHOLE PARTY for the entire fight, which is far
+		-- worse than the bug this bound exists to fix. It is also what lets a
+		-- fighter who wandered out and came back get their bar again. Half a
+		-- second is well inside the boss's own rise.
+		while true do
+			task.wait(RETARGET_INTERVAL)
+			retarget()
 		end
 	end)
 end
