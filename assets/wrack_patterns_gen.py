@@ -37,8 +37,10 @@ EVERY NUMBER BELOW IS COPIED FROM THE SOURCE, NEVER INVENTED
                        src/Server/Services/CreatureService.luau (volley
                        interval and gap step, burst gap and half-pellet
                        phase, the slewfire tick loop).
-  * the arena        - `WK_*` in assets/arena_gen.py (sand to r 78, the awash
-                       flat to 88, the six hulks at r 33-52).
+  * the arena        - `WK_*` in assets/arena_gen.py (sand walkable to r 132
+                       and EMPTY, the palisade of grounded hulls at r 140-152).
+                       The six breakwater hulks are gone; so is every other
+                       obstacle. Nothing stands on the floor.
   * the hull + guns  - `parts.mounts` in Bosses.luau and `WR_HULL` /
                        `AUTHORED` (boss_gen.py, WrackBodyController.luau).
 
@@ -61,6 +63,7 @@ directory this script lives in.
 import math
 import os
 import sys
+import textwrap
 
 import matplotlib
 
@@ -80,47 +83,47 @@ TAU = math.pi * 2
 ATTACKS = {
     "broadside": dict(
         handler="broadside", skin="cannon", windup=1.15, duration=2.5, recover=0.8, cooldown=9.0,
-        count=22, speed=26, radius=2.4, spawnAt=16, markAt=22, lifetime=4.2,
+        count=30, speed=30, radius=3.0, spawnAt=16, markAt=26, lifetime=4.15,
         gapDeg=34, gapStep=46, volleys=3, interval=1.1, damage=(44, 58),
     ),
     "broadsideHeavy": dict(
         handler="broadside", skin="cannon", windup=1.0, duration=3.4, recover=0.7, cooldown=10.0,
-        count=30, speed=28, radius=2.4, spawnAt=16, markAt=22, lifetime=4.0,
-        gapDeg=26, gapStep=58, volleys=4, interval=0.85, damage=(48, 64),
+        count=40, speed=34, radius=3.0, spawnAt=16, markAt=26, lifetime=3.65,
+        gapDeg=24, gapStep=58, volleys=4, interval=0.85, damage=(48, 64),
     ),
     "grapeshot": dict(
         handler="grapeshot", skin="grape", windup=0.8, duration=0.45, recover=0.5, cooldown=6.0,
-        pellets=6, fanDeg=48, speed=62, spawnAt=14, radius=1.6, lifetime=2.4,
-        bursts=1, burstGap=0.35, tellRange=70, damage=(40, 54),
+        pellets=8, fanDeg=40, speed=66, spawnAt=22, radius=1.6, lifetime=1.8,
+        bursts=1, burstGap=0.35, tellRange=110, damage=(40, 54),
     ),
     "grapeshotTwin": dict(
         handler="grapeshot", skin="grape", windup=0.7, duration=0.9, recover=0.45, cooldown=6.5,
-        pellets=7, fanDeg=58, speed=66, spawnAt=14, radius=1.6, lifetime=2.4,
-        bursts=2, burstGap=0.4, tellRange=70, damage=(42, 56),
+        pellets=9, fanDeg=56, speed=66, spawnAt=22, radius=1.6, lifetime=1.8,
+        bursts=2, burstGap=0.4, tellRange=110, damage=(42, 56),
     ),
     "chainshot": dict(
         handler="chainshot", skin="chain", windup=1.0, duration=0.5, recover=0.7, cooldown=11.0,
-        pairs=3, fanDeg=120, chain=12, chainRadius=1.8, spinDeg=126, speed=20,
-        radius=2.4, spawnAt=14, lifetime=5.0, tellRange=60, damage=(54, 72),
+        pairs=4, fanDeg=130, chain=18, chainRadius=1.8, spinDeg=126, speed=28,
+        radius=2.4, spawnAt=14, lifetime=4.5, tellRange=110, damage=(54, 72),
     ),
     "slewfire": dict(
         handler="slewfire", skin="cannon", windup=1.0, duration=5.0, recover=0.8, cooldown=13.0,
-        arms=2, every=0.15, spinDeg=78, speed=22, radius=2.0, spawnAt=14,
-        lifetime=4.5, damage=(32, 42),
+        arms=2, every=0.13, spinDeg=78, speed=30, radius=2.6, spawnAt=14,
+        lifetime=4.2, damage=(32, 42),
     ),
     "slewfireFast": dict(
         handler="slewfire", skin="cannon", windup=0.9, duration=5.6, recover=0.8, cooldown=14.0,
-        arms=3, every=0.13, spinDeg=-96, speed=24, radius=2.0, spawnAt=14,
-        lifetime=4.3, damage=(34, 46),
+        arms=3, every=0.13, spinDeg=-96, speed=32, radius=2.6, spawnAt=14,
+        lifetime=3.95, damage=(34, 46),
     ),
     "anchorsweep": dict(
-        handler="anchorsweep", skin="anchor", windup=1.9, duration=0.6, recover=1.1, cooldown=16.0,
-        count=15, arcDeg=180, speed=18, radius=3.4, spawnAt=16, lifetime=5.0,
-        ripple=0.05, tellRange=90, tellWidth=96, tellReach=30, damage=(78, 104),
+        handler="anchorsweep", skin="anchor", windup=3.2, duration=0.6, recover=1.1, cooldown=16.0,
+        count=23, arcDeg=180, speed=26, radius=4.2, spawnAt=16, lifetime=4.8,
+        ripple=0.09, tellRange=130, tellWidth=150, tellReach=40, damage=(78, 104),
     ),
     "wisps": dict(
         handler="wisps", skin="wisp", windup=0.7, duration=0.4, recover=0.5, cooldown=13.0,
-        count=3, speed=19, homingDeg=70, radius=2.2, spawnAt=12, lifetime=9,
+        count=3, speed=19, homingDeg=70, radius=2.2, spawnAt=12, lifetime=6,
         spreadDeg=360, damage=(24, 32),
     ),
 }
@@ -139,22 +142,33 @@ PHASE_OF = {
 }
 
 # ---- the arena (assets/arena_gen.py, WK_* constants) -----------------------
-SAND_R = 78.0          # WK_SAND_R: walkable sand ends
-FLEET_R = (80.0, 88.0) # WK_FLEET_R: the awash flat the grounded fleet lies in
-PARTY_R = 48.0         # Bosses arena.radius 40 + BossService's +8
-BOUND_R = 88.0         # Bosses arena.radius 40 + WRACK_BOUND_MARGIN 48
-HULK_R_RANGE = (33.0, 52.0)
+#
+# THE CAREENAGE AS REBUILT (231a200 / 31386ab). One plain walkable beach out
+# to r 132 with NOTHING standing on it, ringed by a palisade of grounded hulls
+# whose centres sit at r 141-160. The six breakwater hulks the old fight used
+# for cover are gone, and so is every other obstacle: no cradle, no furrows,
+# no spoil, no pools. Every number below is read off arena_gen.py's WK_*
+# block, not remembered.
+SAND_R = 132.0          # WK_SAND_R: walkable sand ends. Nothing stands on it.
+FLEET_R = (140.0, 152.0)  # WK_FLEET_R: where the palisade's grounded hulls start
+FOAM_R = (161.0, 167.5)   # WK_FOAM_R: the surf breaking round the outside
+PARTY_R = 88.0          # Bosses arena.radius 80 + BossService's +8
+BOUND_R = 140.0         # Bosses arena.radius 80 + WRACK_BOUND_MARGIN 60
+# WK_FLEET_GAP_DEG / WK_SEA_DEG: the mouth in the palisade, 46 degrees wide,
+# centred on the water. In BLENDER degrees, so it converts like everything
+# else below.
+WK_SEA_DEG = 90.0
+WK_FLEET_GAP_DEG = 46.0
 
-# WK_HULKS, in BLENDER build space: (radius, degrees). The exporter maps
-# blender (x, y, z) -> roblox (x, z, -y) - arena_gen.py says so in as many
-# words at line ~3666 - so roblox X = blender x and roblox Z = -blender y.
-# Every plot here is in ROBLOX X/Z, so the conversion happens once, below.
-WK_HULKS_BLENDER = [(34.0, 15.0), (52.0, 62.0), (38.0, 100.0), (49.0, 198.0), (33.0, 250.0), (46.0, 292.0)]
-# Each hulk is a ~19-21 stud hull section, 12-14 in the beam (_wr_stations
-# calls in build_wk_hulks); drawn as a 20 x 13 footprint, long axis radial
-# (`facing = angle + pi`).
-HULK_SIZE = (20.0, 13.0)
-WK_HEAD_DEG = 150.0  # the cradle / haul lane bearing, in blender degrees
+# The beach's walkable height band (WK_SEA_Z .. WK_HEAD_Z): +0.45 at the
+# water's edge, +4.85 at the head. Flat enough that the flat XZ hit test this
+# file simulates is the whole truth - HEIGHT_TOLERANCE in ProjectileService is
+# far wider than 4.4 studs of beach.
+SAND_Z = (0.45, 4.85)
+
+# Half-width of every plan in studs. Wide enough to hold the whole walkable
+# beach, the retire bound and the inner face of the palisade.
+PLAN_SPAN = 152.0
 
 # ---- the boss (Bosses.luau parts.mounts, boss_gen WR_HULL, AUTHORED) -------
 #
@@ -170,6 +184,15 @@ MOUNTS = [  # (label, local X, local Z, height above the sand)
     ("Stern", -34.62, -14.37, 29.08),
     ("Top", 38.40, -11.99, 27.71),
 ]
+# THE GUNS, AS EMITTERS. Since 2026-09-06 every ball leaves a LIVE BATTERY,
+# not a circle round the arena centre - `ctx.muzzle` / `ctx.decks` in
+# ProjectileService. The flat offsets are the whole of what the emitters need
+# (the balls fly in one plane; the heights above only place the muzzle flash).
+MOUNT_XZ = [(mx, mz) for _label, mx, mz, _h in MOUNTS]
+MOUNT_LABEL = [label for label, _x, _z, _h in MOUNTS]
+# Every battery alive. `wrackDecks` in CreatureService hands ProjectileService
+# exactly this list, minus whatever the party has broken.
+DECKS_ALIVE = [0, 1, 2, 3]
 # WR_HULL stations (boss_gen.py): (ship-space x, half-beam, ...). Only the
 # first two columns matter for a footprint.
 WR_STATIONS = [
@@ -270,54 +293,122 @@ def count_of(n, scale):
     return max(1, int(round(n * scale)))
 
 
+# ---- the gun decks as emitters --------------------------------------------
+#
+# A port of ProjectileService's `deckRunOut` / `muzzleOf`, which are the two
+# ways a pattern can be fired FROM THE BRASS rather than from the middle of
+# the hull.
+def decks(alive=None):
+    """The live batteries as flat (x, z) offsets from the arena centre."""
+    return [MOUNT_XZ[i] for i in (DECKS_ALIVE if alive is None else alive)]
+
+
+def deck_run_out(dir_, alive=None):
+    """RADIAL patterns (broadside, slewfire). The ball leaves the deck that
+    faces its own bearing, so the muzzle is that deck's RANGE along the ball's
+    own ray: `spawnAt + dot(mount, dir)`, never the full offset.
+
+    Only the along-ray component, deliberately. Applying the whole mount
+    vector would translate each deck's arc sideways by up to 40 studs and tear
+    three permanent extra holes in the broadside wall at the sector seams -
+    a second gap, standing still, in the one pattern whose entire identity is
+    "exactly ONE gap". Projected onto the ray, every ball keeps its authored
+    BEARING exactly (so the gap is exactly `gapDeg`) and the only thing the
+    decks change is how far out the wall is born on each side: the ring bulges
+    toward the live guns, and flattens where one has been silenced."""
+    live = decks(alive)
+    if not live:
+        return 0.0
+    best, best_cos = 0.0, -1e9
+    for (mx, mz) in live:
+        mag = math.hypot(mx, mz)
+        if mag < 1e-3:
+            continue
+        along = mx * dir_[0] + mz * dir_[1]
+        cosine = along / mag
+        if cosine > best_cos:
+            best_cos, best = cosine, along
+    return max(best, 0.0)
+
+
+def deck_for_aim(aim_deg, alive=None):
+    """AIMED patterns (grapeshot, chainshot, anchorsweep). The whole fan
+    leaves ONE gun - the live battery best lined up with the shot - so the
+    telegraph, the muzzle flash and the balls all come from the same brass."""
+    live = decks(alive)
+    if not live:
+        return (0.0, 0.0)
+    d = bearing(aim_deg)
+    return max(live, key=lambda m: (m[0] * d[0] + m[1] * d[1]) / max(math.hypot(*m), 1e-3))
+
+
+def aim_from(origin, target):
+    """Re-aim: a fan fired from a gun 40 studs off-centre has to point at the
+    target FROM THERE, or the shot the tell promised lands somewhere else."""
+    dx, dz = target[0] - origin[0], target[1] - origin[1]
+    m = math.hypot(dx, dz) or 1.0
+    return math.degrees(math.atan2(dz / m, dx / m))
+
+
 # ============================================================ the emitters
 #
 # Ported line for line from ProjectileService's PATTERNS table. Each returns
 # a list of balls; a ball is a dict with pos (x, z), vel, radius, born (the
 # time in the strike it was emitted) and - for chainshot - the pair link.
-def emit_broadside(p, gap_deg, scale=1.0):
+def emit_broadside(p, gap_deg, scale=1.0, alive=None):
     count = count_of(p["count"], scale)
     gap = math.radians(p["gapDeg"])
+    # THE AUTHORED GAP IS THE TRUE EMPTY WEDGE. `count` balls are laid across
+    # the rest of the circle INCLUSIVE of both ends, so the arc from the last
+    # ball to the first - the hole the player walks into - is exactly `gapDeg`
+    # and nothing else. (Before 2026-09-06 the balls sat half a step inside a
+    # span of TAU - gap, which made the real hole gapDeg + one step: 48.8 deg
+    # against an authored 34.)
     span = TAU - gap
-    step = span / count
+    step = span / (count - 1) if count > 1 else 0.0
     start = math.radians(gap_deg) + gap * 0.5
     out = []
     for i in range(count):
-        d = bearing(math.degrees(start + step * (i + 0.5)))
+        d = bearing(math.degrees(start + step * i))
+        r0 = p["spawnAt"] + deck_run_out(d, alive)
         out.append(dict(
-            pos=(d[0] * p["spawnAt"], d[1] * p["spawnAt"]),
+            pos=(d[0] * r0, d[1] * r0),
             vel=(d[0] * p["speed"], d[1] * p["speed"]),
             radius=p["radius"], lifetime=p["lifetime"],
         ))
     return out
 
 
-def emit_grapeshot(p, base_deg, phase, scale=1.0):
+def emit_grapeshot(p, base_deg, phase, scale=1.0, alive=None, target=None):
     pellets = count_of(p["pellets"], scale)
     fan = p["fanDeg"]
     step = fan / (pellets - 1) if pellets > 1 else 0.0
+    gun = deck_for_aim(base_deg, alive)
+    base = aim_from(gun, target if target else bearing(base_deg))
     out = []
     for i in range(pellets):
-        d = bearing(base_deg - fan * 0.5 + step * (i + phase))
+        d = bearing(base - fan * 0.5 + step * (i + phase))
         out.append(dict(
-            pos=(d[0] * p["spawnAt"], d[1] * p["spawnAt"]),
+            pos=(gun[0] + d[0] * p["spawnAt"], gun[1] + d[1] * p["spawnAt"]),
             vel=(d[0] * p["speed"], d[1] * p["speed"]),
             radius=p["radius"], lifetime=p["lifetime"],
         ))
     return out
 
 
-def emit_chainshot(p, base_deg, scale=1.0):
+def emit_chainshot(p, base_deg, scale=1.0, alive=None, target=None):
     pairs = count_of(p["pairs"], scale)
     fan = p["fanDeg"]
     half = p["chain"] * 0.5
     step = fan / (pairs - 1) if pairs > 1 else 0.0
+    gun = deck_for_aim(base_deg, alive)
+    base = aim_from(gun, target if target else bearing(base_deg))
     out = []
     for i in range(pairs):
-        ang = base_deg - fan * 0.5 + step * i
+        ang = base - fan * 0.5 + step * i
         d = bearing(ang)
         side = rot90(d)
-        origin = (d[0] * p["spawnAt"], d[1] * p["spawnAt"])
+        origin = (gun[0] + d[0] * p["spawnAt"], gun[1] + d[1] * p["spawnAt"])
         out.append(dict(
             mid=origin,
             off=(side[0] * half, side[1] * half),
@@ -328,45 +419,56 @@ def emit_chainshot(p, base_deg, scale=1.0):
     return out
 
 
-def emit_slewfire_tick(p, deck_deg):
-    arms = max(1, p["arms"])
+def emit_slewfire_tick(p, deck_deg, scale=1.0, alive=None):
+    # SCALES LIKE EVERY OTHER PATTERN since 2026-09-06 - it used to read
+    # `max(1, p.arms)` raw and was the one row that did not thin as the
+    # batteries fell, contradicting CreatureService's own header.
+    arms = count_of(p["arms"], scale)
     out = []
     for i in range(arms):
         d = bearing(deck_deg + (360.0 / arms) * i)
+        r0 = p["spawnAt"] + deck_run_out(d, alive)
         out.append(dict(
-            pos=(d[0] * p["spawnAt"], d[1] * p["spawnAt"]),
+            pos=(d[0] * r0, d[1] * r0),
             vel=(d[0] * p["speed"], d[1] * p["speed"]),
             radius=p["radius"], lifetime=p["lifetime"],
         ))
     return out
 
 
-def emit_anchorsweep(p, base_deg, scale=1.0):
+def emit_anchorsweep(p, base_deg, scale=1.0, alive=None, target=None):
     count = count_of(p["count"], scale)
     arc = p["arcDeg"]
     ripple = p["ripple"]
     step = arc / (count - 1) if count > 1 else 0.0
+    gun = deck_for_aim(base_deg, alive)
+    base = aim_from(gun, target if target else bearing(base_deg))
     out = []
     for i in range(count):
-        d = bearing(base_deg - arc * 0.5 + step * i)
+        d = bearing(base - arc * 0.5 + step * i)
         head = ripple * (count - 1 - i) * p["speed"]
         r0 = p["spawnAt"] + head
         out.append(dict(
-            pos=(d[0] * r0, d[1] * r0),
+            pos=(gun[0] + d[0] * r0, gun[1] + d[1] * r0),
             vel=(d[0] * p["speed"], d[1] * p["speed"]),
             radius=p["radius"], lifetime=p["lifetime"], head=head,
         ))
     return out
 
 
-def emit_wisps(p, base_deg, scale=1.0):
+def emit_wisps(p, base_deg, scale=1.0, alive=None):
     count = count_of(p["count"], scale)
     spread = p["spreadDeg"]
+    live = decks(alive) or [(0.0, 0.0)]
     out = []
     for i in range(count):
         d = bearing(base_deg - spread * 0.5 + (spread / max(count, 1)) * (i + 0.5))
+        # ONE LANTERN PER DECK, round-robin. They home, so an origin scattered
+        # across the hull distorts no shape - it only makes the brass visibly
+        # the thing that lit them.
+        gun = live[i % len(live)]
         out.append(dict(
-            pos=(d[0] * p["spawnAt"], d[1] * p["spawnAt"]),
+            pos=(gun[0] + d[0] * p["spawnAt"], gun[1] + d[1] * p["spawnAt"]),
             vel=(d[0] * p["speed"], d[1] * p["speed"]),
             radius=p["radius"], lifetime=p["lifetime"],
             homing=math.radians(p["homingDeg"]),
@@ -473,13 +575,13 @@ def live_balls(name, t):
             born = k * p["burstGap"]
             if t < born:
                 continue
-            for b in emit_grapeshot(p, REF_BEARING, 0.0 if k == 0 else 0.5):
+            for b in emit_grapeshot(p, REF_BEARING, 0.0 if k == 0 else 0.5, target=REF_POS):
                 b["born"] = born
                 s = ballistic_state(b, t)
                 if s:
                     out.append(s)
     elif h == "chainshot":
-        for pair in emit_chainshot(p, REF_BEARING):
+        for pair in emit_chainshot(p, REF_BEARING, target=REF_POS):
             s = chain_state(pair, t)
             if s:
                 chains.append(s)
@@ -496,7 +598,7 @@ def live_balls(name, t):
                     out.append(s)
             k += 1
     elif h == "anchorsweep":
-        for b in emit_anchorsweep(p, REF_BEARING):
+        for b in emit_anchorsweep(p, REF_BEARING, target=REF_POS):
             b["born"] = 0.0
             s = ballistic_state(b, t)
             if s:
@@ -580,72 +682,105 @@ def seg_dist(pt, a, b):
 
 
 # ============================================================ derived numbers
+def gun_range():
+    """How far the reference challenger stands from the gun that fires an
+    AIMED pattern. Every width, lane and flight time for those rows is
+    measured from here, because that is where the shot leaves."""
+    gx, gz = deck_for_aim(REF_BEARING)
+    return math.hypot(REF_POS[0] - gx, REF_POS[1] - gz)
+
+
 def ring_numbers(name):
     """The measurable facts a dodger actually needs, computed not guessed."""
     p = ATTACKS[name]
     h = p["handler"]
     n = {}
+    # REACH, and whether the two retirement knobs agree.
+    #
+    # A ball dies on whichever comes first: `lifetime` seconds, or leaving
+    # `bound` studs from the ARENA CENTRE. Those are two knobs for one job, and
+    # if they disagree by much one of them is a lie. `reach` is how far a ball
+    # gets on its lifetime alone (spawnAt + speed x lifetime); `bound` is
+    # BOUND_R. A pattern whose reach falls short of the walkable edge leaves a
+    # rest area out there, which is the death of a bullet hell; one whose reach
+    # hugely exceeds the bound has an inert lifetime.
+    n["reach"] = p["spawnAt"] + p["speed"] * p["lifetime"]
+    n["reach_vs_sand"] = n["reach"] - SAND_R
+    n["reach_vs_bound"] = n["reach"] - BOUND_R
+    n["cross_s"] = (BOUND_R - p["spawnAt"]) / p["speed"]
     if h == "broadside":
         gap = p["gapDeg"]
-        step = (360.0 - gap) / p["count"]
-        # Balls sit at half-step insets, so the TRUE empty wedge is one step
-        # wider than gapDeg.
-        n["empty_deg"] = gap + step
+        # Balls are laid INCLUSIVE of both ends of the occupied arc, so the
+        # empty wedge is exactly gapDeg - see PATTERNS.broadside.
+        step = (360.0 - gap) / max(p["count"] - 1, 1)
+        n["empty_deg"] = gap
         n["step_deg"] = step
-        n["gap_studs_48"] = math.radians(n["empty_deg"]) * PARTY_R - 2 * p["radius"]
-        n["lane_studs_48"] = math.radians(step) * PARTY_R - 2 * p["radius"]
+        n["gap_studs"] = math.radians(gap) * PARTY_R - 2 * p["radius"]
+        n["lane_studs"] = math.radians(step) * PARTY_R - 2 * p["radius"]
         n["solid_to_r"] = 2 * p["radius"] / math.radians(step)
-        n["gap_travel_48"] = math.radians(p["gapStep"]) * PARTY_R
+        n["gap_travel"] = math.radians(p["gapStep"]) * PARTY_R
         n["walk_per_volley"] = PLAYER_SPEED * p["interval"]
-        n["cross_time"] = (BOUND_R - p["spawnAt"]) / p["speed"]
     elif h == "grapeshot":
+        # MEASURED FROM THE GUN, not from the arena centre: the fan leaves one
+        # battery, so every width and every flight time is that battery's.
+        d = gun_range()
         step = p["fanDeg"] / (p["pellets"] - 1)
+        n["gun_range"] = d
         n["step_deg"] = step
-        n["lane_studs_48"] = math.radians(step) * PARTY_R - 2 * p["radius"]
-        n["cone_width_48"] = 2 * PARTY_R * math.sin(math.radians(p["fanDeg"]) / 2)
-        n["flight_to_48"] = (PARTY_R - p["spawnAt"]) / p["speed"]
-        n["react"] = p["windup"] + n["flight_to_48"]
+        n["lane_studs"] = math.radians(step) * d - 2 * p["radius"]
+        n["cone_width"] = 2 * d * math.sin(math.radians(p["fanDeg"]) / 2)
+        n["flight_party"] = max(d - p["spawnAt"], 0.0) / p["speed"]
+        n["react"] = p["windup"] + n["flight_party"]
         n["walk"] = PLAYER_SPEED * n["react"]
-        n["need"] = PARTY_R * math.tan(math.radians(p["fanDeg"]) / 2) + p["radius"]
+        n["need"] = d * math.tan(math.radians(p["fanDeg"]) / 2) + p["radius"]
     elif h == "chainshot":
+        d = gun_range()
         step = p["fanDeg"] / (p["pairs"] - 1)
+        n["gun_range"] = d
         n["step_deg"] = step
         n["pair_len"] = p["chain"] + 2 * p["radius"]
-        n["lane_studs_48"] = math.radians(step) * PARTY_R - n["pair_len"]
+        n["lane_studs"] = math.radians(step) * d - n["pair_len"]
         n["turn_s"] = 360.0 / abs(p["spinDeg"])
         n["beat_s"] = 180.0 / abs(p["spinDeg"])
-        n["cross_time"] = (BOUND_R - p["spawnAt"]) / p["speed"]
-        n["turns"] = n["cross_time"] / n["turn_s"]
+        n["turns"] = n["cross_s"] / n["turn_s"]
     elif h == "slewfire":
         per_tick = abs(p["spinDeg"]) * p["every"]
         n["tick_deg"] = per_tick
-        n["arm_gap_48"] = math.hypot(math.radians(per_tick) * PARTY_R, p["speed"] * p["every"]) - 2 * p["radius"]
+        n["arm_gap"] = math.hypot(math.radians(per_tick) * PARTY_R, p["speed"] * p["every"]) - 2 * p["radius"]
         n["channel"] = p["speed"] * (360.0 / abs(p["spinDeg"])) / p["arms"]
-        n["sweep_48"] = math.radians(abs(p["spinDeg"])) * PARTY_R
+        n["sweep_party"] = math.radians(abs(p["spinDeg"])) * PARTY_R
         n["against"] = abs(p["spinDeg"]) + math.degrees(PLAYER_SPEED / PARTY_R)
         n["with"] = abs(p["spinDeg"]) - math.degrees(PLAYER_SPEED / PARTY_R)
         n["ratio"] = n["against"] / n["with"]
         n["live"] = len(live_balls("slewfireFast" if p["arms"] == 3 else "slewfire", p["duration"])[0])
     elif h == "anchorsweep":
+        d = gun_range()
         step = p["arcDeg"] / (p["count"] - 1)
+        n["gun_range"] = d
         n["step_deg"] = step
-        n["lane_studs_48"] = math.radians(step) * PARTY_R - 2 * p["radius"]
+        n["lane_studs"] = math.radians(step) * d - 2 * p["radius"]
         n["solid_to_r"] = 2 * p["radius"] / math.radians(step)
         n["head_studs"] = p["ripple"] * (p["count"] - 1) * p["speed"]
         n["head_s"] = p["ripple"] * (p["count"] - 1)
-        n["flight_to_48"] = (PARTY_R - p["spawnAt"]) / p["speed"]
-        n["react"] = p["windup"] + n["flight_to_48"]
+        n["flight_party"] = max(d - p["spawnAt"], 0.0) / p["speed"]
+        n["react"] = p["windup"] + n["flight_party"]
         n["walk"] = PLAYER_SPEED * n["react"]
-        n["need"] = math.radians(90.0) * PARTY_R
+        # WHAT LEAVING ACTUALLY COSTS. A 180-degree arc is a HALF-PLANE whose
+        # boundary is the line through the gun perpendicular to the aim, so
+        # "get to the other half" means crossing that line - and standing on
+        # the axis at range d, the nearest point of it is d studs away. The
+        # old figure (90 degrees of arc round the ARENA centre) measured a
+        # different journey and, at r 88, an impossible one.
+        n["need"] = d
     elif h == "wisps":
         n["turn_r"] = p["speed"] / math.radians(p["homingDeg"])
         n["closing"] = p["speed"] - PLAYER_SPEED
-        n["reach"] = n["closing"] * p["lifetime"]
+        n["net_close"] = n["closing"] * p["lifetime"]
     return n
 
 
 # ============================================================ drawing
-def setup_plan(ax, span=100.0, ticks=True):
+def setup_plan(ax, span=PLAN_SPAN, ticks=True):
     ax.set_xlim(-span, span)
     ax.set_ylim(-span, span)
     ax.invert_yaxis()  # +Z DOWN: Studio's Top view, so bearings run clockwise
@@ -658,8 +793,20 @@ def setup_plan(ax, span=100.0, ticks=True):
 
 
 def draw_arena(ax, small=False):
-    """Everything that is there before a shot is fired."""
-    ax.add_patch(Circle((0, 0), FLEET_R[1], facecolor=AWASH, edgecolor="none", zorder=0))
+    """Everything that is there before a shot is fired.
+
+    Which, on the rebuilt Careenage, is almost nothing: one plain beach out to
+    r 132 with no cover of any kind on it, and the palisade of grounded hulls
+    standing round the outside of it. The six breakwater hulks that used to sit
+    at r 33-52 - and that used to be the wisps' only answer - are gone."""
+    ax.add_patch(Circle((0, 0), FOAM_R[1], facecolor=AWASH, edgecolor="none", zorder=0))
+    # the palisade: an annulus of grounded hulls with the sea mouth cut out of
+    # it. Nothing walks out here; it is the boundary, drawn so the beach reads
+    # as enclosed rather than as ending in nothing.
+    mouth = math.degrees(math.atan2(*reversed(blender_to_xz(1.0, WK_SEA_DEG))))
+    ax.add_patch(Wedge((0, 0), FLEET_R[1], mouth + WK_FLEET_GAP_DEG / 2,
+                       mouth - WK_FLEET_GAP_DEG / 2 + 360, width=FLEET_R[1] - FLEET_R[0],
+                       facecolor=HULK, edgecolor=HULK_EDGE, lw=0.8, alpha=0.85, zorder=4))
     ax.add_patch(Circle((0, 0), SAND_R, facecolor=SAND, edgecolor=SAND_EDGE, lw=1.1, zorder=1))
     # the retire bound - past here every ball is dropped
     ax.add_patch(Circle((0, 0), BOUND_R, facecolor="none", edgecolor=INK_FAINT,
@@ -667,17 +814,11 @@ def draw_arena(ax, small=False):
     # the party ring
     ax.add_patch(Circle((0, 0), PARTY_R, facecolor="none", edgecolor="#5e7d86",
                         lw=1.0, ls=(0, (3, 4)), zorder=3))
-
-    # the six breakwater hulks, long axis radial
-    for (r, deg) in WK_HULKS_BLENDER:
-        cx, cz = blender_to_xz(r, deg)
-        ang = math.degrees(math.atan2(cz, cx))
-        L, W = HULK_SIZE
-        rect = Rectangle((-L / 2, -W / 2), L, W, facecolor=HULK, edgecolor=HULK_EDGE,
-                         lw=0.9, alpha=0.95, zorder=4)
-        tr = matplotlib.transforms.Affine2D().rotate_deg(ang).translate(cx, cz) + ax.transData
-        rect.set_transform(tr)
-        ax.add_patch(rect)
+    if not small:
+        ax.text(0, -SAND_R + 4.0, "walkable sand ends — r %g, and nothing stands on it" % SAND_R,
+                color=SAND_EDGE, fontsize=7.4, ha="center", va="bottom", zorder=20)
+        ax.text(0, -PARTY_R + 3.5, "the party drops here — r %g" % PARTY_R, color="#5e7d86",
+                fontsize=7.0, ha="center", va="bottom", zorder=20)
 
     # the hull footprint, from the WR_HULL stations scaled across to the
     # measured Hull bbox (44.8 studs in the beam), bow at +X.
@@ -702,17 +843,31 @@ def draw_arena(ax, small=False):
 
 
 def draw_spawn_ring(ax, p, label=True):
-    ax.add_patch(Circle((0, 0), p["spawnAt"], facecolor="none", edgecolor=BRASS,
-                        lw=0.9, ls=(0, (2, 3)), alpha=0.85, zorder=7))
+    """WHERE THE SHOT IS BORN, drawn as the locus it really is.
+
+    Since 2026-09-06 nothing is born on a circle round the arena centre. A
+    RADIAL pattern's muzzle locus is `spawnAt + deck_run_out(dir)` - a ring
+    bulging toward each live battery; an AIMED pattern leaves one gun."""
+    h = p["handler"]
+    if h in ("broadside", "slewfire"):
+        angs = np.linspace(0, 360, 721)
+        rs = np.array([p["spawnAt"] + deck_run_out(bearing(float(a))) for a in angs])
+        ax.plot(np.cos(np.radians(angs)) * rs, np.sin(np.radians(angs)) * rs,
+                color=BRASS, lw=1.0, ls=(0, (2, 3)), alpha=0.9, zorder=7)
+        note = ("the muzzle locus: r %g in front of whichever\nLIVE battery faces that bearing "
+                "— it bulges toward\nthe guns and flattens where one is silenced" % p["spawnAt"])
+    else:
+        gun = deck_for_aim(REF_BEARING)
+        i = MOUNT_XZ.index(gun)
+        ax.add_patch(Circle(gun, p["spawnAt"], facecolor="none", edgecolor=BRASS,
+                            lw=1.0, ls=(0, (2, 3)), alpha=0.9, zorder=7))
+        ax.plot([gun[0]], [gun[1]], marker="*", ms=9, color=BRASS, zorder=22)
+        note = ("fired from the %s battery — the live gun best lined\nup with the shot, "
+                "re-aimed from where it actually stands\n(%+.0f, %+.0f from the centre, %.1f "
+                "studs up)" % (MOUNT_LABEL[i], gun[0], gun[1], MOUNTS[i][3]))
     if label:
-        d = bearing(340)
-        ax.text(d[0] * (p["spawnAt"] + 5.5), d[1] * (p["spawnAt"] + 5.5), "r %g" % p["spawnAt"],
-                color=BRASS, fontsize=7.0, ha="left", va="center", zorder=20)
-        ax.text(0.995, 0.992,
-                "every ball is born on r %g from the ARENA CENTRE,\nnot at a gun deck: "
-                "the four decks set the COUNT" % p["spawnAt"],
-                transform=ax.transAxes, color=BRASS, fontsize=7.6, ha="right",
-                va="top", zorder=30)
+        ax.text(0.995, 0.992, note, transform=ax.transAxes, color=BRASS, fontsize=7.6,
+                ha="right", va="top", zorder=30)
 
 
 def draw_balls(ax, balls, colour, alpha=1.0, zorder=14, edge=True):
@@ -761,15 +916,15 @@ def draw_rose(ax, rose, pos, length=17.0, lw=2.0, zorder=10):
                 alpha=0.95 if ok else 0.5, solid_capstyle="butt", zorder=zorder)
 
 
-def draw_scale_bar(ax, span=100.0):
+def draw_scale_bar(ax, span=PLAN_SPAN):
     y = span * 0.90
     x0 = -span * 0.94
-    ax.plot([x0, x0 + 20], [y, y], color=INK_DIM, lw=2.0, solid_capstyle="butt", zorder=30)
-    ax.text(x0 + 10, y - 3.0, "20 studs", color=INK_DIM, fontsize=6.8, ha="center",
+    ax.plot([x0, x0 + 40], [y, y], color=INK_DIM, lw=2.0, solid_capstyle="butt", zorder=30)
+    ax.text(x0 + 20, y - 4.5, "40 studs", color=INK_DIM, fontsize=6.8, ha="center",
             va="bottom", zorder=30)
 
 
-def draw_compass(ax, span=100.0):
+def draw_compass(ax, span=PLAN_SPAN):
     """Bearings in ProjectileService's convention, which on a Top view (+X
     right, +Z down) increase CLOCKWISE."""
     for deg, txt in ((0, "0"), (90, "90"), (180, "180"), (270, "270")):
@@ -780,14 +935,22 @@ def draw_compass(ax, span=100.0):
                      edgecolor="#232c31", lw=0.8, zorder=1))
 
 
-def wedge(ax, r0, r1, a0, a1, colour, alpha=0.16, hatch=None, zorder=8, lw=0.0):
-    w = Wedge((0, 0), r1, a0, a1, width=r1 - r0, facecolor=colour, alpha=alpha,
+def wedge(ax, r0, r1, a0, a1, colour, alpha=0.16, hatch=None, zorder=8, lw=0.0,
+          at=(0.0, 0.0)):
+    """`at` IS THE ORIGIN THE WEDGE IS SWEPT FROM, and for every aimed pattern
+    that is the gun, not the arena centre. A cone drawn round the middle of the
+    hull for a fan that leaves the bowsprit shades ground the shot never
+    crosses - which is the exact lie this whole retune is about. Clipped to the
+    walkable sand so a half-plane cannot paint over the palisade."""
+    w = Wedge(at, r1, a0, a1, width=r1 - r0, facecolor=colour, alpha=alpha,
               edgecolor=colour if lw else "none", lw=lw, zorder=zorder)
     if hatch:
         w.set_hatch(hatch)
         w.set_edgecolor(colour)
         w.set_linewidth(0.0)
     ax.add_patch(w)
+    if at != (0.0, 0.0):
+        w.set_clip_path(Circle((0, 0), SAND_R, transform=ax.transData))
 
 
 def spin_arrow(ax, radius, a0, sweep, colour, label=None, lw=2.2, zorder=24, lift=6.5):
@@ -825,15 +988,15 @@ def straight_arrow(ax, p0, p1, colour, lw=2.2, zorder=24, head=5.0):
 # three small multiples, because a wall of cannonballs is only legible as
 # motion. All in seconds after FIRE.
 MOMENTS = {
-    "broadside": (2.40, (0.55, 1.65, 2.40)),
-    "broadsideHeavy": (2.56, (0.60, 1.60, 2.56)),
-    "grapeshot": (0.55, (0.18, 0.55, 1.00)),
-    "grapeshotTwin": (0.75, (0.25, 0.60, 0.95)),
-    "chainshot": (1.50, (0.50, 1.50, 2.50)),
-    "slewfire": (3.00, (0.90, 2.00, 3.40)),
-    "slewfireFast": (3.00, (0.90, 2.00, 3.40)),
-    "anchorsweep": (1.78, (0.55, 1.78, 3.10)),
-    "wisps": (4.00, (1.20, 4.00, 7.50)),
+    "broadside": (3.00, (1.00, 2.20, 3.40)),
+    "broadsideHeavy": (3.00, (0.90, 2.00, 3.20)),
+    "grapeshot": (0.85, (0.30, 0.85, 1.40)),
+    "grapeshotTwin": (1.00, (0.35, 1.00, 1.55)),
+    "chainshot": (2.60, (0.90, 2.60, 4.00)),
+    "slewfire": (3.40, (1.20, 3.40, 5.00)),
+    "slewfireFast": (3.40, (1.20, 3.40, 5.00)),
+    "anchorsweep": (2.40, (0.80, 2.40, 4.00)),
+    "wisps": (3.00, (1.00, 3.00, 5.20)),
 }
 
 # The one-line answer, as the book states it, plus the measured version.
@@ -846,7 +1009,7 @@ ANSWER = {
     "slewfire": "read the rotation and walk against it - cross the arms the short way",
     "slewfireFast": "same spiral, REVERSED - the way you learned to walk is now wrong",
     "anchorsweep": "you do not thread it, you leave - and the long windup is the walk",
-    "wisps": "keep moving, and orbit a hulk tighter than their turn radius",
+    "wisps": "run a circle tighter than their turn radius — any bare sand will do",
 }
 
 
@@ -877,30 +1040,33 @@ def overlay(ax, name, t, small=False):
                   alpha=0.32, zorder=8)
             if not small:
                 d = bearing(g)
-                lr = min(r + 15, 84)
+                lr = min(r + 26, SAND_R * 1.06)
                 ax.text(d[0] * lr, d[1] * lr, "gap %d" % (v + 1), color=GHOST,
                         fontsize=7.4, ha="center", va="center", zorder=24,
                         bbox=dict(boxstyle="round,pad=0.18", fc=BG, ec="none", alpha=0.7))
         if not small:
-            spin_arrow(ax, 71, gap0, p["gapStep"] * (p["volleys"] - 1), GHOST,
+            spin_arrow(ax, SAND_R * 0.92, gap0, p["gapStep"] * (p["volleys"] - 1), GHOST,
                        label="the gap walks\n+%d° a volley" % p["gapStep"])
         notes = [
-            "true empty wedge %.0f° (gapDeg %g + one %.1f° step, balls sit half-step in)"
-            % (n["empty_deg"], p["gapDeg"], n["step_deg"]),
-            "at r 48 the gap is %.0f studs clear; between two balls, %.1f" % (n["gap_studs_48"], n["lane_studs_48"]),
+            "the empty wedge IS gapDeg: %.0f°, with the balls laid %.1f° apart onto both its edges"
+            % (n["empty_deg"], n["step_deg"]),
+            "at r %g the gap is %.0f studs clear; between two balls, %.1f"
+            % (PARTY_R, n["gap_studs"], n["lane_studs"]),
             "the wall is only SOLID inside r %.0f - past that it has lanes" % n["solid_to_r"],
-            "the gap moves %.0f studs per volley at r 48; you can walk %.0f"
-            % (n["gap_travel_48"], n["walk_per_volley"]),
+            "the gap moves %.0f studs per volley at r %g; you can walk %.0f"
+            % (n["gap_travel"], PARTY_R, n["walk_per_volley"]),
         ]
 
     elif h == "grapeshot":
         fan = p["fanDeg"]
-        wedge(ax, p["spawnAt"], BOUND_R, REF_BEARING - fan / 2, REF_BEARING + fan / 2,
-              DANGER, alpha=0.10, zorder=8)
+        gun = deck_for_aim(REF_BEARING)
+        base = aim_from(gun, REF_POS)
+        wedge(ax, p["spawnAt"], SAND_R * 2.4, base - fan / 2, base + fan / 2,
+              DANGER, alpha=0.10, zorder=8, at=gun)
         if p.get("bursts", 1) > 1:
             step = fan / (p["pellets"] - 1)
-            wedge(ax, p["spawnAt"], BOUND_R, REF_BEARING - fan / 2 + step * 0.5,
-                  REF_BEARING + fan / 2 + step * 0.5, DANGER, alpha=0.10, zorder=8)
+            wedge(ax, p["spawnAt"], SAND_R * 2.4, base - fan / 2 + step * 0.5,
+                  base + fan / 2 + step * 0.5, DANGER, alpha=0.10, zorder=8, at=gun)
             if not small:
                 # THE SHORT EDGE. The half-pellet phase shifts the WHOLE second
                 # burst toward +bearing, so the union runs (base - fan/2) to
@@ -921,23 +1087,25 @@ def overlay(ax, name, t, small=False):
                     "%.1f s of tell + flight = %.0f studs of walk" % (n["react"], n["walk"]),
                     color=GHOST, fontsize=6.8, ha="center", va="top", zorder=25)
         notes = [
-            "%d pellets across %g°: %.1f studs between centres at r 14, %.1f clear at r 48"
-            % (p["pellets"], fan, math.radians(n["step_deg"]) * p["spawnAt"], n["lane_studs_48"]),
-            "the cone is %.0f studs wide where the party stands" % n["cone_width_48"],
+            "%d pellets across %g°: %.1f studs between centres at the muzzle, %.1f clear at r %g"
+            % (p["pellets"], fan, math.radians(n["step_deg"]) * p["spawnAt"], n["lane_studs"], PARTY_R),
+            "the cone is %.0f studs wide where the party stands" % n["cone_width"],
             "%.1f s windup + %.2f s flight = %.0f studs of walk, against %.0f needed to clear it"
-            % (p["windup"], n["flight_to_48"], n["walk"], n["need"]),
+            % (p["windup"], n["flight_party"], n["walk"], n["need"]),
         ]
 
     elif h == "chainshot":
         step = n["step_deg"]
+        gun = deck_for_aim(REF_BEARING)
+        base = aim_from(gun, REF_POS)
         for i in range(p["pairs"] - 1):
-            a = REF_BEARING - p["fanDeg"] / 2 + step * (i + 0.5)
-            wedge(ax, p["spawnAt"], BOUND_R, a - step * 0.30, a + step * 0.30, GHOST,
-                  alpha=0.16, zorder=8)
+            a = base - p["fanDeg"] / 2 + step * (i + 0.5)
+            wedge(ax, p["spawnAt"], SAND_R * 2.4, a - step * 0.30, a + step * 0.30, GHOST,
+                  alpha=0.16, zorder=8, at=gun)
             if not small:
                 d = bearing(a)
-                ax.text(d[0] * 70, d[1] * 70, "lane", color=GHOST, fontsize=7.2,
-                        ha="center", va="center", zorder=24)
+                ax.text(gun[0] + d[0] * SAND_R * 0.72, gun[1] + d[1] * SAND_R * 0.72, "lane",
+                        color=GHOST, fontsize=7.2, ha="center", va="center", zorder=24)
         if not small:
             # THE TRAP, called out on the pair furthest from the label margin:
             # the 12-stud hole between a pair's two balls is filled by the
@@ -946,7 +1114,7 @@ def overlay(ax, name, t, small=False):
             if st:
                 lead, follow, br, cr = st
                 mid = ((lead[0] + follow[0]) / 2, (lead[1] + follow[1]) / 2)
-                tip = (-40.0, 76.0)
+                tip = (-SAND_R * 0.52, SAND_R * 0.98)
                 ax.plot([mid[0], tip[0]], [mid[1], tip[1]], color=DANGER,
                         lw=0.9, alpha=0.85, zorder=25)
                 ax.text(tip[0] - 3, tip[1] + 3,
@@ -956,12 +1124,12 @@ def overlay(ax, name, t, small=False):
                         color=DANGER, fontsize=7.6, ha="center", va="top", zorder=26,
                         bbox=dict(boxstyle="round,pad=0.25", fc=BG, ec="none", alpha=0.78))
         notes = [
-            "%d pairs %g° apart; each pair is %.0f studs end to end, %.1f wide at the chain"
+            "%d pairs %.1f° apart; each pair is %.0f studs end to end, %.1f wide at the chain"
             % (p["pairs"], step, n["pair_len"], p["chainRadius"] * 2),
-            "the lane between pairs is %.0f studs clear at r 48" % n["lane_studs_48"],
+            "the lane between pairs is %.0f studs clear at r %g" % (n["lane_studs"], PARTY_R),
             "spin %g°/s: a full turn every %.2f s, end-on every %.2f s"
             % (p["spinDeg"], n["turn_s"], n["beat_s"]),
-            "it crosses the sand in %.1f s - %.1f turns of the chain" % (n["cross_time"], n["turns"]),
+            "it crosses the beach in %.1f s - %.1f turns of the chain" % (n["cross_s"], n["turns"]),
         ]
 
     elif h == "slewfire":
@@ -976,16 +1144,18 @@ def overlay(ax, name, t, small=False):
             k = 0
             while k * every <= min(t, p["duration"]):
                 age = t - k * every
-                r = p["spawnAt"] + p["speed"] * age
+                a = REF_BEARING + p["spinDeg"] * every * k + (360.0 / p["arms"]) * i
+                d = bearing(a)
+                # Born at the deck facing that bearing, exactly as the balls
+                # are - so the locus and the balls cannot drift apart.
+                r = p["spawnAt"] + deck_run_out(d) + p["speed"] * age
                 if age < p["lifetime"] and r <= BOUND_R:
-                    a = REF_BEARING + p["spinDeg"] * every * k + (360.0 / p["arms"]) * i
-                    d = bearing(a)
                     xs.append(d[0] * r)
                     zs.append(d[1] * r)
                 k += 1
             ax.plot(xs, zs, color=SKIN["cannon"], lw=1.0, alpha=0.30, zorder=9)
         if not small:
-            spin_arrow(ax, 84, deck - sweep * 0.15, sweep, DANGER,
+            spin_arrow(ax, SAND_R * 1.05, deck - sweep * 0.15, sweep, DANGER,
                        label="the deck spins\n%+g°/s" % p["spinDeg"])
             # the answer: cross the arm walking the other way round
             a = math.degrees(math.atan2(REF_POS[1], REF_POS[0]))
@@ -994,28 +1164,34 @@ def overlay(ax, name, t, small=False):
         notes = [
             "%d arm%s, one tick every %g s: the deck steps %.1f° a tick"
             % (p["arms"], "" if p["arms"] == 1 else "s", p["every"], n["tick_deg"]),
-            "%.0f studs of open water between arms; %.1f stud holes along one arm at r 48"
-            % (n["channel"], n["arm_gap_48"]),
-            "an arm crosses r 48 at %.0f studs/s - you cannot outrun it, only cross it"
-            % n["sweep_48"],
+            "%.0f studs of open water between arms; %.1f stud holes along one arm at r %g"
+            % (n["channel"], n["arm_gap"], PARTY_R),
+            "an arm crosses r %g at %.0f studs/s - you cannot outrun it, only cross it"
+            % (PARTY_R, n["sweep_party"]),
             "walking against the spin crosses %.2fx faster (%.0f°/s vs %.0f°/s relative)"
             % (n["ratio"], n["against"], n["with"]),
         ]
 
     elif h == "anchorsweep":
-        wedge(ax, p["spawnAt"], BOUND_R, REF_BEARING - 90, REF_BEARING + 90, DANGER,
-              alpha=0.12, zorder=8)
-        wedge(ax, p["spawnAt"], SAND_R, REF_BEARING + 90, REF_BEARING + 270, GHOST,
-              alpha=0.12, zorder=8)
+        gun = deck_for_aim(REF_BEARING)
+        base = aim_from(gun, REF_POS)
+        # The half-planes really are half-planes THROUGH THE GUN: the boundary
+        # the player has to cross runs through the battery, not through the
+        # middle of the arena, and at 40 studs of offset that is the whole
+        # difference between an escape that works and one that does not.
+        wedge(ax, p["spawnAt"], SAND_R * 2.4, base - 90, base + 90, DANGER,
+              alpha=0.12, zorder=8, at=gun)
+        wedge(ax, 0.0, SAND_R * 2.4, base + 90, base + 270, GHOST,
+              alpha=0.12, zorder=8, at=gun)
         if not small:
             d = bearing(REF_BEARING + 180)
-            ax.text(d[0] * 58, d[1] * 58, "THE OTHER HALF", color=GHOST, fontsize=10.0,
+            ax.text(d[0] * SAND_R * 0.62, d[1] * SAND_R * 0.62, "THE OTHER HALF", color=GHOST, fontsize=10.0,
                     ha="center", va="center", zorder=24, fontweight="bold")
             # The trailing end is i = count-1, at base + arc/2: `head` is
             # ripple*(count-1-i)*speed, so that end is the one born at spawnAt
             # with no head start at all.
             e = bearing(REF_BEARING + 90)
-            ax.text(e[0] * 66, e[1] * 66 - 16,
+            ax.text(e[0] * SAND_R * 0.80, e[1] * SAND_R * 0.80 - 26,
                     "trailing end: born %.1f studs\nfurther in, so it arrives\n%.1f s after the "
                     "leading end" % (n["head_studs"], n["head_s"]),
                     color=GHOST, fontsize=7.2, ha="center", va="center", zorder=25)
@@ -1024,31 +1200,30 @@ def overlay(ax, name, t, small=False):
             straight_arrow(ax, REF_POS,
                            (REF_POS[0] + tang[0] * 30, REF_POS[1] + tang[1] * 30), GHOST)
             f = bearing(REF_BEARING - 90)
-            ax.text(f[0] * 66, f[1] * 66 - 14,
+            ax.text(f[0] * SAND_R * 0.80, f[1] * SAND_R * 0.80 - 24,
                     "leading end: %.1f studs\nof head start" % n["head_studs"],
                     color=DANGER, fontsize=7.2, ha="center", va="center", zorder=25)
         notes = [
             "%d anchors across %g°, radius %g - the biggest ball in the fight"
             % (p["count"], p["arcDeg"], p["radius"]),
-            "solid only inside r %.0f; at r 48 there are %.1f stud slots between them"
-            % (n["solid_to_r"], n["lane_studs_48"]),
-            "%.1f s windup + %.2f s flight = %.0f studs of walk, against %.0f to clear 90° "
-            "sideways" % (p["windup"], n["flight_to_48"], n["walk"], n["need"]),
-            "so the rose's other answer is INWARD: %.0f studs of windup puts you inside r %g "
-            "before the wall exists" % (PLAYER_SPEED * p["windup"], p["spawnAt"]),
-            "damage %d-%d: roughly double every other pattern" % p["damage"],
+            "solid only inside r %.0f; at r %g there are %.1f stud slots between them"
+            % (n["solid_to_r"], PARTY_R, n["lane_studs"]),
+            "%.1f s windup + %.2f s flight = %.0f studs of walk, against the %.0f that leaves "
+            "the half-plane" % (p["windup"], n["flight_party"], n["walk"], n["need"]),
+            "the OTHER answer is the trailing end: it arrives %.1f s late, and is passable for "
+            "that beat if you commit" % n["head_s"],
         ]
 
     elif h == "wisps":
-        hi, orb = wisp_answer()
+        place, orb = wisp_answer()
         notes = [
             "speed %g vs a %g stud/s walk: they close %g studs/s and live %g s"
             % (p["speed"], PLAYER_SPEED, n["closing"], p["lifetime"]),
             "turn rate %g°/s at speed %g = a %.1f STUD TURN RADIUS - a circle they cannot fly inside"
             % (p["homingDeg"], p["speed"], n["turn_r"]),
-            "searched, not asserted: r %g round hulk %d is the orbit all three miss for the whole %g s"
-            % (orb, (hi if hi is not None else 4) + 1, p["lifetime"]),
-            "TIGHTER IS NOT BETTER - under ~8 studs you stop covering ground and the head-on one lands",
+            "searched, not asserted: an r %g circle ON BARE SAND is the orbit all %d miss for the whole %g s"
+            % (orb, p["count"], p["lifetime"]),
+            "TIGHTER IS NOT BETTER - under ~5 studs you stop covering ground and the head-on one lands",
             "damage %d-%d - they barely hurt; they take standing still off the table" % p["damage"],
         ]
 
@@ -1071,8 +1246,11 @@ def draw_pattern(ax, name, t, small=False, rose=None, show_overlay=True):
         draw_chains(ax, chains, colour)
 
     if rose is not None:
-        draw_rose(ax, rose, REF_POS, length=(12.0 if p["handler"] == "wisps" else 17.0)
-                  if not small else 13.0, lw=1.4 if small else 2.2)
+        # Scaled to the plan: on a 152-stud half-span a 17-stud rose is a
+        # speck, and the rose is the verdict the whole diagram is about.
+        reach = PLAN_SPAN * (0.15 if p["handler"] == "wisps" else 0.19)
+        draw_rose(ax, rose, REF_POS, length=reach if not small else reach * 0.8,
+                  lw=1.4 if small else 2.2)
     if here is not REF_POS:
         # the start is where the rose was measured from; say so
         ax.add_patch(Circle(REF_POS, 2.0, facecolor="none", edgecolor=GHOST, lw=1.0,
@@ -1088,43 +1266,48 @@ _WISP_ANSWER = {}
 
 
 def wisp_answer():
-    """THE ANSWER, SEARCHED RATHER THAN ASSERTED.
+    """THE ANSWER, SEARCHED RATHER THAN ASSERTED - AND ON OPEN GROUND.
 
-    The book says "orbit a breakwater hulk tight enough that their turn rate
-    overshoots", and the turn radius really is 15.6 studs - but simply going
-    as tight as possible does NOT work, because a very tight circle stops you
-    covering ground and the wisp coming straight down your bearing arrives
-    anyway. So sweep every hulk and every orbit radius from 6 to 15 studs,
-    integrating the real homing law against a real walking path, and take the
-    first radius that sits in the middle of a band at least three steps wide
-    (a knife-edge radius is not an answer a player can execute), preferring
-    the hulk with the shortest approach. Deterministic: no rng, fixed grid.
+    The old answer was "orbit a breakwater hulk tighter than their turn
+    radius". The hulks are gone and the floor is plain, so the answer has to
+    be one the sand itself supports. It is, and it always was: the obstacle
+    was never load-bearing. A player has NO turn radius - a Humanoid changes
+    heading instantly - while a wisp at speed `s` turning `homingDeg`/s cannot
+    fly a circle tighter than s / rad(homingDeg). Any circle the player runs
+    inside that radius is a circle the wisp physically cannot hold, so it
+    overshoots, swings wide, and comes back to overshoot again. No hulk is
+    needed to make that true; a patch of empty sand is enough.
 
-    Returns (hulk index, orbit radius, list of survivors-per-wisp).
+    Searched, not asserted, because tighter is NOT monotonically better: below
+    about 5 studs the orbit stops covering ground and the wisp that is already
+    head-on simply arrives. So sweep orbit radius 4 - 16 studs against four
+    placements of the circle relative to the player, integrate the real homing
+    law, and take the MIDDLE of the widest band that survives - a knife-edge
+    radius is not an answer a player can execute. Deterministic: fixed grid,
+    no rng.
+
+    Returns (orbit centre bearing offset in degrees, orbit radius).
     """
     if _WISP_ANSWER:
         return _WISP_ANSWER["v"]
     p = ATTACKS["wisps"]
-    radii = [6.0 + 0.5 * i for i in range(19)]
+    radii = [4.0 + 0.5 * i for i in range(25)]
+    # Where the circle sits relative to the player, as a bearing offset from
+    # "directly away from the boss". Outward first, so a tie prefers the
+    # circle that keeps the most sand between the player and the guns.
+    placements = [0.0, 90.0, -90.0, 180.0]
     best = None
-    for hi in range(len(WK_HULKS_BLENDER)):
-        cx, cz = blender_to_xz(*WK_HULKS_BLENDER[hi])
-        approach = math.hypot(cx - REF_POS[0], cz - REF_POS[1])
-        ok = []
-        for r in radii:
-            path, _, _ = hulk_orbit_path(hi, r)
-            tracks = wisp_tracks(p, REF_BEARING, path)
-            ok.append(all(t["caught"] is None for t in tracks))
+    for place in placements:
+        ok = [all(t["caught"] is None for t in wisp_tracks(p, REF_BEARING, orbit_path(place, r)[0]))
+              for r in radii]
         run, start = 0, None
         for i, good in enumerate(ok + [False]):
             if good:
                 run += 1
                 start = i - run + 1 if run == 1 else start
             else:
-                if run >= 3:
-                    mid = radii[start + run // 2]
-                    if best is None or approach < best[2]:
-                        best = (hi, mid, approach)
+                if run >= 3 and (best is None or run > best[2]):
+                    best = (place, radii[start + run // 2], run)
                 run = 0
     if best is None:  # nothing survives - say so rather than draw a lie
         _WISP_ANSWER["v"] = (None, 9.0)
@@ -1133,32 +1316,29 @@ def wisp_answer():
     return _WISP_ANSWER["v"]
 
 
-def hulk_orbit_path(hulk_index=4, orbit_r=8.5):
-    """The wisp answer, as a path: walk to a breakwater hulk and round it
-    inside the wisps' own 15.6-stud turn circle."""
-    cx, cz = blender_to_xz(*WK_HULKS_BLENDER[hulk_index])
-    # start where the reference challenger stands, walk to the hulk, then orbit
+def orbit_path(place_deg=0.0, orbit_r=8.5):
+    """The wisp answer, as a path: from where you stand, run a circle of
+    radius `orbit_r` on bare sand - tighter than anything a wisp can fly. The
+    circle's centre is `orbit_r` studs from the player along the arena's
+    outward radial, rotated by `place_deg`, so the player is ON the circle at
+    t = 0 and there is no approach walk to get wrong."""
     sx, sz = REF_POS
-    d = math.hypot(cx - sx, cz - sz)
-    approach = max(0.0, (d - orbit_r) / PLAYER_SPEED)
+    out = math.degrees(math.atan2(sz, sx)) + place_deg
+    d = bearing(out)
+    cx, cz = sx + d[0] * orbit_r, sz + d[1] * orbit_r
     omega = PLAYER_SPEED / orbit_r
+    a0 = math.atan2(sz - cz, sx - cx)
 
     def path(t):
-        if t < approach:
-            f = t / approach if approach > 0 else 1.0
-            tx = cx + (sx - cx) * (orbit_r / d)
-            tz = cz + (sz - cz) * (orbit_r / d)
-            return (sx + (tx - sx) * f, sz + (tz - sz) * f)
-        a0 = math.atan2(sz - cz, sx - cx)
-        a = a0 + omega * (t - approach)
+        a = a0 + omega * max(0.0, t)
         return (cx + math.cos(a) * orbit_r, cz + math.sin(a) * orbit_r)
 
     return path, (cx, cz), orbit_r
 
 
 def draw_wisps(ax, p, t, small=False):
-    hi, orb = wisp_answer()
-    path, hulk, orbit_r = hulk_orbit_path(hi if hi is not None else 4, orb)
+    place, orb = wisp_answer()
+    path, hulk, orbit_r = orbit_path(place if place is not None else 0.0, orb)
     tracks = wisp_tracks(p, REF_BEARING, path)
     here = path(min(t, p["lifetime"]))
     colour = SKIN["wisp"]
@@ -1174,8 +1354,8 @@ def draw_wisps(ax, p, t, small=False):
                             edgecolor="none", zorder=13))
         ax.add_patch(Circle(pts[k], tr["radius"], facecolor=colour, edgecolor=BG,
                             lw=0.6, zorder=14))
-    # the player's own path: walk to the nearest hulk, then round it inside
-    # the wisps' own turn circle
+    # the player's own path: a circle on bare sand, tighter than anything a
+    # wisp can fly
     ts = np.linspace(0, min(t, p["lifetime"]), 400)
     pts = np.array([path(float(x)) for x in ts])
     ax.plot(pts[:, 0], pts[:, 1], color=GHOST, lw=2.0, alpha=0.95, zorder=18)
@@ -1195,9 +1375,11 @@ def draw_wisps(ax, p, t, small=False):
                 "a wisp's tightest possible turn: r %.1f" % n["turn_r"],
                 color=colour, fontsize=7.6, ha="center", va="top", zorder=24,
                 bbox=dict(boxstyle="round,pad=0.2", fc=BG, ec="none", alpha=0.72))
-        ax.text(hulk[0] - 15, hulk[1] + 15,
-                "your orbit: r %g round the\nnearest hulk. Inside r %.1f,\nso all three overshoot "
-                "for\nthe full %g s" % (orbit_r, n["turn_r"], ATTACKS["wisps"]["lifetime"]),
+        ax.text(hulk[0] - 22, hulk[1] + 22,
+                "your orbit: r %g on BARE SAND.\nNo hulk, no cover — a player has no\nturn "
+                "radius and a wisp has one, and\nthat asymmetry is the whole answer.\nInside r "
+                "%.1f, so all %d overshoot for\nthe full %g s"
+                % (orbit_r, n["turn_r"], ATTACKS["wisps"]["count"], ATTACKS["wisps"]["lifetime"]),
                 color=GHOST, fontsize=7.6, ha="right", va="center", zorder=24,
                 bbox=dict(boxstyle="round,pad=0.2", fc=BG, ec="none", alpha=0.72))
     return here
@@ -1251,27 +1433,23 @@ def info_lines(name, rose):
                               "anything they can fly"))
     else:
         lines.append(("note", "%d of %d constant headings at %g studs/s survive the whole "
-                              "pattern from r 48" % (ok, len(rose), PLAYER_SPEED)))
+                              "pattern from r %g" % (ok, len(rose), PLAYER_SPEED, PARTY_R)))
         lines.append(("note", "Simulated against the real hit test — the ball's own radius "
                               "against the root point"))
     lines.append(("gap", ""))
     lines.append(("head", "AND THE GUN DECKS SCALE IT"))
-    # NOT every pattern, in fact: ProjectileService runs `countOf(n, ctx.scale)`
-    # for broadside / grapeshot / chainshot / anchorsweep / wisps, but
-    # PATTERNS.slewfire takes `math.max(1, p.arms)` with no scale at all, so
-    # the spiral thins only by stopping. Say which one this is.
-    if p["handler"] == "slewfire":
-        lines.append(("note", "slewfire is the ONE pattern whose count ignores the scale: "
-                              "PATTERNS.slewfire reads p.arms raw"))
-        lines.append(("note", "so the spiral stays %d arms thick until the last deck falls, "
-                              "then stops dead for %g s" % (p["arms"], 4.0)))
-    else:
-        key = ("count" if "count" in p else "pellets" if "pellets" in p else "pairs")
-        counts = ["%d" % count_of(p[key], 0.4 + 0.6 * (a / 4.0)) for a in (4, 3, 2, 1)]
-        lines.append(("note", "%s: %s with 4 / 3 / 2 / 1 gun decks standing (countOf, "
-                              "scale 0.4 + 0.6 x alive/4)" % (key, " → ".join(counts))))
-        lines.append(("note", "all four down: %g s of true silence, then a skeleton crew at "
-                              "%g%% density — the burst window" % (4.0, 30)))
+    # EVERY pattern, now including slewfire: PATTERNS.slewfire used to read
+    # `math.max(1, p.arms)` raw and was the single row that did not thin,
+    # contradicting CreatureService's own header. Fixed 2026-09-06.
+    key = ("arms" if p["handler"] == "slewfire" else
+           "count" if "count" in p else "pellets" if "pellets" in p else "pairs")
+    counts = ["%d" % count_of(p[key], 0.4 + 0.6 * (a / 4.0)) for a in (4, 3, 2, 1)]
+    lines.append(("note", "%s: %s with 4 / 3 / 2 / 1 gun decks standing (countOf, "
+                          "scale 0.4 + 0.6 x alive/4)" % (key, " → ".join(counts))))
+    lines.append(("note", "and the shot leaves the DECKS that are left, so silencing one "
+                          "moves where the fire comes from"))
+    lines.append(("note", "all four down: %g s of true silence, then a skeleton crew at "
+                          "%g%% density — the burst window" % (4.0, 30)))
     return lines
 
 
@@ -1311,11 +1489,11 @@ def render_pattern(name, out_dir):
     ax = fig.add_axes([0.012, 0.025, 0.500, 0.885])
     setup_plan(ax)
     draw_pattern(ax, name, main_t, rose=rose)
-    ax.text(-99, -99, "t = %.2f s after the guns fire" % main_t, color=INK,
+    ax.text(-PLAN_SPAN * 0.99, -PLAN_SPAN * 0.99, "t = %.2f s after the guns fire" % main_t, color=INK,
             fontsize=11.0, ha="left", va="top")
 
     # the annotation column
-    axi = fig.add_axes([0.530, 0.430, 0.455, 0.470])
+    axi = fig.add_axes([0.530, 0.408, 0.455, 0.492])
     axi.axis("off")
     y = 1.0
     for kind, text in info_lines(name, rose):
@@ -1337,18 +1515,18 @@ def render_pattern(name, out_dir):
 
     # three moments, so the motion reads
     for i, mt in enumerate(moments):
-        axm = fig.add_axes([0.530 + i * 0.157, 0.078, 0.148, 0.262])
+        axm = fig.add_axes([0.530 + i * 0.157, 0.070, 0.148, 0.256])
         setup_plan(axm)
         draw_pattern(axm, name, mt, small=True, rose=None, show_overlay=True)
-        axm.text(0, 101, "t = %.2f s" % mt, color=INK_DIM, fontsize=8.6, ha="center",
+        axm.text(0, PLAN_SPAN * 1.01, "t = %.2f s" % mt, color=INK_DIM, fontsize=8.6, ha="center",
                  va="top")
 
-    fig.text(0.530, 0.382, "THE SAME MOVE, THREE MOMENTS", color=INK_FAINT, fontsize=8.6,
+    fig.text(0.530, 0.362, "THE SAME MOVE, THREE MOMENTS", color=INK_FAINT, fontsize=8.6,
              ha="left", va="top", fontweight="bold")
     fig.text(0.975, 0.008,
              "assets/wrack_patterns_gen.py — geometry ported from ProjectileService.luau, "
-             "numbers from Bosses.luau. The hulks are landmarks, not cover: nothing in the "
-             "bullet sim occludes a shot.",
+             "numbers from Bosses.luau. The floor is plain: nothing on it occludes a shot, "
+             "and nothing on it is cover.",
              color=INK_FAINT, fontsize=7.6, ha="right", va="bottom")
 
     path = os.path.join(out_dir, "wrack_pattern_%s.png" % name)
@@ -1363,11 +1541,13 @@ def render_sheet(out_dir):
     fig.text(0.030, 0.993, "Admiral Wrack, the Fleet-Eater — nine attack patterns",
              color=INK, fontsize=28, fontweight="bold", ha="left", va="top")
     fig.text(0.030, 0.972,
-             "The Careenage, plan view, everything to scale. Sand walkable to r 78; the party is "
-             "dropped on r 48; six breakwater hulks at r 33-52; four gun decks in brass.\n"
-             "Mint is the answer. The mint/red rose at the player dot is every constant heading a "
-             "%g stud/s walk could take from the tell's first frame — mint survives the whole "
-             "pattern, red does not." % PLAYER_SPEED,
+             "The Careenage as rebuilt, plan view, everything to scale. Sand walkable to r %g "
+             "and EMPTY — no cover anywhere on it; the party is dropped on r %g; the palisade "
+             "rings it at r %g-%g;\nthe four gun decks are the brass, and every ball in the "
+             "fight leaves one. Mint is the answer. The mint/red rose at the player dot is every "
+             "constant heading a\n%g stud/s walk could take from the tell's first frame — mint "
+             "survives the whole pattern, red does not."
+             % (SAND_R, PARTY_R, FLEET_R[0], FLEET_R[1], PLAYER_SPEED),
              color=INK_DIM, fontsize=10.6, ha="left", va="top")
 
     # the legend strip
@@ -1386,13 +1566,7 @@ def render_sheet(out_dir):
     lx += 0.112
     fig.patches.append(plt.Rectangle((lx - 0.005, ly - 0.0035), 0.010, 0.007,
                                      transform=fig.transFigure, facecolor=BRASS))
-    fig.text(lx + 0.010, ly, "gun decks (shoot these)", color=INK, fontsize=10.0,
-             ha="left", va="center")
-    lx += 0.145
-    fig.patches.append(plt.Rectangle((lx - 0.007, ly - 0.0035), 0.014, 0.007,
-                                     transform=fig.transFigure, facecolor=HULK,
-                                     edgecolor=HULK_EDGE, lw=0.8))
-    fig.text(lx + 0.012, ly, "breakwater hulk — a landmark, NOT cover",
+    fig.text(lx + 0.010, ly, "gun deck — shoot these, and every ball in the fight leaves one",
              color=INK, fontsize=10.0, ha="left", va="center")
 
     # rows: title, square tile, two caption lines. Laid out explicitly so the
@@ -1417,17 +1591,17 @@ def render_sheet(out_dir):
                  color=INK_FAINT, fontsize=9.5, ha="right", va="top")
         fig.text(x0, y0 - 0.008, ANSWER[name], color=GHOST, fontsize=9.6,
                  ha="left", va="top")
-        fig.text(x0, y0 - 0.026, overlay_notes_cache[name][0], color=INK_DIM,
-                 fontsize=8.4, ha="left", va="top")
+        fig.text(x0, y0 - 0.026, "\n".join(textwrap.wrap(overlay_notes_cache[name][0], 62)),
+                 color=INK_DIM, fontsize=8.4, ha="left", va="top", linespacing=1.35)
 
     fig.text(0.030, 0.014,
              "Generated by assets/wrack_patterns_gen.py from Bosses.luau + ProjectileService.luau + "
              "CreatureService.luau + arena_gen.py. Nothing here is authored by hand; broadside's gap\n"
              "bearing is seeded (it is random in the fight) so the render reproduces exactly. Ball "
-             "counts are with all four gun decks alive: every pattern except slewfire scales its "
-             "count by\n0.4 + 0.6 x (decks alive / 4), and every pattern stops dead for %g s when "
-             "the last deck falls. Nothing in the bullet sim occludes a shot, so the hulks stop "
-             "nothing." % 4.0,
+             "counts are with all four gun decks alive: EVERY pattern scales its count by\n"
+             "0.4 + 0.6 x (decks alive / 4) — slewfire included, since 2026-09-06 — and every "
+             "pattern stops dead for %g s when the last deck falls. The floor is empty, so "
+             "nothing\nanywhere in the arena stops a shot: every answer below is a walk." % 4.0,
              color=INK_FAINT, fontsize=8.8, ha="left", va="bottom")
 
     path = os.path.join(out_dir, "wrack_patterns_sheet.png")
@@ -1453,9 +1627,9 @@ def main():
     for name in ORDER:
         p = ATTACKS[name]
         n = ring_numbers(name)
-        rose = escape_rose(name, REF_POS, headings=36)
+        rose = escape_rose(name, REF_POS)
         ok = sum(1 for _, s in rose if s)
-        print("HANDOFF %-15s live at t=%.2f: %3d balls  ·  escape rose %2d/36  ·  %s"
+        print("HANDOFF %-15s live at t=%.2f: %3d balls  ·  escape rose %2d/72  ·  %s"
               % (name, MOMENTS[name][0], len(live_balls(name, MOMENTS[name][0])[0])
                  + 2 * len(live_balls(name, MOMENTS[name][0])[1]), ok,
                  "; ".join("%s %.1f" % (k, v) for k, v in sorted(n.items()))))

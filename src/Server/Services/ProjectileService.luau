@@ -88,22 +88,34 @@ local ProjectileService = {}
 
 -- ============================================================ tuning
 
--- The hard cap. A phase-3 Wrack with every pattern overlapping peaks around
--- 140 live balls; 320 is double that, so the cap is a backstop against a bug
--- (or a zombie owner), never a thing the fight bumps into. Oldest retires
--- first: the wall you already dodged dies before the one still coming at you.
+-- The hard cap. RE-MEASURED after the 132-stud retune, which raised both the
+-- counts and the flight times: the heaviest single pattern is now
+-- broadsideHeavy at 136 live balls (four volleys of forty, all in the air at
+-- once because it takes 3.6 s to cross the beach), and slewfireFast holds 75.
+-- A phase-3 overlap of those two with a grapeshotTwin peaks near 230. 320 is
+-- still a backstop against a bug (or a zombie owner) rather than a thing the
+-- fight bumps into, but the margin is now 1.4x, not 2.3x - anything that adds
+-- another dense row to phase 3 should re-measure rather than assume. Oldest
+-- retires first: the wall you already dodged dies before the one still coming
+-- at you.
 local MAX_LIVE = 320
 
--- Flight plane, above World.WATER_Y. The Careenage's sand sits z ~0.7-1.5
--- above the waterline, so a root part is ~3.5-4.5 up; 3.0 puts the balls at
--- chest height on the flat.
-local FLIGHT_Y = 3.0
+-- Flight plane, above World.WATER_Y. RE-SET FOR THE REBUILT CAREENAGE, whose
+-- beach is no longer a flat shoal: `WK_SEA_Z` .. `WK_HEAD_Z` in arena_gen.py
+-- run +0.45 at the water's edge to +4.85 at the head, a 4.4-stud rise across
+-- the walkable floor. The old 3.0 was chest height on the old flat and is
+-- BELOW THE SAND over the whole upper half of the new one - balls buried in
+-- the beach for the entire second half of their flight. 5.5 clears the head of
+-- the beach (+0.65 over the highest walkable ground) and is still only head
+-- height down at the wrack line.
+local FLIGHT_Y = 5.5
 
 -- Vertical reach of a ball. Generous on purpose, and the same judgement as
--- CreatureService's BOSS_HEIGHT_TOLERANCE: a hitbox that misses because the
--- shoal dishes, or because the player climbed a breakwater hulk, would make
--- the fight feel broken and would make hulk-camping a free win. Camping one
--- spot is supposed to lose.
+-- CreatureService's BOSS_HEIGHT_TOLERANCE: with one flight plane over a beach
+-- that rises 4.4 studs from rim to head, a tighter tolerance would make the
+-- same shot connect at the water's edge and miss at the top of the sand.
+-- Camping one spot is supposed to lose, and it cannot lose to a hitbox that
+-- is only true at one height.
 local HEIGHT_TOLERANCE = 12
 
 -- Position stream for homing/linked volleys. 0.22s is the lure system's
@@ -400,9 +412,12 @@ local function tick(dt: number)
 		end
 
 		if bullet.homing > 0 then
-			-- Turn-rate limited, not snap-to-target: a wisp that can only
-			-- turn so fast is a wisp you can shake by orbiting a hulk, which
-			-- is the answer the pattern is supposed to have.
+			-- Turn-rate limited, not snap-to-target. At speed 19 and 70
+			-- deg/s that is a 15.6-stud turn radius, and a player has no
+			-- turn radius at all: a circle run tighter than 15.6 studs is a
+			-- circle the wisp cannot hold, so it overshoots. That is the
+			-- answer the pattern is supposed to have, and it needs no
+			-- obstacle - bare sand is enough.
 			local target = bullet.chase
 			local root = target and target.Character and target.Character:FindFirstChild("HumanoidRootPart")
 			if not root then
@@ -570,6 +585,68 @@ local function countOf(n: number, scale: number): number
 	return math.max(1, math.round(n * (scale or 1)))
 end
 
+-- ============================================================ firing from the guns
+--
+-- WHERE A PATTERN IS BORN. Until 2026-09-06 every ball in the fight appeared
+-- on a circle of radius `spawnAt` around `ctx.centre` - the middle of the hull
+-- - while the thing the player is told to shoot is four gun-deck batteries
+-- standing up to 40 studs out and 35 studs up. The batteries only set the
+-- COUNT. So the fight said "silence the brass" and the brass fired nothing.
+--
+-- `ctx.centre` keeps its one remaining job: it is what `bound` is measured
+-- from, which must stay the ARENA centre or a pattern fired from the bow would
+-- be retired on a circle drawn round the bow. Two new fields say where the
+-- shot actually leaves:
+--
+--   ctx.muzzle : Vector3?     one gun. An AIMED pattern (grapeshot, chainshot,
+--                             anchorsweep) fires its whole fan from here, and
+--                             `ctx.aim` is re-aimed from here by the caller.
+--   ctx.decks  : {Vector3}?   every LIVE gun, as flat offsets from ctx.centre.
+--                             A RADIAL pattern (broadside, slewfire) picks one
+--                             per ball; wisps take one lantern each.
+--
+-- Both are optional and both fall back to the centre, so any other boss that
+-- ever borrows these patterns behaves exactly as before.
+local function muzzleOf(ctx): Vector3
+	return ctx.muzzle or ctx.centre
+end
+
+-- THE RADIAL RULE, and why it is a projection rather than the whole offset.
+--
+-- A radial pattern's ball has an authored BEARING and the wall it belongs to
+-- is read as a ring with one hole in it. Spawning each ball at its deck's full
+-- offset translates every deck's arc sideways by up to 40 studs, which tears a
+-- 60-stud seam between the last ball of one deck's sector and the first of the
+-- next: three permanent extra gaps, at fixed bearings, in the one pattern
+-- whose entire identity is "exactly ONE gap". Pre-standing in a seam would
+-- beat it every time.
+--
+-- So the deck contributes only its RANGE along the ball's own ray. Every ball
+-- keeps its authored bearing exactly - the gap is exactly `gapDeg`, and it is
+-- the only gap - and what the decks change is how far out the wall is born on
+-- each side: the muzzle locus bulges toward the live guns and flattens where
+-- one has been silenced. The largest seam this can produce is a ~15-stud
+-- difference in birth radius between neighbouring sectors, which is a ragged
+-- wall, not a hole.
+local function deckRunOut(ctx, dir: Vector3): number
+	local decks = ctx.decks
+	if not decks or #decks == 0 then
+		return 0
+	end
+	local best, bestCos = 0, -math.huge
+	for _, m in decks do
+		local mag = m.Magnitude
+		if mag > 0.001 then
+			local along = m.X * dir.X + m.Z * dir.Z
+			local cosine = along / mag
+			if cosine > bestCos then
+				bestCos, best = cosine, along
+			end
+		end
+	end
+	return math.max(best, 0)
+end
+
 -- ============================================================ patterns
 --
 -- Every knob comes off the attack row's `p` table (Bosses.luau), the way
@@ -591,13 +668,22 @@ PATTERNS.broadside = function(batch, ctx, p)
 	local spawnAt = p.spawnAt or 16
 	-- Balls are spread over the circle MINUS the gap, so thinning the volley
 	-- widens every lane evenly instead of tearing a second hole in the wall.
+	--
+	-- INCLUSIVE OF BOTH ENDS, so `gapDeg` MEANS THE EMPTY WEDGE. The old form
+	-- laid `count` balls at half-step insets across a span of TAU - gap, which
+	-- leaves the last ball a half-step short of the first: the real hole was
+	-- gapDeg PLUS one step - 48.8 degrees against an authored 34, a 44% lie in
+	-- the one number the whole pattern is read by. Now the first and last ball
+	-- sit exactly on the edges of the wedge, and the wedge is exactly `gapDeg`.
 	local span = math.pi * 2 - gap
-	local step = span / count
+	local step = if count > 1 then span / (count - 1) else 0
 	local start = ctx.gap + gap * 0.5
 	for i = 0, count - 1 do
-		local dir = bearing(start + step * (i + 0.5))
+		local dir = bearing(start + step * i)
 		add(batch, ctx, {
-			pos = ctx.centre + dir * spawnAt,
+			-- Born at the range of whichever LIVE deck faces this bearing;
+			-- see deckRunOut for why it is the projection and not the offset.
+			pos = ctx.centre + dir * (spawnAt + deckRunOut(ctx, dir)),
 			vel = dir * speed,
 			radius = p.radius or 2.4,
 			lifetime = p.lifetime or 4.2,
@@ -616,10 +702,15 @@ PATTERNS.grapeshot = function(batch, ctx, p)
 	local spawnAt = p.spawnAt or 14
 	local base = math.atan2(ctx.aim.Z, ctx.aim.X)
 	local step = if pellets > 1 then fan / (pellets - 1) else 0
+	-- ONE GUN FIRES THE WHOLE FAN. `ctx.aim` was already re-aimed from this
+	-- muzzle by the caller, so the cone still covers the target it was
+	-- telegraphed at - which it would not if the bearing were kept from the
+	-- centre and the origin moved 40 studs off it.
+	local muzzle = muzzleOf(ctx)
 	for i = 0, pellets - 1 do
 		local dir = bearing(base - fan * 0.5 + step * (i + (ctx.phase or 0)))
 		add(batch, ctx, {
-			pos = ctx.centre + dir * spawnAt,
+			pos = muzzle + dir * spawnAt,
 			vel = dir * speed,
 			radius = p.radius or 1.6,
 			lifetime = p.lifetime or 2.4,
@@ -640,12 +731,13 @@ PATTERNS.chainshot = function(batch, ctx, p)
 	local spin = math.rad(p.spinDeg or 126)
 	local base = math.atan2(ctx.aim.Z, ctx.aim.X)
 	local step = if pairs_ > 1 then fan / (pairs_ - 1) else 0
+	local muzzle = muzzleOf(ctx)
 	batch.sync = true
 	for i = 0, pairs_ - 1 do
 		local angle = base - fan * 0.5 + step * i
 		local dir = bearing(angle)
 		local side = rotateFlat(dir, math.pi * 0.5)
-		local origin = ctx.centre + dir * spawnAt
+		local origin = muzzle + dir * spawnAt
 		local lead = add(batch, ctx, {
 			pos = origin + side * half,
 			vel = dir * speed,
@@ -669,13 +761,24 @@ end
 -- advances every tick. Read the rotation and walk against it - the arms lay
 -- down fixed spiral lanes and crossing them the short way is the answer.
 PATTERNS.slewfire = function(batch, ctx, p)
-	local arms = math.max(1, p.arms or 2)
+	-- SCALES LIKE EVERY OTHER PATTERN. This read `math.max(1, p.arms)` until
+	-- 2026-09-06 and was the single row whose density ignored `ctx.scale`,
+	-- flatly contradicting the header on CreatureService's Wrack section
+	-- ("EVERY pattern's ball count scales with how many batteries still
+	-- stand"). The header was the design and this was the bug: a spiral that
+	-- stays two arms thick with one gun left makes silencing the other three
+	-- invisible in the one pattern that runs for five continuous seconds.
+	-- `arms` is the honest analogue of `count` here - it is what sets the
+	-- balls-per-second the spiral lays down.
+	local arms = countOf(p.arms or 2, ctx.scale)
 	local speed = p.speed or 22
 	local spawnAt = p.spawnAt or 14
 	for i = 0, arms - 1 do
 		local dir = bearing(ctx.gap + (math.pi * 2 / arms) * i)
 		add(batch, ctx, {
-			pos = ctx.centre + dir * spawnAt,
+			-- The arm streams from whichever live deck it is sweeping past,
+			-- so a silenced battery leaves a visible flat in the spiral.
+			pos = ctx.centre + dir * (spawnAt + deckRunOut(ctx, dir)),
 			vel = dir * speed,
 			radius = p.radius or 2.0,
 			lifetime = p.lifetime or 4.5,
@@ -684,8 +787,9 @@ PATTERNS.slewfire = function(batch, ctx, p)
 end
 
 -- WISPS. A few slow homing lantern-lights. Weak on their own; they exist to
--- deny standing still and to make you use the breakwater hulks - each turns
--- at a fixed rate, so a tight orbit round a hulk makes them overshoot.
+-- deny standing still - each turns at a fixed rate, so a circle run tighter
+-- than their turn radius makes them overshoot, and a player has no turn
+-- radius. One lantern lifts off each live gun deck.
 PATTERNS.wisps = function(batch, ctx, p)
 	local count = countOf(p.count or 3, ctx.scale)
 	local speed = p.speed or 13
@@ -694,11 +798,18 @@ PATTERNS.wisps = function(batch, ctx, p)
 	local base = math.atan2(ctx.aim.Z, ctx.aim.X)
 	batch.sync = true
 	local targets = livingRoots()
+	-- ONE LANTERN PER DECK, round-robin over the guns still standing. They
+	-- home, so scattering the origin across the hull distorts no shape at all
+	-- - it only makes the brass visibly the thing that lit them, and makes
+	-- three decks down read as three fewer places they can come from.
+	local decks = ctx.decks
+	local nd = if decks then #decks else 0
 	for i = 0, count - 1 do
 		local dir = bearing(base - spread * 0.5 + (spread / math.max(count, 1)) * (i + 0.5))
 		local pick = if #targets > 0 then targets[(i % #targets) + 1].player else nil
+		local from = if nd > 0 then ctx.centre + decks[(i % nd) + 1] else ctx.centre
 		add(batch, ctx, {
-			pos = ctx.centre + dir * spawnAt,
+			pos = from + dir * spawnAt,
 			vel = dir * speed,
 			radius = p.radius or 2.2,
 			lifetime = p.lifetime or 11,
@@ -724,11 +835,12 @@ PATTERNS.anchorsweep = function(batch, ctx, p)
 	local ripple = p.ripple or 0.05
 	local base = math.atan2(ctx.aim.Z, ctx.aim.X)
 	local step = if count > 1 then arc / (count - 1) else 0
+	local muzzle = muzzleOf(ctx)
 	for i = 0, count - 1 do
 		local dir = bearing(base - arc * 0.5 + step * i)
 		local head = ripple * (count - 1 - i) * speed
 		add(batch, ctx, {
-			pos = ctx.centre + dir * (spawnAt + head),
+			pos = muzzle + dir * (spawnAt + head),
 			vel = dir * speed,
 			radius = p.radius or 3.4,
 			lifetime = p.lifetime or 5,
@@ -742,7 +854,11 @@ end
 --
 -- ctx = {
 --   owner   : the boss creature struct (damage source + lifetime authority)
---   centre  : Vector3  the gun platform / arena centre patterns radiate from
+--   centre  : Vector3  the ARENA centre. `bound` is measured from here, and
+--                      nothing else uses it any more - see muzzleOf.
+--   muzzle  : Vector3? the one gun an AIMED pattern fires from (nil = centre)
+--   decks   : {Vector3}? every live gun, as flat offsets from `centre`, for
+--                      the RADIAL patterns and for wisps (nil = centre)
 --   origin  : Vector3  the muzzle, for the client's flash
 --   aim     : Vector3  LATCHED firing bearing (flat unit)
 --   gap     : number   pattern-owned angle (broadside's gap, slewfire's deck)
