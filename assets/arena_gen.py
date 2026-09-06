@@ -960,52 +960,95 @@ def build_gnashroot():
 
 # ---------------------------------------------------------------- wrack
 #
-# ADMIRAL WRACK / the Careenage (wreck boss, design locked 2026-08-29):
-#   - a shallow TIDAL SHOAL where the drowned fleet came to die: wet ribbed
-#     sand, dished a little toward the middle, walkable out to r 78. The
-#     MIDDLE IS KEPT CLEAN on purpose (the Tidebreak lesson, 5db0f95) - the
-#     broadside walls, slam rings and chain sweeps all paint their telegraphs
-#     on this canvas. The only things standing on the open sand are the six
-#     named hulks; everything else out there is FLAT (the ripples are in the
-#     landform itself, the tide puddles and the haul furrows have no height
-#     to trip on).
-#   - THE BOUNDARY IS THE GROUNDED FLEET, not a reef: fifteen half-sunk hulls
-#     at r 80-88 tipped at every angle - on their beam ends, driven bow-up
-#     onto the shoal, picked to the ribs - with snapped masts leaning inward
-#     over the sand, spars crossing, rotted canvas still bent to the yards. A
-#     palisade of dead ships. It opens in ONE place: a 48-degree gap at the
-#     head of the shoal, which is the whole geography of the fight.
-#   - THE CAREENING CRADLE stands in that gap (bearing WK_HEAD_DEG): the
-#     timber frames a ship was hove down on, arching over the sand like a
-#     ruined nave, two of the six collapsed into it. This is where Wrack was
-#     hauled out, and where he starts.
-#   - GROUNDING FURROWS ploughed from the cradle to the centre - three grooves
-#     and their thrown-up berms, carved into _Base ITSELF so they catch light
-#     the way a gouge does, and only 0.45 studs deep so they are read and
-#     never climbed. They are his advance lane: he hauls himself down them on
-#     his own anchor chains once a phase.
-#   - THE SIX BREAKWATER HULKS (<Model>_Hulk1..6) at r 33-52, spread around
-#     the circle and deliberately CLEAR of the haul lane: chunks of wreck
-#     standing in the open sand, each tall and solid enough to break the line
-#     of sight from a broadside. Separate objects so the fight logic can find
-#     and progressively shatter each, and no two are the same shape - beam
-#     ends, capsized stern, strake stack, reared bow, standing midships,
-#     keel-up ribcage. Positions in the HANDOFF.
-#   - dressing at the EDGES only: half-buried admiralty anchors and mooring
-#     chain runs, barrels and crates spilled at the rim, tide wrack along the
-#     high-water line, and the island's own ghost-fire in the wreck sockets.
-#   - surf ring outside (named *_Foam: OceanController rides it on the tide
-#     for free), underwater skirt flaring to r 99.
+# ADMIRAL WRACK / the Careenage. REDESIGNED 2026-09-01 on the user's brief:
+# "completely redesign the island. make it much bigger without any clutter. i
+# like the design of the boss, but you need to make it usable for players. make
+# the floor walkable and plain without much decoration. and make sure that the
+# boss design fits in with the island and the placement of the boss."
 #
-# The BOSS MESH IS NOT BUILT HERE. Wrack is a beached man-of-war with an
-# admiral fused into her prow; he and the fight logic are separate later
-# passes. This builds the ground he fights on and the fiction around it.
+# WHAT THIS REPLACES. The first Careenage was a 78-stud shoal with six
+# breakwater hulks standing in the open sand at r 33-52, a collapsed careening
+# cradle arching over r 45-78, three grounding furrows ploughed down a haul
+# lane, tide puddles, spoil heaps, barrels and chain runs across the middle.
+# The hulks were justified as COVER FROM THE BROADSIDES. They were never cover:
+# ProjectileService.tick advances every ball by velocity and tests a sphere
+# against players - there is no raycast anywhere in it, so nothing in this game
+# occludes a bullet. All six ever did was block the player's own movement and
+# break up the floor the fight paints its telegraphs on. Deleting them costs
+# the fight nothing it actually had.
+#
+# THE FLOOR IS THE PRODUCT, and there are three rules under it.
+#
+#   1. WALKABLE SAND TO r 132 - a 264-stud field, 1.7x the old radius and 2.9x
+#      the area - with NOTHING standing on it. No object in this build has a
+#      single vertex inside r 132 below head height except _Base itself; the
+#      HANDOFF prints the measured clearance, because "I did not put anything
+#      there" is a claim and the export is the measurement.
+#
+#      Why 132 and not 150. The band the brief allows is 130-150 and the low
+#      end is the honest pick, because every stud past it is a stud the fight's
+#      own guns cannot reach. Reach is spawnAt + speed * lifetime, off
+#      Bosses.luau: anchorsweep 106, slewfire 113, chainshot 114, slewfireFast
+#      117, broadside 125, broadsideHeavy 128. Five of the nine patterns
+#      already die inside 130. At 132 the deadliest wall in the fight
+#      (broadsideHeavy) falls four studs short of the palisade - the outer ring
+#      reads as the last resort it should be, and the retune owed is a lifetime
+#      nudge rather than a redesign. At 150 that same wall would leave a
+#      22-stud rest area no gun can touch, all the way round.
+#
+#      And he still has to read as the centrepiece. From the far rim his
+#      87-stud hull subtends 2*atan(43.5/132) = 37 degrees - better than half a
+#      standard 70-degree FOV - and his masthead stands 21 degrees above the
+#      horizon. At 150 that falls to 33 and 18.
+#
+#   2. THE SHAPE IS A BEACH, NOT A DISH. A careenage is where a ship is hove
+#      down to have her bottom scraped, so the ground has to be something you
+#      could haul a ship onto: a broad foreshore, flat at the water's edge and
+#      rising gently inland. `_wk_beach` is that profile and NOTHING ELSE - a
+#      single smooth curve in y, so the contour lines are STRAIGHT and parallel
+#      and the fall line is legible from any camera. 0.45 studs at the water's
+#      edge (bearing WK_SEA_DEG), 1.05 through the middle where he lies, 4.85
+#      at the head of the beach. Steepest grade anywhere on it: 4.8%, at the
+#      top, which is 2.7 degrees - it cannot be tripped on, jumped off or
+#      stood behind, and a player will never once notice climbing it.
+#
+#      The old shoal's tidal ripples are GONE with the rest of the clutter, and
+#      not only for tidiness: they were near-concentric, 0.6 studs peak to
+#      peak, and the signature attack of this fight is three concentric rings
+#      of cannonballs with one gap in them. A ringed floor under a ringed
+#      telegraph is the worst pattern read available.
+#
+#   3. DECORATION ONLY AT THE BOUNDARY, and the boundary is the same idea it
+#      always was, scaled out: a PALISADE OF DEAD SHIPS. Twenty-four half-sunk
+#      hulls bedded at r 140-152, on their beam ends, picked to the ribs, a
+#      few driven bow-up and reared steep, masts leaning in overhead and canvas
+#      still bent to the yards. It opens in ONE place - WK_FLEET_GAP_DEG of
+#      clear water at bearing WK_SEA_DEG - and that is the mouth of the
+#      careenage, the low end of the beach, and the only bearing a player can
+#      read out of the arena. Everything else out there is ground tackle: four
+#      drowned admiralty anchors and their chain runs, a tide-wrack line along
+#      the water's edge, the ghost fleet's own sea-fire, and the surf ring.
+#
+# WHY HE FITS WHERE HE LIES. boss_gen authors him heeled 48 degrees about his
+# own x axis, which puts his masts and rigging over +y and his barnacled
+# bottom, his exposed keel and the Keel battery under -y. This beach falls
+# toward +y. So he lies ALONG the contours with his masts down the slope toward
+# the water and his scraped bottom turned up the beach at the men who would
+# have been working it - which is exactly what a ship beached at the top of the
+# tide does when the water leaves her. The ground under his 47-stud beam varies
+# 0.80 to 1.41 studs across that heel, uphill under the bared side, and his own
+# `Wrack_Base` bedding (4.5 studs thick) swallows the difference. The centre of
+# the beach is held at 1.05 studs, the exact height the old shoal had, so his
+# placement does not move by a hair.
+#
+# The BOSS MESH IS NOT BUILT HERE - assets/boss_gen.py owns it, and this pass
+# does not touch it. This builds the ground he lies on.
 #
 # Palette and carpentry both come straight off Wreckwater (island_gen.py's
-# wreck COLORS and its `_wr_` ship helpers), so the island's graveyard and the
-# arena read as timber cut in one yard. Every name here is WK_/`_wr_`-scoped
-# and every material datablock is named by `finish` after its own object
-# (WrackArena_*), so nothing this arena creates can be reused by another one.
+# wreck COLORS and its `_wr_` ship helpers). Every name here is WK_/`_wr_`
+# scoped and every material datablock is `M_Wrack_*` - disjoint from the boss's
+# own `M_Wrack_Adm*`, because `make_material` caches datablocks BY NAME and a
+# collision silently repaints across models with build order picking the winner.
 
 
 # ------------------------------------------------- wrack: ship carpentry
@@ -1026,8 +1069,8 @@ def _wr_finish(name, bm, color, material):
     a material called "Sand" silently repaint each other and build order picks
     the winner. Every material this arena creates is therefore `M_Wrack_*`:
     arena-scoped, matching the island packs' own M_ convention, and shareable
-    between objects that genuinely are the same timber (the fleet's planking
-    and the odd-numbered hulks, say) without ever reaching another arena."""
+    between objects that genuinely are the same timber without ever reaching
+    another arena - or the boss, whose own are `M_Wrack_Adm*`."""
     mesh = bpy.data.meshes.new(name)
     bm.to_mesh(mesh)
     bm.free()
@@ -1051,7 +1094,7 @@ def _wr_frame(pos, yaw=0.0, pitch=0.0, roll=0.0):
 
 def _wr_beam(bm, frame, p0, p1, width, thick, twist=0.0):
     """A squared timber spanning frame-local p0 -> p1: ribs, wales, deck beams,
-    cradle legs, strakes, chain links. The workhorse of a shipbreaker's yard."""
+    strakes, chain links. The workhorse of a shipbreaker's yard."""
     a, b = Vector(p0), Vector(p1)
     axis = b - a
     if axis.length < 1e-6:
@@ -1223,64 +1266,108 @@ def _wr_chain(bm, p0, p1, links, size, sag=0.0):
         _wr_beam(bm, _WK_WORLD, c0, c1, size * 1.7, size * 0.55, twist=i * math.pi / 2)
 
 
-# ------------------------------------------------- wrack: the shoal itself
+# ------------------------------------------------- wrack: the beach itself
 
-# Radial profile of the shoal: (radius, height). A shallow DISH - the flat
-# sags toward the middle, which is where the tide leaves its water. Walkable
-# sand to WK_SAND_R, then the awash flat the fleet lies in, then the skirt.
+WK_SAND_R = 132.0  # WALKABLE SAND. Nothing stands on it. See the header.
+WK_SEA_DEG = 90.0  # downhill: the water, the mouth of the palisade, the wrack line
+WK_HEAD_DEG = (WK_SEA_DEG + 180.0) % 360.0  # uphill: the head of the beach
+
+# The three heights that define the beach. CENTRE is held at the old shoal's
+# own centre height so the boss's placement does not move; SEA is the water's
+# edge and is the number the waterline rule is decided by (nothing walkable may
+# sit below z 0, and BossArenaService.WATERLINE_TOLERANCE is 0.25, so this is
+# 0.45 studs of daylight at the lowest walkable point in the arena); HEAD is
+# the top of the beach.
+WK_SEA_Z = 0.45
+WK_CENTRE_Z = 1.05
+WK_HEAD_Z = 4.85
+
+# The exponent that makes the curve pass through WK_CENTRE_Z at the middle,
+# SOLVED rather than typed: the fall line's parameter is 0.5 at the centre, so
+# the shape is pinned by the three heights above and nothing else can drift out
+# of agreement with them. Works out at ~2.87 - flat at the water's edge,
+# steepening to 4.8% (2.7 degrees) at the head, which is a real foreshore and
+# is still nothing at all underfoot.
+WK_BEACH_P = math.log((WK_CENTRE_Z - WK_SEA_Z) / (WK_HEAD_Z - WK_SEA_Z)) / math.log(0.5)
+
+WK_FLEET_R = (140.0, 152.0)  # the palisade: where the grounded hulls START
+WK_FLEET_GAP_DEG = 46.0  # the mouth, centred on WK_SEA_DEG
+
+# THE CLEARANCE THE PALISADE OWES THE FLOOR. A ship on her beam ends combs her
+# rib cage out sideways at ankle height, and a mast leaning in over the sand
+# comes down as it goes; both are wanted, and both will walk into the arena if
+# nobody stops them - the first build of this redesign put a rib at z 1.3 four
+# studs inside the rim and a mast at 12.8 studs nine studs inside it. So the
+# band above is where a hull STARTS and these two numbers are what decide where
+# she ends: every hull is pushed out until her own low geometry clears
+# WK_SAND_R + WK_FLEET_STANDOFF, and every mast's lean is clamped so it crosses
+# head height no further in than the rim. Enforced per ship rather than tuned,
+# because a tuned number is only true for the seed it was tuned on.
+#
+# WK_HEADROOM is what "over the floor rather than in it" means: a Roblox
+# character is 5 studs and a jump adds about 7.
+WK_HEADROOM = 13.0
+WK_FLEET_STANDOFF = 1.5
+# Outside the outermost hull the guard can push: the surf has to break round
+# the palisade, not through the middle of it.
+WK_FOAM_R = (161.0, 167.5)
+WK_MERGE_R = 158.0  # outside here the beach has given way to the drowned cone
+
+# WHERE THE UNDERSIDE CLOSES, and why it is not the shared SKIRT_BOTTOM.
+#
+# `meshBottom` in BossArenas is the model's whole bbox floor, so the arena's
+# placement is decided by WHATEVER HANGS LOWEST - and on a shoal whose boundary
+# is two dozen half-sunk hulls, that is not automatically the landform. It was
+# not: the palisade's deepest keel bottoms out around -11, three studs under
+# the -9.5 cap the old 99-stud shoal closed at, and the first build of this
+# redesign duly handed placement to one randomly-seeded ship. That is exactly
+# the failure the BossArenas comment warns about, arriving from the direction
+# it warns about it from.
+#
+# So the underside cone closes below the whole fleet on purpose. The visible
+# rim is untouched (SKIRT_BOTTOM at r 172, as before); this is the hidden cap
+# under it, and it restores the property the config row states outright - that
+# the base's own skirt is the bbox floor - so the number stays stable if the
+# fleet is ever reseeded.
+WK_CAP_Z = -13.5
+
+# The drowned apron, as a RADIAL profile - past the walkable sand the beach
+# stops mattering and the shoal just dives. `_wk_ground` blends from the beach
+# surface into this between WK_SAND_R and WK_MERGE_R, so the head of the beach
+# stays high and dry further out than the mouth does and the palisade lies at
+# every depth from grounded to awash.
 WK_PROFILE = [
-    (0.0, 1.05),
-    (10.0, 0.90),
-    (26.0, 1.05),
-    (44.0, 1.30),
-    (60.0, 1.45),
-    (72.0, 1.20),
-    (78.0, 0.70),  # walkable sand ends
-    (84.0, 0.05),  # the awash flat the grounded fleet lies in
-    (90.0, -2.30),
-    (95.0, -5.60),
-    (99.0, SKIRT_BOTTOM),
+    (WK_SAND_R, WK_CENTRE_Z),
+    (142.0, -0.60),  # the awash flat the grounded fleet lies in
+    (152.0, -2.30),
+    (160.0, -5.60),
+    (166.0, -7.80),
+    (172.0, SKIRT_BOTTOM),
 ]
 
-WK_HEAD_DEG = 150.0  # the head of the shoal: cradle bearing, and the ring's gap
-WK_CRADLE_R = 64.0  # the cradle's centre, standing on the walkable sand
-WK_SAND_R = 78.0
-WK_FLEET_R = (80.0, 88.0)
-WK_FOAM_R = (90.0, 94.5)
-WK_FLEET_GAP_DEG = 58.0  # the mouth at the head of the shoal
-WK_LANE_HALF = 14.0  # the haul lane's clear half-width - no hulk inside it
-WK_FURROW_OFFSETS = (-7.5, 0.0, 7.5)  # the three grooves, keel and bilge
-
-# The fight furniture. Spread round the circle, r 33-52, and every one of them
-# clear of the haul lane by more than WK_LANE_HALF - the two big gaps in the
-# ring (150 deg and 330 deg) are where he comes in and where he is going.
-WK_HULKS = [(34.0, 15.0), (52.0, 62.0), (38.0, 100.0), (49.0, 198.0), (33.0, 250.0), (46.0, 292.0)]
-
-# (radius, degrees, spread) - the broad flat puddles the ebb leaves behind.
-WK_PUDDLES = [(31.0, 58.0, 12.0), (53.0, 272.0, 15.0), (24.0, 195.0, 9.0)]
-
 # Straight off Wreckwater's own palette (island_gen.py wreck COLORS), pulled
-# wetter and greyer: this is a tidal flat at low water, not the island's dry
-# bone-white sand. WK_-scoped so it cannot rebind another arena's constants.
-WK_SAND = (0.445, 0.429, 0.384)  # wet grey-brown shoal sand, low water
-WK_SPOIL = (0.522, 0.498, 0.438)  # sand thrown out of the furrows, drying a shade pale
+# wetter and greyer. WK_-scoped so it cannot rebind another arena's constants.
+WK_SAND = (0.445, 0.429, 0.384)  # the foreshore: wet grey-brown shoal sand
 WK_WET = (0.352, 0.352, 0.325)  # the drowned apron: everything below low water
-WK_TIDEWATER = (0.180, 0.265, 0.278)  # M_BayWater lifted - standing water with sky in it
 WK_HULL = (0.112, 0.092, 0.076)  # M_HullWood, driven darker - the boundary is near-black
 WK_STRAKE = (0.205, 0.172, 0.136)  # the boundary's frames: a shade up off the planking
-# The six hulks are lit deliberately PALER than the palisade behind them. A
-# player under pressure has to read "cover" without stopping to look (the
-# Rootmere stump lesson), and value is the only channel a brown arena has.
-WK_HULKWOOD = (0.318, 0.266, 0.205)
-WK_HULKPALE = (0.412, 0.354, 0.272)
 WK_SPARWOOD = (0.329, 0.271, 0.204)  # M_WreckPost - masts and yards
-WK_CRADLEWOOD = (0.452, 0.386, 0.296)  # limed yard timber: the cradle reads PALE against the fleet
-WK_PLANK = (0.475, 0.404, 0.310)  # M_WreckPlank - barrels, crates, cradle decking
 WK_CANVAS = (0.652, 0.658, 0.618)  # M_WreckSail - rotted canvas, bone with a green cast
-WK_IRON = (0.300, 0.400, 0.352)  # verdigris: anchors, chain, capstan bands
-WK_WEED = (0.255, 0.300, 0.212)  # the tide wrack along the high-water line
+WK_IRON = (0.300, 0.400, 0.352)  # verdigris: the ground tackle
+WK_WEED = (0.255, 0.300, 0.212)  # the tide wrack along the water's edge
 WK_GHOST = (0.560, 0.949, 0.800)  # M_GhostGlow pulled teal - the ghost fleet's own light
 WK_FOAM = (0.800, 0.824, 0.812)  # M_WreckFoam, pulled off pure white
+
+
+def _wk_beach(y):
+    """The foreshore's height at a distance `y` along the fall line.
+
+    A FUNCTION OF ONE COORDINATE, deliberately: that is what makes the contour
+    lines straight and parallel, which is what makes it read as a beach a ship
+    could be hauled up rather than as a dish or a dome. It is also why the
+    floor has no local features at all - there is nowhere for one to hide."""
+    w = min(max((WK_SAND_R - y) / (2.0 * WK_SAND_R), 0.0), 1.0)
+    return WK_SEA_Z + (WK_HEAD_Z - WK_SEA_Z) * w**WK_BEACH_P
 
 
 def _wk_profile(r):
@@ -1291,78 +1378,41 @@ def _wk_profile(r):
     return WK_PROFILE[-1][1]
 
 
-def _wk_lane(x, y):
-    """(along, across) in the haul lane's own frame: `along` counts studs from
-    the arena centre out toward the cradle, `across` is the offset sideways."""
-    a = math.radians(WK_HEAD_DEG)
-    return x * math.cos(a) + y * math.sin(a), -x * math.sin(a) + y * math.cos(a)
-
-
-def _wk_furrow(x, y):
-    """How far the ploughed gouges sink the sand at (x, y), or how high the
-    spoil berm stands beside them. Shallow ON PURPOSE - a furrow here is read,
-    never climbed, so nothing running the lane can catch a foot on it."""
-    along, across = _wk_lane(x, y)
-    if along < 2.0 or along > WK_CRADLE_R + 8.0:
-        return 0.0
-    # Deepest under the cradle, where he was dragged off the blocks; the bite
-    # fades out as the hauls near the middle and the sand closes over them.
-    bite = min(1.0, (along - 2.0) / 16.0) * min(1.0, (WK_CRADLE_R + 8.0 - along) / 6.0)
-    gouge, berm = 0.0, 0.0
-    for offset in WK_FURROW_OFFSETS:
-        d = abs(across - offset)
-        if d < 3.2:
-            gouge = min(gouge, -0.80 * bite * math.cos(d / 3.2 * (math.pi / 2)))
-        elif d < 5.4:
-            berm = max(berm, 0.55 * bite * math.sin((d - 3.2) / 2.2 * math.pi))
-    return gouge if gouge < 0.0 else berm
-
-
-def _wk_puddle_at(x, y):
-    """(ripple damping, dish) for the tide flats: inside a puddle the ribbing
-    dies out and the sand dishes a little, which is what lets the water sheet
-    lie genuinely flat instead of draping over ripple crests."""
-    damp, dish = 1.0, 0.0
-    for radius, degrees, spread in WK_PUDDLES:
-        a = math.radians(degrees)
-        d = math.hypot(x - math.cos(a) * radius, y - math.sin(a) * radius)
-        if d < spread:
-            fall = 1.0 - (d / spread) ** 2
-            damp = min(damp, 1.0 - fall)
-            dish = min(dish, -0.20 * fall)
-    return damp, dish
-
-
 def _wk_ground(x, y):
-    """The shoal's surface. Pure and deterministic - no rng anywhere in it -
-    so every prop that seats itself with this lands exactly on the sand."""
+    """The shoal's surface. Pure and deterministic - no rng anywhere in it - so
+    every prop that seats itself with this lands exactly on the sand.
+
+    Inside the walkable radius it is the beach and NOTHING ELSE. Outside, it
+    eases off the beach into the drowned cone by WK_MERGE_R."""
+    a = math.radians(WK_SEA_DEG)
+    beach = _wk_beach(x * math.cos(a) + y * math.sin(a))
     r = math.hypot(x, y)
-    z = _wk_profile(r)
-    if r < 80.0:
-        damp, dish = _wk_puddle_at(x, y)
-        # Wet ribbed sand: low tidal ripples, near-concentric but dragged out
-        # of true by the run of the ebb across the flat.
-        a = math.atan2(y, x)
-        ripple = math.sin(r * 0.52 + math.sin(a * 2.0) * 1.1 + math.sin(a * 3.0 + 0.7) * 0.8) * 0.30
-        z += ripple * damp * min(1.0, r / 8.0) + dish + _wk_furrow(x, y)
-    return z
+    if r <= WK_SAND_R:
+        return beach
+    t = min((r - WK_SAND_R) / (WK_MERGE_R - WK_SAND_R), 1.0)
+    t = t * t * (3.0 - 2.0 * t)
+    return beach * (1.0 - t) + _wk_profile(r) * t
 
 
 def build_wk_base(rng):
+    """The beach, and the drowned shoal it stands on. ONE object, no features.
+
+    Sampled every six studs across the walkable sand - which is as coarse as it
+    is because there is nothing on this surface finer than that to resolve. The
+    old shoal sampled at 2.5 to carry its ripples and haul furrows; those are
+    gone, and the sparser grid is the honest consequence rather than a saving."""
     bm = bmesh.new()
-    angles = 48
-    # Sampled every 2.5 studs across the walkable flat: coarse enough to stay
-    # low-poly, fine enough that the ripples and the haul furrows are real
-    # geometry in the landform rather than a texture that isn't there.
-    rings = [step * 2.5 for step in range(1, 31)] + [WK_SAND_R, 84.0, 90.0, 95.0, 99.0]
+    angles = 64
+    rings = [step * 6.0 for step in range(1, 23)] + [137.0, 143.0, 150.0, 158.0, 165.0, 172.0]
     grid = []
     for radius in rings:
         ring = []
         for i in range(angles):
             angle = (i / angles) * TAU
             # The silhouette wobbles only OUTSIDE the walkable sand, so the
-            # flat the fight is fought on matches _wk_ground exactly.
-            r = radius * (1.0 + (rng.uniform(-0.035, 0.035) if radius >= 80.0 else 0.0))
+            # floor the fight is fought on matches _wk_ground exactly and its
+            # edge is a true circle at WK_SAND_R.
+            r = radius * (1.0 + (rng.uniform(-0.035, 0.035) if radius > WK_SAND_R else 0.0))
             x, y = math.cos(angle) * r, math.sin(angle) * r
             ring.append(bm.verts.new((x, y, _wk_ground(x, y))))
         grid.append(ring)
@@ -1373,8 +1423,9 @@ def build_wk_base(rng):
         for i in range(angles):
             j = (i + 1) % angles
             bm.faces.new((a[i], b[i], b[j], a[j]))
-    # Close the underside so the skirt reads solid from below.
-    bottom = bm.verts.new((0, 0, SKIRT_BOTTOM - 0.5))
+    # Close the underside so the skirt reads solid from below - and see
+    # WK_CAP_Z for why this one closes deeper than the shared convention.
+    bottom = bm.verts.new((0, 0, WK_CAP_Z))
     outer = grid[-1]
     for i in range(angles):
         bm.faces.new((bottom, outer[(i + 1) % angles], outer[i]))
@@ -1383,28 +1434,27 @@ def build_wk_base(rng):
 
 def build_wk_shallows(rng):
     """The drowned apron: the wet skin over everything below low water, from
-    the top of the beach out across the flat the fleet lies in and on down the
-    skirt. Built in FOUR rings that follow the profile - a single band from
-    r 76 straight to r 96 chords across a landform that is diving steeply by
+    the water's edge out across the flat the fleet lies in and on down the
+    skirt. Built in bands that follow the profile - a single band from the rim
+    straight to the skirt chords across a landform that is diving steeply by
     then, sinks under it, and leaves the arena sitting on a bright plate of
-    dry-looking sand (which is exactly what the first render did)."""
+    dry-looking sand.
+
+    Its inner edge starts ONE STUD inside the walkable rim and no further. That
+    single stud of overlap is what stops a hairline of dry base showing at the
+    seam; it is flat, it is Deco, and it is the only paint of any kind this
+    build puts inside r 132."""
     bm = bmesh.new()
-    angles = 40
-    # Out past the landform's own rim (r 99): anything short of that leaves a
-    # collar of bright dry-looking sand round the arena, which is what the
-    # first two renders showed. Narrow bands and a small jitter, so the base
-    # can never poke back through between them.
-    steps = (75.5, 82.0, 88.0, 93.0, 97.0, 99.6)
+    angles = 48
+    steps = (131.0, 140.0, 149.0, 157.0, 165.0, 172.6)
     grid = []
     for radius in steps:
         ring = []
         for i in range(angles):
             angle = (i / angles) * TAU
-            r = radius + rng.uniform(-1.0, 1.0)
+            r = radius + rng.uniform(-1.2, 1.2)
             x, y = math.cos(angle) * r, math.sin(angle) * r
-            # The inner edge hugs the ribbed sand as a wet tide-edge line; from
-            # r 82 out the profile alone carries it down the drowned skirt.
-            z = _wk_ground(x, y) + 0.10 if radius < 80.0 else _wk_profile(r) + 0.27
+            z = _wk_ground(x, y) + (0.10 if radius <= WK_SAND_R else 0.27)
             ring.append(bm.verts.new((x, y, z)))
         grid.append(ring)
     for a, b in zip(grid, grid[1:]):
@@ -1415,123 +1465,120 @@ def build_wk_shallows(rng):
     return _wr_finish("WrackArena_DecoShallows", bm, WK_WET, "M_Wrack_Wet")
 
 
-def build_wk_tidewater():
-    """Standing water: the broad tide puddles on the flat, and the water lying
-    in the haul furrows. FLAT, and Deco - the only thing the design lets into
-    the middle of the arena, because it has no height for a telegraph to fight
-    with and nothing for a running player to catch."""
-    bm = bmesh.new()
-    for radius, degrees, spread in WK_PUDDLES:
-        a = math.radians(degrees)
-        cx, cy = math.cos(a) * radius, math.sin(a) * radius
-        sides = 13
-        ring = []
-        for i in range(sides):
-            t = (i / sides) * TAU
-            # A smooth, non-circular edge, different for every puddle: an ebb
-            # puddle is a lobed shape, never a disc.
-            edge = spread * (0.84 + 0.14 * math.sin(t * 3.0 + math.radians(degrees)))
-            x, y = cx + math.cos(t) * edge, cy + math.sin(t) * edge
-            ring.append(bm.verts.new((x, y, _wk_ground(x, y) + 0.06)))
-        bm.faces.new(ring)
-    head = math.radians(WK_HEAD_DEG)
-    out = Vector((math.cos(head), math.sin(head), 0.0))
-    across = Vector((-math.sin(head), math.cos(head), 0.0))
-    for offset in WK_FURROW_OFFSETS:
-        steps = 18
-        left, right = [], []
-        for i in range(steps + 1):
-            along = 6.0 + (WK_CRADLE_R + 2.0 - 6.0) * (i / steps)
-            for side, store in ((-1.0, left), (1.0, right)):
-                point = out * along + across * (offset + side * 3.0)
-                store.append(bm.verts.new((point.x, point.y, _wk_ground(point.x, point.y) + 0.05)))
-        for i in range(steps):
-            bm.faces.new((left[i], right[i], right[i + 1], left[i + 1]))
-    return _wr_finish("WrackArena_DecoTidewater", bm, WK_TIDEWATER, "M_Wrack_Tidewater")
-
-
-def build_wk_spoil(rng):
-    """Sand ploughed out of the furrows and left in low ridges beside them -
-    what makes the gouges read as ploughed rather than moulded. Nothing here
-    stands over 0.7 studs, and it is all Deco."""
-    bm = bmesh.new()
-    head = math.radians(WK_HEAD_DEG)
-    out = Vector((math.cos(head), math.sin(head), 0.0))
-    across = Vector((-math.sin(head), math.cos(head), 0.0))
-    for offset in (WK_FURROW_OFFSETS[0] - 4.4, WK_FURROW_OFFSETS[-1] + 4.4):
-        along = 8.0
-        while along < WK_CRADLE_R + 4.0:
-            size = rng.uniform(1.1, 2.4)
-            point = out * along + across * (offset + rng.uniform(-1.3, 1.3))
-            rock(
-                bm,
-                (point.x, point.y, _wk_ground(point.x, point.y) + size * 0.12),
-                (size * 1.7, size, size * 0.24),
-                rng,
-                jitter=0.22,
-            )
-            along += rng.uniform(3.4, 6.0)
-    # A last heap at the very foot of the cradle, where the keel bit deepest.
-    for _ in range(7):
-        point = out * rng.uniform(WK_CRADLE_R - 4.0, WK_CRADLE_R + 6.0) + across * rng.uniform(-11.0, 11.0)
-        size = rng.uniform(1.4, 2.8)
-        rock(bm, (point.x, point.y, _wk_ground(point.x, point.y) + size * 0.10), (size * 1.5, size, size * 0.28), rng, jitter=0.24)
-    return _wr_finish("WrackArena_DecoSpoil", bm, WK_SPOIL, "M_Wrack_Spoil")
-
-
 # ------------------------------------------------- wrack: the grounded fleet
 
 
-def _wk_fleet(rng):
-    """The grounded fleet, generated once and shared by every builder that
-    hangs something off it, so hull, ribs, masts, canvas and sea-fire all
-    agree with the ship they belong to (the Rootmere's `_gn_trees` pattern).
+def _wk_ship_probes(stations, length, width, kind, driven):
+    """Ship-local points that BOUND the solid parts of one grounded hull.
 
-    The ring OPENS at the head of the shoal: that gap is the cradle's, and the
-    fight's - it is the only bearing a player can read out of the arena, and
-    it is exactly where Wrack comes from."""
+    Not the geometry - a bound on it, deliberately generous: the shell rings at
+    keel and sheer, the rib combs that arc off the sheer, the splinters
+    standing off the tear, and whatever rears at the bow (stempost or
+    bowsprit). `_wk_fleet` swings these through the ship's own rotation to ask
+    how far back toward the arena she reaches at low level, which is the only
+    honest way to place a wall built out of shapes this irregular."""
+    rise = width * (0.75 if kind == "ribs" else (0.52 if not driven else 0.52))
+    points = []
+    for x, half, keel, sheer in stations:
+        for side in (1.0, -1.0):
+            points.append((x, side * half * 1.05, keel))
+            points.append((x, side * half * 1.05, sheer))
+            points.append((x, side * half * 0.75, sheer + rise))
+        # The tear's splinters, and the stern castle on a `stern` hull.
+        points.append((x, 0.0, sheer + max(5.4, width * 0.50)))
+    x, _half, _keel, sheer = stations[-1]
+    points.append((x * 1.35, 0.0, sheer + max(length * 0.10, width * 0.70)))
+    return points
+
+
+def _wk_fleet(rng):
+    """The palisade, generated once and shared by every builder that hangs
+    something off it, so hull, ribs, masts, canvas and sea-fire all agree with
+    the ship they belong to (the Rootmere's `_gn_trees` pattern).
+
+    Thirty hulls, not the old fifteen: at r 150 the ring is 942 studs round
+    against the old 528, and fifteen ships spread over that is a scatter of
+    boats with sky between them, not a wall. Lengths are up with it. Thirty
+    hulls averaging 43 studs is 1290 studs of ship on 822 studs of arc - 1.57x
+    overlap, against the old build's 1.30 - and the palisade is the one thing
+    in this arena that is ALLOWED to be dense.
+
+    The ring OPENS at the MOUTH - WK_FLEET_GAP_DEG of clear water on the
+    seaward bearing, where the beach is lowest and the sea comes in. It is the
+    only bearing a player can read out of the arena, and it is the geography
+    that says how an 87-stud flagship got hauled in here to be hove down."""
     ships = []
-    count = 15
+    count = 30
     gap = math.radians(WK_FLEET_GAP_DEG)
-    head = math.radians(WK_HEAD_DEG)
+    mouth = math.radians(WK_SEA_DEG)
     for i in range(count):
-        angle = head + gap / 2 + ((i + 0.5) / count) * (TAU - gap) + rng.uniform(-0.05, 0.05)
-        radius = rng.uniform(*WK_FLEET_R)
-        # Three ships in fifteen were driven bow-first at the shoal and reared:
-        # they lean IN over the sand and give the palisade its overhang. Short
-        # on purpose so the bow tip stops at r ~62, well outside the hulks.
-        driven = i % 5 == 4
+        angle = mouth + gap / 2 + ((i + 0.5) / count) * (TAU - gap) + rng.uniform(-0.045, 0.045)
+        # Five in thirty were driven at the shoal and stopped dead, and
+        # they rear STEEP - 46 to 58 degrees, not the old 26 to 38. A reared
+        # bow's reach inward goes as cos(pitch) and its height as sin(pitch),
+        # so steepening it turns an overhang that leaned down over the sand
+        # into one that stands over it. The clearance HANDOFF measures the
+        # result rather than trusting this paragraph.
+        driven = i % 6 == 5
         if driven:
-            length, width, depth = rng.uniform(25.0, 31.0), rng.uniform(10.0, 12.5), rng.uniform(4.2, 5.4)
-            yaw = angle + math.pi + rng.uniform(-0.22, 0.22)
-            pitch = rng.uniform(0.46, 0.66)
-            roll = rng.uniform(-0.34, 0.34)
-            lift = rng.uniform(1.0, 2.2)
+            radius = rng.uniform(WK_FLEET_R[0] + 6.0, WK_FLEET_R[1])
+            length, width, depth = rng.uniform(24.0, 32.0), rng.uniform(10.5, 13.0), rng.uniform(4.4, 5.6)
+            yaw = angle + math.pi + rng.uniform(-0.20, 0.20)
+            pitch = rng.uniform(0.80, 1.01)
+            roll = rng.uniform(-0.30, 0.30)
+            lift = rng.uniform(1.4, 2.6)
         else:
-            length, width, depth = rng.uniform(31.0, 46.0), rng.uniform(10.5, 15.0), rng.uniform(4.6, 6.4)
-            yaw = angle + math.pi / 2 + rng.uniform(-0.40, 0.40)
-            pitch = rng.uniform(-0.16, 0.16)
+            radius = rng.uniform(*WK_FLEET_R)
+            length, width, depth = rng.uniform(34.0, 52.0), rng.uniform(11.0, 15.5), rng.uniform(4.8, 6.8)
+            yaw = angle + math.pi / 2 + rng.uniform(-0.38, 0.38)
+            pitch = rng.uniform(-0.15, 0.15)
             # Heeled hard, and about half of them right over on their beam ends.
             roll = rng.uniform(0.55, 1.55) * (1.0 if i % 2 == 0 else -1.0)
             lift = rng.uniform(1.7, 3.2)
+        kind = ("shell", "ribs", "stern")[i % 3]
+        stations = _wr_stations(
+            length,
+            width,
+            depth,
+            freeboard=width * (0.44 if not driven else 0.40),
+            count=9,
+            bow_rise=1.25 if driven else 0.35,
+            fullness=1.0 if driven else 1.2,
+        )
+        # PUSH HER OUT UNTIL SHE CLEARS THE FLOOR. Twice, because the answer
+        # depends on the ground height at the radius the answer picks: swing
+        # the hull's bounding points through her own rotation, keep only the
+        # ones that end up below head height, and take the furthest any of them
+        # reaches back toward the middle. A hull that leans away from the arena
+        # is not moved at all, which is why the ring keeps an uneven radius
+        # instead of retreating to one safe circle.
+        spin = _wr_frame((0.0, 0.0, 0.0), yaw=yaw, pitch=pitch, roll=roll)
+        probes = [spin @ Vector(p) for p in _wk_ship_probes(stations, length, width, kind, driven)]
+        outward = Vector((math.cos(angle), math.sin(angle), 0.0))
+        for _ in range(2):
+            x, y = math.cos(angle) * radius, math.sin(angle) * radius
+            deck = _wk_ground(x, y) + lift
+            reach = 0.0
+            for point in probes:
+                if deck + point.z >= WK_HEADROOM:
+                    continue
+                reach = max(reach, -(point.x * outward.x + point.y * outward.y))
+            radius = max(radius, WK_SAND_R + WK_FLEET_STANDOFF + reach)
         x, y = math.cos(angle) * radius, math.sin(angle) * radius
+        # Seated on the REAL surface, not on the radial profile: past the
+        # walkable rim the beach still has a fall line, so the head of the
+        # palisade lies grounded and dry while the mouth of it lies awash.
+        at = Vector((x, y, _wk_ground(x, y) + lift))
         ships.append(
             {
-                "frame": _wr_frame((x, y, _wk_profile(radius) + lift), yaw=yaw, pitch=pitch, roll=roll),
-                "at": Vector((x, y, _wk_profile(radius) + lift)),
+                "frame": _wr_frame((at.x, at.y, at.z), yaw=yaw, pitch=pitch, roll=roll),
+                "at": at,
                 "in": Vector((-math.cos(angle), -math.sin(angle), 0.0)),  # toward the fight
-                "kind": ("shell", "ribs", "stern")[i % 3],
+                "kind": kind,
                 "driven": driven,
                 "ghost": i % 3 == 0,
-                "stations": _wr_stations(
-                    length,
-                    width,
-                    depth,
-                    freeboard=width * (0.44 if not driven else 0.40),
-                    count=9,
-                    bow_rise=1.25 if driven else 0.35,
-                    fullness=1.0 if driven else 1.2,
-                ),
+                "stations": stations,
+                "radius": radius,
                 "length": length,
                 "width": width,
                 "masts": 2 if i % 4 == 0 else 1,
@@ -1600,16 +1647,33 @@ def build_wk_fleet_masts(ships, rng):
     neighbours. Built in world space and aimed at the fight on purpose: however
     a hull is rolled, her masts still lean over the arena.
 
-    Everything hangs high - at the sand's edge the lowest spar is a good eight
-    studs up - so the palisade frames the fight without fouling it."""
+    Everything hangs high. A mast is stepped at r 140 or beyond and leans in at
+    most 30 degrees, so where a spar first crosses the walkable rim it is
+    already twenty-odd studs up - the palisade frames the fight from overhead
+    and nothing it carries comes down into it."""
     bm = bmesh.new()
     for ship in ships:
         frame = ship["frame"]
         for m in range(ship["masts"]):
             # Stepped inside the hull, so the foot is always buried in timber.
             foot = frame @ Vector((ship["length"] * (0.32 + 0.30 * m), 0.0, ship["stations"][3][2] + 0.5))
-            height = rng.uniform(23.0, 38.0) * (0.8 if m else 1.0)
-            lean = rng.uniform(0.30, 0.62)
+            height = rng.uniform(26.0, 44.0) * (0.8 if m else 1.0)
+            lean = rng.uniform(0.26, 0.52)
+            # CLAMPED, not trusted. A leaning mast trades height for reach at a
+            # fixed rate - it loses (WK_HEADROOM - foot z) * tan(lean) studs of
+            # radius before it gets clear of a player's head - so the steepest
+            # lean this foot can afford is exactly the arctangent of the room
+            # it has. Below head height the spar is then always outside the
+            # rim, and so is everything hung off it: the yard is perpendicular
+            # to the lean plane (tangential, which only ever adds radius) and
+            # the snapped topmast breaks off high enough that its drop cannot
+            # reach back down through head height.
+            # Minus the spar's own butt radius: the clamp is about where the
+            # TIMBER is, and a mast whose axis stops exactly on the rim still
+            # has two and a half studs of itself inside it. That is the whole
+            # 0.6 studs the first guarded build was over by.
+            room = max(math.hypot(foot.x, foot.y) - WK_SAND_R - height * 0.055, 0.0)
+            lean = min(lean, math.atan(room / max(WK_HEADROOM - foot.z, 0.1)))
             heading = ship["in"].to_2d().to_3d().normalized()
             axis = (heading * math.sin(lean) + Vector((0, 0, math.cos(lean)))).normalized()
             head = foot + axis * height
@@ -1639,7 +1703,10 @@ def build_wk_sails(ships, rng):
         for yard_at, perp, half, axis in ship.get("yards", [])[:1]:
             belly = perp.cross(axis)
             belly = (belly.normalized() if belly.length > 1e-5 else Vector((0, 1, 0))) * (half * 0.28)
-            drop = half * rng.uniform(1.0, 1.5)
+            # Shorter hems than the old build carried: at this mast height a
+            # 1.5x drop would hang canvas down toward the rim, and the whole
+            # point of the palisade is that it stays overhead.
+            drop = half * rng.uniform(0.75, 1.15)
             panels = 6
             hem = [drop * rng.uniform(0.55, 1.35) for _ in range(panels + 1)]
             gone = rng.randrange(panels)
@@ -1663,118 +1730,34 @@ def build_wk_sails(ships, rng):
     return _wr_finish("WrackArena_DecoSailRag", bm, WK_CANVAS, "M_Wrack_Canvas")
 
 
-# ------------------------------------------------- wrack: the careening cradle
+# ------------------------------------------------- wrack: the boundary dressing
 
 
-def build_wk_cradle(rng):
-    """The head of the shoal: the collapsed careening cradle Wrack was hauled
-    out on. Six heavy timber frames arching over the sand at the mouth of the
-    fleet ring - four still standing, two down - with the slipway rails and the
-    keel blocks still bedded under them. A ruined nave, and his starting mark."""
-    bm = bmesh.new()
-    head = math.radians(WK_HEAD_DEG)
-    out = Vector((math.cos(head), math.sin(head), 0.0))
-    across = Vector((-math.sin(head), math.cos(head), 0.0))
-
-    def seat(point, lift=0.0):
-        return Vector((point.x, point.y, _wk_ground(point.x, point.y) + lift))
-
-    # The slipway: two heavy ground rails running down the lane, bedded in the
-    # sand the ship was dragged over, and the keel blocks between them.
-    for side in (-1.0, 1.0):
-        along = WK_CRADLE_R + 16.0
-        while along > 38.0:
-            nxt = along - 6.0
-            _wr_beam(bm, _WK_WORLD, seat(out * along + across * (side * 8.6), 0.30), seat(out * nxt + across * (side * 8.6), 0.30), 2.6, 1.1)
-            along = nxt
-    along = 42.0
-    while along < WK_CRADLE_R + 14.0:
-        block = seat(out * along, 0.0)
-        for tier in range(rng.randint(1, 3)):
-            _wr_beam(bm, _WK_WORLD, block + across * -2.6 + Vector((0, 0, 0.5 + tier * 0.95)), block + across * 2.6 + Vector((0, 0, 0.5 + tier * 0.95)), 2.2, 0.9, twist=tier * 0.4)
-        along += rng.uniform(5.0, 7.5)
-
-    # Six frames down the lane. Standing ones arch; the fallen ones left their
-    # leg stubs in the sand and their crowns lying where they came down.
-    for index in range(6):
-        r = WK_CRADLE_R + 14.0 - index * 6.6
-        # Widening toward the sea, so from the middle of the arena the frames
-        # nest one inside the next instead of eclipsing each other.
-        grade = (r - (WK_CRADLE_R - 19.0)) / 33.0
-        span = 10.6 + grade * 7.8 + rng.uniform(-0.5, 0.5)
-        height = 15.8 + grade * 9.4 + rng.uniform(-1.2, 1.2)
-        drift = across * (rng.uniform(-1.1, 1.1) + (3.4 if index % 2 else -3.4))
-        centre = out * r + drift
-        standing = index not in (3, 5)
-        if standing:
-            shoulders = []
-            for side in (-1.0, 1.0):
-                foot = seat(centre + across * (side * span), -0.6)
-                knee = seat(centre + across * (side * span * 0.80), 0.0) + Vector((0, 0, height * 0.55))
-                shoulder = seat(centre + across * (side * span * 0.34), 0.0) + Vector((0, 0, height * 0.92))
-                _wr_beam(bm, _WK_WORLD, foot, knee, 3.4, 2.9)
-                _wr_beam(bm, _WK_WORLD, knee, shoulder, 2.9, 2.5)
-                shoulders.append(shoulder)
-                # The diagonal shore that props the leg off the rail.
-                _wr_beam(bm, _WK_WORLD, seat(centre + across * (side * (span + 6.5)), -0.4), knee + Vector((0, 0, -height * 0.16)), 2.0, 1.7)
-            _wr_beam(bm, _WK_WORLD, shoulders[0], shoulders[1], 3.1, 2.6)
-            # The tie beam, and the block the keel was hove down onto.
-            tie_z = height * 0.34
-            _wr_beam(bm, _WK_WORLD, seat(centre + across * -span * 0.88, 0.0) + Vector((0, 0, tie_z)), seat(centre + across * span * 0.88, 0.0) + Vector((0, 0, tie_z)), 1.7, 1.4)
-            crown = (shoulders[0] + shoulders[1]) / 2
-            _wr_beam(bm, _WK_WORLD, crown + Vector((0, 0, -0.9)), crown + Vector((0, 0, -3.4)), 1.6, 1.6)
-        else:
-            # Come down: two snapped stubs and the crown lying across the sand.
-            for side in (-1.0, 1.0):
-                foot = seat(centre + across * (side * span), -0.6)
-                _wr_beam(bm, _WK_WORLD, foot, foot + across * (side * -1.1) + Vector((0, 0, rng.uniform(4.0, 8.0))), 3.4, 2.9)
-            fall = across * rng.uniform(-4.0, 4.0) + out * rng.uniform(-3.0, 3.0)
-            a = seat(centre + fall + across * -span * 0.62, 1.0)
-            b = seat(centre + fall + across * span * 0.55 + out * 3.0, 2.2)
-            _wr_beam(bm, _WK_WORLD, a, b, 2.3, 1.9, twist=rng.uniform(0.2, 0.9))
-            _wr_beam(bm, _WK_WORLD, a + out * 3.4 + Vector((0, 0, 1.1)), b + out * -2.0, 2.0, 1.6, twist=rng.uniform(0.2, 0.9))
-
-    # Ridge purlins tying the standing frames together, high over the lane.
-    for pair in ((0, 1), (1, 2), (2, 4)):
-        for side in (-1.0, 1.0):
-            r0 = WK_CRADLE_R + 14.0 - pair[0] * 6.6
-            r1 = WK_CRADLE_R + 14.0 - pair[1] * 6.6
-            _wr_beam(
-                bm,
-                _WK_WORLD,
-                seat(out * r0 + across * (side * 5.0), 0.0) + Vector((0, 0, 19.6)),
-                seat(out * r1 + across * (side * 5.0), 0.0) + Vector((0, 0, 19.6)),
-                1.7,
-                1.4,
-            )
-    return _wr_finish("WrackArena_Cradle", bm, WK_CRADLEWOOD, "M_Wrack_Cradle")
+# (radius, bearing, tilt) for the four anchors. All four in the awash flat,
+# outside the walkable rim, and off the mouth's bearing so the one gap in the
+# palisade stays a clean read.
+WK_ANCHORS = ((141.0, 24.0, 0.9), (146.0, 152.0, 1.25), (139.0, 214.0, 0.7), (144.0, 302.0, 1.1))
 
 
 def build_wk_ironwork(rng):
-    """Verdigris iron (Deco - nothing here is meant to be stood on): the capstan at the head of the shoal that hauled him
-    out, and four half-buried admiralty anchors dropped round the rim."""
+    """THE GROUND TACKLE, and the whole reason this shoal is called a
+    careenage: four admiralty anchors half swallowed in the awash flat with
+    their chain runs snaking off into the fleet. Ships were hove down here, and
+    this is the gear it takes.
+
+    It is also the entire prop budget of the redesign. The old build had this
+    plus a capstan on the lane's centreline, a haul chain running the full
+    length of the arena, thirteen scatters of barrels and crates at r 64-78 and
+    the cradle they belonged to. Every one of those stood in the play area;
+    what survives is the four pieces that never did. Deco, so nothing here is
+    stood on or cast at, and merged with the chains into ONE object - they were
+    always the same verdigris iron on the same material."""
     bm = bmesh.new()
-    head = math.radians(WK_HEAD_DEG)
-    out = Vector((math.cos(head), math.sin(head), 0.0))
-    across = Vector((-math.sin(head), math.cos(head), 0.0))
-
-    # The capstan: a banded drum on the lane's centreline behind the cradle,
-    # with its bars still shipped and one snapped off short.
-    drum_at = out * (WK_CRADLE_R + 17.0)
-    drum_z = _wk_ground(drum_at.x, drum_at.y)
-    tapered_cylinder(bm, drum_z - 1.0, drum_z + 4.6, 2.7, 2.2, sides=10, center=(drum_at.x, drum_at.y))
-    tapered_cylinder(bm, drum_z + 4.6, drum_z + 5.4, 3.4, 3.1, sides=10, center=(drum_at.x, drum_at.y))
-    for i in range(6):
-        angle = (i / 6) * TAU + 0.3
-        reach = 7.5 if i != 4 else 2.4
-        arm = Vector((math.cos(angle), math.sin(angle), 0.0))
-        _wr_beam(bm, _WK_WORLD, drum_at + Vector((0, 0, drum_z + 4.9)), drum_at + arm * reach + Vector((0, 0, drum_z + 4.4)), 0.7, 0.7)
-
-    # Admiralty anchors, dropped where they were let go and half swallowed.
-    for radius, degrees, tilt in ((70.0, 24.0, 0.9), (74.0, 118.0, 1.25), (68.0, 212.0, 0.7), (72.0, 316.0, 1.1)):
+    for radius, degrees, tilt in WK_ANCHORS:
         angle = math.radians(degrees)
         cx, cy = math.cos(angle) * radius, math.sin(angle) * radius
-        size = rng.uniform(6.0, 8.0)
+        # Bigger than the old rim anchors: read at 140 studs, not at 70.
+        size = rng.uniform(9.5, 12.5)
         frame = _wr_frame((cx, cy, _wk_ground(cx, cy) - size * 0.16), yaw=angle + rng.uniform(-0.8, 0.8), roll=tilt)
         # Shank, from buried crown to the ring at the head.
         _wr_beam(bm, frame, (0, 0, -size * 0.30), (0, 0, size * 0.92), size * 0.15, size * 0.15)
@@ -1797,176 +1780,69 @@ def build_wk_ironwork(rng):
             _wr_beam(bm, frame, (0, 0, -size * 0.26), elbow, size * 0.13, size * 0.12)
             _wr_beam(bm, frame, elbow, tip, size * 0.11, size * 0.10)
             _wr_beam(bm, frame, tip, tip + Vector((0, side * size * 0.10, size * 0.16)), size * 0.30, size * 0.05)
+        # The chain run, OUTWARD into the fleet. Outward is the whole rule: a
+        # cable led inboard would lie across the floor, which is the one thing
+        # this pass exists to stop.
+        sweep = angle + rng.uniform(-0.45, 0.45)
+        end = Vector((math.cos(sweep) * 158.0, math.sin(sweep) * 158.0, 0.0))
+        start = Vector((cx, cy, 0.0))
+        _wr_chain(
+            bm,
+            Vector((start.x, start.y, _wk_ground(start.x, start.y) + 1.4)),
+            Vector((end.x, end.y, _wk_ground(end.x, end.y) + 1.2)),
+            18,
+            0.85,
+            sag=0.9,
+        )
     return _wr_finish("WrackArena_DecoIronwork", bm, WK_IRON, "M_Wrack_Iron")
 
 
-def build_wk_chains(rng):
-    """Mooring chain: the haul chain still shackled from the capstan down the
-    middle furrow - the line he pulls himself along - and slack runs snaking
-    off the rim anchors into the fleet. Deco, so a chain can never trip a run."""
+def build_wk_tideline(rng):
+    """Tide wrack: weed, rope and shell left at the WATER'S EDGE.
+
+    On a beach the high-water line is a contour, not a circle - so this is an
+    arc across the seaward third of the rim, thinning to nothing toward the
+    sides and absent altogether at the head, where the sand is four studs above
+    the sea and the tide has never reached. It is 0.16 studs tall, it is Deco,
+    and it is the one thing on this arena that tells a player at a glance which
+    way is downhill and where the mouth is. The old build ringed the whole
+    circle with it and dragged strands 20 studs up into the play area; both are
+    gone."""
     bm = bmesh.new()
-    head = math.radians(WK_HEAD_DEG)
-    out = Vector((math.cos(head), math.sin(head), 0.0))
-
-    def seat(point, lift=0.0):
-        return Vector((point.x, point.y, _wk_ground(point.x, point.y) + lift))
-
-    # The haul chain, running the centre groove from the capstan to the middle.
-    drum = seat(out * (WK_CRADLE_R + 17.0), 4.6)
-    mouth = seat(out * (WK_CRADLE_R + 6.0), 0.5)
-    _wr_chain(bm, drum, mouth, 9, 0.8, sag=1.6)
-    along = WK_CRADLE_R + 6.0
-    while along > 12.0:
-        nxt = max(12.0, along - 9.0)
-        _wr_chain(bm, seat(out * along, 0.45), seat(out * nxt, 0.45), 7, 0.8)
-        along = nxt
-    # Slack runs off the rim anchors, out into the grounded fleet.
-    for radius, degrees in ((70.0, 24.0), (74.0, 118.0), (68.0, 212.0), (72.0, 316.0)):
-        angle = math.radians(degrees)
-        start = Vector((math.cos(angle) * radius, math.sin(angle) * radius, 0.0))
-        sweep = angle + rng.uniform(-0.55, 0.55)
-        end = Vector((math.cos(sweep) * 84.0, math.sin(sweep) * 84.0, 0.0))
-        _wr_chain(bm, seat(start, 1.4), seat(end, 1.2), 16, 0.7, sag=0.9)
-    return _wr_finish("WrackArena_DecoChains", bm, WK_IRON, "M_Wrack_Iron")
+    sea = math.radians(WK_SEA_DEG)
+    for _ in range(96):
+        # Bearings clustered on the mouth: a cosine-weighted draw, so density
+        # falls away from the water's edge instead of stopping at a hard end.
+        off = (rng.random() + rng.random() + rng.random() - 1.5) * 1.55
+        if abs(off) > math.radians(88.0):
+            continue
+        angle = sea + off
+        radius = WK_SAND_R - 2.0 + rng.uniform(0.0, 9.0) + math.cos(off) * 1.5
+        x, y = math.cos(angle) * radius, math.sin(angle) * radius
+        length = rng.uniform(2.2, 5.0)
+        rock(
+            bm,
+            (x, y, _wk_ground(x, y) + 0.08),
+            (length, length * rng.uniform(0.24, 0.42), 0.16),
+            rng,
+            jitter=0.3,
+        )
+    return _wr_finish("WrackArena_DecoTideline", bm, WK_WEED, "M_Wrack_Weed")
 
 
-# ------------------------------------------------- wrack: the six hulks
+def build_wk_ghost_glow(ships, rng):
+    """The ghost fleet's own sea-fire, and the only light in the arena: drawn
+    along the gunwales of every third hull in the palisade, knotted in their
+    open sockets, and a few lamps guttering out over the awash flat.
 
+    ALL OF IT AT THE BOUNDARY. The old build hung lamps under the cradle
+    arches, in the six hulks and drifting over the open flat, which put light
+    sources in the middle of the fight floor; the wreckage they belonged to is
+    gone and so are they.
 
-def build_wk_hulks(rng):
-    """THE FIGHT FURNITURE. Six chunks of wreck standing in the open sand at
-    r 33-52, each its own object so the fight logic can find and progressively
-    shatter it, and each with a different silhouette so a player under pressure
-    can tell them apart at a glance and remember which side is solid.
-
-    Every one is over seven studs of continuous mass - real cover from a
-    broadside - and every one is clear of the haul lane."""
-    objects = []
-    for index, (radius, degrees) in enumerate(WK_HULKS):
-        bm = bmesh.new()
-        angle = math.radians(degrees)
-        cx, cy = math.cos(angle) * radius, math.sin(angle) * radius
-        ground = _wk_ground(cx, cy)
-        # Every hulk faces a little off the arena centre, so no two present
-        # the same flat side to the middle.
-        facing = angle + math.pi
-
-        if index == 0:
-            # 1. ON HER BEAM ENDS. A midships section rolled flat onto her
-            #    side, half swallowed, her frames combing sideways out of the
-            #    sand. The one you duck behind first.
-            frame = _wr_frame((cx, cy, ground + 2.4), yaw=facing + 0.5, pitch=0.07, roll=math.radians(84))
-            st = _wr_stations(21.0, 13.2, 5.2, freeboard=5.6, count=7, bow_rise=0.25, fullness=1.3)
-            _wr_shell(bm, frame, st)
-            _wr_wales(bm, frame, st)
-            _wr_ribs(bm, frame, st, (0.10, 0.90), rise=6.2, thick=0.85)
-            _wr_tear(bm, frame, st[0], rng, count=6)
-            for f in (0.25, 0.55):
-                x, half, _keel, sheer = st[int(f * (len(st) - 1))]
-                _wr_beam(bm, frame, (x, half * 0.9, sheer - 0.3), (x, -half * 0.9, sheer - 0.3), 1.1, 0.6)
-        elif index == 1:
-            # 2. CAPSIZED STERN. Turned right over: her transom in the air,
-            #    the rudder still hung on its pintles, upside down.
-            frame = _wr_frame((cx, cy, ground + 4.8), yaw=facing - 0.7, pitch=-0.10, roll=math.radians(168))
-            st = _wr_stations(19.0, 14.0, 6.0, freeboard=4.4, count=7, bow_rise=0.2, fullness=1.35)
-            _wr_shell(bm, frame, st)
-            _wr_wales(bm, frame, st, fractions=(0.34, 0.68))
-            x0, half0, keel0, sheer0 = st[0]
-            # The rudder, hanging off the transom and now pointing at the sky.
-            _wr_beam(bm, frame, (x0 - 0.4, 0, keel0 + 0.6), (x0 - 1.6, 0, keel0 - 5.4), 1.0, 3.4)
-            for pintle in (0.25, 0.62):
-                _wr_beam(bm, frame, (x0 - 0.2, -1.4, keel0 - 5.4 * pintle), (x0 - 0.2, 1.4, keel0 - 5.4 * pintle), 0.5, 0.9)
-            _wr_tear(bm, frame, st[-1], rng, count=5, spread=0.6)
-            _wr_ribs(bm, frame, st, (0.55, 1.0), rise=4.6, thick=0.75)
-        elif index == 2:
-            # 3. A STACK OF SHATTERED STRAKES. Not a ship any more - a heap of
-            #    planking crossed layer on layer where the sea stacked it, with
-            #    a snapped mast driven clean through the pile. Low and broad:
-            #    this is the one you crouch behind.
-            frame = _wr_frame((cx, cy, ground), yaw=facing)
-            for layer in range(8):
-                lift = 0.5 + layer * 0.85
-                a = rng.uniform(0, math.pi)
-                length = rng.uniform(7.0, 10.5) * (1.0 - layer * 0.05)
-                _wr_beam(
-                    bm,
-                    frame,
-                    (math.cos(a) * -length, math.sin(a) * -length + rng.uniform(-1.5, 1.5), lift),
-                    (math.cos(a) * length, math.sin(a) * length + rng.uniform(-1.5, 1.5), lift + rng.uniform(-0.5, 0.9)),
-                    rng.uniform(2.6, 4.4),
-                    rng.uniform(0.5, 0.9),
-                    twist=rng.uniform(0, 0.7),
-                )
-            # A curled hull strake still holding its shape over the heap.
-            for side in (-1, 1):
-                _wr_beam(bm, frame, (-7.5, side * 3.4, 1.2), (2.0, side * 5.2, 6.4), 1.0, 3.0, twist=side * 0.5)
-            _wr_spar(bm, frame, (-9.0, -2.0, 0.4), (8.5, 3.5, 9.6), 0.85, 0.45, sides=6)
-            _wr_beam(bm, frame, (3.0, 1.0, 7.2), (3.4, 8.5, 5.2), 0.6, 0.6)
-        elif index == 3:
-            # 4. DRIVEN BOW. Rammed the shoal and stopped dead, stem to the
-            #    sky, bowsprit still out over the sand. The tallest hulk, and
-            #    the sightline breaker on the far side of the lane.
-            frame = _wr_frame((cx, cy, ground - 1.4), yaw=facing + 2.7, pitch=0.46, roll=math.radians(-13))
-            st = _wr_stations(21.0, 12.0, 5.4, freeboard=4.4, count=8, bow_rise=1.15)
-            _wr_shell(bm, frame, st)
-            _wr_wales(bm, frame, st)
-            _wr_ribs(bm, frame, st, (0.0, 0.42), rise=6.0, thick=0.8)
-            _wr_tear(bm, frame, st[0], rng)
-            x, _half, _keel, sheer = st[-1]
-            _wr_spar(bm, frame, (x * 0.97, 0.0, sheer - 0.5), (x * 1.34, 0.0, sheer + 2.6), 0.8, 0.30)
-            _wr_beam(bm, frame, (x * 1.14, 0, sheer + 0.4), (x * 1.16, 0, sheer - 2.8), 0.55, 0.55)
-        elif index == 4:
-            # 5. STANDING MIDSHIPS. The only one still sitting upright on her
-            #    keel: deck whole, gunports open along her side, a companionway
-            #    box and a stub of mast. She reads as a WALL, which is what
-            #    makes the other five read as rubble.
-            frame = _wr_frame((cx, cy, ground + 0.5), yaw=facing + 1.5, pitch=0.04, roll=math.radians(-9))
-            st = _wr_stations(20.0, 13.5, 5.0, freeboard=5.4, count=7, bow_rise=0.15, fullness=1.4)
-            _wr_shell(bm, frame, st)
-            _wr_wales(bm, frame, st, fractions=(0.28, 0.60, 0.86))
-            # Gunports: a raised sill frame round each opening, three a side.
-            for k, f in enumerate((0.24, 0.48, 0.72)):
-                x, half, keel, sheer = st[int(f * (len(st) - 1))]
-                port_z = keel + (sheer - keel) * 0.72
-                for side in (1, -1):
-                    y = side * half * 1.04
-                    for dz, dx, w, t in ((1.1, 0.0, 0.35, 2.4), (-1.1, 0.0, 0.35, 2.4)):
-                        _wr_beam(bm, frame, (x - 1.2 + dx, y, port_z + dz), (x + 1.2 + dx, y, port_z + dz), w, 0.5)
-                    for dx in (-1.2, 1.2):
-                        _wr_beam(bm, frame, (x + dx, y, port_z - 1.1), (x + dx, y, port_z + 1.1), 0.35, 0.5)
-                    if k == 1:
-                        # One lid still hanging open on its hinge.
-                        _wr_beam(bm, frame, (x, y, port_z + 1.1), (x + 0.4, y + side * 2.2, port_z + 2.6), 2.4, 0.4)
-            # The companionway, and the stub the mainmast snapped off at.
-            x0, half0, _keel0, sheer0 = st[3]
-            _wr_beam(bm, frame, (x0 - 2.6, 0, sheer0 + 1.6), (x0 + 2.6, 0, sheer0 + 1.6), 4.6, 3.2)
-            _wr_spar(bm, frame, (x0 + 5.0, 0, sheer0 - 1.0), (x0 + 5.4, 0.6, sheer0 + 5.4), 1.0, 0.75, sides=6)
-            _wr_tear(bm, frame, st[0], rng, count=6)
-        else:
-            # 6. KEEL UP. A ribcage wedge turned over - the keel line running
-            #    along the top like a spine, frames splaying down into the
-            #    sand, and a fallen yard lying across the whole thing.
-            frame = _wr_frame((cx, cy, ground + 5.2), yaw=facing + 0.9, pitch=0.16, roll=math.radians(186))
-            st = _wr_stations(22.0, 13.0, 5.6, freeboard=4.2, count=8, bow_rise=0.5, fullness=1.1)
-            _wr_beam(bm, frame, (st[0][0], 0, st[0][2]), (st[-1][0], 0, st[-1][2]), 2.9, 1.5)
-            _wr_wales(bm, frame, st, fractions=(0.96,), limit=1.0, width=1.2)
-            _wr_ribs(bm, frame, st, (0.05, 0.95), rise=8.0, thick=1.05)
-            x, _half, keel, sheer = st[-1]
-            _wr_beam(bm, frame, (x - 1.0, 0, keel), (x + 2.4, 0, sheer + 8.4), 1.2, 1.2)
-            # The fallen yard, lying across her from one side to the other.
-            _wr_spar(bm, _WK_WORLD, (cx - 10.0, cy - 7.0, ground + 0.6), (cx + 8.0, cy + 9.0, ground + 7.4), 0.9, 0.5, sides=6)
-        colour, material = (WK_HULKWOOD, "M_Wrack_HulkWood") if index % 2 == 0 else (WK_HULKPALE, "M_Wrack_HulkPale")
-        objects.append(_wr_finish("WrackArena_Hulk%d" % (index + 1), bm, colour, material))
-    return objects
-
-
-# ------------------------------------------------- wrack: dressing and edges
-
-
-def build_wk_ghost_fire(ships, rng):
-    """Sea-fire in the wreck SOCKETS: a line of it drawn along the gunwales of
-    the ghost ships in the boundary ring, and a knot burning in every open
-    gunport. The wreck island's own language (M_GhostGlow), pulled teal."""
+    Named `...Glow` on the OBJECT, which is the contract BossArenaService reads
+    to make it Neon (GLOW_MARKERS): the old `GhostFire`/`GhostLamp` names only
+    worked through that list's grandfathered entries."""
     bm = bmesh.new()
     for ship in ships:
         if not ship["ghost"]:
@@ -1982,111 +1858,25 @@ def build_wk_ghost_fire(ships, rng):
             for side in (1, -1):
                 point = frame @ Vector((x, side * half * 0.98, sheer + 0.9))
                 rock(bm, point, (0.95, 0.95, 0.95), rng, jitter=0.08)
-    return _wr_finish("WrackArena_DecoGhostFire", bm, WK_GHOST, "M_Wrack_Glow")
-
-
-def build_wk_ghost_lamps(rng):
-    """The lamps that are still lit: one hung under each standing cradle arch,
-    a couple guttering in the hulks' broken sockets, and a few drifting low
-    over the flat. The arena's only light source, and the colour that tells a
-    player which wreckage is Wrack's."""
-    bm = bmesh.new()
-    head = math.radians(WK_HEAD_DEG)
-    out = Vector((math.cos(head), math.sin(head), 0.0))
-    for index in (0, 1, 2, 4):
-        r = WK_CRADLE_R + 14.0 - index * 6.6
-        at = out * r
-        rock(bm, (at.x, at.y, _wk_ground(at.x, at.y) + 16.4), (1.25, 1.25, 1.5), rng, jitter=0.1)
-    for radius, degrees in WK_HULKS:
-        angle = math.radians(degrees)
-        for _ in range(2):
-            spread = rng.uniform(3.0, 7.0)
-            spin = rng.uniform(0, TAU)
-            x = math.cos(angle) * radius + math.cos(spin) * spread
-            y = math.sin(angle) * radius + math.sin(spin) * spread
-            rock(bm, (x, y, _wk_ground(x, y) + rng.uniform(1.6, 6.0)), (0.70,) * 3, rng, jitter=0.08)
-    for _ in range(12):
+    # A handful drifting low over the drowned flat, out among the hulls.
+    for _ in range(16):
         angle = rng.uniform(0, TAU)
-        radius = rng.uniform(60.0, 86.0)
+        radius = rng.uniform(WK_FLEET_R[0] - 4.0, WK_FOAM_R[0])
         x, y = math.cos(angle) * radius, math.sin(angle) * radius
-        rock(bm, (x, y, _wk_profile(radius) + rng.uniform(1.2, 5.5)), (0.55,) * 3, rng, jitter=0.06)
-    return _wr_finish("WrackArena_DecoGhostLamps", bm, WK_GHOST, "M_Wrack_Glow")
-
-
-def build_wk_barrels(rng):
-    """Stores spilled out of the fleet and washed up at the rim: barrels on
-    their sides, crates stove in. EDGES ONLY - past r 64, so the open sand the
-    fight needs stays open."""
-    bm = bmesh.new()
-    for _ in range(13):
-        angle = rng.uniform(0, TAU)
-        radius = rng.uniform(64.0, 78.0)
-        cx, cy = math.cos(angle) * radius, math.sin(angle) * radius
-        for _ in range(rng.randint(2, 4)):
-            x, y = cx + rng.uniform(-4.0, 4.0), cy + rng.uniform(-4.0, 4.0)
-            ground = _wk_ground(x, y)
-            if rng.random() < 0.55:
-                # A barrel, rolled onto its side and part buried.
-                heading = rng.uniform(0, TAU)
-                length = rng.uniform(2.6, 3.6)
-                girth = rng.uniform(1.1, 1.6)
-                axis = Vector((math.cos(heading), math.sin(heading), 0.0)) * (length / 2)
-                _wr_spar(
-                    bm,
-                    _WK_WORLD,
-                    Vector((x, y, ground + girth * 0.55)) - axis,
-                    Vector((x, y, ground + girth * 0.55)) + axis,
-                    girth * 0.82,
-                    girth * 0.82,
-                    sides=8,
-                )
-            else:
-                size = rng.uniform(1.6, 2.6)
-                box(
-                    bm,
-                    (x, y, ground + size * 0.34),
-                    (size, size * rng.uniform(0.8, 1.2), size * rng.uniform(0.6, 0.9)),
-                    Matrix.Rotation(rng.uniform(0, TAU), 3, "Z") @ Matrix.Rotation(rng.uniform(-0.4, 0.4), 3, "X"),
-                )
-    return _wr_finish("WrackArena_DecoBarrels", bm, WK_PLANK, "M_Wrack_Plank")
-
-
-def build_wk_tideline(rng):
-    """Tide wrack: the arc of weed, rope and shell the last high water left
-    across the flat. Flat, dark, and Deco - it draws the high-water line the
-    fleet lies just outside of, and gives the sand's edge something to read."""
-    bm = bmesh.new()
-    for _ in range(52):
-        angle = rng.uniform(0, TAU)
-        radius = rng.uniform(68.0, 79.0) + math.sin(angle * 3.0) * 1.8
-        x, y = math.cos(angle) * radius, math.sin(angle) * radius
-        length = rng.uniform(1.8, 4.2)
-        rock(
-            bm,
-            (x, y, _wk_ground(x, y) + 0.08),
-            (length, length * rng.uniform(0.24, 0.42), 0.16),
-            rng,
-            jitter=0.3,
-        )
-    # A few strands dragged further up the flat, following the ebb's run.
-    for _ in range(14):
-        angle = rng.uniform(0, TAU)
-        radius = rng.uniform(56.0, 68.0)
-        x, y = math.cos(angle) * radius, math.sin(angle) * radius
-        rock(bm, (x, y, _wk_ground(x, y) + 0.07), (rng.uniform(1.4, 2.8), 0.5, 0.14), rng, jitter=0.35)
-    return _wr_finish("WrackArena_DecoTideline", bm, WK_WEED, "M_Wrack_Weed")
+        rock(bm, (x, y, _wk_ground(x, y) + rng.uniform(2.0, 7.0)), (0.85,) * 3, rng, jitter=0.08)
+    return _wr_finish("WrackArena_DecoGhostGlow", bm, WK_GHOST, "M_Wrack_Glow")
 
 
 def build_wk_foam(rng):
     bm = bmesh.new()
     # Surf ring outside the grounded fleet. Named *_Foam so OceanController
     # lifts it on the tide - and so the service strips its collision.
-    angles = 40
+    angles = 56
     inner, outer = [], []
     for i in range(angles):
         angle = (i / angles) * TAU
-        r0 = WK_FOAM_R[0] + rng.uniform(-1.0, 1.0)
-        r1 = WK_FOAM_R[1] + rng.uniform(-1.3, 1.3)
+        r0 = WK_FOAM_R[0] + rng.uniform(-1.4, 1.4)
+        r1 = WK_FOAM_R[1] + rng.uniform(-1.8, 1.8)
         inner.append(bm.verts.new((math.cos(angle) * r0, math.sin(angle) * r0, 0.28)))
         outer.append(bm.verts.new((math.cos(angle) * r1, math.sin(angle) * r1, 0.22)))
     for i in range(angles):
@@ -2096,58 +1886,132 @@ def build_wk_foam(rng):
     return _wr_finish("WrackArena_Foam", bm, WK_FOAM, "M_Wrack_Foam")
 
 
+# ------------------------------------------------- wrack: the clearance check
+
+
+def _wk_clearance(objects):
+    """MEASURE the empty floor rather than assert it.
+
+    "No obstacles inside the walkable radius" is the brief, and it is a claim
+    about geometry nobody drew on purpose - which is exactly the kind that
+    survives review and fails in play, because the thing that breaks it is
+    never the object you were thinking about. The palisade's masts lean inward
+    by design and its driven bows rear inward; whether either reaches down into
+    the arena is a question about numbers that only the built mesh can answer.
+
+    So: every COLLIDABLE object except the floor itself, every vertex, and the
+    two numbers that decide it - how far in anything solid comes below
+    headroom, and how low anything solid hangs inside the rim."""
+    worst_r, worst_r_of = None, None
+    worst_z, worst_z_of = None, None
+    for obj in objects:
+        name = obj.name
+        if name.endswith("_Base"):
+            continue
+        if "Deco" in name or "Foam" in name:
+            continue
+        for vert in obj.data.vertices:
+            x, y, z = vert.co
+            r = math.hypot(x, y)
+            if z < WK_HEADROOM and (worst_r is None or r < worst_r):
+                worst_r, worst_r_of = r, name
+            if r < WK_SAND_R and (worst_z is None or z < worst_z):
+                worst_z, worst_z_of = z, name
+    return worst_r, worst_r_of, worst_z, worst_z_of
+
+
 def build_wrack():
     rng = random.Random(8317)
     ships = _wk_fleet(rng)
     objects = [
         build_wk_base(rng),
         build_wk_shallows(rng),
-        build_wk_tidewater(),
-        build_wk_spoil(rng),
         build_wk_fleet(ships, rng),
         build_wk_fleet_ribs(ships, rng),
         build_wk_fleet_masts(ships, rng),
         build_wk_sails(ships, rng),
-        build_wk_cradle(rng),
         build_wk_ironwork(rng),
-        build_wk_chains(rng),
-        *build_wk_hulks(rng),
-        build_wk_ghost_fire(ships, rng),
-        build_wk_ghost_lamps(rng),
-        build_wk_barrels(rng),
         build_wk_tideline(rng),
+        build_wk_ghost_glow(ships, rng),
         build_wk_foam(rng),
     ]
+
+    # The floor, measured on the fall line and on the two beam bearings.
+    sea = math.radians(WK_SEA_DEG)
     head = math.radians(WK_HEAD_DEG)
-    cradle_x, cradle_y = math.cos(head) * WK_CRADLE_R, math.sin(head) * WK_CRADLE_R
-    print("HANDOFF wrack: mesh bottom z %.1f  (skirt constant, informational - the authoritative meshBottom is MEASURED at export)" % (SKIRT_BOTTOM - 0.5))
-    print("HANDOFF wrack: walkable sand r 0-%.0f (wet ribbed flat, dished; z ~0.7-1.5), awash flat to r 88" % WK_SAND_R)
-    print("HANDOFF wrack: boundary GROUNDED FLEET r %.0f-%.0f, 15 hulls, ring open %.0f deg at the head" % (WK_FLEET_R[0], WK_FLEET_R[1], WK_FLEET_GAP_DEG))
-    print("HANDOFF wrack: foam ring r %.0f-%.0f (*_Foam: OceanController rides it), skirt to r 99" % WK_FOAM_R)
+    sea_z = _wk_ground(math.cos(sea) * WK_SAND_R, math.sin(sea) * WK_SAND_R)
+    head_z = _wk_ground(math.cos(head) * WK_SAND_R, math.sin(head) * WK_SAND_R)
     print(
-        "HANDOFF wrack: cradle bearing %.0f deg (the head of the shoal) rel (%.1f, %.1f), 6 arches r %.0f..%.0f, crowns z ~17 - WRACK STARTS HERE"
-        % (WK_HEAD_DEG, cradle_x, cradle_y, WK_CRADLE_R - 19.0, WK_CRADLE_R + 14.0)
-    )
-    print(
-        "HANDOFF wrack: haul lane bearing %.0f deg (cradle -> centre), length %.0f studs, 3 furrows at %s across, clear half-width %.0f"
-        % ((WK_HEAD_DEG + 180.0) % 360.0, WK_CRADLE_R, ", ".join("%+.1f" % o for o in WK_FURROW_OFFSETS), WK_LANE_HALF)
-    )
-    for index, (radius, degrees) in enumerate(WK_HULKS):
-        angle = math.radians(degrees)
-        along, across = _wk_lane(math.cos(angle) * radius, math.sin(angle) * radius)
-        print(
-            "HANDOFF wrack: Hulk%d rel (%.1f, %.1f) r %.0f bearing %.0f deg, %.0f studs off the haul lane"
-            " - the fight's DESTRUCTIBLE COVER (own object, shatter one at a time)"
-            % (index + 1, math.cos(angle) * radius, math.sin(angle) * radius, radius, degrees, abs(across))
+        "HANDOFF wrack: WALKABLE SAND r 0-%.0f (was 78). Plain, unbroken, no props on it. "
+        "Beach z %.2f at the water's edge (bearing %.0f) -> %.2f at the centre -> %.2f at the "
+        "head (bearing %.0f); max grade %.1f%%. MIN WALKABLE z %.2f, MAX %.2f - both above the "
+        "waterline, which is the whole rule (BossArenaService.verifyWaterline)."
+        % (
+            WK_SAND_R,
+            sea_z,
+            WK_SEA_DEG,
+            WK_CENTRE_Z,
+            head_z,
+            WK_HEAD_DEG,
+            100.0 * (WK_HEAD_Z - WK_SEA_Z) * WK_BEACH_P / (2.0 * WK_SAND_R),
+            min(sea_z, head_z),
+            max(sea_z, head_z),
         )
+    )
+    print(
+        "HANDOFF wrack: boundary PALISADE r %.0f-%.0f MEASURED (%.0f-%.0f before the clearance "
+        "guard pushed the low ones out), %d grounded hulls, ring open %.0f deg at bearing %.0f "
+        "(the mouth: lowest ground, tide wrack, and the way in)"
+        % (
+            min(s["radius"] for s in ships),
+            max(s["radius"] for s in ships),
+            WK_FLEET_R[0],
+            WK_FLEET_R[1],
+            len(ships),
+            WK_FLEET_GAP_DEG,
+            WK_SEA_DEG,
+        )
+    )
+    print(
+        "HANDOFF wrack: foam ring r %.0f-%.0f (*_Foam: OceanController rides it), shoal rim r 172, "
+        "four anchors at r %.0f-%.0f - ALL of it outside the walkable sand"
+        % (WK_FOAM_R[0], WK_FOAM_R[1], min(a[0] for a in WK_ANCHORS), max(a[0] for a in WK_ANCHORS))
+    )
+    worst_r, worst_r_of, worst_z, worst_z_of = _wk_clearance(objects)
+    if worst_r is None:
+        print("HANDOFF wrack: CLEAR FLOOR - no collidable object other than _Base exists at all")
+    else:
+        verdict = "CLEAR" if (worst_r >= WK_SAND_R and (worst_z is None or worst_z >= WK_HEADROOM)) else "INTRUDES"
+        print(
+            "HANDOFF wrack: CLEAR FLOOR %s - nearest solid geometry below %.0f studs of headroom is "
+            "r %.1f (%s); lowest solid geometry inside r %.0f is z %s (%s). Walkable sand ends at "
+            "r %.0f."
+            % (
+                verdict,
+                WK_HEADROOM,
+                worst_r,
+                worst_r_of,
+                WK_SAND_R,
+                "%.1f" % worst_z if worst_z is not None else "none",
+                worst_z_of or "-",
+                WK_SAND_R,
+            )
+        )
+    print(
+        "HANDOFF wrack: the boss lies ALONG the contours - beach falls toward bearing %.0f, which is "
+        "where boss_gen heels him (masts over +y, scraped bottom and Keel battery under -y). Ground "
+        "under his 47-stud beam: %.2f (bared side, uphill) to %.2f (mast side, downhill)."
+        % (WK_SEA_DEG, _wk_beach(-24.0), _wk_beach(23.0))
+    )
+    print(
+        "HANDOFF wrack: RETUNE OWED (Bosses.luau admiral_wrack, not this lane) - reach is spawnAt + "
+        "speed*lifetime: anchorsweep 106, slewfire 113, chainshot 114, slewfireFast 117, broadside "
+        "125, broadsideHeavy 128, grapeshot 163. Five of nine now die short of the rim. `aggro` 110 "
+        "and `arena.radius` 40 (party rings in at 48, inside his own 87-stud hull) were sized to the "
+        "78-stud shoal."
+    )
     return objects
 
-
-ARENAS = {
-    "brinejaw": build_brinejaw,
-    "gnashroot": build_gnashroot,
-    "wrack": build_wrack,
-}
 
 # ---------------------------------------------------------------- io
 
@@ -2221,15 +2085,23 @@ CAMERAS = {
         ("_ground", (-56, 0, 7.0), None, (0, 0, 2.5), 26),
     ],
     "wrack": [
-        # Three-quarter over the shoal, swung so the cradle sits upper-left and
-        # the haul lane runs down-right into the middle - the one read that has
-        # to survive: a ring of dead ships around a clean tidal flat.
-        ("", (58, -196, 92), None, (-4, 6, 9), 32),
-        # Standing near the middle at player eye height, looking back UP the
-        # haul lane at the cradle: the view every challenger gets of where
-        # Wrack is coming from, and the shot that says whether the furrows
-        # read as a lane and whether the hulks are usable cover.
-        ("_lane", (18.0, -10.0, 6.6), None, (-55.4, 32.0, 11.0), 24),
+        # Three-quarter from off the seaward quarter, high enough to hold the
+        # whole 264-stud floor: the one read that has to survive is an empty
+        # beach with a ring of dead ships round the edge of it.
+        ("", (300, 330, 205), None, (0, -8, 4), 34),
+        # STRAIGHT DOWN. The plan is the honest test of "plain and uncluttered"
+        # - a three-quarter shot can hide clutter behind the palisade, an
+        # overhead cannot hide anything. It is also the fight's own camera
+        # angle, pitched further.
+        # Lens 38, not the tighter figure the first pass reached for: the frame
+        # is 1500x950, so it is the VERTICAL half-angle that has to cover the
+        # 176-stud rim, and 18mm of horizontal room says nothing about that.
+        ("_plan", (0, -30, 640), None, (0, 0, 0), 38),
+        # Standing at the head of the beach at player eye height, looking down
+        # the fall line and out through the mouth: the shot that says whether
+        # the floor is walkable, whether it shelves, and how far away the wall
+        # actually is.
+        ("_ground", (0.0, -118.0, 10.4), None, (0.0, 152.0, 3.0), 24),
     ],
 }
 

@@ -175,28 +175,24 @@ MeshColors.items = {
 	["Rimefang_Rime"] = Color3.fromRGB(229, 237, 242),
 	["Rimefang_TeethLower"] = Color3.fromRGB(219, 212, 184),
 	["Rimefang_TeethUpper"] = Color3.fromRGB(219, 212, 184),
+	-- The Careenage, REBUILT 2026-09-01: 22 objects down to 10. The six
+	-- `_Hulk1..6`, the `_Cradle`, `_DecoSpoil`, `_DecoTidewater`,
+	-- `_DecoBarrels` and `_DecoChains` all stood in the play area and are
+	-- gone with it; `_DecoGhostFire` and `_DecoGhostLamps` merged into one
+	-- object, renamed to carry `Glow` so BossArenaService's own marker makes
+	-- it Neon instead of the two grandfathered names below it in GLOW_MARKERS.
+	-- Values read off the built materials, not retyped: every surviving colour
+	-- is byte-identical to the row it replaces.
 	["WrackArena_Base"] = Color3.fromRGB(113, 109, 98),
-	["WrackArena_Cradle"] = Color3.fromRGB(115, 98, 75),
-	["WrackArena_DecoBarrels"] = Color3.fromRGB(121, 103, 79),
-	["WrackArena_DecoChains"] = Color3.fromRGB(77, 102, 90),
-	["WrackArena_DecoGhostFire"] = Color3.fromRGB(143, 242, 204),
-	["WrackArena_DecoGhostLamps"] = Color3.fromRGB(143, 242, 204),
+	["WrackArena_DecoGhostGlow"] = Color3.fromRGB(143, 242, 204),
 	["WrackArena_DecoIronwork"] = Color3.fromRGB(77, 102, 90),
 	["WrackArena_DecoSailRag"] = Color3.fromRGB(166, 168, 158),
 	["WrackArena_DecoShallows"] = Color3.fromRGB(90, 90, 83),
-	["WrackArena_DecoSpoil"] = Color3.fromRGB(133, 127, 112),
 	["WrackArena_DecoTideline"] = Color3.fromRGB(65, 77, 54),
-	["WrackArena_DecoTidewater"] = Color3.fromRGB(46, 68, 71),
 	["WrackArena_Fleet"] = Color3.fromRGB(29, 23, 19),
 	["WrackArena_FleetMasts"] = Color3.fromRGB(84, 69, 52),
 	["WrackArena_FleetRibs"] = Color3.fromRGB(52, 44, 35),
 	["WrackArena_Foam"] = Color3.fromRGB(204, 210, 207),
-	["WrackArena_Hulk1"] = Color3.fromRGB(81, 68, 52),
-	["WrackArena_Hulk2"] = Color3.fromRGB(105, 90, 69),
-	["WrackArena_Hulk3"] = Color3.fromRGB(81, 68, 52),
-	["WrackArena_Hulk4"] = Color3.fromRGB(105, 90, 69),
-	["WrackArena_Hulk5"] = Color3.fromRGB(81, 68, 52),
-	["WrackArena_Hulk6"] = Color3.fromRGB(105, 90, 69),
 	["Wrack_Arm"] = Color3.fromRGB(30, 37, 62),
 	["Wrack_Base"] = Color3.fromRGB(62, 59, 53),
 	["Wrack_BatteryDeck"] = Color3.fromRGB(186, 132, 53),
