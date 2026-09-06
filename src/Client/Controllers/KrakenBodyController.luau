@@ -4,8 +4,8 @@
 -- and eight arms reaching out of its crown to the rocks.
 --
 -- Same split as BrinejawBodyController. The server keeps authority only - a
--- hidden model for hits and the HUD, plus three replicated numbers (Rise,
--- FaceAngle, Stance) - and everything you can see is built here from
+-- hidden model for hits and the HUD, plus the replicated numbers (Rise and
+-- FaceAngle) - and everything you can see is built here from
 -- KrakenPath. No timers, no local guesses about what the boss is doing.
 --
 -- THE ONE IDEA WORTH KNOWING: the fight spawns eight `kraken_tentacle`
@@ -65,14 +65,60 @@ local HEAD_PIECES = { "Head", "Crown", "Crust", "Eyes", "Pupil", "Beak" }
 -- `hump` is doing the heavy lifting: the arch is most of an arm's visible
 -- length, and it is what makes the thing crest out of the water and come
 -- DOWN on the rock rather than poke at it.
--- `hump` is measured AGAINST THE RADIAL SPAN, not chosen for drama. A bound
--- arm crosses 20.5 studs (socket 25.5 -> ring 46), and the authored render
--- arches 0.63 of its span - so 13, not the 26 that was here. At 26 the arm
--- climbed further than it travelled and read as a fountain, not a limb; it
--- also spent 76% of its length past 64 degrees of pitch, where ChainPose's
--- frame goes degenerate. Raise `parts.ring` and these rise with it.
-local BOUND = { hump = 13.0, wave = 0.22, breathe = 1.8 }
-local RESTING = { hump = 7.0, wave = 0.12, breathe = 1.2, reach = 36.0, tipY = -16.0 }
+-- `hump` IS MEASURED AGAINST THE ARM'S OWN THICKNESS, which is the rule that
+-- replaced the span-ratio one that used to sit here. The old note set hump to
+-- 0.63 of the radial span "because the authored render arches 0.63 of its
+-- span", and that ratio does not transfer: the render's arm crosses 64 studs
+-- of radial room, the in-game arm crosses 20.5, so the span shrank by better
+-- than 3x - and the SEGMENTS DID NOT. They are the same 8.6-stud capsules at
+-- the same SCALE. An arch that is a gentle curve across 64 studs is a fold
+-- across 20.5, drawn with a limb of exactly the same girth.
+--
+-- The real bound is local: at every u the centreline's radius of curvature
+-- must beat (8.6 / 2) * SCALE * (1 - TIP_GIRTH * u), the drawn half-
+-- thickness there, with 10% margin.
+--
+-- THE CEILING SCALES AS THE SQUARE OF THE RADIAL SPAN, which is why
+-- `parts.ring` is 50 and not 46. Measured, with the whole envelope tuned for
+-- it: span 20.5 (ring 46) admits hump 2.85, span 24.5 (ring 50) admits 3.93,
+-- span 28.5 (ring 54) admits 5.21. Admitting hump 8 would take a ring near
+-- 60 - past the 38-52 platform band, out where the tentacles are no longer
+-- in the fight. So the ring bought a 38% gain and the gap is still wide.
+--
+-- (An earlier note here claimed a ceiling of 6.35. That number came from
+-- measuring the arch ALONE with the skirt deleted AND the shoulder crease
+-- excluded from the sweep - a bound on one term, not on any arm that can
+-- actually be drawn. Quoted as if it were the real ceiling it says the ring
+-- change should have closed this, and it does not. The figures above are
+-- from the shipped curve, corner and skirt included.)
+--
+-- SO 9.0 IS A COMPROMISE AND IS DOCUMENTED AS ONE. 13 was 0.016 of the bound
+-- and 9 is 0.406 - twenty-five times better, worst radius 0.097 -> 1.699
+-- studs, peak pitch 81.6 -> 65.3 degrees - but the arm is 7.6 studs thick
+-- where it bends hardest and it wants 4.2 studs of radius there. Going lower
+-- is what the curvature asks for; 8 is the floor the silhouette asks for,
+-- and below it the Kraken stops arching over the rocks and starts reaching
+-- along the water. The two do not meet. What would actually close it is a
+-- thinner mid-arm - TIP_GIRTH shaping, or slimmer authored segments in the
+-- pack - and until that lands this arm self-intersects at its crest by
+-- design, visibly least at hump 9.
+local BOUND = { hump = 9.0, wave = 0.22, breathe = 1.8 }
+-- RESTING is the unclaimed-arm drape, and its look is negotiable where
+-- BOUND's is not - nothing is staged against it, so it was tuned for the
+-- curvature bound until it PASSED, which it does: 1.002 of the bound, worst
+-- radius 4.25 studs against 3.85 of girth, peak pitch 84.6 -> 52.4 degrees.
+-- The old 36 / -16 asked the arm to fall 13 studs across only 10.5 studs of
+-- radial run, a hairpin no envelope can help.
+--
+-- 3.50 IS THE MOST ARCH THIS POSE CAN HOLD, not a look that was chosen: at
+-- reach 48 and tipY -14 the bound admits 3.52, so this is the ceiling with
+-- the rounding taken off. It is a visibly flatter arm than a bound one, and
+-- that is correct - a dead arm draping back into the water should not be
+-- arching like one that is holding a tentacle. Raise `reach` (48 is the
+-- practical limit before an idle arm rests past the platforms) before
+-- raising `hump`, since span buys curvature quadratically and hump spends it
+-- linearly.
+local RESTING = { hump = 3.50, wave = 0.12, breathe = 1.2, reach = 48.0, tipY = -14.0 }
 -- How fast an arm chases its tentacle. TIGHT on the tip, because the tentacle
 -- is not decoration - it rears 13 studs and slams, and an arm that lags that
 -- by half a second is an arm hitting you somewhere it visibly is not. Loose
@@ -87,7 +133,11 @@ local FALLBACK_SIZE = {
 	Crust = Vector3.new(34, 6, 34),
 	Eyes = Vector3.new(11, 6, 32),
 	Pupil = Vector3.new(7, 2, 30),
-	Beak = Vector3.new(9, 7, 9),
+	-- The rebuilt beak: two parted mandibles, bbox x 11.6..25.3, y +/-4.7,
+	-- z -14.5..1.5, so 14 long x 9 across x 16 deep. It used to be 9 x 7 x 9,
+	-- which was the old single hooked beak and understates the new piece by
+	-- most of its drop.
+	Beak = Vector3.new(14, 9, 16),
 	ArmSeg = Vector3.new(5.4, 8.6, 8.6),
 	ArmTip = Vector3.new(11.8, 7.8, 7.8),
 	Sucker = Vector3.new(1.3, 4.6, 4.6),
@@ -104,6 +154,60 @@ local FALLBACK_SIZE = {
 -- `Kraken_Pupil` must stay matte, or the slit stops reading as a pupil and
 -- the eye goes back to being a lamp. Naming the two that glow states that.
 local NEON_PIECES = { Eyes = true, Sucker = true }
+
+-- WHERE EACH STAND-IN HEAD PIECE SITS, in the head's own frame at scale 1
+-- (+X is the facing, +Y is up, +Z is across), applied ONLY to parts that came
+-- out of makePiece's fallback branch.
+--
+-- The six head pieces all ride ONE `headFrame`, which is correct for the
+-- imported pack - the authored mesh carries its own geometry, every piece is
+-- modelled in place around the crown, and offsetting them would take the
+-- octopus apart. It is wrong for the stand-ins, which are six centred bricks:
+-- with no offsets they all sat on the same point, so the fallback head was a
+-- single featureless ball with the eyes, the pupil and the beak buried
+-- somewhere inside it - and that ball was centred on the CROWN, the authored
+-- origin, which is the BOTTOM of the animal. The whole 46 studs of mantle
+-- hung above a mass that read as sitting 32 studs too low.
+--
+-- Every number is measured off assets/boss_gen.py at scale 1, the same way
+-- FALLBACK_SIZE's are, so the stand-in is the authored head's silhouette in
+-- six boxes rather than a guess at one:
+--   Head   the dome, lifted to mid-mantle: KR head runs z 0 -> 46.2, so its
+--          centre is HEAD_HEIGHT/2 and the ball then stands on the crown
+--          instead of straddling it.
+--   Crown  the origin, untouched - it IS z = 0, and everything else is
+--          measured from it.
+--   Crust  ONE flank, off the face, matching build_kr_crust's own clustering
+--          (bearing 1.5..3.5 rad, z 1.5..13.5; centre of that is bearing
+--          2.5 at r 18.2, z 7.5). Sprinkled evenly it read as rubble.
+--   Eyes   the authored eye seat: KR_EYE_BEARING 27 deg off +X at
+--          KR_EYE_SEAT 18.4, KR_EYE_Z 15.0 - so 16.4 forward and 15 up. Left
+--          on the centreline, because FALLBACK_SIZE.Eyes is already a
+--          32-stud span: one band reaching BOTH seats, since one name gets
+--          one part and two balls would need two.
+--   Pupil  the same seat plus build_kr_pupil's 3.4, so the slit stands proud
+--          of the lens rather than z-fighting inside it.
+--   Beak   under the crown's +X rim, which is where the rebuilt piece now
+--          hangs (bbox x 11.6..25.3, dropping to z -14.5). There is no hinge
+--          to measure from any more: the beak is fixed and decorative, since
+--          the head is ranged-only and never bites, and boss_gen.py's
+--          KR_BEAK_HINGE went with the two mandibles it used to swing.
+-- CFrames rather than Vector3s so a piece can be turned as well as moved;
+-- the position is scaled by SCALE at use, the rotation is not.
+local FALLBACK_AT = {
+	Head = CFrame.new(0, KrakenPath.HEAD_HEIGHT / 2, 0),
+	Crown = CFrame.new(0, 0, 0),
+	Crust = CFrame.new(math.cos(2.5) * 18.2, 7.5, math.sin(2.5) * 18.2),
+	Eyes = CFrame.new(math.cos(math.rad(27)) * 18.4, 15.0, 0),
+	Pupil = CFrame.new(math.cos(math.rad(27)) * (18.4 + 3.4), 15.0, 0),
+	Beak = CFrame.new(16.0, -6.0, 0),
+}
+-- Set by makePiece on the fallback branch only, and read when the head is
+-- placed. It has to be an attribute on the PART rather than a flag beside the
+-- table, because the pack can land piece by piece: `packPiece` is asked per
+-- name, so a half-imported KrakenPack gives real geometry for some of the six
+-- and stand-ins for the others, and only the stand-ins may be offset.
+local FALLBACK_TAG = "KrakenStandIn"
 
 -- The pieces that read better as a round fallback than a brick.
 local FALLBACK_SHAPE = {
@@ -138,6 +242,11 @@ local function makePiece(name: string, parent: Instance): BasePart
 		if shape then
 			part.Shape = shape
 		end
+		-- Tagged so the head can lay these six out (FALLBACK_AT). An imported
+		-- piece must NEVER be offset - it is modelled in place - so the flag
+		-- goes on here, in the branch that actually built a stand-in, rather
+		-- than being inferred later from anything about the part.
+		part:SetAttribute(FALLBACK_TAG, true)
 	end
 	-- COLOUR AND MATERIAL, asserted for BOTH branches. Studio's glTF importer
 	-- carries no colour at all - every imported part arrives Roblox-default
@@ -190,14 +299,35 @@ end
 
 -- ---------------------------------------------------------------- tentacles
 
--- Which socket a tentacle belongs to, from its bearing around the centre.
--- The server plants tentacle `i` at exactly `(i / count) * 2pi`
--- (CreatureService.spawnBossParts), so this recovers `i` rather than
--- guessing at it.
-local function socketFor(centre: Vector3, at: Vector3, count: number): number
+-- Which socket a tentacle belongs to, WHEN ALL WE HAVE IS ITS POSITION.
+--
+-- This is the fallback, not the answer - see socketOf. It rounds the
+-- tentacle's bearing onto an even ring, which was right while the server
+-- planted tentacle `i` at exactly `(i / count) * 2pi` and is wrong now that
+-- the ring is a 206-degree arc: on the arc the eight bearings are 26 degrees
+-- apart over one half of the circle, so rounding them onto 45-degree spokes
+-- collapses several tentacles onto the same spoke and leaves others empty.
+-- Kept only so a model with no SocketIndex attribute lands on SOME socket
+-- and gets an arm at all.
+local function socketByBearing(centre: Vector3, at: Vector3, count: number): number
 	local bearing = math.atan2(at.Z - centre.Z, at.X - centre.X)
 	local index = math.floor(bearing / (math.pi * 2) * count + 0.5)
 	return ((index - 1) % count) + 1
+end
+
+-- Which socket a tentacle belongs to. AUTHORITATIVE: the server stamps
+-- `SocketIndex` (1..count) on every part it plants, in
+-- CreatureService.spawnBossParts, at the moment it decides where the thing
+-- stands - so this is the server's own answer read back, not a reconstruction
+-- of it. Nothing about the ring's shape can break it: move the tentacles onto
+-- an arc, onto authored sockets, onto nothing recognisable at all, and arm
+-- `i` still holds tentacle `i`.
+local function socketOf(model: Model, centre: Vector3, at: Vector3, count: number): number
+	local published = model:GetAttribute("SocketIndex")
+	if type(published) == "number" and published >= 1 and published <= count then
+		return published
+	end
+	return socketByBearing(centre, at, count)
 end
 
 -- The tentacle's own model is authority, not art: hide it and let the arm
@@ -231,10 +361,12 @@ local function claimTentacles(centre: Vector3, count: number)
 			if (Vector3.new(at.X - centre.X, 0, at.Z - centre.Z)).Magnitude < 200 then
 				hideTentacle(child)
 				claimed = claimed or {}
-				local socket = socketFor(centre, at, count)
-				-- Two tentacles on one bearing should not happen, but if the
-				-- ring is ever spawned off-pattern the second takes the next
-				-- free socket rather than stealing the first one's arm.
+				local socket = socketOf(child, centre, at, count)
+				-- Two tentacles on one socket should not happen - the server
+				-- stamps each index exactly once - but a ring spawned with no
+				-- attributes at all falls through to the bearing rounding,
+				-- which collides freely on an arc. The second one takes the
+				-- next free socket rather than stealing the first one's arm.
 				for step = 0, count - 1 do
 					local slot = ((socket - 1 + step) % count) + 1
 					if not claimed[slot] then
@@ -358,7 +490,32 @@ local function drawArm(entry, body, dt: number, now: number, target: Vector3?)
 		local girth = SCALE * (1 - TIP_GIRTH * u)
 		applyPiece(segment, cframe, SCALE * (1 - TIP_LENGTH * u), girth)
 
-		if index % SUCKER_EVERY == 0 and u <= SUCKER_UNTIL then
+		-- A SUCKER CAN FAIL TO BE PLACED AT AN INDEX THAT IS STILL IN USE, and
+		-- that is why it needs parking here rather than in the loop below.
+		-- The cleanup after this `each` only parks indices past `used`, which
+		-- is right for anything drawn once per segment - but a sucker is
+		-- ALSO gated on `u <= SUCKER_UNTIL`, and the last segment's `u` walks
+		-- back and forth across that cutoff every frame as the ambient
+		-- breathe changes the curve's arc length. So the last sucker would
+		-- fall in a gap between the two rules: not placed this frame, and not
+		-- parked either, because its index is <= used. It stayed exactly
+		-- where the previous frame left it - a glowing Neon disc hanging in
+		-- open water beside a tapering arm tip, on all eight arms, on better
+		-- than a third of frames.
+		--
+		-- THE SEGMENTS DO NOT NEED THIS, and only by luck: their sole
+		-- condition IS being visited, so `used` describes them exactly. The
+		-- ArmTip covers the far end because it is a single part re-placed
+		-- every frame, never an indexed set. Any new indexed set with a
+		-- condition of its own belongs here too, not in the loop below.
+		local placed = index % SUCKER_EVERY == 0 and u <= SUCKER_UNTIL
+		if not placed then
+			local stale = entry.suckers[index]
+			if stale then
+				park(stale)
+			end
+		end
+		if placed then
 			local sucker = entry.suckers[index]
 			if not sucker then
 				sucker = makePiece("Sucker", body.folder)
@@ -392,7 +549,6 @@ local function drawBody(model: Model, body, dt: number, now: number)
 	state.time = now
 	state.rise = approach(state.rise, model:GetAttribute("Rise") or 1, EASE.rise, dt)
 	state.faceAngle = approachAngle(state.faceAngle, model:GetAttribute("FaceAngle") or 0, EASE.face, dt)
-	state.stance = model:GetAttribute("Stance") or state.stance
 	local centre = model:GetAttribute("PoseCenter")
 	if centre then
 		state.center = centre
@@ -400,7 +556,17 @@ local function drawBody(model: Model, body, dt: number, now: number)
 
 	local headFrame = KrakenPath.headCFrame(state)
 	for _, name in HEAD_PIECES do
-		applyPiece(body.head[name], headFrame, SCALE, SCALE)
+		local piece = body.head[name]
+		local at = headFrame
+		local offset = FALLBACK_AT[name]
+		if offset and piece:GetAttribute(FALLBACK_TAG) then
+			-- Position scaled with the head, rotation left alone: the offsets
+			-- are authored studs, so they have to grow with SCALE the same way
+			-- the pieces themselves do or the stand-in head comes apart the
+			-- moment SCALE moves.
+			at = headFrame * CFrame.new(offset.Position * SCALE) * offset.Rotation
+		end
+		applyPiece(piece, at, SCALE, SCALE)
 	end
 
 	local claimed = claimTentacles(state.center, body.count)
