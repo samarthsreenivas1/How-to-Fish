@@ -1563,8 +1563,10 @@ Bosses.items.admiral_wrack = {
 	-- THE FOUR GUN DECKS - the things the player actually shoots, so they stand
 	-- ON THE DRAWN BRASS rather than on a guessed circle. `at = "mounts"` is the
 	-- three-dimensional placement mode: the offsets below are BOSS-LOCAL, with Y
-	-- measured from the SAND (spawnBossParts subtracts `halfThickness` itself -
-	-- do not pre-subtract it), and they are resolved ONCE at spawn against
+	-- the piece's CENTRE measured from the DRAWN hull's sand (spawnBossParts
+	-- takes off `halfThickness` and `submerge` itself, and takes the spawned
+	-- battery's own half-height back off after it stands - do not pre-apply
+	-- any of the three), and they are resolved ONCE at spawn against
 	-- `creature.yaw0`.
 	--
 	-- THAT IS ONLY CORRECT BECAUSE HE IS STATIC. `turnRate = 0` below and this
@@ -1589,21 +1591,33 @@ Bosses.items.admiral_wrack = {
 	-- and Noctyss's updateChoir read `socketIndex`; his patterns read the COUNT,
 	-- `partsAlive`), so the order is for the reader.
 	--
-	-- `ring` no longer places anything, and is kept because two other things
-	-- still read it: wrackEmit's ProjectileService.watch radius, and the death
-	-- sequence's ring of gun-deck explosions. `regrow` is the burst window: 16
-	-- seconds of silence and an open hull before the decks come back.
+	-- `ring` IS GONE, not merely unused. It placed nothing (that is `mounts`),
+	-- and its last two readers - wrackEmit's ProjectileService.watch radius and
+	-- the death sequence's ring of gun-deck explosions - now take the resolved
+	-- mount points instead, because an even r20 circle put the fight's closing
+	-- shot on bare sand thirty studs inboard of the guns it was blowing up. A
+	-- field whose only readers have been taken away is a number the next reader
+	-- will believe.
+	--
+	-- `regrow` is the burst window, and its shape is `staggerFor` + the rest:
+	-- 4 seconds of true silence with the hull open, then a skeleton crew firing
+	-- at `windowFire` (0.3) of normal density for the remaining 16, and then
+	-- the decks stand back up.
 	parts = {
 		row = "wrack_battery",
 		count = 4,
 		at = "mounts",
+		-- Y IS THE PIECE'S CENTRE, measured from the DRAWN hull's sand - not
+		-- the height its underside rests at, and not measured from the record's
+		-- pivot (which floats `submerge` studs above the ship the player sees).
+		-- spawnBossParts applies both corrections at the consumption site; do
+		-- not pre-apply either here.
 		mounts = {
 			Vector3.new(-19.50, 35.70, -10.34), -- Deck:  +Y high, mortars on the canted quarterdeck
 			Vector3.new(19.38, 10.55, 18.91), -- Keel:  -Y low, punched out through the bottom planking
 			Vector3.new(-34.62, 29.08, -14.37), -- Stern: -X high, the chase guns under his own boots
 			Vector3.new(38.40, 27.71, -11.99), -- Top:   +X high, the swivel nest on the bowsprit
 		},
-		ring = 20,
 		regrow = 20,
 	},
 	-- The burst window's shape, read by the Wrack handlers in CreatureService

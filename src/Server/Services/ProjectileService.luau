@@ -299,26 +299,33 @@ end
 -- "splash"), so it costs the rendering lane nothing, and it runs off this
 -- same Heartbeat rather than task.delay so nothing is left half-played if the
 -- fight ends underneath it.
-local watched = {} -- [owner] = { centre, ring, count, skin }
+local watched = {} -- [owner] = { centre, guns, skin }
 local wrecks = {} -- death beats currently playing
 
 -- Registered by the first volley an owner fires, so nothing has to hook kill().
-function ProjectileService.watch(owner, centre: Vector3, ring: number, count: number, skin: string)
+--
+-- `guns` is where the batteries STAND - the world points the placement path
+-- resolved, handed straight through. It used to be a radius, and the beat
+-- detonated four charges on an even circle of r 20 round the hull while the
+-- brass they were supposed to be was out at flat radii of 22-40 and heights of
+-- 10.6-35.7: the fight's closing shot went off on bare sand.
+function ProjectileService.watch(owner, centre: Vector3, guns: { Vector3 }, skin: string)
 	if watched[owner] == nil and not ownerGone(owner) then
-		watched[owner] = { centre = centre, ring = ring, count = count, skin = skin }
+		watched[owner] = { centre = centre, guns = guns, skin = skin }
 	end
 end
 
 local function beginWreck(spec)
 	local beats = {}
-	local n = math.max(1, spec.count)
+	local guns = spec.guns or {}
+	local n = #guns
 	for i = 1, n do
-		-- One gun deck at a time, around the ring they stood on.
-		local a = (i / n) * math.pi * 2
+		-- One gun deck at a time, ON the deck it stood on - height included,
+		-- so the quarterdeck mortars go up 35 studs over the keel guns.
 		table.insert(beats, {
 			at = (i - 1) * 0.16,
 			kind = "explode",
-			pos = spec.centre + Vector3.new(math.cos(a) * spec.ring, 2, math.sin(a) * spec.ring),
+			pos = guns[i],
 			extra = { radius = 7, skin = spec.skin },
 		})
 	end

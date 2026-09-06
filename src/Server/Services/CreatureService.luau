@@ -8181,13 +8181,9 @@ local function wrackEmit(pattern: string, creature, def, p, now: number, gap: nu
 	-- Registers him for the closing beat on his first volley. A plain boss
 	-- gets no collapse (that is the perch-holding colossus's death), so the
 	-- gun decks going up one at a time is the fight's own ending.
-	ProjectileService.watch(
-		creature,
-		centre,
-		(def.parts and def.parts.ring) or 20,
-		(def.parts and def.parts.count) or 4,
-		"cannon"
-	)
+	-- The batteries' OWN positions, as spawnBossParts placed them (see
+	-- `creature.mountAt`), so the closing explosions land on the brass.
+	ProjectileService.watch(creature, centre, creature.mountAt or {}, "cannon")
 	-- THE BRASS FIRES. `centre` stays the arena centre and keeps its one
 	-- remaining job (it is what `bound` is measured from); `decks` and
 	-- `muzzle` are where the shot actually leaves. An aimed pattern gets one
@@ -8636,6 +8632,12 @@ local function spawnBossParts(creature, def)
 	-- published (below) only for a marked ring, so nothing else grows a
 	-- second, unowned copy of its parts list to keep in sync.
 	local ringParts = {}
+	-- WHERE THE MOUNTED PARTS ACTUALLY LANDED, in world space and in socket
+	-- order. Resolved once here and published on the record because the death
+	-- beat needs the same points long after the parts themselves are gone -
+	-- and recomputing them anywhere else would be a second copy of the mount
+	-- transform and the sand convention above, to be got wrong separately.
+	local mountAt = {}
 	for i = 1, count do
 		local at
 		if mounts then
@@ -8650,13 +8652,36 @@ local function spawnBossParts(creature, def)
 			-- where the artist put it on the drawn hull.
 			local m = mounts[i]
 			local cos, sin = math.cos(creature.yaw0 or 0), math.sin(creature.yaw0 or 0)
-			-- Heights are authored from the SAND, not from the pivot: `spawn`
-			-- lifts a creature by half its own thickness before it stands.
+			-- THE CONVENTION, IN FULL (and it is the same sentence in the
+			-- `mounts` comment on the boss row): a mount's Y is the piece's
+			-- own CENTRE, measured from the sand of the DRAWN hull.
+			--
+			-- Both halves of that need a correction here, and neither used to
+			-- get one.
+			--
+			-- SAND. `spawn` lifts a creature by half its own thickness before
+			-- it stands, so the record's Y is the pivot and `- halfThickness`
+			-- takes it back down to the sand. But nothing DRAWS the hull at
+			-- the record's Y: every pose in the fight goes through
+			-- `poseCFrame(creature, sub, ...)` with `sub = -def.submerge`, so
+			-- the ship the player sees - and the brass they aim at - sits
+			-- `submerge` studs lower than that. Reference the same sand the
+			-- artist's mounts were measured against, or every mount rides
+			-- 2.8 studs above its own gun.
+			--
 			-- `halfThickness` is read off the record and never baked into the
 			-- data, because it is measured from the server's own pack model
 			-- and moves the day that pack is re-imported.
-			local sand = centre.Y - (creature.halfThickness or 0)
+			local sand = centre.Y - (creature.halfThickness or 0) - (def.submerge or 0)
 			at = Vector3.new(centre.X + m.X * cos + m.Z * sin, sand + m.Y, centre.Z - m.X * sin + m.Z * cos)
+			-- CENTRE. `spawn` rests a creature ON the point it is handed - it
+			-- adds the new body's own halfThickness and SURFACE_OFFSET, which
+			-- is right for a fish put down on the ground and wrong for a
+			-- battery hung on a mount, where it lifts the piece by its own
+			-- half-height and the taller the piece the further off it is. The
+			-- correction is applied AFTER the spawn (below), because the
+			-- thickness being corrected for is measured from the model spawn
+			-- has not built yet.
 		elseif offsets then
 			at = Vector3.new(centre.X + offsets[i].X, centre.Y, centre.Z + offsets[i].Z)
 		else
@@ -8690,6 +8715,19 @@ local function spawnBossParts(creature, def)
 		})
 		local part = byModel[model]
 		if part then
+			if mounts then
+				-- THE MOUNT IS THE PIECE'S CENTRE, and `spawn` has just rested
+				-- this body ON it (`at.Y + halfThickness + SURFACE_OFFSET`) as
+				-- though the mount were a floor. Put the centre back where the
+				-- artist measured it - the only place it can be done, since
+				-- `halfThickness` is measured off the model spawn just built.
+				part.pos = at
+				model:PivotTo(restCFrame(part))
+				-- ...and remember where they stand, for the death beat: the
+				-- closing volley of gun-deck explosions has to go off on the
+				-- brass, not on an even circle drawn round the hull.
+				table.insert(mountAt, at)
+			end
 			planted += 1
 			markedPlanted = markedPlanted or i == marked
 			part.partOf = creature
@@ -8725,6 +8763,9 @@ local function spawnBossParts(creature, def)
 	-- again, with a party hitting it forever and no error to explain why.
 	creature.partsAlive = planted
 	creature.partsDownAt = nil
+	-- The mounted parts' world points, kept for the death beat (see above).
+	-- nil for every other placement mode, and the one reader falls back.
+	creature.mountAt = if #mountAt > 0 then mountAt else nil
 	-- Replaced wholesale, never appended to: the previous choir is gone by
 	-- the time a new one stands (`closeMaw` withdraws the survivors), and a
 	-- list that accumulated across cycles would be the leak this replaces.
