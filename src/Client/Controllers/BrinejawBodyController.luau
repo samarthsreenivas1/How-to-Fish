@@ -3,12 +3,19 @@
 -- Draws Brinejaw: ~100 parts laid along the curve its pose describes.
 --
 -- The server keeps only authority - a hidden model at the head for hits and
--- the HUD - and publishes the pose as six attributes (Coil, Unwind,
--- SweepAngle, SweepHeight, Slump, FaceAngle). This controller turns those
--- into a serpent: BrinejawPath says what shape the body is in, ChainPose
--- walks that shape by arc length, and every frame each vertebra gets one
--- CFrame. Both sides read the same math, so the tail you dodge and the tail
--- you see are the same tail.
+-- the HUD - and publishes the pose as TEN attributes (Coil, Unwind,
+-- SweepAngle, SweepHeight, Slump, FaceAngle, AttackKind, AttackU, AimX,
+-- AimZ). This controller turns those into a serpent: BrinejawPath says what
+-- shape the body is in, ChainPose walks that shape by arc length, and every
+-- frame each vertebra gets one CFrame. Both sides read the same math, so the
+-- tail you dodge and the tail you see are the same tail.
+--
+-- The last four attributes are the ATTACK CHANNEL, and they also drive three
+-- ground telegraphs from this file (the lunge's countdown, the undertow's
+-- bulge, the spiral's closing edge) - drawn from the same twins the server
+-- hit-tests with, so no marker here can promise ground the damage disagrees
+-- with. The five attacks whose geometry is not a pose come through
+-- `fireEvent` instead and are drawn by CreatureEventController.
 --
 -- Nothing here is a decision: no timers, no local guesses about what the
 -- boss is doing. The attributes step, this eases toward them, and that is
@@ -28,6 +35,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local BrinejawPath = require(Shared.Modules.BrinejawPath)
 local MeshColors = require(Shared.Config.MeshColors)
 local ChainPose = require(Shared.Modules.ChainPose)
+local Vfx = require(script.Parent.Parent.Modules.Vfx)
 
 local BrinejawBodyController = {}
 
@@ -186,6 +194,12 @@ local function readTarget(model: Model, target)
 	target.sweepHeight = model:GetAttribute("SweepHeight") or BrinejawPath.SWEEP_LOW
 	target.slump = model:GetAttribute("Slump") or 0
 	target.faceAngle = model:GetAttribute("FaceAngle") or 0
+	-- The attack channel. THESE FOUR ARE COPIED, NOT EASED, and each for its
+	-- own reason - see `drawBody`.
+	target.attackKind = model:GetAttribute("AttackKind") or ""
+	target.attackU = model:GetAttribute("AttackU") or 0
+	target.aimX = model:GetAttribute("AimX") or 0
+	target.aimZ = model:GetAttribute("AimZ") or 0
 	return target
 end
 
@@ -202,6 +216,150 @@ end
 local function approachAngle(current: number, goal: number, rate: number, dt: number): number
 	local delta = (goal - current + math.pi) % (math.pi * 2) - math.pi
 	return current + delta * (1 - math.exp(-rate * dt))
+end
+
+-- ---------------------------------------------------------------- telegraphs
+--
+-- Three of the six attack kinds have to say what they are doing from ground
+-- level, and none of them can do it through an event: their geometry is a
+-- function of the pose channel every frame (where Aim is, how far along the
+-- bulge has got, how far the closing arm still reaches). So they are drawn
+-- HERE, out of `state`, by the same twins the server hit-tests with.
+--
+-- THE COUNTDOWN ENDS AT THE DAMAGE. This is the codebase's most-repeated
+-- defect - a tell that finishes at the end of the windup, so the ring closes,
+-- players read "it's over" and walk back in, and the blow lands a quarter of a
+-- second later on top of them. Brinejaw's lunge strikes at LUNGE_IMPACT_U =
+-- 0.50, NOT at LUNGE_COCK_U = 0.35 where the windup ends, so the closing disc
+-- below is driven by u / LUNGE_IMPACT_U and reaches zero on the frame the
+-- skull lands. The footprint then STAYS through the punish window (0.50..0.72,
+-- the skull planted on the sand) because the ground under a resting head is
+-- still where the head is.
+local TELL = {
+	-- The lunge borrows the slam's orange: this fight has already taught that
+	-- orange on the sand means "something is coming down here".
+	lunge = Color3.fromRGB(255, 122, 60),
+	count = Color3.fromRGB(255, 214, 110), -- the countdown, in the payoff gold
+	-- The closing spiral borrows the HIGH sweep's cyan, because it is the same
+	-- arm: the marker says how far out that arm still reaches.
+	spiral = Color3.fromRGB(120, 236, 255),
+	sand = Color3.fromRGB(228, 208, 160), -- Vfx.Color.sand, for the bulge
+}
+
+local TELL_PARKED = CFrame.new(0, -5000, 0)
+-- The closing ring is 24 segments. At the sweep's full 66-stud reach a
+-- 24-gon's sagitta is 66 * (1 - cos(pi/24)) = 0.56 studs, well inside the
+-- arm's 3.4 girth, so the polygon never promises ground the curve does not.
+local SPIRAL_SEGS = 24
+local SPIRAL_SEG_THICK = 0.9
+local UNDERTOW_DUST_INTERVAL = 0.06 -- sand thrown up by the crest, per plume
+
+local function makeTell(body, key: string, color: Color3, shape: Enum.PartType): Part
+	local part = body.tells[key]
+	if part then
+		return part
+	end
+	part = Instance.new("Part")
+	part.Name = "BrinejawTell_" .. key
+	part.Shape = shape
+	part.Anchored = true
+	part.CanCollide = false
+	part.CanQuery = false
+	part.CanTouch = false
+	part.CastShadow = false
+	part.Material = Enum.Material.Neon
+	part.Color = color
+	part.Transparency = 1
+	part.Size = Vector3.new(1, 1, 1)
+	part.CFrame = TELL_PARKED
+	part.Parent = body.folder
+	body.tells[key] = part
+	return part
+end
+
+-- A flat disc lying on the ground: a cylinder stood on its end, which is the
+-- idiom Vfx.shockwave and the stagger window already use.
+local function layDisc(part: Part, at: Vector3, radius: number, alpha: number)
+	part.Size = Vector3.new(0.12, radius * 2, radius * 2)
+	part.CFrame = CFrame.new(at) * CFrame.Angles(0, 0, math.rad(90))
+	part.Transparency = alpha
+end
+
+local function parkTells(body)
+	for _, part in body.tells do
+		part.Transparency = 1
+		part.CFrame = TELL_PARKED
+	end
+end
+
+-- One frame of whatever the current kind is telling the arena. Everything
+-- here is created lazily - a fight that never lunges never builds a lunge
+-- ring - and everything is parked before it is drawn, so a kind that ends
+-- (or a boss that dies mid-attack) leaves nothing behind.
+local function drawTells(body, state, now: number)
+	parkTells(body)
+	local kind = state.attackKind or ""
+	local u = math.clamp(state.attackU or 0, 0, 1)
+	local pulse = 0.5 + 0.5 * math.sin(now * 11)
+
+	if kind == "lunge" then
+		local at = BrinejawPath.lungeImpactPoint(state) + Vector3.new(0, 0.12, 0)
+		local radius = BrinejawPath.LUNGE_RADIUS
+		-- The footprint: solid from the first frame, and it does not move after
+		-- the server freezes Aim at LUNGE_COCK_U. It outlives the blow by the
+		-- punish window's own length and fades out over the recovery ramp.
+		local fade = math.clamp((u - 0.72) / (1 - 0.72), 0, 1)
+		layDisc(makeTell(body, "lungeRing", TELL.lunge, Enum.PartType.Cylinder), at, radius, 0.44 + 0.56 * fade)
+		if u < BrinejawPath.LUNGE_IMPACT_U then
+			-- ...and the clock, closing to nothing AT the blow.
+			local left = 1 - u / BrinejawPath.LUNGE_IMPACT_U
+			layDisc(
+				makeTell(body, "lungeCount", TELL.count, Enum.PartType.Cylinder),
+				at + Vector3.new(0, 0.08, 0),
+				math.max(radius * left, 0.05),
+				0.30 + 0.18 * pulse
+			)
+		end
+	elseif kind == "undertow" then
+		local at = BrinejawPath.undertowPoint(state)
+		local radius = BrinejawPath.UNDERTOW_RADIUS
+		-- The disc the server's damage circle is, riding the SAME point the
+		-- body's buried crest is drawn from - one call, one place.
+		layDisc(
+			makeTell(body, "underRing", TELL.sand, Enum.PartType.Cylinder),
+			at + Vector3.new(0, 0.12, 0),
+			radius,
+			0.40 + 0.16 * pulse
+		)
+		-- ...and the sand it is shoving. A bulge under a beach is only legible
+		-- because the ground reacts, so this throws a plume at the crest every
+		-- UNDERTOW_DUST_INTERVAL rather than sitting still and glowing.
+		if now >= (body.nextDustAt or 0) then
+			body.nextDustAt = now + UNDERTOW_DUST_INTERVAL
+			Vfx.puff(at + Vector3.new(0, 1.2, 0), TELL.sand, 1.5)
+		end
+	elseif kind == "spiral" then
+		-- THE LANE'S OUTER EDGE, live. `sweepReach` is the same function the
+		-- body's tip is drawn at and `sweepHits` rejects a player outside, so
+		-- this ring is literally the boundary of the attack: it starts at the
+		-- full 66-stud reach and closes to SWEEP_INNER + SPIRAL_CLOSE, and the
+		-- ground it leaves behind it is ground the arm can no longer touch.
+		local reach = BrinejawPath.sweepReach(state)
+		local center = state.center or Vector3.zero
+		local span = (math.pi * 2 * reach) / SPIRAL_SEGS
+		for i = 1, SPIRAL_SEGS do
+			local theta = (i - 0.5) / SPIRAL_SEGS * math.pi * 2
+			local part = makeTell(body, "spiral" .. i, TELL.spiral, Enum.PartType.Block)
+			local ground = center.Y + BrinejawPath.sandY(reach)
+			part.Size = Vector3.new(SPIRAL_SEG_THICK, 0.5, span * 1.08)
+			part.CFrame = CFrame.new(
+				center.X + math.cos(theta) * reach,
+				ground + 0.14,
+				center.Z + math.sin(theta) * reach
+			) * CFrame.Angles(0, -theta, 0)
+			part.Transparency = 0.34 + 0.2 * pulse
+		end
+	end
 end
 
 -- ---------------------------------------------------------------- lifecycle
@@ -240,6 +398,13 @@ local function adoptBoss(model: Model)
 		end),
 		segments = {},
 		head = {},
+		-- The attribute-driven telegraphs' pooled parts, built on first use.
+		tells = {},
+		nextDustAt = 0,
+		-- The last EASED sweep bearing, for the whip's drag term: `sweepRate` is
+		-- the derivative of a value that is replicated, so it is differentiated
+		-- rather than sent (BrinejawPath's contract header).
+		lastSweepAngle = state.sweepAngle,
 	}
 
 	for _, name in HEAD_PIECES do
@@ -266,6 +431,45 @@ local function drawBody(model: Model, body, dt: number, now: number)
 	state.slump = approach(state.slump, target.slump, EASE.slump, dt)
 	state.faceAngle = approachAngle(state.faceAngle, target.faceAngle, EASE.faceAngle, dt)
 	state.time = now
+
+	-- THE ATTACK CHANNEL IS COPIED RAW, and that is a decision, not an
+	-- oversight on the four values that got no EASE row.
+	--
+	-- AttackU IS PHASE, NOT POSITION. Every kind's meaning is pinned to an
+	-- exact value of it - the skull lands at 0.50, the bell is struck at 0.55 -
+	-- and those are the same instants the server deals damage on. A filter
+	-- delays phase: even at the sweep's aggressive rate 55, a lunge's strike
+	-- ramp (0.15 of U in ~0.35 s, so 0.43 U/s) lags by 0.43/55 = 0.008 U,
+	-- which is 18 ms of skull arriving after the damage. Worse, an exponential
+	-- filter never ARRIVES: `attackEnvelope` fades an attack out on (1 - u) /
+	-- exit, so an eased U that stalls at 0.995 leaves the body 2% short of rest
+	-- at the instant the server clears the kind, and the pose SNAPS - the exact
+	-- failure the path's header warns about. The attribute steps at the
+	-- server's own rate, so raw U is at worst one frame of stair; a stair in
+	-- phase is honest and a lie about phase is not.
+	--
+	-- Aim is raw for the drawn==lethal rule: `lungeImpactPoint` is computed
+	-- from these two numbers on BOTH sides, so an eased aim would put the
+	-- client's countdown ring metres from the server's damage disc for the
+	-- whole tracking window (U 0..0.35). The server freezes Aim at
+	-- LUNGE_COCK_U, which is what makes the tracking read smooth without any
+	-- help from here.
+	state.attackKind = target.attackKind
+	state.attackU = target.attackU
+	state.aimX = target.aimX
+	state.aimZ = target.aimZ
+
+	-- The whip's drag, EXACTLY as the header prescribes: differentiate the
+	-- EASED angle (not the target - the drawn arm is what has to curve) and
+	-- push it through the one shared WHIP_TAU filter, so the client's rate and
+	-- the server's cannot diverge by more than 0.876 studs at the 66-stud tip.
+	if dt > 0 then
+		local raw = BrinejawPath.wrapAngle(state.sweepAngle - body.lastSweepAngle) / dt
+		BrinejawPath.stepSweepRate(state, raw, dt)
+	end
+	body.lastSweepAngle = state.sweepAngle
+
+	drawTells(body, state, now)
 
 	local chain = body.chain
 	chain:update(state)

@@ -176,6 +176,13 @@
 -- against a CURVED one and silently under-hits by up to 35 degrees of
 -- bearing. Build probes with `BrinejawPath.sweepProbe(state, angle)`, which
 -- carries every field the twins read, and never by table literal.
+--
+-- AND THE OTHER HALF OF THE FIGHT. Five of Brinejaw's attacks are not poses -
+-- a wave crossing the arena, a seeded bombardment, the bell's rings, the
+-- flood, the polyps - so they ride `fireEvent` payloads instead of the ten
+-- attributes. Their geometry still lives in this file, under "THE EVENT
+-- SHAPES" at the bottom: `lcg`, `waveFront`, `waveSheltered`, `rainChunks`,
+-- `ringRadius`, `surgeRain`. Same law, different channel.
 
 local BrinejawPath = {}
 
@@ -415,6 +422,20 @@ BrinejawPath.LUNGE_RISE = 12.0 -- how far above the rest head it cocks
 BrinejawPath.LUNGE_SIT = 2.4 -- skull centre above the sand once planted:
 -- low enough that an R15 root at ~3.0 is level with it, which is the whole
 -- point of the punish window. Raise this and melee starts whiffing upward.
+
+-- THE BLOW'S FOOTPRINT, and the bulge's. These are radii the SERVER passes to
+-- `lungeHits` / `undertowHits` and the CLIENT draws its countdown ring and its
+-- dust plume at, so they live here for the same reason every other number in
+-- this file does: a book row carrying its own radius would put the drawn
+-- circle and the lethal one in two files, and the drawn one is a promise.
+-- Pass these to the hit twins; do not pass a row's own number.
+-- 9.0 is a little over the planted skull's own width (LUNGE_SIT sits it 2.4
+-- studs up and the head mesh is ~15 long at HEAD_SCALE 1.35), so the disc
+-- reads as "where the head is" rather than as an invisible splash; 7.5 is the
+-- bulge's crest, whose gaussian (UNDER_SIGMA 6.0) is still 2.6 studs proud at
+-- 6 studs off centre and buried by 9.
+BrinejawPath.LUNGE_RADIUS = 9.0
+BrinejawPath.UNDERTOW_RADIUS = 7.5
 
 BrinejawPath.BELL_WINDUP_U = 0.35
 BrinejawPath.BELL_IMPACT_U = 0.55 -- the bell is STRUCK here
@@ -1091,6 +1112,184 @@ end
 -- The reared skull, for a camera to frame or a model to sit on.
 function BrinejawPath.rearHeadPosition(state): Vector3
 	return BrinejawPath.pointAt(state, 0)
+end
+
+-- ====================================================================== --
+-- THE EVENT SHAPES
+-- ====================================================================== --
+--
+-- Everything above is the POSE channel: shapes expressible as ten attributes
+-- on the model. The five attacks below are not - a wave crossing the arena,
+-- a seeded bombardment, expanding rings, the flood, are events broadcast
+-- through `fireEvent` with a payload. They live here anyway, and for exactly
+-- the reason the pose twins do: THE THING YOU DODGE AND THE THING YOU SEE
+-- MUST BE ONE FUNCTION. The server's damage test and the client's marker
+-- both call the helpers in this section and neither one re-derives a radius,
+-- a bearing or a placement of its own.
+--
+-- Two rules that make that hold across the wire:
+--   * every `start`/`impactAt` is a `Workspace:GetServerTimeNow()` value, so
+--     a client that adopts the fight mid-attack computes the same phase as
+--     one that saw it begin. No helper here takes a duration-from-receipt.
+--   * anything scattered is scattered by the LCG below off the payload's
+--     `seed`, consumed in a documented order, so both sides derive the same
+--     placements without the placements having to be sent.
+--
+-- Arena data comes IN. `waveSheltered` takes the cover list rather than
+-- reading BossArenas, because this module is required by the pose math on
+-- both sides and a config dependency here would be a cycle waiting to
+-- happen. Callers pass `BossArenas.items[islandId].cover` plus the implicit
+-- spire entry { offset = Vector3.zero, radius = 9 } - the lighthouse is
+-- cover too, and it is the one piece no table lists.
+
+-- The shared deterministic RNG: a 31-bit LCG, and the ONE copy of it.
+-- `math.random` cannot be used for any of this - the two sides would seed
+-- differently and the client would draw a bombardment that lands somewhere
+-- else. Returns the next seed alongside its 0..1 draw so a caller threads
+-- the state explicitly and can never accidentally consume out of order.
+function BrinejawPath.lcg(seed: number): (number, number)
+	local nextSeed = (seed * 1103515245 + 12345) % 2147483648
+	return nextSeed, nextSeed / 2147483648
+end
+
+-- --------------------------------------------------------------- the wave
+
+-- HOW DEEP THE LEE OF A ROCK IS, and how much wider than the rock itself.
+-- Exported because the boolean and the DRAWN wedge have to be the same
+-- rectangle: the client shades the safe ground behind every cover entry and
+-- the server asks whether a root is standing in it, and if those two numbers
+-- lived in two files the shadow would be a suggestion instead of a promise.
+-- 16 studs is about a second of walking, so a player who reaches cover as the
+-- front arrives is inside it rather than one stride past; 1.2 is the pad that
+-- keeps a body hugging the rock's edge from being clipped by its own width.
+BrinejawPath.WAVE_SHELTER_DEPTH = 16.0
+BrinejawPath.WAVE_SHELTER_PAD = 1.2
+
+-- Where the wave's front is along its own axis at `now`, or nil once it has
+-- left the arena. The front starts at -reach at `start` and travels at
+-- `speed`, so this is the whole of the wave's clock: both sides ask it, and
+-- the server damages a player in the frame the front's `along` passes theirs.
+-- (`_bearing` is in the signature and unused ON PURPOSE: the front's position
+-- is a scalar along its own axis, and every caller already has to hand the
+-- bearing to `waveSheltered` next to this call. Dropping the argument would
+-- let one side pass four numbers and the other five to the same-looking
+-- helper, which is the kind of drift this whole section exists to prevent.)
+function BrinejawPath.waveFront(_bearing: number, speed: number, reach: number, start: number, now: number): number?
+	local along = -reach + speed * (now - start)
+	if along > reach then
+		return nil
+	end
+	return along
+end
+
+-- IS `worldPos` IN SOMETHING'S LEE? The wave is TALL - jumping does not
+-- evade it - so this is the only answer to it, and it is the same function
+-- that shades the ground.
+--
+-- `cover` is the arena's list ({ offset (arena-local XZ), radius }, extra
+-- fields ignored), `center` the arena's world centre, `bearing` the direction
+-- the wave TRAVELS. A point is sheltered when it stands BEHIND a piece
+-- (along > 0, i.e. the wave reached the rock first) and no further behind it
+-- than the lee runs, and within the piece's own width of its centre line.
+function BrinejawPath.waveSheltered(cover, center: Vector3, bearing: number, worldPos: Vector3): boolean
+	local dirX, dirZ = math.cos(bearing), math.sin(bearing)
+	-- The perpendicular of (cos, sin) in the XZ plane, and the same one the
+	-- client lays its wall's slabs along.
+	local perpX, perpZ = -dirZ, dirX
+	for _, piece in cover do
+		local offset = piece.offset or Vector3.zero
+		local dx = worldPos.X - (center.X + offset.X)
+		local dz = worldPos.Z - (center.Z + offset.Z)
+		local along = dx * dirX + dz * dirZ
+		if along > 0 and along <= BrinejawPath.WAVE_SHELTER_DEPTH then
+			local perp = math.abs(dx * perpX + dz * perpZ)
+			if perp <= (piece.radius or 0) + BrinejawPath.WAVE_SHELTER_PAD then
+				return true
+			end
+		end
+	end
+	return false
+end
+
+-- --------------------------------------------------------------- the rain
+
+-- THE BOMBARDMENT, placed. One chunk per entry: `pos` is arena-local XZ (Y is
+-- 0 - the ground under it is `sandY(r)`, which every caller already has, and
+-- shipping a height here would be the same number in two homes), `impactAt`
+-- is the server clock at which it lands and the server's damage circle opens.
+--
+-- THE LCG IS CONSUMED IN THIS ORDER AND NO OTHER: per chunk, u1 then u2.
+-- Insert a third draw anywhere in this loop and every chunk after it moves on
+-- one side of the wire and not the other.
+--
+-- The radius is sqrt-interpolated between inner^2 and outer^2 because a
+-- uniform draw on r piles the bombardment up at the inner edge: area grows
+-- with r^2, so uniform-in-r is 2x denser at 12 studs than at 64, and the band
+-- reads as a ring around the tower rather than as a sector under it.
+function BrinejawPath.rainChunks(payload)
+	local seed = payload.seed or 0
+	local inner, outer = payload.inner or 12, payload.outer or 64
+	local sector, width = payload.sector or 0, payload.width or 2.1
+	local start, stagger = payload.start or 0, payload.stagger or 0.22
+	local chunks = {}
+	for i = 1, math.max(math.floor(payload.count or 0), 0) do
+		local u1, u2
+		seed, u1 = BrinejawPath.lcg(seed)
+		seed, u2 = BrinejawPath.lcg(seed)
+		local angle = sector - width * 0.5 + u1 * width
+		local r = math.sqrt(inner * inner + (outer * outer - inner * inner) * u2)
+		chunks[i] = {
+			pos = Vector3.new(math.cos(angle) * r, 0, math.sin(angle) * r),
+			impactAt = start + (i - 1) * stagger,
+		}
+	end
+	return chunks
+end
+
+-- --------------------------------------------------------------- the rings
+
+-- The bell's rings leave the tower one every `gap` seconds and run outward at
+-- `speed`. Ring `k` (1-based) at `now`, or nil while it has not left the
+-- masonry yet and once it is past the reef.
+--
+-- The bounds are the arena's, not the ring's: 4 studs is inside the
+-- lighthouse's own footprint (spireRadius at the sand is 8.5) so nothing is
+-- ever drawn or hit-tested inside the tower, and 78 is past where a player
+-- can stand. Both sides read the same nil, so a ring that has expired stops
+-- being drawn in the same frame it stops hitting.
+function BrinejawPath.ringRadius(start: number, speed: number, gap: number, k: number, now: number): number?
+	local r = speed * (now - (start + (k - 1) * gap))
+	if r < 4.0 or r > 78.0 then
+		return nil
+	end
+	return r
+end
+
+-- --------------------------------------------------------------- the surge
+
+-- TIDAL SURGE'S MASONRY, as a rain payload. The set-piece drops rubble around
+-- the tower for its whole duration, and rather than have the server tick a
+-- second scatter and the client guess at it, BOTH SIDES BUILD THIS TABLE HERE
+-- and hand it to `rainChunks`. The numbers are the contract's and are not
+-- knobs: a full circle (the surge has no sector - it is raining everywhere
+-- you can still stand), the 10..24 band that is the dry ground left inside
+-- floodR, one chunk every 0.45 s for as long as the flood holds, and a 1.0 s
+-- marker lead, which is the shortest tell a player pinned inside a shrinking
+-- band can still answer.
+function BrinejawPath.surgeRain(payload)
+	local duration = payload.duration or 10
+	return {
+		seed = payload.seed or 0,
+		sector = 0,
+		width = TAU,
+		inner = 10,
+		outer = 24,
+		count = math.floor(duration / 0.45),
+		start = (payload.start or 0) + 0.8,
+		stagger = 0.45,
+		fall = 1.0,
+		radius = 6,
+	}
 end
 
 return BrinejawPath
