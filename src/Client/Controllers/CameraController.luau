@@ -84,54 +84,13 @@ local BIRDSEYE_DISTANCE = 58
 -- 58*sin(34) = 32 studs up and 48 studs back.
 local BIRDSEYE_PITCH = math.rad(34)
 
--- The player keeps pitch authority inside a band: up to 14 degrees above the
--- horizon to put the crosshair on a gun-deck battery, or 62 below for a
--- near-plan read of the pattern - never to true top-down, which would take the
--- boss off the screen entirely.
---
--- THE CEILING AND THE BOOM BELOW ARE ONE DECISION, and it is the Throne's
--- (2026-09-06). This rig used to place the eye along the same pitch it LOOKS
--- along, and its ceiling carried the note that "the camera is already 32 studs
--- up, so from there it looks DOWN onto a high deck". That was written when the
--- batteries stood on a flat ground ring. They do not: `at = "mounts"` (Bosses
--- admiral_wrack) put them at 10.6, 27.7, 29.1 and 35.7 studs up, and nobody
--- re-derived the band. In a coupled orbit, looking up swings the eye DOWN by
--- the same angle - at the old 16-degree ceiling the eye sat 58*sin(16) = 16
--- studs BELOW the aim point, under a beach that runs +0.45..+4.85 - so the
--- occlusion cast below hit sand and hauled the orbit to its 6-stud floor in
--- the middle of the fight. Solving that rig from the drop ring (r 88) for the
--- centroid of each battery: Deck 23.2 degrees, Stern 23.1, Top 22.9, Keel 2.9.
--- THREE OF THE FOUR TARGETS THE WHOLE FIGHT IS ABOUT SHOOTING WERE OUTSIDE THE
--- BAND, and reaching for them broke the camera.
---
--- Splitting the two pitches is the fix, and it moves the ceiling's job. With
--- the eye held at the boom's 27.3 studs over the sand the same solve reads
--- Deck 4.0, Stern 1.0, Top 0.2, Keel -8.3 from the drop ring (2.9, 0.7, 0.2,
--- -6.0 from the sand's outer edge at r 132), and 7.1 for the Deck battery
--- standing against the hull itself - the closest any of them can be got to.
--- So 14 is not "what it takes to reach a battery" any more, it is that worst
--- case plus seven degrees, and it is bounded from above by the FRAME: the
--- character rides (aim - boom) below the optical axis, and at a 70-degree FOV
--- it leaves the screen past 35. 14 over a 20-degree boom puts the body at 34
--- at the very top of the band and at 24 while a battery is actually on the
--- crosshair - low in frame, which is the trade, but never off it. In a bullet
--- hell, losing your own body is losing the dodge.
-local BIRDSEYE_PITCH_CEIL = math.rad(14)
+-- The player keeps pitch authority inside a band. They can pull 16 degrees
+-- above the horizon to put the crosshair on a gun-deck battery (the camera is
+-- already 32 studs up, so from there it looks DOWN onto a high deck), or push
+-- to 62 below for a near-plan read of the pattern - never to true top-down,
+-- which would take the boss off the screen entirely.
+local BIRDSEYE_PITCH_CEIL = math.rad(16)
 local BIRDSEYE_PITCH_FLOOR = -math.rad(62)
-
--- THE BOOM: where the EYE hangs, as a pitch below the aim point, never the
--- direction the camera looks. It simply FOLLOWS the aim down - so the whole
--- lower half of the band, the rest pose at 34 and the near-plan dodge read at
--- the 62 floor, is bit-for-bit the orbit this mode always had, character
--- centred and all - and stops following at 20 on the way up. That pin is what
--- the batteries cost: past it the eye would start sinking towards the sand
--- again for no aiming benefit, since from 58 studs at 20 degrees it already
--- floats 19.8 above the aim point (27.3 over the beach, 54.5 back) and every
--- battery on the ship is below it. The eye's lowest point anywhere in the band
--- is that 27.3 - a good 22 studs clear of the highest sand behind the player -
--- so the occlusion cast can no longer be tripped by the beach at all, and only
--- the palisade hulls it was written for can pull the orbit in.
-local BIRDSEYE_BOOM_CEIL = -math.rad(20)
 
 -- The aim point rides above the character so they sit low in frame and the
 -- ground ahead of them gets the rest of it.
@@ -248,32 +207,19 @@ end
 -- camera scripts just produced, so the mouse still turns the camera exactly
 -- as it does everywhere else in the game and the character still walks
 -- camera-relative; only the pitch and the height are the mode's.
---
--- The look direction is the AIM - RangedController resolves every shot off
--- camera.CFrame.LookVector, so the crosshair is the middle of the screen and
--- goes where the player pointed it - and `boom` is the separate pitch the EYE
--- hangs off, for the reason BIRDSEYE_BOOM_CEIL gives. Below the pin the two
--- are the same angle, which is `lookAt(eye, focus)` written the general way:
--- identical orbit, identical framing, no seam at the boundary because a clamp
--- is continuous.
 local function birdseyeFrame(root: BasePart, base: CFrame, character: Model): CFrame
 	local focus = root.Position + Vector3.new(0, BIRDSEYE_FOCUS_LIFT, 0)
 	local look = base.LookVector
 	local yaw = math.atan2(-look.X, -look.Z)
 	local pitch = math.asin(math.clamp(look.Y, -1, 1))
 	local aimed = math.clamp(pitch - BIRDSEYE_PITCH, BIRDSEYE_PITCH_FLOOR, BIRDSEYE_PITCH_CEIL)
-	-- min, not clamp: `aimed` is already floored at BIRDSEYE_PITCH_FLOOR, so
-	-- the boom lands inside the same floor by construction.
-	local boom = math.min(aimed, BIRDSEYE_BOOM_CEIL)
 	local dir = CFrame.fromEulerAnglesYXZ(aimed, yaw, 0).LookVector
-	local back = CFrame.fromEulerAnglesYXZ(boom, yaw, 0).LookVector
 	local distance = BIRDSEYE_DISTANCE
-	local blocked = Workspace:Raycast(focus, -back * distance, occlusionParams(character))
+	local blocked = Workspace:Raycast(focus, -dir * distance, occlusionParams(character))
 	if blocked then
 		distance = math.max((blocked.Position - focus).Magnitude - BIRDSEYE_CLEARANCE, 6)
 	end
-	local eye = focus - back * distance
-	return CFrame.lookAt(eye, eye + dir)
+	return CFrame.lookAt(focus - dir * distance, focus)
 end
 
 -- Ease the orbit in and out. Like every other setting in this file it is

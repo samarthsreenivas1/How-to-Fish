@@ -142,6 +142,106 @@ local EASE = {
 	lunge = 14.0,
 }
 
+-- ---------------------------------------------------------------- secondary motion
+--
+-- Everything below is DERIVED on the client from the eased pose and its
+-- velocity - no new server channel, nothing the authority model needs to know.
+-- It is the difference between a posed chain and an animal: the body follows
+-- the head a beat late, the fin and flukes trail the turn and ring after a
+-- slam, the flippers scull, the jaw settles, and nothing is ever dead still.
+-- Every ease down here is the SAME exponential `1 - exp(-rate*dt)` the pose
+-- channels use, for the same reason (see `approach`): a linear filter snaps on
+-- a frame hitch, and a snap is what this whole layer exists to abolish.
+
+-- WHIP / OVERLAP LAG. Each vertebra low-passes its own rigid target position,
+-- with a rate that FALLS toward the tail, so the head leads and the body
+-- follows a beat later - the single biggest thing that reads as flesh rather
+-- than a train. First-order, so it can never overshoot or oscillate: it only
+-- eases toward the truth and settles. The lag is projected OFF the body axis
+-- (kept perpendicular) and capped, so it bends the body without ever changing
+-- a vertebra's share of the arc length - the eachN spacing, the girth curve
+-- and the joint overlap are all untouched. The head is deliberately the
+-- fastest-tracking end (rate is read at u): the drawn skull sits on the
+-- authority skull, which is where the bite reads.
+local LAG_RATE_HEAD = 26.0
+local LAG_RATE_TAIL = 7.0
+-- Comfortably under the joint overlap (0.875 stud each side). Neighbours lag
+-- almost identically - the target motion and the rate profile are both smooth
+-- in u - so the differential that could open a seam is a fraction of this cap.
+local LAG_MAX = 1.8
+
+-- BANK ON TURN. A lean into heading changes, derived from the turn RATE (the
+-- differentiated, eased faceAngle) and laid on top of RimefangPath.rollAt so a
+-- fast curve carries its speed. Smoothed and capped: the smoothing is what
+-- keeps a stepped faceAngle from cracking the bank. The lean eases out toward
+-- the tail on the same profile rollAt uses - a whale banks its shoulders, not
+-- its flukes.
+local TURN_SMOOTH = 6.0
+local BANK_PER_TURN = 0.55
+local BANK_MAX = math.rad(24)
+
+-- BREATHING / IDLE LIFE. A constant low-amplitude overlay, orthogonal to the
+-- path's own ambient (which lives in yaw/pitch): a slow roll and a slow
+-- vertical swell of the whole body, so it is never perfectly still even at
+-- rest.
+local BREATH_ROLL_AMP = math.rad(1.6)
+local BREATH_ROLL_RATE = 0.55
+local BREATH_BOB_AMP = 0.35
+local BREATH_BOB_RATE = 0.8
+
+-- IMPACT SETTLE. One damped harmonic oscillator per body, kicked whenever a
+-- fast motion STOPS (a breach re-entry, a lobtail slam), so the body rings
+-- down instead of halting dead. It feeds the fin and fluke flutter, the jaw
+-- chatter and a small body swell. Underdamped so it rings a few times; damping
+-- is strictly positive so it always dies out. Its integrator step is CLAMPED
+-- (SETTLE_MAX_DT), so a frame hitch can never make the spring explode - the
+-- one place in this file a raw semi-implicit step could go unstable.
+local SETTLE_FREQ = 2.4 -- Hz
+local SETTLE_ZETA = 0.32 -- damping ratio: rings ~3 times, then gone
+local SETTLE_K = (2 * math.pi * SETTLE_FREQ) ^ 2
+local SETTLE_C = 2 * SETTLE_ZETA * (2 * math.pi * SETTLE_FREQ)
+local SETTLE_MAX_DT = 1 / 45
+-- How hard a stopping motion kicks the spring, per unit of lost speed.
+local SETTLE_KICK_ARCH = 5.0
+local SETTLE_KICK_FLUKE = 4.0
+-- What the ring drives.
+local SETTLE_BOB = 0.9 -- studs of body swell per unit of settle
+local SETTLE_FIN = math.rad(9) -- dorsal flutter
+local SETTLE_FLUKE = math.rad(11) -- fluke flutter
+local SETTLE_JAW = 0.06 -- jaw chatter, as a fraction of a full gape
+
+-- FIN & FLUKE TRAIL. The dorsal and flukes lag the body's angular velocity:
+-- they lead into a turn and trail out of it. Derived from the turn rate.
+local FIN_TRAIL = 0.9
+local FIN_TRAIL_MAX = math.rad(20)
+local FLUKE_TRAIL = 0.8
+local FLUKE_TRAIL_MAX = math.rad(22)
+-- FLUKE FOLLOW-THROUGH after a slam: the tail overshoots the way the swing was
+-- going as it hammers down, then the settle spring rings it back. Derived from
+-- flukeUp velocity (which the strike drives sharply negative).
+local FLUKE_FOLLOW = 0.10
+local FLUKE_FOLLOW_MAX = math.rad(16)
+
+-- PECTORAL SCULLING. The flippers never sit rigid: a slow feather cycle plus a
+-- steer that angles them with the turn. Subtle - they are stabilisers, not
+-- wings - and pivoted at the shoulder so the blade sweeps rather than slides.
+local PEC_SCULL_RATE = 1.3
+local PEC_SCULL_AMP = math.rad(5)
+local PEC_STEER = 0.7
+local PEC_STEER_MAX = math.rad(14)
+
+-- JAW LIFE. A breath-slow idle working when the mouth is near shut (so it
+-- settles rather than welding closed) on top of the eased gape; the settle
+-- spring's chatter rides it too.
+local JAW_IDLE = 0.05
+local JAW_IDLE_RATE = 1.7
+
+-- The forebody-to-tail bank falloff, matching RimefangPath.rollAt's own ease
+-- so a derived roll and the path roll die out together.
+local function rollFalloff(u: number): number
+	return 1 - 0.7 * math.clamp((u - 0.35) / 0.65, 0, 1)
+end
+
 -- The tooth rows are SEPARATE objects in the pack, so the lower row hinges
 -- with the jaw and the mouth can open properly. As one object it had to ride
 -- the skull and the gape was capped to hide the seam.
@@ -347,6 +447,12 @@ local function approachAngle(current: number, goal: number, rate: number, dt: nu
 	return current + delta * (1 - math.exp(-rate * dt))
 end
 
+-- Shortest signed angle, for differentiating a wrapped heading: a turn across
+-- north must read as a small step, not a lap of the circle.
+local function wrapAngle(a: number): number
+	return (a + math.pi) % (math.pi * 2) - math.pi
+end
+
 -- ---------------------------------------------------------------- lifecycle
 
 -- One entry per model this controller has ever seen in the Creatures folder,
@@ -398,6 +504,20 @@ local function adoptBoss(model: Model)
 		bellies = {},
 		head = {},
 		jaw = {},
+		-- Secondary-motion memory. Each whip filter's lagged position is stored
+		-- per link (nil until its first frame, then seeded to the target so it
+		-- never pops in). The velocities and the settle spring start from the
+		-- adopted pose at rest, so nothing kicks on spawn.
+		lagPos = {},
+		flukeLagPos = nil,
+		turnRate = 0,
+		lastFace = state.faceAngle,
+		lastArch = state.arch,
+		archVel = 0,
+		lastFluke = state.flukeUp,
+		flukeVel = 0,
+		settle = 0,
+		settleVel = 0,
 	}
 
 	for _, name in HEAD_PIECES do
@@ -450,12 +570,68 @@ local function drawBody(model: Model, body, dt: number, now: number)
 	local chain = body.chain
 	chain:update(state)
 
+	-- ------------------------------------------------ derived secondary motion
+	-- Angular and pose velocities, differentiated from the EASED state (the
+	-- drawn body is what has to curve and ring, not the stepped target) and
+	-- smoothed so a single stepped attribute cannot crack them. dt is 0 on the
+	-- very first frame, so the differences are guarded.
+	--
+	-- The speeds BEFORE this frame's update are captured first: the settle
+	-- spring is kicked by the DROP in speed - the instant a fast motion stops,
+	-- which is exactly a breach re-entry or the bottom of a lobtail slam.
+	local prevArchSpeed = math.abs(body.archVel)
+	local prevFlukeSpeed = math.abs(body.flukeVel)
+	if dt > 0 then
+		body.turnRate = approach(body.turnRate, wrapAngle(state.faceAngle - body.lastFace) / dt, TURN_SMOOTH, dt)
+		body.archVel = approach(body.archVel, (state.arch - body.lastArch) / dt, TURN_SMOOTH, dt)
+		body.flukeVel = approach(body.flukeVel, (state.flukeUp - body.lastFluke) / dt, TURN_SMOOTH, dt)
+	end
+	body.lastFace = state.faceAngle
+	body.lastArch, body.lastFluke = state.arch, state.flukeUp
+
+	-- IMPACT SETTLE: a damped spring kicked by the lost speed, integrated on a
+	-- CLAMPED step. A gentle deceleration feeds it over several frames (the
+	-- velocities are themselves eased), so the ring builds smoothly rather than
+	-- from one spiked frame; the clamp guarantees the semi-implicit step stays
+	-- stable even on a 100 ms hitch (omega*dt = 0.33 << 2 at the clamp).
+	local kick = SETTLE_KICK_ARCH * math.max(0, prevArchSpeed - math.abs(body.archVel))
+		+ SETTLE_KICK_FLUKE * math.max(0, prevFlukeSpeed - math.abs(body.flukeVel))
+	local sdt = math.min(dt, SETTLE_MAX_DT)
+	body.settleVel += (-SETTLE_K * body.settle - SETTLE_C * body.settleVel) * sdt + kick
+	body.settle += body.settleVel * sdt
+	local settle = body.settle
+
+	-- Bank the forebody into the turn, on top of rollAt, with a slow breathing
+	-- roll underneath so the body is never dead level. A slow vertical swell
+	-- (plus the settle ring) keeps the whole body breathing.
+	local bankTurn = math.clamp(body.turnRate * BANK_PER_TURN, -BANK_MAX, BANK_MAX)
+	local breathRoll = BREATH_ROLL_AMP * math.sin(now * BREATH_ROLL_RATE)
+	local bob = BREATH_BOB_AMP * math.sin(now * BREATH_BOB_RATE) + settle * SETTLE_BOB
+	local bobVec = Vector3.new(0, bob, 0)
+
 	-- Body: one CFrame per vertebra, tapered by the girth curve and banked by
 	-- the per-link roll. _Belly rides the same frame.
 	local used = 0
 	chain:eachN(BODY_LINKS, function(index, cframe, u, spacing)
 		used = index
-		local framed = cframe * CFrame.Angles(RimefangPath.rollAt(state, u), 0, 0)
+		-- WHIP: low-pass this vertebra's rigid position, fast at the head and
+		-- slow at the tail, keep only the part ACROSS the body axis, and cap it -
+		-- so the body trails without its arc length, spacing or joints changing.
+		local targetPos = cframe.Position
+		local lagged = body.lagPos[index] or targetPos
+		local rate = LAG_RATE_HEAD + (LAG_RATE_TAIL - LAG_RATE_HEAD) * u
+		lagged = lagged + (targetPos - lagged) * (1 - math.exp(-rate * dt))
+		body.lagPos[index] = lagged
+		local off = lagged - targetPos
+		local axis = cframe.RightVector
+		off = off - axis * off:Dot(axis)
+		if off.Magnitude > LAG_MAX then
+			off = off.Unit * LAG_MAX
+		end
+		-- Roll: the path's bank plus the turn lean and breathing roll, both
+		-- eased out toward the tail on rollAt's own falloff.
+		local roll = RimefangPath.rollAt(state, u) + (bankTurn + breathRoll) * rollFalloff(u)
+		local framed = CFrame.new(off + bobVec) * cframe * CFrame.Angles(roll, 0, 0)
 		local girth = RimefangPath.girth(u)
 		local segment = body.segments[index]
 		if not segment then
@@ -484,17 +660,31 @@ local function drawBody(model: Model, body, dt: number, now: number)
 
 	-- Head cluster, ahead of the chain's start by HEAD_LEAD - which is NOT the
 	-- skull's neck joint, whatever boss_gen.py's header says. See HEAD_LEAD.
-	local headFrame = chain:cframeAt(0)
-		* CFrame.Angles(RimefangPath.rollAt(state, 0), 0, 0)
+	-- The head takes the full bank and breathing roll (rollFalloff(0) = 1) and
+	-- rides the same body swell, so head and first vertebra never seam apart.
+	-- It is otherwise UN-LAGGED: the drawn skull sits on the authority skull,
+	-- which is what the bite and the lunge telegraph read from.
+	local headRoll = RimefangPath.rollAt(state, 0) + bankTurn + breathRoll
+	local headFrame = CFrame.new(bobVec)
+		* chain:cframeAt(0)
+		* CFrame.Angles(headRoll, 0, 0)
 		* CFrame.new(HEAD_LEAD + state.lunge * LUNGE_REACH, 0, 0)
 	for _, name in HEAD_PIECES do
 		applyPiece(body.head[name], headFrame, HEAD_SCALE)
 	end
 	-- The jaw swings about its hinge rather than sliding: rotate around the
-	-- pivot point, not the piece's own origin.
+	-- pivot point, not the piece's own origin. The eased gape gets a breath-slow
+	-- idle working when the mouth is near shut (so it settles rather than
+	-- welding) and the settle spring's chatter; clamped so the teeth can never
+	-- drive through the palate.
+	local gapeDraw = math.clamp(
+		state.gape + JAW_IDLE * (0.5 + 0.5 * math.sin(now * JAW_IDLE_RATE)) * (1 - state.gape) + settle * SETTLE_JAW,
+		0,
+		1
+	)
 	local jawFrame = headFrame
 		* CFrame.new(JAW_HINGE)
-		* CFrame.Angles(0, 0, -state.gape * JAW_MAX)
+		* CFrame.Angles(0, 0, -gapeDraw * JAW_MAX)
 		* CFrame.new(-JAW_HINGE)
 	for _, name in JAW_PIECES do
 		applyPiece(body.jaw[name], jawFrame, HEAD_SCALE)
@@ -513,17 +703,41 @@ local function drawBody(model: Model, body, dt: number, now: number)
 	-- FIN_AT one notch past 0.46 would have silently parted them. Now they
 	-- agree by construction: girth is read once, into the OFFSET only.
 	local finGirth = RimefangPath.girth(FIN_AT)
-	local finFrame = chain:cframeAt(chain.length * FIN_AT) * CFrame.Angles(RimefangPath.rollAt(state, FIN_AT), 0, 0)
-	applyPiece(body.fin, finFrame * CFrame.new(0, FIN_LIFT * finGirth, 0), FITTING_SCALE)
+	local finRoll = RimefangPath.rollAt(state, FIN_AT) + (bankTurn + breathRoll) * rollFalloff(FIN_AT)
+	-- The dorsal trails the body's turn - leaning in as the turn starts,
+	-- trailing out of it - and flutters fore/aft on the settle ring. Pivoted
+	-- at the mount on the back (after the lift), so the blade flexes at its base.
+	local finTrail = math.clamp(-body.turnRate * FIN_TRAIL, -FIN_TRAIL_MAX, FIN_TRAIL_MAX)
+	local finFrame = CFrame.new(bobVec) * chain:cframeAt(chain.length * FIN_AT) * CFrame.Angles(finRoll, 0, 0)
+	applyPiece(
+		body.fin,
+		finFrame * CFrame.new(0, FIN_LIFT * finGirth, 0) * CFrame.Angles(finTrail, 0, settle * SETTLE_FIN),
+		FITTING_SCALE
+	)
 
 	local pecGirth = RimefangPath.girth(PEC_AT)
-	local pecFrame = chain:cframeAt(chain.length * PEC_AT) * CFrame.Angles(RimefangPath.rollAt(state, PEC_AT), 0, 0)
-	applyPiece(body.pecLeft, pecFrame * CFrame.new(0, PEC_LIFT * pecGirth, PEC_SIDE * pecGirth), FITTING_SCALE)
+	local pecRoll = RimefangPath.rollAt(state, PEC_AT) + (bankTurn + breathRoll) * rollFalloff(PEC_AT)
+	local pecFrame = CFrame.new(bobVec) * chain:cframeAt(chain.length * PEC_AT) * CFrame.Angles(pecRoll, 0, 0)
+	-- Sculling: a slow feather cycle both flippers share, plus a steer that
+	-- angles them with the turn. Applied AT the shoulder mount (after the side
+	-- offset), so the blade sweeps about its root instead of sliding off the
+	-- flank.
+	local scull = PEC_SCULL_AMP * math.sin(now * PEC_SCULL_RATE)
+	local steer = math.clamp(body.turnRate * PEC_STEER, -PEC_STEER_MAX, PEC_STEER_MAX)
+	applyPiece(
+		body.pecLeft,
+		pecFrame * CFrame.new(0, PEC_LIFT * pecGirth, PEC_SIDE * pecGirth) * CFrame.Angles(0, scull + steer, 0),
+		FITTING_SCALE
+	)
 	-- Half turn about the BODY AXIS for the far side. A mirrored scale would
-	-- invert the normals and render the flipper inside-out.
+	-- invert the normals and render the flipper inside-out. The scull is applied
+	-- AFTER the half turn so it sweeps in the flipped frame too.
 	applyPiece(
 		body.pecRight,
-		pecFrame * CFrame.new(0, PEC_LIFT * pecGirth, -PEC_SIDE * pecGirth) * CFrame.Angles(math.pi, 0, 0),
+		pecFrame
+			* CFrame.new(0, PEC_LIFT * pecGirth, -PEC_SIDE * pecGirth)
+			* CFrame.Angles(math.pi, 0, 0)
+			* CFrame.Angles(0, scull - steer, 0),
 		FITTING_SCALE
 	)
 
@@ -541,8 +755,31 @@ local function drawBody(model: Model, body, dt: number, now: number)
 	-- pitch - a fixed 1.75 studs - short of chain.length; the seat pulls the
 	-- fluke's boss back into the peduncle instead of leaving it hanging off
 	-- the end.
-	local flukeFrame = chain:cframeAt(chain.length) * CFrame.Angles(RimefangPath.rollAt(state, 1), 0, 0)
-	applyPiece(body.fluke, flukeFrame * CFrame.new(-1.2, 0, 0), FLUKE_SCALE)
+	-- The flukes are the tail's tip: they take the most whip and the most flex.
+	-- Same perpendicular-projected, capped lag as a vertebra, at the tail rate,
+	-- so the tail's own follow-through reads without stretching the peduncle.
+	local flukeTargetPos = chain:pointAt(chain.length)
+	local flukeLag = body.flukeLagPos or flukeTargetPos
+	flukeLag = flukeLag + (flukeTargetPos - flukeLag) * (1 - math.exp(-LAG_RATE_TAIL * dt))
+	body.flukeLagPos = flukeLag
+	local flukeOff = flukeLag - flukeTargetPos
+	local flukeAxis = RimefangPath.tangentAt(state, 1)
+	flukeOff = flukeOff - flukeAxis * flukeOff:Dot(flukeAxis)
+	if flukeOff.Magnitude > LAG_MAX then
+		flukeOff = flukeOff.Unit * LAG_MAX
+	end
+	local flukeRoll = RimefangPath.rollAt(state, 1) + (bankTurn + breathRoll) * rollFalloff(1)
+	-- Trail the turn; follow through after a slam (the strike drives flukeVel
+	-- sharply negative, so -flukeVel throws the flukes on past the swing) and
+	-- flutter on the settle ring; both about the peduncle joint.
+	local flukeTrail = math.clamp(body.turnRate * FLUKE_TRAIL, -FLUKE_TRAIL_MAX, FLUKE_TRAIL_MAX)
+	local flukeFollow = math.clamp(-body.flukeVel * FLUKE_FOLLOW, -FLUKE_FOLLOW_MAX, FLUKE_FOLLOW_MAX)
+	local flukeFrame = CFrame.new(flukeOff + bobVec) * chain:cframeAt(chain.length) * CFrame.Angles(flukeRoll, 0, 0)
+	applyPiece(
+		body.fluke,
+		flukeFrame * CFrame.Angles(0, flukeTrail, flukeFollow + settle * SETTLE_FLUKE) * CFrame.new(-1.2, 0, 0),
+		FLUKE_SCALE
+	)
 end
 
 -- How long a model gets to declare itself a rimefang before we stop listening.

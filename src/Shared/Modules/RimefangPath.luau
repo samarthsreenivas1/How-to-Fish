@@ -106,6 +106,27 @@ RimefangPath.HEAD_OFFSET = 5.2 -- how far ahead of the first vertebra the skull 
 local SWIM_RATE = 2.1
 local SWIM_WAVES = 0.66
 local SWIM_AMP = 2.6
+-- A second, quicker, shorter wave stacked on the first, weighted toward the
+-- peduncle (grow 2.4 vs 1.6) so the tail carries a fine flick riding the main
+-- stroke. A single pure sine reads mechanical; two incommensurate ones read
+-- like an animal that is actually swimming. Small enough that the extra
+-- curvature stays well inside the joint-angle budget.
+local SWIM_AMP2 = 0.34
+local SWIM_WAVES2 = 1.15
+local SWIM_RATE2 = 1.9
+-- The gait's shoulder roll: a whale rocks a little as it strokes, the roll
+-- lagging the wave that drives it. Post-applied through rollAt, so it never
+-- touches the centreline's arc length.
+local SWIM_ROLL = math.rad(2.4)
+
+-- TURN-INTO-BANK. The path is handed a heading, not a turn rate, so a body
+-- drawn straight back from the head reads as a rigid train on the carousel's
+-- ring. But a banked swimmer IS a turning one - bank angle and turn radius
+-- are the same fact - so the body curves in proportion to `roll`, growing
+-- toward the tail. The coupling saturates (roll / (1 + k|roll|)) so the wave
+-- wash's hard capsize sweeps in a gentle arc rather than coiling up.
+local TURN_MAX = math.rad(38.0)
+local TURN_SAT = 0.9
 
 -- Mirrors Bosses.rimefang.riseDepth. Read the header before changing it.
 local SUBMERGE_DEPTH = 18.0
@@ -114,16 +135,28 @@ local RISE_HEIGHT = 24.0
 -- Mirrors Bosses.rimefang.breach.length / .leap. Read the header.
 local ARCH_SPAN = 46.0
 local ARCH_HEIGHT = 9.0
+-- The corkscrew a breaching orca carries into its leap: a bank that swells to
+-- the apex and unwinds to level at re-entry. Post-applied through rollAt.
+local ARCH_BANK = math.rad(26.0)
 local BEACHED_Y = 2.2 -- lying on the floe, which floats ~2.4 proud
 local THRASH_RATE = 5.5
 local THRASH_AMP = 4.4
+-- The beached thrash's secondary curves: a slow forebody heave (toward the
+-- head) and a lagged tail follow-through, both in radians of yaw.
+local THRASH_HEAD = math.rad(7.5)
+local THRASH_FOLLOW = math.rad(5.0)
+-- The stranded roll: a whale on the floe lies part-over and rocks. A gentle
+-- bank, breathing slowly, applied through rollAt so it stays off the
+-- centreline. Not a full capsize - the lateral thrash must still read.
+local BEACHED_ROLL = math.rad(24.0)
 
 -- THE SPY-HOP'S SHAPE, as angles off vertical for the down-body direction.
 -- STAND is how far off plumb the standing forebody leans; NECK is an extra
--- cock at the skull that decays over the first fifth of the body, so the
+-- cock at the skull that decays over the front third of the body, so the
 -- snout looks out over the floe (54 degrees of elevation) instead of at the
--- sky; TAIL is where the curl has got to by the flukes. FLEX > 1 keeps the
--- bend out of the rigid forebody and grows it toward the peduncle.
+-- sky; TAIL is where the curl has got to by the flukes, reached by a smoothstep
+-- of t so the bend eases in past the rigid forebody and eases out at the slack
+-- fluke tip - the flex lives in the peduncle, where a whale's does.
 --
 -- STAND IS NOT ZERO ON PURPOSE. A dead-plumb body has a tangent of exactly
 -- (0,1,0), and ChainPose.alongX derives orientation from the tangent's
@@ -136,8 +169,13 @@ local THRASH_AMP = 4.4
 -- and makes every frame down the body a function of the heading again.
 local RISE_STAND = math.rad(16.0)
 local RISE_NECK = math.rad(20.0)
-local RISE_TAIL = math.rad(112.0)
-local RISE_FLEX = 2.4
+-- Where the curl-back has got to by the flukes. The curl is now a smoothstep
+-- of t (below), whose slope dies at the tail tip, so the flukes hang slack
+-- instead of over-rotating - that dropped the worst joint from 12.5 to 7.9
+-- degrees, back inside budget, without moving the snout's 54-degree lookout.
+local RISE_TAIL = math.rad(100.0)
+-- The relaxed slack in the hanging mid-body of a spy-hop; a mid-span dip only.
+local RISE_RELAX = math.rad(6.0)
 
 -- THE LOBTAIL. `flukeUp` is progress through the WHOLE swing, not a lift:
 -- the tail rears to FLUKE_RISE at 1, crosses its rest line at FLUKE_CROSS,
@@ -146,13 +184,18 @@ local RISE_FLEX = 2.4
 -- land - the tail went up and the attack simply ended. Now the same
 -- monotone ramp the server already publishes (windup 0 -> 1, strike 1 -> 0)
 -- reads as a sink-and-heave anticipation and then a hammer through the
--- waterline: the fluke tip travels from +11.9 to -14.5 studs.
+-- waterline: the fluke tip rears to +19.8, crosses rest at FLUKE_CROSS, and
+-- drives to -11.2 studs before a small elastic rebound settles it back to rest
+-- with follow-through (FLUKE_REBOUND), the peduncle curving through the swing.
 --
 -- Neither angle goes near 90: a vertical tail tip is the one case
 -- ChainPose.alongX genuinely cannot orient, and the fluke is drawn on it.
 local FLUKE_RISE = math.rad(62.0)
 local FLUKE_PUNCH = math.rad(34.0)
 local FLUKE_CROSS = 0.45
+-- The follow-through: a small elastic rebound of the peduncle just after the
+-- fluke hammers through, decaying to nothing at rest. Weight, not a wag.
+local FLUKE_REBOUND = math.rad(9.0)
 
 -- Midpoint steps for the whole body. 24 puts the worst position error at
 -- 0.018 studs against an exact integral, and the error varies smoothly with
@@ -162,9 +205,32 @@ local STEP_T = 1.0 / STEPS
 
 local UP = Vector3.new(0, 1, 0)
 
+-- Cubic ease, C1. Used for envelopes DOWN THE BODY (a pose's spatial shape),
+-- where the lowest peak curvature for fixed ends with zero end-slope keeps the
+-- per-joint bend inside budget, and C1 is all "no corner in the body" needs.
 local function smoothstep(x: number): number
 	x = math.clamp(x, 0, 1)
 	return x * x * (3 - 2 * x)
+end
+
+-- Quintic ease: zero FIRST and SECOND derivative at both ends, where cubic
+-- smoothstep leaves a second-derivative jump. Used for the TEMPORAL fades -
+-- a stance easing in or out over the fight's clock - so weight arrives and
+-- leaves with no kink in its acceleration. C2 is the bar the user set with
+-- "really really smooth"; on a spatial envelope its higher peak slope would
+-- cost joint-angle budget, so the two eases split those two jobs.
+local function smootherstep(x: number): number
+	x = math.clamp(x, 0, 1)
+	return x * x * x * (x * (x * 6 - 15) + 10)
+end
+
+-- A single travelling-sine SLOPE (d/dt of amp*t^grow*sin(phase), the wave
+-- moving head->tail as time advances), returned as the vertical slope the
+-- body has at `t`. Kept as a slope, not a position, because pointAt turns it
+-- into an angle - which is what stops a swim wave from stretching the whale.
+local function travellingSlope(t: number, phase: number, grow: number, waves: number): number
+	local k = waves * math.pi * 2
+	return grow * t ^ (grow - 1) * math.sin(phase) - t ^ grow * math.cos(phase) * k
 end
 
 -- The heading convention matches CreatureService.bossFacing, so a bearing
@@ -232,11 +298,13 @@ end
 -- the mesh pack's preview was authored against - but as an angle, which is
 -- what stops the wave from stretching the animal.
 local function swimPitch(state, t: number): number
-	local phase = (state.time or 0) * SWIM_RATE - t * SWIM_WAVES * math.pi * 2
+	local time = state.time or 0
 	local swim = state.swim or 1
+	local phase1 = time * SWIM_RATE - t * SWIM_WAVES * math.pi * 2
+	local phase2 = time * SWIM_RATE2 - t * SWIM_WAVES2 * math.pi * 2
 	local slope = SWIM_AMP
 		* swim
-		* (1.6 * t ^ 0.6 * math.sin(phase) - t ^ 1.6 * math.cos(phase) * SWIM_WAVES * math.pi * 2)
+		* (travellingSlope(t, phase1, 1.6, SWIM_WAVES) + SWIM_AMP2 * travellingSlope(t, phase2, 2.4, SWIM_WAVES2))
 	return math.atan(slope / RimefangPath.BODY_LENGTH)
 end
 
@@ -247,22 +315,41 @@ local function flukePitch(state, t: number): number
 	if f <= 0 then
 		return 0
 	end
-	local rear = smoothstep((t - 0.46) / 0.42)
+	-- The bend is spread over the rear 72% of the body (was 42%), so the
+	-- peduncle CURVES into the swing instead of hinging at one vertebra - the old
+	-- envelope put a 13-degree kink at the pinch; this holds it under 8. It still
+	-- reaches full at the flukes, so the tip travels just as far.
+	local rear = smoothstep((t - 0.28) / 0.72)
 	if rear <= 0 then
 		return 0
 	end
-	local up = FLUKE_RISE * smoothstep((f - FLUKE_CROSS) / (1 - FLUKE_CROSS))
-	-- A half-sine bump over 0..FLUKE_CROSS, squared so it leaves and rejoins
-	-- the rest line with zero slope: the swing has no corner at either end.
-	local dip = math.sin(math.pi * math.min(f, FLUKE_CROSS) / FLUKE_CROSS)
-	return (up - FLUKE_PUNCH * dip * dip) * rear
+	local up = FLUKE_RISE * smootherstep((f - FLUKE_CROSS) / (1 - FLUKE_CROSS))
+	-- `dipPhase` runs 0 (tail at rest line) -> 1 (fully hammered through) as the
+	-- swing drives down through FLUKE_CROSS. A half-sine is the down-stroke;
+	-- the rebound is one small over-shoot back up just after the blow, dying to
+	-- zero exactly at rest, so the fluke SETTLES with follow-through rather than
+	-- stopping dead the instant it crosses the waterline.
+	local dipPhase = 1 - math.min(f, FLUKE_CROSS) / FLUKE_CROSS
+	local punch = FLUKE_PUNCH * math.sin(math.pi * dipPhase)
+	local settle = FLUKE_REBOUND * -math.sin(2 * math.pi * dipPhase) * dipPhase
+	return (up - punch + settle) * rear
 end
 
 -- THE SPY-HOP. It stands on its tail, cocks its head at someone, and the
 -- rest of the body curls back and under. One curve, no seam.
 local function risePitch(_state, t: number): number
-	local phi = RISE_STAND + RISE_NECK * (1 - smoothstep(t / 0.20)) + (RISE_TAIL - RISE_STAND) * t ^ RISE_FLEX
-	return phi - math.pi * 0.5
+	-- The neck cock decays over the front 30% of the body, spread across an
+	-- extra vertebra or two so the snout looks out over the floe without a kink.
+	local neck = RISE_NECK * (1 - smoothstep(t / 0.30))
+	-- The curl back and under. A smoothstep of t, so its slope is zero at BOTH
+	-- ends: the rigid forebody stays rigid and the flukes hang slack, with the
+	-- bend carried through the peduncle where a real whale's flex lives.
+	local curl = (RISE_TAIL - RISE_STAND) * smoothstep(t)
+	-- A gentle relaxed slack through the hanging mid-body - a real spy-hop is
+	-- not a taut arc, the body dangles - as a mid-span dip that vanishes at both
+	-- ends, so it adds an S without moving the anchor or the tail.
+	local slack = -RISE_RELAX * math.sin(math.pi * t)
+	return RISE_STAND + neck + curl + slack - math.pi * 0.5
 end
 
 -- THE BREACH. `arch` is PROGRESS along the leap, not a weight: the head is
@@ -290,9 +377,10 @@ local function archPitch(state, t: number): number
 		return -math.atan2(ARCH_HEIGHT * math.pi * math.cos(ahead * math.pi), ARCH_SPAN)
 	end
 	-- Behind the launch point the body is still in the water: it leaves on
-	-- the launch angle and eases to level over the next ~20 studs of itself,
-	-- rather than snapping to flat the way a clamp would.
-	return -ARCH_ANGLE0 * (1 - smoothstep(-sigma / 0.42))
+	-- the launch angle and eases to level over the next ~30 studs of itself
+	-- (was 20), rather than snapping to flat the way a clamp would. The wider,
+	-- gentler ease spreads the waterline seam's curvature under the joint budget.
+	return -ARCH_ANGLE0 * (1 - smoothstep(-sigma / 0.55))
 end
 
 -- BEACHED. Landed flat on the floe, working itself back toward water. The
@@ -300,9 +388,20 @@ end
 -- side, and the contrast with the vertical swim cycle is what sells that it
 -- is out of its element and briefly killable.
 local function beachedYaw(state, t: number): number
-	local phase = (state.time or 0) * THRASH_RATE - t * 3.0
+	local time = state.time or 0
+	local phase = time * THRASH_RATE - t * 3.0
+	-- The main wallow, the travelling sine the pose already had.
 	local slope = THRASH_AMP * (1.4 * t ^ 0.4 * math.sin(phase) - t ^ 1.4 * math.cos(phase) * 3.0)
-	return math.atan(slope / RimefangPath.BODY_LENGTH)
+	local main = math.atan(slope / RimefangPath.BODY_LENGTH)
+	-- Secondary curl toward the HEAD: a slow heave of the forebody that peaks at
+	-- the skull and dies by mid-body, so the front hunts for the water too
+	-- rather than lying inert while only the tail works.
+	local headCurl = THRASH_HEAD * (1 - t) ^ 1.8 * math.sin(time * THRASH_RATE * 0.55 + 0.9)
+	-- Follow-through at the TAIL: the same stroke arriving a beat late and
+	-- weighted to the flukes, so the tail lags and overshoots the body it hangs
+	-- off instead of snapping in step with it - weight, not a stiff wag.
+	local follow = THRASH_FOLLOW * t ^ 2.0 * math.sin(phase - 1.15)
+	return main + headCurl + follow
 end
 
 -- ---------------------------------------------------------------- compose
@@ -317,9 +416,12 @@ end
 -- else, and the result no longer depends on the order they are written in.
 local function weights(state): (number, number, number, number)
 	local arch = state.arch or 0
-	-- Faded in over the first slice of the leap so leaving the water is a
-	-- blend rather than a snap; full weight for the rest of the arc.
-	local wArch = if arch > 0 then smoothstep(arch / 0.15) else 0
+	-- Faded in over the first ~28% of the leap (was 15%) so leaving the water is
+	-- a gradual emergence rather than a lurch: while the stance ramps, the head
+	-- blends off the submerged rest toward the parabola, and the wider window
+	-- halves the worst per-frame slide at launch. Quintic, so the launch has no
+	-- jump in acceleration as the stance takes hold.
+	local wArch = if arch > 0 then smootherstep(arch / 0.28) else 0
 	local wRise = math.clamp(state.rise or 0, 0, 1)
 	local wBeach = math.clamp(state.beached or 0, 0, 1)
 	local total = wArch + wRise + wBeach
@@ -359,6 +461,17 @@ local function directionAt(state, t: number): Vector3
 	local pitch, yaw = 0.0, 0.0
 	if wBase > 0 then
 		pitch += wBase * (swimPitch(state, t) + flukePitch(state, t))
+		-- TURN INTO THE BANK. `roll` is the only turn cue the path is handed, and
+		-- a banked animal is a turning one, so the body arcs in proportion to the
+		-- bank, growing toward the tail (quintic, zero curvature at the neck). On
+		-- the carousel this is the difference between a body curving round the
+		-- ring and a rigid pole swept round it; the saturation keeps the wave
+		-- wash's hard capsize an arc, not a coil. Only in the cruise stances -
+		-- the reared and beached poses author their own yaw.
+		local roll = state.roll or 0
+		if roll ~= 0 then
+			yaw += wBase * TURN_MAX * (roll / (1 + TURN_SAT * math.abs(roll))) * smootherstep(t)
+		end
 	end
 	if wArch > 0 then
 		pitch += wArch * archPitch(state, t)
@@ -416,12 +529,36 @@ end
 
 -- Bank, per link. Full roll through the forebody, easing out along the tail
 -- so the flukes stay flat-ish - a whale rolls its shoulders, not its tail.
+-- This is where every stance's bank is composed, so that the centreline
+-- (arc-length-critical) never carries a roll and the hitboxes never move with
+-- one. All of it is post-applied about each link's own long axis.
 function RimefangPath.rollAt(state, t: number): number
-	local roll = state.roll or 0
-	if roll == 0 then
-		return 0
+	-- Forebody-weighted profile, quintic so the shoulder-to-tail falloff has no
+	-- kink: full at the head, 30% by the flukes.
+	local profile = 1 - smootherstep((t - 0.35) / 0.65) * 0.7
+	local total = (state.roll or 0) * profile
+
+	-- The swim gait's shoulder rock: a small roll riding the stroke, lagging the
+	-- wave and weighted forward, that fades with how hard the tail is working.
+	local time = state.time or 0
+	local swim = state.swim or 1
+	total += SWIM_ROLL * swim * math.sin(time * SWIM_RATE * 0.5 - t * 1.3) * (1 - 0.5 * t)
+
+	-- The breach corkscrew: the body banks INTO its leap, the twist swelling to
+	-- the apex and unwinding to level at re-entry so the whale knifes back in
+	-- upright. Zero at both ends of the leap, so nothing snaps.
+	local arch = math.clamp(state.arch or 0, 0, 1)
+	if arch > 0 then
+		total += ARCH_BANK * math.sin(smootherstep(arch) * math.pi)
 	end
-	return roll * (1 - smoothstep((t - 0.35) / 0.65) * 0.7)
+
+	-- The stranded rock: part-over on the floe, breathing slowly side to side.
+	local beached = math.clamp(state.beached or 0, 0, 1)
+	if beached > 0 then
+		total += BEACHED_ROLL * beached * (0.72 + 0.28 * math.sin(time * 1.4)) * (1 - 0.3 * t)
+	end
+
+	return total
 end
 
 -- The shape function ChainPose.new wants.
