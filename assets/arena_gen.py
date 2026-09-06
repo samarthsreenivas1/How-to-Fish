@@ -32,9 +32,16 @@
 #   - three REEF STONES on the sand ring (fight furniture: the slam-bait
 #     targets), separate objects so the fight logic can find and shatter
 #     each: <Model>_ReefStone1..3. Positions printed in the HANDOFF.
+#   - FIVE MORE COVER PIECES inside the walkable field (BJ_COVER, the
+#     `CoverStack*` / `CoverHulk` objects): the Riptide wave crosses the whole
+#     arena and standing in a shadow is its only answer, so the field needs
+#     eight sites spread round the circle, not three on three bearings.
+#   - the keeper's BELL hangs off the gallery, not in the sand: Bell Toll has
+#     the head strike it.
 #   - dressing: fallen lantern-room rubble at the spire's foot, a shattered
-#     rowboat, a half-buried bell. Open sand kept CLEAN on purpose (user,
-#     2026-08-29) - the fight paints its own telegraphs on it.
+#     rowboat. Open sand kept CLEAN on purpose (user, 2026-08-29) - the fight
+#     paints its own telegraphs on it, and the cover pieces are the one thing
+#     allowed to break that rule because a mechanic depends on them.
 #
 # Deterministic: seeded random only, so re-exports are byte-stable.
 
@@ -183,7 +190,54 @@ BJ_PROFILE = [
 BJ_SPIRE_BASE_R = 8.5
 BJ_SPIRE_TOP_R = 5.2
 BJ_SPIRE_TOP_Z = 54.0  # shaft top; the ruined lantern room rises above this
-BJ_REEF_STONES = [(40.0, 15.0), (40.0, 135.0), (40.0, 255.0)]  # (radius, degrees)
+# THE COVER FIELD - the one table the wave attack's shadow test, the
+# procedural fallback and this mesh all key off. Riptide crosses the whole
+# arena and the answer is to put something solid between you and it, so every
+# entry here has to be a thing a PLAYER fits behind: >= 6 studs wide and >= 5
+# studs proud of the beach at its own radius. Everything else on this sand is
+# ankle-high dressing and cannot be counted.
+#
+# (radius, degrees, part, width, rise) - `width` the full stud span above the
+# sand, `rise` how far the top stands over the beach AT THAT RADIUS
+# (_bj_height, not zero: the beach falls 3.2 -> 0.4 from centre to edge, so a
+# constant z would leave the outer pieces a stud taller than the inner ones
+# for no reason anyone could see).
+#
+# BEARINGS ARE THE POINT, not decoration. The three reef stones sit at 15 /
+# 135 / 255 and leave three bare 120-degree arcs, which is exactly one wave
+# with no answer in it; the five added pieces land at 75 / 105 / 195 / 285 /
+# 315 so the eight sites step round the circle at 30-60 degrees and no arc is
+# empty. The measured worst case is in the HANDOFF - re-run the coverage math
+# if any of these move.
+#
+# THE MIRROR, for whoever copies these into BossArenas: the glTF export maps
+# blender (x, y, z) -> (x, z, -y), so roblox Z is the NEGATIVE of blender y.
+# build_brinejaw prints both frames; take the ROBLOX line.
+BJ_COVER = [
+    (40.0, 15.0, "ReefStone1", 6.8, 5.5),
+    (40.0, 135.0, "ReefStone2", 6.8, 5.5),
+    (40.0, 255.0, "ReefStone3", 6.8, 5.5),
+    (22.0, 105.0, "CoverStack1", 8.0, 7.0),
+    (22.0, 285.0, "CoverStack2", 8.0, 7.0),
+    (58.0, 75.0, "CoverStack3", 10.0, 8.0),
+    (58.0, 195.0, "CoverStack4", 10.0, 8.0),
+    (58.0, 315.0, "CoverHulk", 11.0, 7.0),
+]
+
+# The slam-bait subset, kept as its own name because the fight distinguishes
+# them: a hand-slam beside a REEF STONE shatters it and opens the punish
+# window, where the same blow on a sea stack only jars the colossus. Derived,
+# so the two lists cannot drift apart.
+BJ_REEF_STONES = [(r, d) for r, d, part, _w, _h in BJ_COVER if part.startswith("ReefStone")]
+
+# The keeper's bell, and it is no longer half-buried in the sand: Bell Toll
+# has the serpent's head strike it, so it has to hang where the head rests -
+# off the gallery, on REST.BEARING. That bearing is 342 degrees in ROBLOX,
+# which is 18 here (see the mirror note above). r 9.0 puts the mouth clear
+# outside the gallery lip at 7.3 and clear of the shaft at ~5.3.
+BJ_BELL_R = 9.0
+BJ_BELL_DEG = 18.0
+BJ_BELL_Z = 53.0  # centre height; the bell is 5.0 deep, so 50.5..55.5
 
 SAND = (0.87, 0.76, 0.5)
 STONE = (0.55, 0.52, 0.47)
@@ -377,16 +431,103 @@ def build_bj_foam(rng):
     return finish("BrinejawArena_Foam", bm, FOAM)
 
 
+def _bj_cover_at(part):
+    for radius, degrees, name, width, rise in BJ_COVER:
+        if name == part:
+            angle = math.radians(degrees)
+            return math.cos(angle) * radius, math.sin(angle) * radius, radius, width, rise
+    raise KeyError(part)
+
+
 def build_bj_reef_stones():
     objs = []
     rng = random.Random(77)
     for index, (radius, degrees) in enumerate(BJ_REEF_STONES):
+        part = "ReefStone%d" % (index + 1)
+        cx, cy, _r, width, rise = _bj_cover_at(part)
         bm = bmesh.new()
-        angle = math.radians(degrees)
-        cx, cy = math.cos(angle) * radius, math.sin(angle) * radius
-        rock(bm, (cx, cy, 1.1), (1.9, 1.9, 1.5), rng, jitter=0.2)
-        rock(bm, (cx + 1.1, cy - 0.8, 0.7), (0.9, 0.9, 0.8), rng, jitter=0.25)
-        objs.append(finish("BrinejawArena_ReefStone%d" % (index + 1), bm, ROCKS))
+        # GROWN TO COVER SPEC (they were 3.7 wide and stood 1.3 proud of the
+        # sand - a stone you trip over, not one you hide behind). The CENTRES
+        # are untouched on purpose: the fight's slam-bait offsets key off them.
+        ground = _bj_height(radius)
+        top = ground + rise
+        half = width / 2
+        # Sunk deep enough that the jitter can never lift a skirt off the beach.
+        centre_z = top - half * 0.72
+        rock(bm, (cx, cy, centre_z), (half, half, top - centre_z), rng, jitter=0.16)
+        rock(bm, (cx + half * 0.75, cy - half * 0.6, ground + 0.6), (1.5, 1.5, 1.3), rng, jitter=0.25)
+        objs.append(finish("BrinejawArena_%s" % part, bm, ROCKS))
+    return objs
+
+
+def build_bj_cover():
+    """The five cover pieces added INSIDE the walkable field (BJ_COVER's
+    non-ReefStone rows). The three existing reef stones and the boundary
+    SeaStacks were the whole of the arena's cover, and the stacks stand at
+    r 83-86 - outside the reef fence, past anywhere a player can stand. So a
+    wave that crosses the field had three answers on one bearing each and
+    three bare 120-degree arcs. These are separate named objects, one per
+    cover site, so the shadow test and the fallback find each of them by name.
+    """
+    # Its OWN seeded stream, deliberately: threading build_brinejaw's shared
+    # rng through here would shift every jitter drawn after it, so adding a
+    # cover piece would silently re-scatter the boundary rocks and the kelp.
+    rng = random.Random(9137)
+    objs = []
+
+    for part in ("CoverStack1", "CoverStack2", "CoverStack3", "CoverStack4"):
+        cx, cy, radius, width, rise = _bj_cover_at(part)
+        ground = _bj_height(radius)
+        top = ground + rise
+        half = width / 2
+        bm = bmesh.new()
+        # A leaning column of reef rock: broad at the foot, blunt at the top.
+        # Sunk to -3 so the sand cannot show daylight under it.
+        tapered_cylinder(bm, -3.0, top - 1.2, half, half * 0.80, sides=7, center=(cx, cy))
+        rock(bm, (cx, cy, top - 1.4), (half * 0.82, half * 0.82, 1.6), rng, jitter=0.3)
+        # Two boulders at the foot, so it reads as reef rather than a pillar
+        # dropped on a beach - and so the shadow it throws has a wide base.
+        for sign in (-1, 1):
+            ox, oy = rng.uniform(-1, 1), rng.uniform(-1, 1)
+            rock(
+                bm,
+                (cx + sign * half * 0.9 + ox, cy - sign * half * 0.7 + oy, ground + 0.4),
+                (rng.uniform(1.6, 2.3),) * 3,
+                rng,
+                jitter=0.25,
+            )
+        objs.append(finish("BrinejawArena_%s" % part, bm, ROCKS))
+
+    # The hulk: the ship the beached rowboat came from, and the thing the
+    # leaning mast has been sprouting out of bare sand without. Its centre is
+    # 6 studs from the mast's foot, laid along the mast's own heading, so the
+    # two read as one wreck.
+    cx, cy, radius, width, rise = _bj_cover_at("CoverHulk")
+    ground = _bj_height(radius)
+    top = ground + rise
+    heading = math.atan2(-55.0 - -35.0, 64.0 - 40.0)  # the mast's bearing
+    rot = Matrix.Rotation(heading, 3, "Z")
+    at = Vector(((cx), (cy), 0.0))
+    bm = bmesh.new()
+    # Two hull sides, flared out at the top like a broken-open ribcage.
+    for side in (-1, 1):
+        box(
+            bm,
+            at + rot @ Vector((0, side * width * 0.30, ground + rise * 0.42)),
+            (15.0, 0.9, rise * 0.95),
+            rot @ Matrix.Rotation(math.radians(side * 12), 3, "X"),
+        )
+    # Ribs arcing over what is left of the deck, a couple snapped short.
+    for i in range(5):
+        along = (i / 4 - 0.5) * 12.0
+        h = top if i % 3 != 1 else ground + rise * 0.55
+        for side in (-1, 1):
+            foot = at + rot @ Vector((along, side * width * 0.34, ground - 0.5))
+            crown = at + rot @ Vector((along * 0.9, side * width * 0.16, h + 0.6))
+            taper_between(bm, foot, crown, 0.55, 0.35, sides=5)
+    # The keel timber the ribs sit on, half swallowed by the sand.
+    box(bm, at + rot @ Vector((0, 0, ground - 0.2)), (16.0, 2.4, 1.6), rot)
+    objs.append(finish("BrinejawArena_CoverHulk", bm, DRIFTWOOD))
     return objs
 
 
@@ -407,11 +548,26 @@ def build_bj_dressing(rng):
     obj_boat = finish("BrinejawArena_Boat", bm, DRIFTWOOD)
 
     bm = bmesh.new()
-    # The keeper's bell, half-buried, tarnished green.
-    bell_at = Vector((26.0, 38.0, 0.6))
-    mat = Matrix.Translation(bell_at) @ Matrix.Rotation(math.radians(28), 3, "X").to_4x4()
-    bmesh.ops.create_cone(bm, cap_ends=True, segments=10, radius1=2.4, radius2=1.1, depth=3.4, matrix=mat)
-    rock(bm, bell_at + Vector((0, 1.6, 1.6)), (0.5, 0.5, 0.5), rng, jitter=0.1)
+    # THE KEEPER'S BELL, and it is a fight object now, not dressing. Bell Toll
+    # has the serpent's head strike it and rings expand from the tower, so a
+    # bell lying half-buried in the sand 46 studs away - where it used to be -
+    # could not be what the attack shows. It hangs from the gallery on
+    # REST.BEARING, the bearing the head already rests over: the strike reads
+    # as a strike without the pose moving an inch.
+    angle = math.radians(BJ_BELL_DEG)
+    bell_at = Vector((math.cos(angle) * BJ_BELL_R, math.sin(angle) * BJ_BELL_R, BJ_BELL_Z))
+    # The yoke: a beam out from the gallery lip that the bell swings under.
+    inner = Vector((math.cos(angle) * (BJ_SPIRE_TOP_R + 0.6), math.sin(angle) * (BJ_SPIRE_TOP_R + 0.6), BJ_SPIRE_TOP_Z + 1.9))
+    outer = Vector((bell_at.x, bell_at.y, BJ_SPIRE_TOP_Z + 2.4))
+    taper_between(bm, inner, outer, 0.55, 0.45, sides=5)
+    # ...and the bell itself: mouth down, crown up, 6 studs across the mouth so
+    # it is legible from the sand 55 studs below.
+    mat = Matrix.Translation(bell_at)
+    bmesh.ops.create_cone(bm, cap_ends=True, segments=12, radius1=3.0, radius2=1.4, depth=5.0, matrix=mat)
+    # The lip ring, and the crown loop the yoke holds.
+    mat = Matrix.Translation(bell_at + Vector((0, 0, -2.2)))
+    bmesh.ops.create_cone(bm, cap_ends=True, segments=12, radius1=3.2, radius2=3.2, depth=0.7, matrix=mat)
+    box(bm, bell_at + Vector((0, 0, 2.9)), (0.9, 0.9, 1.4))
     obj_bell = finish("BrinejawArena_Bell", bm, BRONZE)
     return obj_boat, obj_bell
 
@@ -474,6 +630,7 @@ def build_brinejaw():
         *build_bj_coral(rng),
         build_bj_foam(rng),
         *build_bj_reef_stones(),
+        *build_bj_cover(),
         *build_bj_dressing(rng),
         *build_bj_edge_detail(rng),
     ]
@@ -488,6 +645,36 @@ def build_brinejaw():
             "HANDOFF brinejaw: ReefStone%d rel (%.1f, %.1f) - fight logic slam-bait targets"
             % (index + 1, math.cos(angle) * radius, math.sin(angle) * radius)
         )
+    # THE COVER TABLE, printed in ROBLOX coordinates ready to paste into
+    # BossArenas.items.tropical.cover - the mirror (roblox Z = -blender y) is
+    # already applied, because copying build-space pairs straight across is the
+    # mistake this repo has now made twice (the Pyrelisk monoliths, the Noctyss
+    # sockets), and a mirrored cover site is the worst kind: it still exists,
+    # still blocks a wave, and only ever disagrees with the rock on screen.
+    print("HANDOFF brinejaw: cover sites - the Riptide wave-shadow field (%d)" % len(BJ_COVER))
+    for radius, degrees, part, width, rise in BJ_COVER:
+        angle = math.radians(degrees)
+        print(
+            "HANDOFF brinejaw:   %-11s ROBLOX rel (%.1f, 0, %.1f)  r %.0f bearing %.0f deg"
+            "  width %.1f (radius %.1f)  rise %.1f over sand %.1f"
+            % (
+                part,
+                math.cos(angle) * radius,
+                -math.sin(angle) * radius,
+                radius,
+                degrees,
+                width,
+                width / 2,
+                rise,
+                _bj_height(radius),
+            )
+        )
+    angle = math.radians(BJ_BELL_DEG)
+    print(
+        "HANDOFF brinejaw: Bell ROBLOX rel (%.1f, %.1f, %.1f) - hung off the gallery on "
+        "REST.BEARING; SET BossArenas.tropical.bell to this and BrinejawPath REST.BELL with it"
+        % (math.cos(angle) * BJ_BELL_R, BJ_BELL_Z, -math.sin(angle) * BJ_BELL_R)
+    )
     print("HANDOFF brinejaw: walkable sand r ~70, boundary rocks r 74-80, foam ring r 80-86")
     return objects
 
