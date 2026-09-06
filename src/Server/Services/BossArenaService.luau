@@ -576,11 +576,20 @@ function BossArenaService.init()
 		local boss = Bosses.byIsland[islandId]
 		local roam = if boss then boss.arena.radius else 36
 		local pose = (if boss then POSE_ARENA[boss.pose] else nil) or {}
-		-- Floor out to whichever is further: the roam disc, or the furthest an
-		-- attack actually travels. Brinejaw's sweeps reach 66 against a 28-stud
-		-- roam, so the old roam-only rule left the outer 18 studs of every
-		-- sweep marker hanging over open water.
-		local radius = math.max(roam, pose.reach or 0) + FLOOR_MARGIN
+		-- HOW FAR THIS FIGHT IS WALKED. `floorRadius` is the measured answer
+		-- where a row states one (the Careenage's 132), and the inference below
+		-- is the fallback: whichever is further of the roam disc and the
+		-- furthest an attack actually travels. Brinejaw's sweeps reach 66
+		-- against a 28-stud roam, so the old roam-only rule left the outer 18
+		-- studs of every sweep marker hanging over open water.
+		--
+		-- Both verifiers read this same number, so an arena cannot be checked
+		-- over a smaller disc than the one it builds.
+		local walkable = arena.floorRadius or math.max(roam, pose.reach or 0)
+		-- ...and the floor itself, which is that disc plus the margin unless
+		-- the row measured the sand directly, in which case the number IS the
+		-- edge of the sand and there is nothing to add to it.
+		local radius = arena.floorRadius or (math.max(roam, pose.reach or 0) + FLOOR_MARGIN)
 
 		local template = arenaTemplate(arena)
 		if template then
@@ -593,10 +602,10 @@ function BossArenaService.init()
 		end
 		-- Whichever path built it, check it presents the ground the fight was
 		-- measured against. See verifyGround.
-		verifyGround(arena, pose, folder, radius)
+		verifyGround(arena, pose, folder, math.max(radius, walkable))
 		-- ...and that none of the ground the fight uses is under the sea. This
 		-- one runs for EVERY arena, profile or not - see verifyWaterline.
-		verifyWaterline(arena, folder, math.max(roam, pose.reach or 0))
+		verifyWaterline(arena, folder, walkable)
 	end
 end
 

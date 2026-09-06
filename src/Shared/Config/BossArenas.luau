@@ -74,6 +74,20 @@ export type Arena = {
 	-- the air, not a footprint. Measured off the authored mesh; BrinejawPath
 	-- and the pose read it from here rather than each keeping a constant.
 	bell: Vector3?,
+	-- HOW FAR THE FIGHT IS WALKED, in studs from `center`. Optional, and it
+	-- overrides a formula rather than adding a new one: without it the service
+	-- infers the walkable disc from the boss's roam radius and its longest
+	-- attack reach, which is a good guess for an arena the procedural path
+	-- built and a poor one for an authored mesh whose sand runs further than
+	-- either number. The Careenage is walkable to r 132 against a roam of 80,
+	-- so the fallback floor came out 32 studs short of the sand every number in
+	-- that fight assumes, and both verifiers stopped probing before the head of
+	-- the beach - the one place with only 0.65 studs of flight clearance.
+	--
+	-- ONE NUMBER, THREE READERS: the fallback floor's radius, `verifyGround`'s
+	-- sweep and `verifyWaterline`'s. A row without it behaves exactly as it did
+	-- before this field existed.
+	floorRadius: number?,
 }
 
 BossArenas.items = {
@@ -199,6 +213,13 @@ BossArenas.items = {
 		-- placeAuthored pins. Left at -9.5 the whole Careenage imports four
 		-- studs high.
 		meshBottom = -13.5,
+		-- THE REBUILT CAREENAGE'S SAND, measured: one plain beach walkable to
+		-- r 132 with nothing standing on it, the palisade of grounded hulls
+		-- starting at 141. The fight is tuned to that number throughout - balls
+		-- retire at 140, `aggro` 165 covers it, the party rings in at 88 - so
+		-- the stand-in floor and both verifiers have to know it too. See
+		-- `floorRadius` in the type above.
+		floorRadius = 132,
 		palette = {
 			floor = Color3.fromRGB(78, 64, 48), -- rotten deck timber
 			rim = Color3.fromRGB(60, 70, 62), -- barnacled gunwale

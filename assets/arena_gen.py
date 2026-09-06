@@ -2191,11 +2191,12 @@ def build_wrack():
         % (WK_SEA_DEG, _wk_beach(-24.0), _wk_beach(23.0))
     )
     print(
-        "HANDOFF wrack: RETUNE OWED (Bosses.luau admiral_wrack, not this lane) - reach is spawnAt + "
-        "speed*lifetime: anchorsweep 106, slewfire 113, chainshot 114, slewfireFast 117, broadside "
-        "125, broadsideHeavy 128, grapeshot 163. Five of nine now die short of the rim. `aggro` 110 "
-        "and `arena.radius` 40 (party rings in at 48, inside his own 87-stud hull) were sized to the "
-        "78-stud shoal."
+        "HANDOFF wrack: RETUNE PAID (Bosses.luau admiral_wrack, not this lane) - every ballistic row "
+        "is now authored as (140 - spawnAt) / speed, so all nine reach 140-141 against a retire bound "
+        "of 140 and this build's walkable sand at r %.0f. `aggro` is 165 (the sand plus the awash "
+        "flat, so there is nowhere out here to stand and not be shot at) and `arena.radius` 80 (the "
+        "party rings in at 88, forty studs clear of his hull). Nothing owed; re-check these if the "
+        "sand's radius moves." % WK_SAND_R
     )
     return objects
 

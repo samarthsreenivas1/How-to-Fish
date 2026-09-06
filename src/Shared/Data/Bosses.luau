@@ -1544,7 +1544,9 @@ Bosses.items.admiral_wrack = {
 	-- planted at its centre on one plain beach, walkable to r 132, with
 	-- NOTHING standing on it - the six breakwater hulks, the cradle, the
 	-- furrows, the spoil and the pools are all gone, and the boundary is now a
-	-- palisade of grounded hulls at r 140-160. `offset` is dead for an arena'd
+	-- palisade of grounded hulls at r 141-160 (measured off the build; the
+	-- inner face is 141, not the 140 this used to round to). `offset` is dead
+	-- for an arena'd
 	-- island (BossService spawns at the arena centre) and kept only for the
 	-- shape.
 	--
