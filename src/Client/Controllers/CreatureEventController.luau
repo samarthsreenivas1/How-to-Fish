@@ -1839,6 +1839,679 @@ EVENTS.bossCollapse = function(position: Vector3, extra)
 	end)
 end
 
+-- ------------------------------------ Brinejaw's five broadcast attacks
+--
+-- The six attacks above (and the death) are POSES: they ride the ten
+-- attributes on the model and BrinejawBodyController draws them, telegraphs
+-- and all. These five cannot be - a wave crossing the whole arena, a seeded
+-- bombardment, the bell's rings, the flood, the polyps - so they come through
+-- `fireEvent` with a payload.
+--
+-- TWO RULES, AND THEY ARE THE SAME TWO THE POSE HALF KEEPS.
+--
+--   1. EVERY SHAPE HERE IS COMPUTED BY A SHARED HELPER IN BrinejawPath, never
+--      by math written down twice. `waveFront` says where the wall is,
+--      `waveSheltered` says which ground is safe AND is the rectangle the lee
+--      is drawn as, `rainChunks` places every falling stone, `ringRadius`
+--      sizes every ring, `surgeRain` builds the surge's bombardment payload.
+--      The server calls the same five for its damage. Nothing below owns a
+--      radius or a bearing of its own.
+--
+--   2. EVERY CLOCK IS THE SERVER'S. `start`, `deadline` and the `impactAt`
+--      the helpers derive are `Workspace:GetServerTimeNow()` values, and the
+--      steps below ask that clock rather than counting from when the packet
+--      arrived - so a player who joins mid-wave sees the wall where it
+--      actually is instead of starting it again from the far edge. This is
+--      why these steps do NOT use the `now` the Heartbeat hands the older
+--      handlers, which is `os.clock()`.
+--
+-- Palette: the wall and the flood are the arena's own water (Vfx.Color.water
+-- shaded toward the reef's green), masonry is BRINE.stone because it IS the
+-- tower, and anything that glows is Neon.
+
+local STORM = {
+	wave = Color3.fromRGB(64, 196, 180), -- the wall: brine green, and it glows
+	foam = Color3.fromRGB(226, 250, 250), -- its crest, and the flood's edge
+	-- The safe wedge behind cover. The same near-black the high sweep's shadow
+	-- uses: a shadow is what this is, and a dark patch on bright sand is the
+	-- one marker that cannot be mistaken for something being ON the ground.
+	lee = Color3.fromRGB(26, 32, 40),
+	toll = Color3.fromRGB(232, 196, 108), -- the bell's rings: brass
+	flood = Color3.fromRGB(58, 150, 148), -- risen water, translucent
+	polyp = Color3.fromRGB(120, 255, 214), -- COLOR.brine: it is the boss's own
+}
+
+-- The wall is 18 slabs across the arena's full span; at reach 78 that is 8.7
+-- studs each, narrower than a player, so the notch a rock knocks in it lands
+-- on the right stud rather than a slab either side of it.
+local WAVE_SLABS = 18
+local WAVE_WEDGES = 10 -- the cover list (8) plus the spire, plus a spare
+local WAVE_HEIGHT = 11.0 -- TALL: jumping is not an answer, and it must look it
+local WAVE_THICK = 2.2
+
+-- One flat pool of falling-stone slots, claimed round-robin as a chunk enters
+-- its window and released when its debris has faded - the glob pool's idiom.
+-- SIZED FOR BOTH RUNS AT ONCE, because they can be. A bombardment's chunks
+-- (14, one every 0.22 s, each drawn for fall 1.1 + 4 s of debris) put 23 on
+-- screen together; the surge's derived rain (stagger 0.45, fall 1.0) adds 11.
+-- 36 covers the pair with slack. Undersized, the round-robin would recycle a
+-- slot that was still holding a PRE-IMPACT marker - a warning quietly
+-- deleted, which is the one thing a pool is never allowed to do.
+local RAIN_POOL = 36
+local RAIN_DROP_H = 46.0 -- how far up a chunk starts: off the tower's gallery
+local RAIN_DEBRIS_LIFE = 4.0 -- how long the rubble lies there before fading
+local RAIN_SLOTS = 2 -- serpentRain and the surge's derived rain, at most
+
+-- Rings: three at once, 20 segments each. A 20-gon at the outer limit (78)
+-- sags 78 * (1 - cos(pi/20)) = 0.96 studs off the true circle, inside the
+-- 1.3-stud half-band, so no segment ever sits outside the ring that hits.
+local RING_SLOTS = 4
+local RING_SEGS = 20
+local RING_HEIGHT = 0.7
+
+-- The flood: an annulus drawn as sectors, plus the foam line at its inner
+-- edge - which is the only number that matters, because it is the boundary
+-- the server floods outside of.
+local FLOOD_SEGS = 20
+local FLOOD_OUTER = 78.0
+local FLOOD_DEPTH = 3.4 -- how far the risen water stands over the beach
+local FLOOD_RISE = 1.2 -- seconds it takes to come up
+local FLOOD_FADE = 1.0
+
+local POLYP_MAX = 6
+local POLYP_BEAM_THICK = 0.55
+
+local wave: any = nil
+local rings: any = nil
+local surge: any = nil
+local polyps: any = nil
+local rainRuns: { any } = {}
+
+local wavePool: any = nil
+local rainPool: { any } = {}
+local rainCursor = 1
+local ringPool: { any } = {}
+local floodPool: any = nil
+local polypPool: any = nil
+
+-- The cover the wave breaks on. `BossArenas.items[islandId].cover` is the
+-- authority (measured off the build), and the SPIRE is appended because the
+-- lighthouse is cover too and no table lists it - it is the arena, not
+-- furniture in it. The list goes to `waveSheltered` and to nothing else, so
+-- the drawn lee and the server's shelter test read the same eight rocks.
+local SPIRE_COVER = { offset = Vector3.zero, radius = 9 }
+
+local function arenaCover(center: Vector3, islandId: any)
+	local list = {}
+	local row = if type(islandId) == "string" then BossArenas.items[islandId] else nil
+	if not row then
+		-- No islandId in the payload: match the arena by its centre, which is
+		-- the point this event was fired from. Flat distance, because the
+		-- table's centres sit at the waterline and the tower's foot does not.
+		for _, candidate in BossArenas.items do
+			local at = candidate.center
+			if candidate.cover and typeof(at) == "Vector3" then
+				local flat = Vector3.new(at.X - center.X, 0, at.Z - center.Z)
+				if flat.Magnitude <= 200 then
+					row = candidate
+					break
+				end
+			end
+		end
+	end
+	if row and row.cover then
+		for _, piece in row.cover do
+			table.insert(list, piece)
+		end
+	end
+	table.insert(list, SPIRE_COVER)
+	return list
+end
+
+-- ------------------------------------------------------------- the riptide
+
+-- THE WALL, and the shadows it casts. The wave is tall enough that jumping is
+-- not an answer; the only answer is to be behind something, so the lee of
+-- every rock is drawn AS THE WAVE APPROACHES rather than left to be learned by
+-- dying in the open. That wedge is not a picture of the safe zone - it is the
+-- safe zone: its depth and half-width are BrinejawPath's own
+-- WAVE_SHELTER_DEPTH / WAVE_SHELTER_PAD, the two numbers `waveSheltered`
+-- tests with, and every slab of the crest asks `waveSheltered` itself whether
+-- it is standing in a rock's shadow before deciding how tall to be.
+local function stepWave(now: number)
+	if not wave then
+		return
+	end
+	local along = BrinejawPath.waveFront(wave.bearing, wave.speed, wave.reach, wave.start, now)
+	if not along then
+		wave = nil
+		parkParts(wavePool.crest)
+		parkParts(wavePool.lee)
+		return
+	end
+	local dirX, dirZ = math.cos(wave.bearing), math.sin(wave.bearing)
+	local perpX, perpZ = -dirZ, dirX
+	local facing = CFrame.Angles(0, -wave.bearing, 0)
+	local span = (2 * wave.reach) / WAVE_SLABS
+	local pulse = 0.5 + 0.5 * math.sin(now * 9)
+
+	for i = 1, WAVE_SLABS do
+		local p = -wave.reach + span * (i - 0.5)
+		local x = wave.center.X + dirX * along + perpX * p
+		local z = wave.center.Z + dirZ * along + perpZ * p
+		local r = math.sqrt((x - wave.center.X) ^ 2 + (z - wave.center.Z) ^ 2)
+		local ground = wave.center.Y + BrinejawPath.sandY(r)
+		-- THE SAME QUESTION THE SERVER ASKS OF A PLAYER'S ROOT. A slab standing
+		-- in a rock's lee is broken there, so the notch in the wall and the gap
+		-- in the damage are one shape rather than two that nearly agree.
+		local sheltered = BrinejawPath.waveSheltered(wave.cover, wave.center, wave.bearing, Vector3.new(x, ground, z))
+		local height = if sheltered then WAVE_HEIGHT * 0.16 else WAVE_HEIGHT
+		local slab = wavePool.crest[i]
+		slab.Size = Vector3.new(WAVE_THICK, height, span * 1.06)
+		slab.CFrame = CFrame.new(x, ground + height * 0.5, z) * facing
+		slab.Transparency = if sheltered then 0.72 else 0.20 + 0.10 * pulse
+	end
+
+	-- ...and the lee itself, one wedge per piece of cover, live for as long as
+	-- the wall has not gone past it.
+	for i = 1, WAVE_WEDGES do
+		local piece = wave.cover[i]
+		local slab = wavePool.lee[i]
+		if not piece then
+			slab.Transparency = 1
+			slab.CFrame = PARKED
+		else
+			local offset = piece.offset or Vector3.zero
+			local base = wave.center + Vector3.new(offset.X, 0, offset.Z)
+			local depth = BrinejawPath.WAVE_SHELTER_DEPTH
+			local halfWidth = (piece.radius or 0) + BrinejawPath.WAVE_SHELTER_PAD
+			-- Where this rock sits on the wave's own axis, so the wedge can go
+			-- out once the wall is past it and stop promising cover from
+			-- something that has already broken.
+			local coverAlong = offset.X * dirX + offset.Z * dirZ
+			local left = coverAlong + depth - along
+			if left <= 0 then
+				slab.Transparency = 1
+				slab.CFrame = PARKED
+			else
+				local mid = base + Vector3.new(dirX, 0, dirZ) * (depth * 0.5)
+				local r = math.sqrt((mid.X - wave.center.X) ^ 2 + (mid.Z - wave.center.Z) ^ 2)
+				local ground = wave.center.Y + BrinejawPath.sandY(r)
+				slab.Size = Vector3.new(depth, 0.18, halfWidth * 2)
+				slab.CFrame = CFrame.new(mid.X, ground + 0.10, mid.Z) * facing
+				-- Darkest while the wall is still coming, fading as it passes:
+				-- the shadow is a warning, and a warning about a thing that has
+				-- already happened is clutter.
+				slab.Transparency = 0.34 + 0.5 * math.clamp(1 - left / (depth * 2), 0, 1)
+			end
+		end
+	end
+end
+
+-- RIPTIDE. A wall of water crosses the whole arena on one bearing; the answer
+-- is cover, and only cover.
+EVENTS.serpentWave = function(position: Vector3, extra)
+	local reach = math.clamp(tonumber(extra.reach) or 78, 10, 200)
+	local center = towerFoot(position)
+	if not nearCamera(center, reach + BRINE_MARGIN) then
+		return
+	end
+	wave = {
+		center = center,
+		bearing = tonumber(extra.bearing) or 0,
+		speed = math.clamp(tonumber(extra.speed) or 26, 1, 200),
+		reach = reach,
+		-- SERVER CLOCK. A wave adopted mid-crossing draws itself where it is.
+		start = tonumber(extra.start) or Workspace:GetServerTimeNow(),
+		cover = arenaCover(center, extra.islandId),
+	}
+	parkParts(wavePool.crest)
+	parkParts(wavePool.lee)
+	-- The cue comes from the edge it starts at, so the ear says which way to
+	-- run before the wall is on screen.
+	Sfx.play(
+		"serpentSweepLow",
+		center + Vector3.new(math.cos(wave.bearing) * -reach, 2, math.sin(wave.bearing) * -reach)
+	)
+end
+
+-- ---------------------------------------------------------- masonry rain
+
+-- One bombardment, placed once by the shared helper and then only READ. The
+-- chunk list is derived from the payload's seed, so this client's stones land
+-- exactly where the server's damage circles will, and nothing about the
+-- placement travels over the wire.
+local function releaseChunk(chunk)
+	if chunk.slot then
+		local slot = rainPool[chunk.slot]
+		slot.holder = nil
+		parkParts({ slot.marker, slot.rock })
+		chunk.slot = nil
+	end
+end
+
+local function claimChunk(chunk)
+	if chunk.slot then
+		return rainPool[chunk.slot]
+	end
+	local index = rainCursor
+	rainCursor = rainCursor % RAIN_POOL + 1
+	local slot = rainPool[index]
+	if slot.holder then
+		slot.holder.slot = nil -- the pool is full; the oldest chunk gives it up
+	end
+	slot.holder = chunk
+	chunk.slot = index
+	return slot
+end
+
+local function startRain(payload, center: Vector3)
+	local chunks = BrinejawPath.rainChunks(payload)
+	local run = { center = center, radius = payload.radius or 7, fall = payload.fall or 1.1, chunks = {} }
+	for i, chunk in chunks do
+		local r = math.sqrt(chunk.pos.X * chunk.pos.X + chunk.pos.Z * chunk.pos.Z)
+		run.chunks[i] = {
+			at = center + Vector3.new(chunk.pos.X, BrinejawPath.sandY(r), chunk.pos.Z),
+			impactAt = chunk.impactAt,
+			slot = nil,
+			hit = false,
+		}
+	end
+	table.insert(rainRuns, run)
+	while #rainRuns > RAIN_SLOTS do
+		local old = table.remove(rainRuns, 1)
+		for _, chunk in old.chunks do
+			releaseChunk(chunk)
+		end
+	end
+	return run
+end
+
+local function stepRain(now: number)
+	for runIndex = #rainRuns, 1, -1 do
+		local run = rainRuns[runIndex]
+		local live = false
+		for _, chunk in run.chunks do
+			local from = chunk.impactAt - run.fall
+			local until_ = chunk.impactAt + RAIN_DEBRIS_LIFE
+			if now < from or now > until_ then
+				releaseChunk(chunk)
+				if now <= until_ then
+					live = true
+				end
+			else
+				live = true
+				local slot = claimChunk(chunk)
+				if now < chunk.impactAt then
+					-- THE MARKER IS THE DAMAGE CIRCLE, at its true radius, and the
+					-- STONE ITSELF is the countdown: it touches the sand on the
+					-- frame the server opens that circle, not a beat before it.
+					local k = (now - from) / math.max(run.fall, 1e-3)
+					local marker = slot.marker
+					marker.Size = Vector3.new(0.12, run.radius * 2, run.radius * 2)
+					marker.CFrame = CFrame.new(chunk.at + Vector3.new(0, 0.12, 0)) * CFrame.Angles(0, 0, math.rad(90))
+					marker.Transparency = 0.62 - 0.34 * k
+					local rock = slot.rock
+					rock.Size = Vector3.new(2.6, 2.6, 2.6)
+					rock.CFrame = CFrame.new(chunk.at + Vector3.new(0, RAIN_DROP_H * (1 - k) + 1.4, 0))
+						* CFrame.Angles(k * 5.0, k * 3.0, 0)
+					rock.Transparency = 0
+				else
+					if not chunk.hit then
+						chunk.hit = true
+						local point = chunk.at + Vector3.new(0, 0.15, 0)
+						Vfx.burst(point, BRINE.stone, 26)
+						Vfx.puff(point, Vfx.Color.sand, 2.2)
+						Vfx.shockwave(point, 1, run.radius, 0.35, BRINE.stone, 0.3)
+						Sfx.play("reefShatter", chunk.at)
+						feelBlast(chunk.at, run.radius, SHAKE_EXPLODE, 0.25, Color3.fromRGB(232, 226, 212))
+					end
+					-- COSMETIC ONLY, and it has to LOOK it. The rubble lies flat,
+					-- knee-low and fading: the cover table is fixed arena data and
+					-- nothing dropped by an attack ever joins it, so a chunk that
+					-- read as something to hide behind would be teaching a lie
+					-- about the one mechanic (Riptide) that cover answers.
+					local fade = (now - chunk.impactAt) / RAIN_DEBRIS_LIFE
+					slot.marker.Transparency = 1
+					slot.marker.CFrame = PARKED
+					local rock = slot.rock
+					rock.Size = Vector3.new(3.4, 0.5, 3.0)
+					rock.CFrame = CFrame.new(chunk.at + Vector3.new(0, 0.25, 0))
+					rock.Transparency = 0.25 + 0.75 * math.clamp(fade, 0, 1)
+				end
+			end
+		end
+		if not live then
+			table.remove(rainRuns, runIndex)
+		end
+	end
+end
+
+-- MASONRY RAIN. The tower sheds a sector of itself over the arena; the answer
+-- is to leave that sector, and failing that to read the markers.
+EVENTS.serpentRain = function(position: Vector3, extra)
+	local outer = math.clamp(tonumber(extra.outer) or 64, 4, 200)
+	local center = towerFoot(position)
+	if not nearCamera(center, outer + BRINE_MARGIN) then
+		return
+	end
+	startRain({
+		seed = tonumber(extra.seed) or 0,
+		sector = tonumber(extra.sector) or 0,
+		width = tonumber(extra.width) or 2.1,
+		inner = math.clamp(tonumber(extra.inner) or 12, 0, outer - 1),
+		outer = outer,
+		count = math.clamp(math.floor(tonumber(extra.count) or 14), 0, RAIN_POOL),
+		start = tonumber(extra.start) or Workspace:GetServerTimeNow(),
+		stagger = math.max(tonumber(extra.stagger) or 0.22, 0.02),
+		fall = math.clamp(tonumber(extra.fall) or 1.1, 0.2, 6),
+		radius = math.clamp(tonumber(extra.radius) or 7, 1, 30),
+	}, center)
+	Sfx.play("bossStance", center)
+end
+
+-- ------------------------------------------------------------- bell toll
+
+-- Rings on the sand, one per toll, each one jumped. They are drawn AT GROUND
+-- HEIGHT and at the payload's own `band`, because the server's rule is
+-- |playerR - r| < band/2 with a height test that a jump clears: a ring drawn
+-- thinner than the band would be a ring players clip the edge of and never
+-- understand why.
+local function stepRings(now: number)
+	if not rings then
+		return
+	end
+	local alive = false
+	local pulse = 0.5 + 0.5 * math.sin(now * 12)
+	for k = 1, RING_SLOTS do
+		local pool = ringPool[k]
+		local r = if k <= rings.count then BrinejawPath.ringRadius(rings.start, rings.speed, rings.gap, k, now) else nil
+		if not r then
+			parkParts(pool)
+		else
+			alive = true
+			local ground = rings.center.Y + BrinejawPath.sandY(r)
+			local span = (math.pi * 2 * r) / RING_SEGS
+			for i = 1, RING_SEGS do
+				local theta = (i - 0.5) / RING_SEGS * math.pi * 2
+				local slab = pool[i]
+				slab.Size = Vector3.new(rings.band, RING_HEIGHT, span * 1.08)
+				slab.CFrame = CFrame.new(
+					rings.center.X + math.cos(theta) * r,
+					ground + RING_HEIGHT * 0.5,
+					rings.center.Z + math.sin(theta) * r
+				) * CFrame.Angles(0, -theta, 0)
+				-- Brightest close in, because that is where it is fastest to
+				-- react to, and it dims as it runs out of energy.
+				slab.Transparency = math.clamp(0.18 + 0.5 * (r / 78) - 0.12 * pulse, 0, 1)
+			end
+		end
+	end
+	if not alive and now > rings.until_ then
+		rings = nil
+	end
+end
+
+-- BELL TOLL. The head strikes the keeper's bell (the strike itself is the
+-- pose channel's, kind "belltoll") and rings walk out from the tower.
+EVENTS.serpentRings = function(position: Vector3, extra)
+	local center = towerFoot(position)
+	if not nearCamera(center, BRINE_CULL) then
+		return
+	end
+	local start = tonumber(extra.start) or Workspace:GetServerTimeNow()
+	local count = math.clamp(math.floor(tonumber(extra.count) or 3), 1, RING_SLOTS)
+	local speed = math.clamp(tonumber(extra.speed) or 26, 1, 200)
+	local gap = math.clamp(tonumber(extra.gap) or 1.05, 0.05, 6)
+	rings = {
+		center = center,
+		start = start,
+		count = count,
+		speed = speed,
+		gap = gap,
+		band = math.clamp(tonumber(extra.band) or 2.6, 0.5, 12),
+		-- When the last ring can no longer be anywhere: `ringRadius` nils out
+		-- past 78, so this is when it gets there.
+		until_ = start + (count - 1) * gap + 78 / speed,
+	}
+	for k = 1, RING_SLOTS do
+		parkParts(ringPool[k])
+	end
+	-- THE BELL RINGS WHEN THE FIRST RING LEAVES, not when the packet arrived.
+	-- REST.BELL is arena-local and hangs off the gallery, so this is the same
+	-- point the head is posed to strike.
+	local bell = center + BrinejawPath.REST.BELL
+	task.delay(math.max(start - Workspace:GetServerTimeNow(), 0), function()
+		Vfx.flash(bell, STORM.toll, 8, 0.5)
+		Vfx.burst(bell, STORM.toll, 30)
+		Sfx.play("bossSlam", bell)
+		feelBlast(center, 40, SHAKE_RISE, 0.5, Color3.fromRGB(255, 236, 190))
+	end)
+end
+
+-- ------------------------------------------------------------ tidal surge
+
+-- THE FLOOD. Everything outside `floodR` is under risen water for the
+-- set-piece's duration; the band inside it is the only ground left, and it is
+-- being shelled (the same `rainChunks` the bombardment uses, off the payload
+-- the shared `surgeRain` builds). The foam line at floodR is the whole read,
+-- so it is the brightest thing drawn here.
+local function stepSurge(now: number)
+	if not surge then
+		return
+	end
+	local ends = surge.start + surge.duration
+	if now > ends + FLOOD_FADE then
+		surge = nil
+		parkParts(floodPool.water)
+		parkParts(floodPool.edge)
+		return
+	end
+	local rise = math.clamp((now - surge.start) / FLOOD_RISE, 0, 1)
+	local fade = math.clamp((now - ends) / FLOOD_FADE, 0, 1)
+	local depth = FLOOD_DEPTH * rise * (1 - fade)
+	local inner = surge.floodR
+	local outer = math.max(FLOOD_OUTER, inner + 6)
+	local mid = (inner + outer) * 0.5
+	local run = outer - inner
+	local pulse = 0.5 + 0.5 * math.sin(now * 6)
+
+	for i = 1, FLOOD_SEGS do
+		local theta = (i - 0.5) / FLOOD_SEGS * math.pi * 2
+		local cos, sin = math.cos(theta), math.sin(theta)
+		local facing = CFrame.Angles(0, -theta, 0)
+		-- The water: one sector slab per segment, its top surface standing
+		-- FLOOD_DEPTH over the beach it drowned. Translucent, so the sand and
+		-- the rubble under it still read - a wall of opaque water would hide
+		-- the thing the player is trying to walk back out of.
+		local waterY = surge.center.Y + BrinejawPath.sandY(mid)
+		local slab = floodPool.water[i]
+		slab.Size = Vector3.new(run, math.max(depth, 0.1), (math.pi * 2 * mid) / FLOOD_SEGS * 1.08)
+		slab.CFrame = CFrame.new(surge.center.X + cos * mid, waterY + depth * 0.5, surge.center.Z + sin * mid) * facing
+		slab.Transparency = math.clamp(0.55 + 0.45 * fade, 0, 1)
+
+		-- ...and the line you have to stay inside of.
+		local edgeY = surge.center.Y + BrinejawPath.sandY(inner)
+		local edge = floodPool.edge[i]
+		edge.Size = Vector3.new(1.4, 0.9 + 0.5 * rise, (math.pi * 2 * inner) / FLOOD_SEGS * 1.1)
+		edge.CFrame = CFrame.new(surge.center.X + cos * inner, edgeY + 0.5, surge.center.Z + sin * inner) * facing
+		edge.Transparency = math.clamp(0.18 + 0.16 * pulse + 0.66 * fade, 0, 1)
+	end
+end
+
+EVENTS.serpentSurge = function(position: Vector3, extra)
+	local center = towerFoot(position)
+	if not nearCamera(center, BRINE_CULL) then
+		return
+	end
+	local payload = {
+		start = tonumber(extra.start) or Workspace:GetServerTimeNow(),
+		duration = math.clamp(tonumber(extra.duration) or 10, 1, 60),
+		floodR = math.clamp(tonumber(extra.floodR) or 46, 8, FLOOD_OUTER - 6),
+		seed = tonumber(extra.seed) or 0,
+	}
+	surge = {
+		center = center,
+		start = payload.start,
+		duration = payload.duration,
+		floodR = payload.floodR,
+	}
+	-- THE SURGE'S MASONRY IS NOT A SECOND ATTACK. Both sides build the derived
+	-- rain payload with `surgeRain` and hand it to the same `rainChunks`, so
+	-- there is exactly one table of numbers for it and neither side typed it.
+	startRain(BrinejawPath.surgeRain(payload), center)
+	Sfx.play("bossRise", center)
+	Sfx.play("bossRoar", center)
+	feelBlast(center, 70, SHAKE_RISE, 1.2, Color3.fromRGB(190, 240, 236))
+end
+
+-- --------------------------------------------------------------- polyps
+
+-- The heal mechanic's visuals. The polyps are ordinary spawned creatures -
+-- killable, small - and everything about their damage is the server's; this
+-- draws the thing that makes them urgent: a feed-beam from each one to the
+-- serpent and a clock that runs out. If the clock wins, the boss heals.
+local function brinejawHead(): Vector3?
+	local creatures = Workspace:FindFirstChild(CREATURES_FOLDER)
+	if not creatures then
+		return nil
+	end
+	for _, model in creatures:GetChildren() do
+		if model:IsA("Model") and model:GetAttribute("Pose") == "brinejaw" then
+			return model:GetPivot().Position
+		end
+	end
+	return nil
+end
+
+local function stepPolyps(now: number)
+	if not polyps then
+		return
+	end
+	if now > polyps.deadline + 0.6 then
+		polyps = nil
+		parkParts(polypPool.beams)
+		parkParts(polypPool.clocks)
+		return
+	end
+	local head = brinejawHead() or polyps.head
+	polyps.head = head
+	local left = math.clamp((polyps.deadline - now) / math.max(polyps.duration, 1e-3), 0, 1)
+	local rate = 2.4 + 7 * (1 - left) -- it strobes faster as the clock runs out
+	local alpha = 0.30 + 0.28 * (0.5 + 0.5 * math.sin(now * rate * math.pi * 2))
+
+	for i = 1, POLYP_MAX do
+		local at = polyps.positions[i]
+		local beam, clock = polypPool.beams[i], polypPool.clocks[i]
+		if not at or not head then
+			beam.Transparency = 1
+			beam.CFrame = PARKED
+			clock.Transparency = 1
+			clock.CFrame = PARKED
+		else
+			local from = at + Vector3.new(0, 1.6, 0)
+			local reach = head - from
+			if reach.Magnitude > 1 then
+				beam.Size = Vector3.new(POLYP_BEAM_THICK, POLYP_BEAM_THICK, reach.Magnitude)
+				beam.CFrame = CFrame.lookAt(from + reach * 0.5, head)
+				beam.Transparency = alpha
+			end
+			-- The clock is a disc that closes on the polyp: its size IS the time
+			-- left, the same language the stagger window speaks.
+			local r = 4.6 * (0.18 + 0.82 * left)
+			clock.Size = Vector3.new(0.14, r * 2, r * 2)
+			clock.CFrame = CFrame.new(surfaceUnder(at) + Vector3.new(0, 0.14, 0)) * CFrame.Angles(0, 0, math.rad(90))
+			clock.Transparency = alpha
+		end
+	end
+end
+
+EVENTS.serpentPolyps = function(position: Vector3, extra)
+	if not nearCamera(position, BRINE_CULL) then
+		return
+	end
+	local deadline = tonumber(extra.deadline) or (Workspace:GetServerTimeNow() + 12)
+	local positions = {}
+	if type(extra.positions) == "table" then
+		for _, at in extra.positions do
+			if typeof(at) == "Vector3" and #positions < POLYP_MAX then
+				table.insert(positions, at)
+			end
+		end
+	end
+	polyps = {
+		positions = positions,
+		deadline = deadline,
+		-- The bar's full length, measured from now, so the disc reads the same
+		-- for a player who was here when they spawned and one who was not.
+		duration = math.max(deadline - Workspace:GetServerTimeNow(), 0.5),
+		head = nil,
+	}
+	for _, at in positions do
+		Vfx.burst(at + Vector3.new(0, 1, 0), STORM.polyp, 18)
+		Vfx.ring(surfaceUnder(at) + Vector3.new(0, 0.15, 0), 1, 5, 0.5, STORM.polyp)
+	end
+	Sfx.play("bossRise", position)
+end
+
+-- One polyp resolved. `healed = false` is the party's win on that one - it
+-- was broken in time, so it pops and the beam it was feeding goes out.
+-- `healed = true` is the miss: it detonates, and the heal visibly runs up the
+-- beam into the serpent, so the cost of ignoring one is watched rather than
+-- read off a health bar.
+EVENTS.polypBurst = function(position: Vector3, extra)
+	if not nearCamera(position, BRINE_CULL) then
+		return
+	end
+	local healed = extra.healed == true
+	local point = surfaceUnder(position) + Vector3.new(0, 0.15, 0)
+	if polyps then
+		for i, at in polyps.positions do
+			if (at - position).Magnitude <= 8 then
+				table.remove(polyps.positions, i)
+				break
+			end
+		end
+	end
+	if not healed then
+		Vfx.burst(point + Vector3.new(0, 1, 0), STORM.polyp, 22)
+		Vfx.ring(point, 1, 7, 0.4, STORM.polyp)
+		Sfx.play("hitCrack", position)
+		return
+	end
+	local radius = math.clamp(tonumber(extra.radius) or 12, 2, 40)
+	Vfx.flash(point + Vector3.new(0, 2, 0), STORM.polyp, 9, 0.45)
+	Vfx.burst(point + Vector3.new(0, 1, 0), STORM.polyp, 50)
+	Vfx.shockwave(point, 2, radius, 0.5, STORM.polyp, 0.5)
+	Sfx.play("bossSlam", position)
+	feelBlast(position, radius, SHAKE_SLAM, 0.5, Color3.fromRGB(180, 255, 232))
+	-- The heal running up the beam: five beads, so where it went is not a
+	-- guess.
+	local head = brinejawHead()
+	if head then
+		for i = 1, 5 do
+			task.delay(i * 0.06, function()
+				Vfx.flash(point:Lerp(head, i / 5), STORM.polyp, 2.4, 0.22)
+			end)
+		end
+		task.delay(0.4, function()
+			Vfx.burst(head, STORM.polyp, 26)
+		end)
+	end
+end
+
+-- Every Brinejaw broadcast attack, on the SERVER's clock rather than the
+-- Heartbeat's `os.clock()` - see the section header. One call so the
+-- Heartbeat below reads the same as it did.
+local function stepBrinejawStorm()
+	local now = Workspace:GetServerTimeNow()
+	stepWave(now)
+	stepRain(now)
+	stepRings(now)
+	stepSurge(now)
+	stepPolyps(now)
+end
+
 -- ------------------------------------------------- Rimefang (the floe boss)
 --
 -- The killer whale under the pack ice. Like the serpent, nothing it throws is
@@ -3157,6 +3830,46 @@ function CreatureEventController.init()
 	staggerRing = makeMarker("StaggerWindow", BRINE.window, true)
 	staggerRing.Shape = Enum.PartType.Cylinder
 
+	-- Brinejaw's five broadcast attacks: the riptide's wall and the lee it
+	-- leaves behind every rock, one flat pool of falling masonry shared by the
+	-- bombardment and the surge, the bell's rings, the flood's annulus and its
+	-- foam boundary, and the polyps' feed-beams and clocks.
+	wavePool = { crest = {}, lee = {} }
+	for i = 1, WAVE_SLABS do
+		wavePool.crest[i] = makeMarker("SerpentWaveCrest", STORM.wave, true)
+	end
+	for i = 1, WAVE_WEDGES do
+		wavePool.lee[i] = makeMarker("SerpentWaveLee", STORM.lee, false)
+	end
+	for i = 1, RAIN_POOL do
+		rainPool[i] = {
+			marker = makeMarker("SerpentRainMark", BRINE.slam, true),
+			rock = makeMarker("SerpentRainChunk", BRINE.stone, false),
+			holder = nil,
+		}
+		rainPool[i].marker.Shape = Enum.PartType.Cylinder
+	end
+	for k = 1, RING_SLOTS do
+		local pool = {}
+		for i = 1, RING_SEGS do
+			pool[i] = makeMarker("SerpentRing", STORM.toll, true)
+		end
+		ringPool[k] = pool
+	end
+	floodPool = { water = {}, edge = {} }
+	for i = 1, FLOOD_SEGS do
+		-- The risen water is NOT Neon: it is water, and a glowing sea would
+		-- outshine the foam line that is the only part of it players must read.
+		floodPool.water[i] = makeMarker("SerpentFlood", STORM.flood, false)
+		floodPool.edge[i] = makeMarker("SerpentFloodEdge", STORM.foam, true)
+	end
+	polypPool = { beams = {}, clocks = {} }
+	for i = 1, POLYP_MAX do
+		polypPool.beams[i] = makeMarker("PolypBeam", STORM.polyp, true)
+		polypPool.clocks[i] = makeMarker("PolypClock", STORM.polyp, true)
+		polypPool.clocks[i].Shape = Enum.PartType.Cylinder
+	end
+
 	-- Rimefang's markers. The wash's wall (a crest of slabs on the wedge the
 	-- server's own hit test measures, plus the slush apron trailing it), the
 	-- cracks a landing leaves in the sheet, the wake that tracks it under the
@@ -3235,6 +3948,7 @@ function CreatureEventController.start()
 		stepEffects(now)
 		stepSweeps(now)
 		stepStagger(now)
+		stepBrinejawStorm() -- its own clock: GetServerTimeNow, not os.clock
 		stepWash(now)
 		stepWedges(now)
 		stepWake(now)
