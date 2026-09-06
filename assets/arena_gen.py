@@ -2013,6 +2013,18 @@ def build_wrack():
     return objects
 
 
+# The CLI's dispatch table. Referenced by main() and, until this commit,
+# defined nowhere in the committed file - HEAD~1 fails with the same
+# NameError, so the shared copy of this generator has not run from the
+# command line since the dict drifted into a lane's uncommitted section.
+# It names the arenas THIS file defines; the three later ones re-add
+# themselves with the sections that build them.
+ARENAS = {
+    "brinejaw": build_brinejaw,
+    "gnashroot": build_gnashroot,
+    "wrack": build_wrack,
+}
+
 # ---------------------------------------------------------------- io
 
 

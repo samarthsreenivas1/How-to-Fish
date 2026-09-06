@@ -2756,6 +2756,70 @@ control must be a case you expect to FAIL** — a check run against the case
 that already works looks exactly like a check that passed. See
 `tools/mesh_digest.py`'s header.
 
+### Gloomtrench: Noctyss and the Lantern Choir (2026-08-29, unreviewed)
+
+The one fight where you never see the animal. What stands in the arena is her
+CHOIR: seven angler-lure stalks up through the Choirfloor's sockets. She is
+under the shelf and surfaces only to be punished.
+
+**The loop.** READ - the choir runs light patterns in near-blackness, and a
+swept beam IS the damage (being lit is being hit), so the answer is the dark
+behind a shadow fin - which costs you the near floor read, the ground the
+next wedge arrives across. (The camera rides above the lantern plane, so
+shelter no longer blinds you to the choir; the fins still block the beam
+itself via `beamBlocked`.) EARN - exactly
+one stalk is the TRUE lure and breathes half a cycle against the rest
+(`NoctyssPath.pulse`); break it and she flinches, break a false one and it
+flares white and something answers. PUNISH - the maw rises through the pit and
+hangs open; you fight INSIDE her mouth on the lower jaw until it shuts.
+
+**Ranged breaks the lure, melee burns the gullet.** The lantern hangs 35 studs
+up (`choir_stalk` is `rangedOnly`), and the weak point at the back of her
+throat is only reachable by standing in the mouth. Both halves of the kit,
+different beats.
+
+**The choir is seven ORDINARY CREATURES**, not pose geometry - `parts` with
+`at = "sockets"` (authored offsets off the arena row, so they grow out of the
+carved collars rather than a guessed circle) and `mark = true` (one is the
+true lure, redrawn every regrow). Each has its own health bar and dies
+normally. `vulnerableWhen = "markedDown"` keeps her untouchable until the
+marked one breaks. The server stands each stalk's hidden model AT ITS BULB, so
+shooting the light is what registers.
+
+**Animation is time terms and one impulse**, in the shared shape
+(`NoctyssPath`): sway and breath phased per socket, and `flinch(state, i,
+strength, dir)` - a damped sine that whips down a stalk. Every recoil in the
+fight is that one number, so no attack needs its own animation. Hit reactions
+run CLIENT-side off the hit remote: no replication, and they land on the frame
+the player sees the hit.
+
+**Two traps this fight found, both invisible to the gates:**
+
+- **Animate on a SYNCHRONISED clock.** Ambient motion moves the lantern, and
+  the lantern is also the server's hitbox. With `os.clock()` on each side the
+  drawn bulb and the real hitbox drift apart and shots silently miss with
+  nothing in either log. `NoctyssPath.clock()` is `GetServerTimeNow()`, and
+  both sides animate on it.
+- **A beam's apex is what EMITS, not what it grows from.** The damage wedge
+  originally hinged on the socket in the floor while the light visibly came
+  from the crook ~11 studs inward; at a 9-degree half-angle that is metres of
+  "I was in the dark and took it anyway" at the far end.
+
+**The maw REARS OUT of the pit (2026-09-01).** `MAW.Y_UP` is 30.7, solved
+backwards from the one thing that has to be true: at full gape the tongue's
+top face lands at +2.5 against a shelf at +1.5, so the party walks into her
+mouth off the floor they were standing on. The old 4.2 placed the SKULL'S
+ORIGIN at the waterline - which sounds right and put the jaw scoop ~25 studs
+below the arena's own pit bed, because the scoop hangs 17 studs under that
+origin before the 44-degree gape swings it further down. Two independent
+reviews found it from opposite directions. Position the mouth, not the origin.
+
+**Authored bearings are MIRRORED.** Blender's +Y exports as Roblox's -Z, so
+every angle out of `arena_gen.py` is negated on the way into `NoctyssPath`
+(`authored()`). Get this wrong and the whole choir grows 90 degrees off its
+collars - which builds green and looks nearly right.
+
+
 ## Design decisions (binding — don't reopen without the user)
 
 - **Fishing and collection are the primary axis** (2026-08-22 pivot).
