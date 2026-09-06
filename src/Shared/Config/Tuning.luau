@@ -608,7 +608,10 @@ Tuning.Perks = {
 	-- track, and an uproot's juggle track (airY) fighting it snaps the bird
 	-- between two altitudes (review find, 2026-08-25). Ground them by
 	-- fighting them, not by launching them.
-	UPROOT_IMMUNE = { boss = true, flyer = true, skythief = true },
+	-- `tentacle` is a colossus's ARM, planted where the boss grew it and
+	-- drawn as a limb reaching out of the head - juggling one launches a
+	-- piece of the boss into the sky on the end of a rubber arm.
+	UPROOT_IMMUNE = { boss = true, flyer = true, skythief = true, tentacle = true },
 
 	-- Blast Radius (Tidebomb Maul): the swing also catches every OTHER
 	-- creature within reach, at a fraction of the damage. Splash targets take

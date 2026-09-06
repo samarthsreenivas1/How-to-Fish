@@ -536,6 +536,12 @@ local removeOwnedParts
 -- be able to tear its floor down. A leaked floor is an invisible solid
 -- platform left standing over the arena's pit forever.
 local clearMawFloor
+-- And the third of the same shape: Pyrelisk's climb route, which is eight
+-- anchored slabs from the rim path up onto the colossus's back (four bone
+-- plates, the shoulder bridge, and one per deck - three of those since the
+-- 2026-09-01 rebuild). Same failure
+-- if it leaks, two hundred studs higher up.
+local clearPyreliskMount
 
 local function despawn(index: number)
 	local creature = creatures[index]
@@ -601,7 +607,33 @@ end
 -- `creature.untargetable` keeps its writers and its meaning exactly as they
 -- are. This adds a second input to the READ, so there is no second owner of
 -- the flag and no mode transition to race against.
-local function unaimable(creature): boolean
+-- Defined with the punish window, far below, because that is where the reach
+-- is reasoned about; forward-declared here because target selection needs the
+-- same ruling `damage()` uses and must not carry a second copy of it.
+local noctyssInReach
+
+-- RIMEFANG'S HIDE IS A CHAIN, NOT A BALL, and the two functions below are the
+-- first things that have to know it. `creature.pos` is the whale's NOSE and
+-- the animal is 56 studs long behind it, so a pivot sphere leaves everything
+-- from the shoulder aft visible, solid-looking and unswingable - the beached
+-- body during the punish window included, which is the fight's only kill
+-- window. Returns the sampled spine (nil for every other creature, so nothing
+-- else changes by a stud); defined with the whale's body far below, because
+-- that is where the pose it reads is computed.
+local rimefangBody
+-- A shot that visibly clips the hide should land - the same generosity
+-- `shotRadius` grants every other creature (half its bounding sphere). Here
+-- it is a flat allowance on top of the sampled girth, because the whale's own
+-- model is invisible and its bounding box is the authority stand-in, not the
+-- animal the client draws.
+local RF_SHOT_SLACK = 2.0
+
+-- `from` is the ATTACKER'S position when the caller has one (a swinger's root,
+-- a shot's re-validated origin). It only matters for a window that is
+-- positional as well as timed - see the `markedDown` branch. Callers that
+-- cannot name a shooter (an urchin's blast, an arc shell's re-check at its
+-- landing point) pass nothing and get the old, purely-declarative answer.
+local function unaimable(creature, from: Vector3?): boolean
 	if creature.untargetable then
 		return true
 	end
@@ -611,7 +643,22 @@ local function unaimable(creature): boolean
 		return (creature.partsAlive or 0) > 0
 	elseif when == "markedDown" then
 		-- Noctyss is under the shelf until the true lure breaks.
-		return not creature.mawOpen
+		if not creature.mawOpen then
+			return true
+		end
+		-- ...and while it IS open she is only hittable from inside the mouth,
+		-- which `damage()` enforces off the same `noctyssInReach`. Target
+		-- selection has to agree, or the gap re-opens one level up: her body is
+		-- the biggest capture cylinder on the arena (14.4 hitRadius plus a
+		-- ~14-stud shot radius), so a DMR from the shelf SELECTS her, `damage`
+		-- returns nil, and the shot does nothing at all - a broken weapon, not
+		-- a miss. Worse, a shot aimed at a lantern stalk across the pit is
+		-- eaten by her body on the way. Unaimable to an out-of-reach shooter,
+		-- the same shot passes through to the stalk (or the water) behind her.
+		if from ~= nil and creature.pose ~= nil and not noctyssInReach(creature.pose, from) then
+			return true
+		end
+		return false
 	end
 	return false
 end
@@ -625,8 +672,16 @@ end
 -- form of the same idea and applies to every consumer rather than just this
 -- one. (`rangedOnly` remains a separate statement: it says which WEAPONS a
 -- row answers to at all, not whether it can be hurt right now.)
-function CreatureService.inRange(position: Vector3, radius: number, opts: { skipRangedOnly: boolean? }?): { any }
+-- `opts.from` is the attacker's own position, when the caller's `position` is
+-- not already it: a splash asks about a blast point, not a swinger. Only the
+-- melee pick passes it today. Absent, nothing changes for anyone.
+function CreatureService.inRange(
+	position: Vector3,
+	radius: number,
+	opts: { skipRangedOnly: boolean?, from: Vector3? }?
+): { any }
 	local skipRangedOnly = opts ~= nil and opts.skipRangedOnly == true
+	local from = opts ~= nil and opts.from or nil
 	local hits = {}
 	for _, creature in creatures do
 		-- A buried lurker or a shut mimic is simply not there to be hit; the
@@ -638,14 +693,34 @@ function CreatureService.inRange(position: Vector3, radius: number, opts: { skip
 		-- untargetable by the player, not invulnerable.
 		if
 			not creature.dead
-			and not unaimable(creature)
+			and not unaimable(creature, from)
 			and not creature.friendly
 			and not (skipRangedOnly and creature.row.rangedOnly)
 		then
 			-- A boss's body extends well past its pivot (`hitRadius`, from
 			-- Bosses.luau scaled by the row); reach is measured to its hide,
 			-- not its centre, or a 26-stud boss at stand-off is unhittable.
-			local distance = (creature.model:GetPivot().Position - position).Magnitude - (creature.hitRadius or 0)
+			--
+			-- ...and one boss's hide is not a sphere at all. Rimefang is 56
+			-- studs of whale laid out BEHIND its pivot, so the single sphere
+			-- capped melee at ~22.7 studs from the nose and made the other
+			-- two thirds of the animal scenery. For it, reach is measured to
+			-- the nearest point on the sampled spine. `rimefangBody` returns
+			-- nil for everything else, which keeps this branch dead for every
+			-- other creature in the game.
+			local distance
+			local body = rimefangBody(creature)
+			if body then
+				distance = math.huge
+				for _, node in body do
+					local d = (node.pos - position).Magnitude - node.radius
+					if d < distance then
+						distance = d
+					end
+				end
+			else
+				distance = (creature.model:GetPivot().Position - position).Magnitude - (creature.hitRadius or 0)
+			end
 			if distance <= radius then
 				table.insert(hits, { creature = creature, distance = distance })
 			end
@@ -675,25 +750,86 @@ function CreatureService.raycastNearest(origin: Vector3, direction: Vector3, max
 	local dir = direction.Unit
 	local best, bestT = nil, maxDistance
 	for _, creature in creatures do
-		if not creature.dead and not unaimable(creature) and not creature.friendly then
-			local pivot = creature.model:GetPivot().Position
-			local to = pivot - origin
-			local t = to:Dot(dir)
-			if t > 0 and t < bestT then
-				local radius = creature.shotRadius
-				if not radius then
-					-- Half the bounding sphere reads generous on purpose - a
-					-- shot that visibly clips a fin should land. Cached: the
-					-- model's size doesn't change (the bloater's swell is the
-					-- one exception, and being EASIER to hit as it swells is
-					-- correct anyway).
-					local _, size = creature.model:GetBoundingBox()
-					radius = math.max(1.4, size.Magnitude * 0.3)
-					creature.shotRadius = radius
+		-- `origin` is the shooter's own position, not the camera's: CombatService
+		-- takes it from the client but ShotAim.originOk refuses any origin more
+		-- than ORIGIN_SLACK (6) studs off the firer's root.
+		if not creature.dead and not unaimable(creature, origin) and not creature.friendly then
+			-- ONE BOSS IS A LINE, NOT A POINT. Rimefang's body is 56 studs of
+			-- whale behind its pivot, so the sphere below could only ever
+			-- capture a shot aimed at the head. Each spine sample is its own
+			-- capture sphere and the nearest one along the ray wins, exactly
+			-- as the pivot sphere does for everything else - so a shot at the
+			-- flank or the fluke lands where it looks like it should.
+			local body = rimefangBody(creature)
+			if body then
+				for _, node in body do
+					local to = node.pos - origin
+					local t = to:Dot(dir)
+					if t > 0 and t < bestT and (to - dir * t).Magnitude <= node.radius + RF_SHOT_SLACK then
+						best, bestT = creature, t
+					end
 				end
-				local perpendicular = (to - dir * t).Magnitude
-				if perpendicular <= radius + (creature.hitRadius or 0) then
-					best, bestT = creature, t
+			else
+				local pivot = creature.model:GetPivot().Position
+				local to = pivot - origin
+				local t = to:Dot(dir)
+				-- A TALL BODY IS A CAPSULE, NOT A BALL. The test below measures the
+				-- ray's distance from the PIVOT, which is a sphere sitting wherever
+				-- the model's pivot is - at the feet, for anything that stands. That
+				-- is right for a fish and right for every boss whose body is about as
+				-- tall as it is wide, and it quietly fails for a colossus: Pyrelisk is
+				-- 263 studs of body over a pivot at the lake's surface with a 96-stud
+				-- hitRadius, so a shot aimed at its chest seam passes ~156 studs off
+				-- the pivot and is dropped. Ranged fire landed on the lower third of
+				-- the body and nothing above it - in a fight whose whole premise is
+				-- shooting the seams.
+				--
+				-- Raising hitRadius is NOT the fix and is the trap: `inRange` measures
+				-- MELEE off the same number, and Pyrelisk's 96 was chosen so that 96 +
+				-- the longest reach in Weapons (16) still lands eight studs inside the
+				-- lava lake. Every stud added there is a stud of free melee across the
+				-- moat, which is the one thing the arena's geometry exists to forbid.
+				--
+				-- `hitHeight` is opt-in and nil on every creature that exists today
+				-- (only the colossus branch of updateBoss sets it), so this whole
+				-- block is skipped and every other creature's capture is the same
+				-- sphere, from the same pivot, to the same stud, as before.
+				local axis = creature.hitHeight
+				if axis then
+					-- The closest point on the body's own axis (pivot up to pivot +
+					-- axis) to this ray, standing in for the pivot from here on: `to`
+					-- and `t` keep their meanings and the test below is untouched.
+					local b = dir.Y
+					local denom = 1 - b * b
+					local w = origin - pivot
+					local s
+					if denom > 1e-6 then
+						s = math.clamp((w.Y - b * dir:Dot(w)) / denom, 0, axis)
+					else
+						-- Fired straight up or straight down the body: every height on
+						-- the axis is the same distance from the ray, so take the one
+						-- level with the shooter rather than dividing by zero.
+						s = math.clamp(-w.Y, 0, axis)
+					end
+					to = (pivot + Vector3.new(0, s, 0)) - origin
+					t = to:Dot(dir)
+				end
+				if t > 0 and t < bestT then
+					local radius = creature.shotRadius
+					if not radius then
+						-- Half the bounding sphere reads generous on purpose - a
+						-- shot that visibly clips a fin should land. Cached: the
+						-- model's size doesn't change (the bloater's swell is the
+						-- one exception, and being EASIER to hit as it swells is
+						-- correct anyway).
+						local _, size = creature.model:GetBoundingBox()
+						radius = math.max(1.4, size.Magnitude * 0.3)
+						creature.shotRadius = radius
+					end
+					local perpendicular = (to - dir * t).Magnitude
+					if perpendicular <= radius + (creature.hitRadius or 0) then
+						best, bestT = creature, t
+					end
 				end
 			end
 		end
@@ -742,6 +878,9 @@ function removeOwnedParts(creature)
 	-- An owner going away takes its punish-window floor with it, if it had one.
 	if clearMawFloor then
 		clearMawFloor(creature)
+	end
+	if clearPyreliskMount then
+		clearPyreliskMount(creature)
 	end
 	if creature.partsAlive == nil then
 		return
@@ -793,6 +932,12 @@ local function kill(creature, killer: Player?)
 	if clearMawFloor then
 		clearMawFloor(creature)
 	end
+	-- The same for the colossus's climb: a boss that dies with its arm down
+	-- has just dropped everyone standing on it, and the slabs must not outlive
+	-- the body they were part of.
+	if clearPyreliskMount then
+		clearPyreliskMount(creature)
+	end
 
 	-- Gimmick layer: a deathburst detonates here, while `pos` still means
 	-- something and before Killed pays anyone out.
@@ -814,10 +959,24 @@ local function kill(creature, killer: Player?)
 		-- than acted on, so kill() stays free of the fight's machinery;
 		-- updateBoss answers both on the next frame.
 		if owner.choir then
+			-- A kill sets this socket's bit; a withdrawal never does.
+			if creature.socketIndex then
+				owner.choirKilled = bit32.bor(owner.choirKilled or 0, bit32.lshift(1, creature.socketIndex - 1))
+			end
 			if creature.marked then
 				owner.mawDueAt = os.clock()
 			else
-				owner.flareAt = creature.pos
+				-- ON THE SHOOTER, and one per break. A stalk is `rangedOnly`
+				-- with its bulb 30 studs up, so whoever broke it stands 20-plus
+				-- studs from its base: bursting at the lantern's own feet meant
+				-- guessing wrong cost the party nothing at all, which is the
+				-- entire "which light is real" premise. A LIST, because one
+				-- slot collapsed simultaneous breaks into a single flare at
+				-- whichever socket happened to be last.
+				local shooter = killer and killer.Character
+				local root = shooter and shooter:FindFirstChild("HumanoidRootPart")
+				owner.flareAt = owner.flareAt or {}
+				table.insert(owner.flareAt, if root then root.Position else creature.pos)
 			end
 		end
 		-- The Kraken's exposure window. A markedDown boss has no such thing -
@@ -943,6 +1102,42 @@ local onBloaterHit
 -- boss that is holding onto something takes a fall before it takes its death.
 local beginBossCollapse
 
+-- WHERE THE PUNISH WINDOW IS, not only when it is.
+--
+-- `vulnerableWhen = "markedDown"` was the ONLY gate on hurting Noctyss, and it
+-- is a pure time gate: while the maw is up she could be burned from anywhere
+-- on the shelf. Her hitRadius is 6 x the row's 2.4 scale = 14.4, and
+-- `raycastNearest` adds a ~14-stud shot radius off the model's bounding
+-- sphere - a ~28-stud capture cylinder standing on the arena's centre, which
+-- a 200-stud DMR clips from any bearing on the floor. So "climb into her
+-- mouth and burn the gullet" was decoration, `gulletPosition` was dead code
+-- the server never called, and the window was a free DPS phase.
+--
+-- It is a REACH from the gullet, not `insideMouth` alone. Two reasons:
+-- `insideMouth` is a tight authored box around the lower jaw's scoop and the
+-- moment boss_gen moves a vertex it becomes "the boss cannot be damaged at
+-- all", with no symptom but a fight that never ends; and being knocked off
+-- the tongue for half a second should not cancel the party's damage. The
+-- radius covers the whole walkable floor with slack - the tongue slab's far
+-- corners measure 31.9 studs from the gullet at full gape - so the test
+-- degrades into "be at her mouth" rather than into a locked door. `insideMouth`
+-- is still honoured first, so standing on the floor ALWAYS counts even if the
+-- gullet offset later moves.
+--
+-- Clamping `hitRadius` for the window was the other option and is wrong: melee
+-- reach is measured off that same number from the model's PIVOT, which is the
+-- skull's origin ~30 studs up, so shrinking it makes the mouth unmeleeable
+-- from inside the mouth.
+local NOCTYSS_GULLET_REACH = 34.0
+-- Assigns the local forward-declared up by `unaimable`, which needs this exact
+-- ruling to keep target selection and `damage()` from drifting apart.
+function noctyssInReach(state, position: Vector3): boolean
+	if NoctyssPath.insideMouth(state, position) then
+		return true
+	end
+	return (position - NoctyssPath.gulletPosition(state)).Magnitude <= NOCTYSS_GULLET_REACH
+end
+
 -- Applies `amount` damage (server only). Returns the health left, or nil if
 -- the creature was already dead / isn't a creature / can't be hurt right now
 -- (a buried lurker, a shut mimic - nothing gets through, not a punch, not an
@@ -961,6 +1156,32 @@ function CreatureService.damage(creature, amount: number, attacker: Player?, opt
 	-- functions that pick targets never learned the last two of them. Brine
 	-- Rot's `ignoreUntargetable` burns through all three: the poison is already
 	-- in the wound, the same ruling as a boss's dive.
+	-- ...with ONE exception to the exception. A dive or a burrow hides a
+	-- creature for a moment, which is what `ignoreUntargetable` exists to burn
+	-- through. Noctyss's seal is not a moment - it IS the fight, and her whole
+	-- health budget is priced on damage being impossible outside the window.
+	-- A stacked poison ticking through it is damage in a window the design
+	-- says cannot exist.
+	if creature.row.vulnerableWhen == "markedDown" then
+		if not creature.mawOpen then
+			return nil
+		end
+		-- The window is open: now WHERE the hit came from decides. See
+		-- `noctyssInReach` above for why this is a reach and not `insideMouth`.
+		-- A poison already in the wound is exempt for the same reason it is
+		-- exempt from `untargetable` - it was applied in reach, and the ruling
+		-- on `ignoreUntargetable` is that the source is already inside.
+		if creature.pose and not (opts and opts.ignoreUntargetable) then
+			local character = attacker and attacker.Character
+			local root = character and character:FindFirstChild("HumanoidRootPart")
+			-- No attacker root means no position to judge (a chained urchin
+			-- blast, a hatchling crediting an owner who has since died), and a
+			-- gate cannot refuse what it cannot measure.
+			if root and not noctyssInReach(creature.pose, root.Position) then
+				return nil
+			end
+		end
+	end
 	if unaimable(creature) and not (opts and opts.ignoreUntargetable) then
 		return nil
 	end
@@ -2202,10 +2423,52 @@ local ATTACK_HANDLERS = {}
 local PHANTOM_IMPACT = 0.80
 local LUNGE_IMPACT = 0.72
 local RINGPULSE_IMPACT = 0.95
+-- Pyrelisk's three. `handfall` lands its blow at 0.95 of the strike, which is
+-- where the pose actually brings the fist down: it used to be 0.45, and the
+-- shockwave went off while the hand was still 235 studs in the air and 60
+-- studs outside the arena. The handler reads THIS constant, so the tell's
+-- countdown and the blow cannot drift apart again. The two continuous moves
+-- are dangerous for the whole
+-- of theirs - a rake is over when the arm stops travelling, a breath when it
+-- stops burning - so their tells run to the end of the strike rather than to
+-- the end of the windup. The other two colossus handlers are deliberately
+-- absent: `ashfall` and `shardhurl` both damage on their OWN clocks (queued
+-- strikes and thrown slabs, each carrying its own mark), so for them the
+-- stock tell really is finished when the windup is - it is the body
+-- committing, not the landing.
+local HANDFALL_IMPACT = 0.95
+local RIMSWEEP_IMPACT = 1.0
+local VENTBREATH_IMPACT = 1.0
+-- A CHARGE IS DANGEROUS FOR THE WHOLE OF ITS TRAVEL, and lands its shockwave
+-- (`slamRadius`, in `finish`) at the very end of it - the same shape as
+-- `rimsweep` and `ventbreath`, so it takes the same 1.0. Its absence was worth
+-- a full strike's length of lie to every row that names it: the countdown
+-- finished when the windup did, while the body was only then setting off.
+--
+-- VERIFIED, not assumed: `handler = "charge"` appears exactly twice in the
+-- whole project - Bosses.luau's `rimefang.breach` (1.0s strike) and
+-- `old_gnashroot.wallow` (1.1s) - and nowhere in Creatures.luau's kits. So it
+-- fixes those two, and only those two. Pyrelisk does NOT charge: its book is
+-- handfall, rimsweep, ventbreath, ashfall and shardhurl, three of which are
+-- already on this table and two of which deliberately are not.
+local CHARGE_IMPACT = 1.0
+-- A BITE CLOSES ITS JAWS PART-WAY IN, and `snap` always has: its handler
+-- damages at `u >= SNAP_IMPACT` of the strike, and the constant below is the
+-- one the handler reads, so the countdown and the jaws cannot drift apart the
+-- way they could while that 0.4 was a literal in one place and absent in the
+-- other. Worth 0.14s on both rows that use it (a 0.35s strike): Gnashroot's
+-- bite and Rimefang's. The four kitted hostile rows on `snap` gain the same
+-- honesty, since a kit runs this very loop.
+local SNAP_IMPACT = 0.4
 local HANDLER_IMPACT = {
+	charge = CHARGE_IMPACT,
+	snap = SNAP_IMPACT,
 	phantom = PHANTOM_IMPACT,
 	lunge = LUNGE_IMPACT,
 	ringpulse = RINGPULSE_IMPACT,
+	handfall = HANDFALL_IMPACT,
+	rimsweep = RIMSWEEP_IMPACT,
+	ventbreath = VENTBREATH_IMPACT,
 }
 
 -- ------------------------------------------------------- conducting a ring
@@ -2246,11 +2509,26 @@ end
 -- straight through would rewrite the tell of an arm that is already rearing -
 -- a telegraph that changes length while you are reading it is the one thing a
 -- telegraph must never do.
+--
+-- AN ORDER IS ALSO A DEADLINE, which is what SLAM_ORDER_GRACE below is for.
+-- `slamAt` has exactly one consumer - the idle branch of `updateTentacle` -
+-- so an arm that is mid-windup or mid-recovery when the wave reaches its
+-- socket cannot act on the order at the moment it is given. It used to hold
+-- it instead and fire it the next time it fell idle: out of formation,
+-- seconds after the beat, ignoring its own cooldown - and the next command
+-- would queue behind that one, so a ring knocked off the beat once stayed
+-- off it for the rest of the fight.
 local function commandArm(part, at: number, windup: number, lift: number)
 	part.slamAt = at
 	part.slamOrderWindup = windup
 	part.slamOrderLift = lift
 end
+
+-- How long after its beat a commanded slam is still worth performing. Past
+-- this the order is dropped WITHOUT firing: a wave beat that has gone by is
+-- dropped honestly, because a late lone slam out of formation reads as the
+-- arena hitting you at random, and that is worse than a gap in the wave.
+local SLAM_ORDER_GRACE = 0.75
 
 -- Jaw Snap: rears back, then lunges and bites everything in front.
 ATTACK_HANDLERS.snap = {
@@ -2259,8 +2537,13 @@ ATTACK_HANDLERS.snap = {
 	end,
 	strike = function(creature, def, p, _now, dt, u, _root, sub)
 		creature.pos = resolveHorizontal(creature, bossFacing(creature) * (p.lunge / p.duration) * dt)
+		-- CLAMP FIRST. The lunge is 13-14 studs and the clamp only ran in
+		-- `finish`, so a bite taken at the arena's rim dealt its cone damage
+		-- and drew its `bossSnap` ring from a position outside the arena that
+		-- the boss was yanked back from immediately afterwards.
+		clampToArena(creature, def)
 		creature.model:PivotTo(poseCFrame(creature, sub + 0.8 * (1 - u), 0, math.rad(-14)))
-		if not creature.attack.fired and u >= 0.4 then
+		if not creature.attack.fired and u >= SNAP_IMPACT then
 			creature.attack.fired = true
 			local lo, hi = bossRoll(creature, def, p.damage)
 			damagePlayersInCone(creature.pos, bossFacing(creature), p.radius, p.cone, false, lo, hi, creature)
@@ -2563,6 +2846,32 @@ local function rotateFlat(v: Vector3, angle: number): Vector3
 	return Vector3.new(v.X * c - v.Z * s, 0, v.X * s + v.Z * c)
 end
 
+-- CONTACT ALONG A BODY THAT IS A CHAIN, for the one boss whose hide is not a
+-- ball. Each node carries its OWN height test, and that is the whole trick:
+-- during Rimefang's breach the head is up its parabola (9 studs at the apex -
+-- the path takes its arch height from `breach.leap` itself, so the drawn leap
+-- and this hitbox cannot disagree) while the links behind it are still at the
+-- surface, having not yet left the water, so the leap sweeps a
+-- corridor the length of the animal instead of an 11-stud circle at the nose
+-- that is airborne for 89% of the charge. Once per player, off the caller's
+-- own hit set.
+local function bodyContact(creature, body, reach: number, lo: number, hi: number, hitSet, skin: string?)
+	for _, entry in livingRootsNear(creature.pos, reach + RimefangPath.BODY_LENGTH) do
+		if not hitSet[entry.player] then
+			local at = entry.root.Position
+			for _, node in body do
+				local to = at - node.pos
+				if Vector3.new(to.X, 0, to.Z).Magnitude <= reach and math.abs(to.Y) <= BOSS_HEIGHT_TOLERANCE then
+					hitSet[entry.player] = true
+					PlayerService.damage(entry.player, math.random(lo, hi), creature, { bypassIframe = true })
+					fireEvent("strikeHit", at, { radius = 3, skin = skin })
+					break
+				end
+			end
+		end
+	end
+end
+
 -- Charge: picks its line at the moment of firing and rushes it, hitting each
 -- player at most once. p: length, width (contact radius), damage; optional
 -- leap (hop height - the body is airborne mid-arc and can't contact-hit),
@@ -2586,11 +2895,29 @@ ATTACK_HANDLERS.charge = {
 		local a = creature.attack
 		local step = (p.length / p.duration) * dt
 		creature.pos = resolveHorizontal(creature, a.dir * step)
+		-- CLAMP BEFORE ANYTHING READS THE POSITION. This used to run only in
+		-- `finish`, so every frame of contact damage - and every `strikeHit`
+		-- ring the client drew for it - was resolved at a position the arena
+		-- would refuse a moment later, and the last of them landed where the
+		-- boss demonstrably no longer was. A charge that runs into the rim
+		-- should stop at the rim, and be the rim's length of charge.
+		clampToArena(creature, def)
 		a.dist += step
 		local hop = if p.leap then math.sin(u * math.pi) * p.leap else 0
 		creature.model:PivotTo(poseCFrame(creature, sub + hop, 0, math.rad(-8)))
 		-- Contact damage, once per player per charge - not while airborne.
-		if hop < 1.5 then
+		--
+		-- A boss with a BODY tests its whole body (see `bodyContact`): for
+		-- Rimefang the `hop` test is the wrong question entirely, because the
+		-- head being 26 studs up its leap says nothing about the 40 studs of
+		-- whale behind it that are still ploughing the floe. Each node's own
+		-- height stands in for `hop`, node by node. Every other charging boss
+		-- has no body and takes the branch it always took, to the stud.
+		local body = rimefangBody(creature)
+		if body then
+			local lo, hi = bossRoll(creature, def, p.damage)
+			bodyContact(creature, body, p.width, lo, hi, a.hitSet, p.skin)
+		elseif hop < 1.5 then
 			local lo, hi = bossRoll(creature, def, p.damage)
 			for _, entry in livingRootsNear(creature.pos, p.width) do
 				if not a.hitSet[entry.player] then
@@ -2608,15 +2935,23 @@ ATTACK_HANDLERS.charge = {
 		end
 	end,
 	finish = function(creature, def, p, now)
+		clampToArena(creature, def)
 		if p.slamRadius then
 			local lo, hi = bossRoll(creature, def, p.damage)
-			damagePlayersInRadius(creature.pos, p.slamRadius, lo, hi, creature, 0.5, BOSS_HEIGHT_TOLERANCE)
+			local body = rimefangBody(creature)
+			if body then
+				-- THE WHOLE ANIMAL LANDS, not its nose. A 56-stud whale coming
+				-- down flat cracks the floe along its length; a single ring at
+				-- the head left the crash's back half harmless.
+				bodyContact(creature, body, p.slamRadius, lo, hi, {}, p.skin)
+			else
+				damagePlayersInRadius(creature.pos, p.slamRadius, lo, hi, creature, 0.5, BOSS_HEIGHT_TOLERANCE)
+			end
 			fireEvent("slam", creature.pos, { radius = p.slamRadius, skin = p.skin })
 		end
 		if p.shatter then
 			spawnPool(creature, creature.pos, p.shatter, now)
 		end
-		clampToArena(creature, def)
 	end,
 	recover = function(creature, _def, _p, u, sub)
 		creature.model:PivotTo(poseCFrame(creature, sub, 0, math.rad(-8) * (1 - u)))
@@ -2837,7 +3172,27 @@ ATTACK_HANDLERS.armgap = {
 		if #arms <= 1 then
 			return
 		end
-		local gap = math.clamp(p.gap or 3, 1, #arms - 1)
+		if #arms <= 2 then
+			-- NO GAP TO READ AT THIS SIZE. One seat open out of two is not a
+			-- shape you can see on the animal, it is a coin toss - and the
+			-- whole point of this move is that you dodge it by looking at the
+			-- boss. So the fist closes completely and the long `windupEach`
+			-- carries the counterplay on its own: two 12-stud rings with a
+			-- two-second tell each is something you step out of.
+			for _, arm in arms do
+				commandArm(arm, now, p.windupEach or 2.0, p.lift or 16)
+			end
+			return
+		end
+		-- THE GAP IS A FRACTION OF THE RING, NOT A COUNT. `gap` is authored
+		-- against the full eight (3 open, 5 down), and clamping it flat left
+		-- 3 of 4 arms open on a ground-down ring - so the fight's loudest
+		-- moment degraded into ONE arm slamming. closingfist is phase-three
+		-- only, which is exactly when the ring is short, so the degenerate
+		-- case was the only case anybody ever saw. Scaled, four arms give one
+		-- open and three down; the `#arms - 2` ceiling keeps at least two
+		-- arms coming down, or there is no fist to close.
+		local gap = math.clamp(math.floor((p.gap or 3) * #arms / 8 + 0.5), 1, math.max(#arms - 2, 1))
 		local from = math.random(1, #arms)
 		local open = {}
 		for k = 0, gap - 1 do
@@ -2985,6 +3340,14 @@ ATTACK_HANDLERS.undertow = {
 			if #targets > 0 then
 				local entry = targets[math.random(#targets)]
 				local at = scatterAround(entry.root, 7)
+				-- THE RAIN HAS TO REACH THE ROCKS. This is a six-second move
+				-- whose entire second half is wreckage coming down on whoever
+				-- the current is dragging, and the people being dragged are
+				-- standing on the arena's caps 4-6 studs over the water. The
+				-- glob's landing is grounded, so a scatter that clears the cap
+				-- resolves at the waterline and the default 6-stud gate voided
+				-- the hit - the pull landed, the wreckage drew, and nothing
+				-- happened. Same tolerance the rest of the boss kit's AoE uses.
 				throwGlob(
 					creature,
 					def,
@@ -2993,7 +3356,8 @@ ATTACK_HANDLERS.undertow = {
 					0.9,
 					now,
 					"spineHit",
-					"spit"
+					"spit",
+					{ tolerance = BOSS_HEIGHT_TOLERANCE }
 				)
 			end
 		end
@@ -3105,7 +3469,20 @@ local function beginBossAttack(creature, def, name: string, now: number)
 	-- unrecognised kind still falls through the client's catch-all flash and
 	-- plays the tell sound - so opting out has to be explicit.
 	if p.tell ~= false then
-		fireEvent("telegraph", creature.model:GetPivot().Position, {
+		-- WHERE THE TELL IS DRAWN. The pivot is right for a boss that attacks
+		-- around itself and wrong for one whose move works the floor from a
+		-- centre that is not its head: Rimefang's carousel pulls on
+		-- `creature.anchor` and drops its bergs there (ATTACK_HANDLERS.undertow
+		-- reads `creature.anchor or creature.pos` in both places), while its
+		-- marker was drawn at the nose - so the tell and the damage named two
+		-- different circles. `at = "anchor"` puts them on one. (The Kraken's
+		-- inkspit has since taken the same field for the same reason - its
+		-- pivot is carried 31 studs up inside the mantle.) A row that does not
+		-- carry it gets the pivot, to the stud, as before.
+		local tellAt = if p.at == "anchor"
+			then (creature.anchor or creature.pos)
+			else creature.model:GetPivot().Position
+		fireEvent("telegraph", tellAt, {
 			kind = p.tell or name,
 			-- THROUGH the blow, not up to the swing. Most handlers strike the
 			-- instant the windup expires, and for those this is exactly
@@ -3115,6 +3492,24 @@ local function beginBossAttack(creature, def, name: string, now: number)
 			-- to 1.52 seconds. See the note on that table.
 			duration = p.windup + (p.duration or 0) * (HANDLER_IMPACT[p.handler] or 0),
 			radius = p.radius,
+			-- THE SHAPE OF THE THREAT, not just its size. A radius alone makes
+			-- every tell a circle, so a client drawing a wedge or a corridor
+			-- had to keep its OWN copy of the row's numbers and hope nobody
+			-- retuned the data underneath it. These three bind the truth:
+			-- `cone` the wedge's half-angle, `lunge` how far the body carries
+			-- through, `width` the corridor's half-width. All three are nil on
+			-- the overwhelming majority of attacks and a nil field simply does
+			-- not appear in the payload, so nothing else on the wire changes -
+			-- and the client keeps its fallbacks for rows that carry none.
+			--
+			-- MIND THE UNITS if you consume `cone` for a new move: it is
+			-- radians on `snap` and `wash` rows and DEGREES on `phantom` ones
+			-- (that handler calls `math.rad(p.cone)` itself). Today the only
+			-- reader is the wash's wedge, which is keyed on the move name, so
+			-- the inconsistency is carried but never acted on.
+			cone = p.cone,
+			lunge = p.lunge,
+			width = p.width,
 			facing = bossFacing(creature),
 			skin = p.skin,
 		})
@@ -3145,6 +3540,25 @@ local function endBossAttack(creature, def, now: number)
 		creature.nextAttackAt = now + 0.15
 	else
 		creature.nextAttackAt = now + randomBetween(def.attackGapMin, def.attackGapMax) * rage
+	end
+	-- THE PUNISH WINDOW HAS TO BE REAL. `expose` opens one, and then the
+	-- ordinary gap above let the boss start its next move a fraction of the
+	-- way into it: Rimefang's breach opens 4.0s and its gap is 0.65-1.25s
+	-- (0.36-0.69 enraged), so the whale attacked out of the window it had
+	-- just paid for - and because the pose driver only draws `beached` while
+	-- no attack is running, the beached body vanished with it. The window is
+	-- the fight's ONLY wide kill window; a move that says it leaves the boss
+	-- open has to actually leave it open, so the gap runs from the end of the
+	-- window rather than from the end of the recover.
+	--
+	-- OPT-IN, by `holdExpose` on the move, and that is deliberate. This is
+	-- shared code: Gnashroot's hammerfall has the identical arithmetic
+	-- (expose 3.5 against a 0.7-1.35s gap) and would be re-paced by a blanket
+	-- rule, which is a balance change to a fight nobody asked me to retune.
+	-- It does not carry the field, so nothing about it changes. Neither do
+	-- the three kitted hostile rows that use `expose`.
+	if a.p.expose and a.p.holdExpose then
+		creature.nextAttackAt = math.max(creature.nextAttackAt, creature.exposedUntil or now)
 	end
 	creature.attack = nil
 	-- A colossus goes back to its perch, not to prowling: it never chases.
@@ -3448,6 +3862,25 @@ local function washSheltered(root: BasePart, from: Vector3): boolean
 	return not (string.find(name, "_Base", 1, true) or string.find(name, "Floor", 1, true))
 end
 
+-- Everyone the crest has reached since the last frame. Backwards, because it
+-- removes as it goes; `PlayerService.damage` is already safe for a player who
+-- has died or left between the schedule and the arrival (no humanoid, no
+-- hit), so there is no second liveness test to keep in step with it.
+local function washLand(creature, now: number)
+	local a = creature.attack
+	local queue = a and a.washHits
+	if not queue then
+		return
+	end
+	for i = #queue, 1, -1 do
+		local hit = queue[i]
+		if now >= hit.at then
+			table.remove(queue, i)
+			PlayerService.damage(hit.player, hit.amount, creature, { bypassIframe = true })
+		end
+	end
+end
+
 -- THE WAVE WASH. An orca hunting seals on pack ice charges the floe and
 -- shoulders a wall of water over it; the seal is not bitten, it is WASHED
 -- OFF. So the threat here is displacement, not damage - you are shoved
@@ -3466,13 +3899,40 @@ ATTACK_HANDLERS.wash = {
 		a.dir = if root then flatUnit(root.Position - creature.pos) else bossFacing(creature)
 		local sheltered = {}
 		local lo, hi = bossRoll(creature, def, p.damage)
+		-- THE WALL TRAVELS, SO THE DAMAGE TRAVELS WITH IT. Everything below
+		-- used to resolve in this one loop, at the instant the windup ended:
+		-- a player at the far rim took the hit before the crest had left the
+		-- whale's shoulder. No client can make a travelling wall honest
+		-- against a one-frame hit, so the scheduling belongs here.
+		--
+		-- The whole cone is decided NOW and never revisited: who is in the
+		-- wedge, who cover saved, and how hard it hits. Only the MOMENT is
+		-- deferred. That ordering is the point - re-testing shelter as the
+		-- crest arrived would let cover flicker mid-sweep (a player stepping
+		-- out from behind a berg after the wall committed would be saved by
+		-- geometry the wall had already passed), and the raycast set is one
+		-- batch rather than one per frame.
+		local reach = math.max(p.radius - (p.sweepFrom or 0), 1e-3)
+		a.washHits = {}
 		for _, entry in livingRootsNear(creature.pos, p.radius) do
 			local to = flatUnit(entry.root.Position - creature.pos)
 			if to:Dot(a.dir) >= math.cos(p.cone) then
 				if washSheltered(entry.root, creature.pos) then
 					table.insert(sheltered, entry.player.UserId)
 				else
-					PlayerService.damage(entry.player, math.random(lo, hi), creature, { bypassIframe = true })
+					-- Where the crest is when it reaches them, inverted: the
+					-- client walks its wall out linearly from `sweepFrom` to
+					-- `radius` over `sweep` seconds, so this is that same line
+					-- solved for time. A move without `sweep` keeps the old
+					-- behaviour exactly - every delay is zero.
+					local off = entry.root.Position - creature.pos
+					local dist = Vector3.new(off.X, 0, off.Z).Magnitude
+					local u = math.clamp((dist - (p.sweepFrom or 0)) / reach, 0, 1)
+					table.insert(a.washHits, {
+						player = entry.player,
+						at = now + (p.sweep or 0) * u,
+						amount = math.random(lo, hi),
+					})
 				end
 			end
 		end
@@ -3491,6 +3951,24 @@ ATTACK_HANDLERS.wash = {
 		if p.slick then
 			spawnPool(creature, groundedPos(creature.pos + a.dir * (p.radius * 0.45), 0), p.slick, now)
 		end
+		-- Anyone the crest is already on top of is hit on THIS frame, not on
+		-- the next one: with `sweep` unset every delay is zero, and a move
+		-- that opts out of the travelling wall must land exactly where it
+		-- landed before this existed.
+		washLand(creature, now)
+	end,
+	-- The wall arriving, one player at a time, on the schedule `fire` wrote.
+	-- The PivotTo is what the attack loop does for a handler with no strike
+	-- hook, kept verbatim so adding this hook changes nothing but the timing.
+	strike = function(creature, _def, _p, now, _dt, _u, _root, sub)
+		washLand(creature, now)
+		creature.model:PivotTo(poseCFrame(creature, sub, 0, 0))
+	end,
+	-- Nobody is dropped if the strike ends early (it cannot today - the sweep
+	-- is 0.22s inside a 0.9s strike - but a retune must not silently start
+	-- eating hits).
+	finish = function(creature)
+		washLand(creature, math.huge)
 	end,
 }
 
@@ -3517,6 +3995,74 @@ ATTACK_HANDLERS.spyhop = {
 				skin = p.skin,
 			})
 		end
+	end,
+}
+
+-- THE FLUKE SLAM. The tail comes up clear of the sheet and hammers down - and
+-- it hammers down WHERE THE TAIL IS, 56 studs behind the nose. That is the
+-- whole reason this is a handler of its own rather than the shared `slam`:
+-- `slam` rings the boss's own position, so on a 56-stud animal it damaged a
+-- 24-stud circle at the HEAD while the fluke was drawn most of the arena
+-- away. Standing under the raised tail was safe; standing at the nose with no
+-- tail in sight took 50-68. And `slam` fires on the FIRST frame of the
+-- strike, while the pose only brings the fluke down over the first 30% of it.
+--
+-- Two things have to be locked for a marker at the tail to be honest, and
+-- Brinejaw's `aimSlam` locks exactly the same two for exactly this reason.
+-- The BEARING: the shared windup turns the boss toward its target at
+-- turnRate * 1.5, which over this move's 0.9s windup is up to 108 degrees -
+-- and the body is drawn swinging about the head, so that is up to 108 degrees
+-- of TAIL, and a ring placed when the windup starts would be nowhere by the
+-- time it ends. Latching `a.dir` on the first windup frame stops the body
+-- (`rimefangFace` reads it) and reads as the animal committing. And the
+-- MOMENT: the countdown runs through the fall rather than finishing while the
+-- tail is still up. The row opts out of the stock tell (`tell = false`) so
+-- there is exactly one marker and it is this one.
+local RF_FLUKE_IMPACT = 0.3
+
+-- Where the fluke will come down: the last spine sample's ground position.
+-- The lobtail is no longer a lift - the tail rears and then HAMMERS, the tip
+-- travelling from +11.9 to -14.5 studs through the waterline - but it is a
+-- rotation of the peduncle about a fixed heading, so the tip's FOOTPRINT
+-- barely moves: the resting tip measures 1.20 studs from the true hammer
+-- point, well inside this move's 24-stud radius. Reading the rest pose is
+-- therefore both correct and the only thing available at windup start, which
+-- is when the marker has to be placed.
+local function flukeGround(creature): Vector3
+	local body = rimefangBody(creature)
+	local at = if body then body[#body].pos else creature.pos
+	return groundedPos(Vector3.new(at.X, creature.pos.Y, at.Z), 0)
+end
+
+ATTACK_HANDLERS.flukeslam = {
+	-- No pose hooks: the whale is published as attributes and drawn by the
+	-- client, so a PivotTo here would only move a model nobody can see.
+	windup = function(creature, _def, p, _u, _sub)
+		local a = creature.attack
+		if a.aimed then
+			return
+		end
+		a.aimed = true
+		a.dir = bossFacing(creature)
+		a.impact = flukeGround(creature)
+		fireEvent("telegraph", a.impact, {
+			kind = p.tellKind or "burst",
+			duration = p.windup + (p.duration or 0) * RF_FLUKE_IMPACT,
+			radius = p.radius,
+			facing = a.dir,
+			skin = p.skin,
+		})
+	end,
+	strike = function(creature, def, p, _now, _dt, u, _root, _sub)
+		local a = creature.attack
+		if a.fired or u < RF_FLUKE_IMPACT then
+			return
+		end
+		a.fired = true
+		local at = a.impact or flukeGround(creature)
+		local lo, hi = bossRoll(creature, def, p.damage)
+		damagePlayersInRadius(at, p.radius, lo, hi, creature, 0.5, BOSS_HEIGHT_TOLERANCE)
+		fireEvent("slam", at, { radius = p.radius, skin = p.skin })
 	end,
 }
 
@@ -3562,6 +4108,13 @@ local RF_DIVE_DEPTH = 0.6
 local RF_EPSILON = 0.004
 
 local function rfPut(model: Model, cache, attr: string, value: number)
+	-- A NaN reaching the cache would latch this channel off for the life of
+	-- the creature: every later `math.abs(value - NaN) > eps` is false, so the
+	-- attribute is never written again and the client freezes on a stale
+	-- value with no error anywhere.
+	if value ~= value then
+		return
+	end
 	local last = cache[attr]
 	if last == nil or math.abs(value - last) > RF_EPSILON then
 		cache[attr] = value
@@ -3610,6 +4163,86 @@ local function rimefangCenter(state, at: Vector3): Vector3
 	local head = RimefangPath.pointAt(state, 0)
 	state.center = keep
 	return at - Vector3.new(head.X, 0, head.Z)
+end
+
+-- ---------------------------------------------------------- rimefang's hide
+--
+-- WHAT YOU CAN SEE IS WHAT YOU CAN HIT. Every other creature in the game is a
+-- ball around its pivot, and for a fish, a crab, or even a colossus standing
+-- on its own centre that is close enough. Rimefang is 56 studs of animal laid
+-- out BEHIND its authority point - `creature.pos` is the nose - so the pivot
+-- sphere capped melee at hitRadius (6.7) plus the longest reach in Weapons
+-- (16), about 22.7 studs from the head, and made everything from the shoulder
+-- aft into scenery: visible, solid-looking and unswingable, the beached body
+-- during the punish window included.
+--
+-- WHY SAMPLES AND NOT A `parts` RING. spawnBossParts is the other way to give
+-- a boss more than one place to be hit, and it is the wrong tool here. A
+-- `parts` row is a CREATURE - its own health, its own death, a socket index,
+-- and a `vulnerableWhen = "partsDown"` gate on the parent - which is the
+-- machinery of a fight ABOUT destroying limbs (the Kraken's arms, Wrack's
+-- batteries). Rimefang has one health bar, one body, and a body that MOVES:
+-- the carousel swings the tail through a 56-stud circle and the breach throws
+-- the whole animal through the air. Sixteen entities chasing a pose that is
+-- already computed exactly - and identically - on both sides from
+-- RimefangPath would be sixteen replicated things to keep in step with the
+-- drawing, in exchange for an answer the path hands over directly. So the
+-- hide IS the spine, sampled: the same curve the client lays its vertebrae
+-- on, tested where a pivot sphere used to be.
+--
+-- HOW MANY, and it is arithmetic rather than taste: consecutive spheres have
+-- to OVERLAP or the chain has a band you cannot hit. Spacing is uniform now -
+-- the path integrates its angles down the body, so arc length is exactly
+-- BODY_LENGTH in every pose and the samples cannot stretch apart during a
+-- breach the way they used to. At 9 samples the spacing is 56/8 = 7.0 studs,
+-- and the last pair is the peduncle's: girth has bottomed out on the floor
+-- below, so 3.0 + 3.0 = 6.0 against 7.0 left a ~0.9-stud dead band right at
+-- the tail. At 11 the spacing is 56/10 = 5.6, and 6.0 > 5.6 closes it - with
+-- every pair forward of there wider still, because girth is only rising.
+--
+-- Raising RF_MIN_RADIUS to 3.6 would have closed the same gap and is the
+-- wrong fix: the fluke's drawn half-width is 6.6 * girth(1) = 1.45, so 3.0 is
+-- already twice the hide and 3.6 would be swinging at open water. Sampling
+-- finer keeps every radius honest to the body and costs two more `pointAt`
+-- calls per test.
+local RF_HIT_SAMPLES = 11
+-- The pack's authored half-width at full girth (the row's note on `hitRadius`
+-- measures the drawn whale at ~6.6 half-width, 7.2 half-height), and a floor
+-- under the peduncle's pinch: `RimefangPath.girth` bottoms out at 0.22, which
+-- would leave the fluke a 1.5-stud target you could not reliably swing at.
+local RF_HALF_WIDTH = 6.6
+local RF_MIN_RADIUS = 3.0
+
+-- The spine, sampled, as capture spheres - or nil for anything that is not
+-- Rimefang, which is what keeps every other creature on the pivot sphere it
+-- has always had. Guarded on `creature.row.boss` exactly as `rimefangDrive`
+-- is, and on the pose state as well: before the first drive frame (and all
+-- through `rising`) there is no body yet, and the caller falls back.
+--
+-- The nodes are allocated once per creature and refilled in place - this is
+-- called per swing and per shot, and a fresh table of nine per call would be
+-- churn for nothing.
+function rimefangBody(creature)
+	if creature.row.boss ~= RIMEFANG_BOSS then
+		return nil
+	end
+	local state = creature.rimefangPose
+	if not state then
+		return nil
+	end
+	local nodes = creature.rimefangHitNodes
+	if not nodes then
+		nodes = table.create(RF_HIT_SAMPLES)
+		for i = 1, RF_HIT_SAMPLES do
+			nodes[i] = { pos = Vector3.zero, radius = 0, t = (i - 1) / (RF_HIT_SAMPLES - 1) }
+		end
+		creature.rimefangHitNodes = nodes
+	end
+	for _, node in nodes do
+		node.pos = RimefangPath.pointAt(state, node.t)
+		node.radius = math.max(RF_HALF_WIDTH * RimefangPath.girth(node.t), RF_MIN_RADIUS)
+	end
+	return nodes
 end
 
 -- Aim, LATCHED. `charge` stamps the bearing it fired on into `a.dir` and
@@ -3678,7 +4311,12 @@ RF_MOVES.breach = function(pose, phase, u, _now)
 		-- Once it is flat on the ice the leap is fully overridden, so the
 		-- arch can be dropped without anything moving; dropping it earlier
 		-- would whip the body back down its own parabola.
-		pose.arch = if pose.beached >= 0.999 then 0 else 1
+		-- Ramp arch DOWN as beached comes up, rather than dropping it the frame
+		-- the server's own beached crosses a threshold. The client eases the two
+		-- at different rates (18/s vs 4/s), so a hard drop rewound the head down
+		-- its own parabola while the body was only half overridden - a 12-stud
+		-- jump in one frame on every landing.
+		pose.arch = math.max(0, 1 - pose.beached)
 	end
 end
 
@@ -3698,9 +4336,10 @@ RF_MOVES.wash = function(pose, phase, u, _now)
 	end
 end
 
--- The tail comes up clear of the water and hammers down. `slam` deals its
--- damage on the first frame of the strike, so the fluke is already falling
--- by the time the ring lands.
+-- The tail comes up clear of the water and hammers down. The fall and the
+-- blow read the SAME constant (RF_FLUKE_IMPACT, with the handler): the ring
+-- lands on the frame the fluke reaches the ice, and the marker's countdown
+-- runs to that frame too.
 RF_MOVES.flukeslam = function(pose, phase, u, _now)
 	if phase == "windup" then
 		pose.swim = 0.3
@@ -3709,7 +4348,7 @@ RF_MOVES.flukeslam = function(pose, phase, u, _now)
 	elseif phase == "strike" then
 		pose.swim = 1
 		pose.submerge = 0.55
-		pose.flukeUp = math.max(1 - u / 0.3, 0)
+		pose.flukeUp = math.max(1 - u / RF_FLUKE_IMPACT, 0)
 	else
 		pose.swim = 0.8
 		pose.submerge = 0.55 * (1 - smoothstep(u))
@@ -3869,6 +4508,20 @@ local function rimefangDrive(creature, now: number, dt: number)
 	rfPut(model, cache, "FaceAngle", state.faceAngle)
 	rfPut(model, cache, "Gape", state.gape)
 	rfPut(model, cache, "Lunge", state.lunge)
+	-- THE PUNISH WINDOW PUBLISHES ITS OWN DEADLINE, in server time, because
+	-- ATTR_EXPOSED cannot be trusted here: endBossAttack sets it, but its only
+	-- expiry lives in updateKitted, which a plain `archetype = "boss"` never
+	-- runs. For this boss it latches true at the first breach and stays true -
+	-- so the client's gold clock, thrash audio and slush puffs ran for the
+	-- REST OF THE FIGHT, and no later breach could reopen the cue. A deadline
+	-- cannot latch; it simply passes.
+	local openAt = creature.exposedUntil
+	rfPut(
+		model,
+		cache,
+		"OpenUntil",
+		if openAt and openAt > now then Workspace:GetServerTimeNow() + (openAt - now) else 0
+	)
 	local center = rimefangCenter(state, creature.pos)
 	if (center - state.center).Magnitude > 0.05 then
 		state.center = center
@@ -4163,6 +4816,11 @@ end
 -- path module (Shared/Modules/BrinejawPath) and is selected by `def.pose`.
 
 local ATTR_STANCE = "Stance" -- 1 = final stance; counts DOWN as it loses ground
+-- How many it STARTED with, published once. Without it a client can only take
+-- the first Stance it sees as the maximum, which is right for anyone present
+-- at the summon and wrong for everyone who joins after: a boss two stances
+-- down draws to a latecomer as an undamaged one.
+local ATTR_STANCES = "Stances"
 local ATTR_POSE = "Pose" -- which path module draws this body, for the client
 local ATTR_POSE_CENTER = "PoseCenter" -- the perch's anchor (the tower's foot)
 -- Brinejaw's replicated pose. The client draws its entire body from these, so
@@ -4230,6 +4888,9 @@ local function colossusState(creature, def)
 	local state = creature.pose
 	if not state then
 		creature.poseKind = def.pose
+		-- Kept off the row so `publishPose`, which is handed no `def`, can
+		-- publish the count a stance is measured against.
+		creature.poseStances = def.stances or 1
 		if def.pose == "brinejaw" then
 			-- SNAPPED TO THE WATERLINE, for the same reason Noctyss is just
 			-- below. `spawn` lifts a creature by half its own thickness -
@@ -4273,7 +4934,20 @@ local function colossusState(creature, def)
 			local anchor = creature.anchor or creature.pos
 			state = NoctyssPath.newState(Vector3.new(anchor.X, World.WATER_Y, anchor.Z))
 		elseif def.pose == "kraken" then
-			state = KrakenPath.newState(creature.anchor or creature.pos)
+			-- SNAPPED TO THE WATERLINE, the same correction Brinejaw and
+			-- Noctyss make above and for the same reason - it was the one
+			-- posed boss that never made it. `spawn` lifts a creature by half
+			-- its own thickness plus SURFACE_OFFSET, and everything about
+			-- this animal is measured from the water: KrakenPath.lift is a
+			-- height above the CROWN_LIFT datum, the arms leave the crown
+			-- INTO the water, and `spawnBossParts` plants the whole tentacle
+			-- ring at this centre's Y. Inheriting the lift floated the drawn
+			-- octopus and its eight hitboxes clear of the sea they are
+			-- standing in - by the body's half-thickness at scale 1.4, on a
+			-- fight whose hitboxes are already 4-6 studs under the rock caps
+			-- the players fight from.
+			local anchor = creature.anchor or creature.pos
+			state = KrakenPath.newState(Vector3.new(anchor.X, World.WATER_Y, anchor.Z))
 		else
 			state = { center = creature.anchor or creature.pos, time = 0 }
 		end
@@ -4322,6 +4996,20 @@ local function publishPose(creature, state)
 		model:SetAttribute(ATTR_STRIKE, state.strike or 0)
 		model:SetAttribute(ATTR_AIM_ANGLE, state.aimAngle or state.faceAngle or 0)
 		model:SetAttribute(ATTR_AIM_SIDE, state.aimSide or 1)
+		-- THE STANCE, from here rather than only from the entrenched tick.
+		-- That tick writes it on CHANGE, which means a rigged body draws its
+		-- first frames - the whole rise - against whatever the client
+		-- defaulted to, and a client that joins between two changes gets
+		-- nothing at all. Published every frame here, and the MAXIMUM with it
+		-- so the reader can tell how far down the count already is.
+		--
+		-- `state.coil` is where the shared entrenched tick keeps it (the name
+		-- is Brinejaw's); mirrored onto the rig's own `stance` so the path
+		-- module and the wire cannot disagree, and defaulted to the maximum
+		-- rather than to 1, because 1 is the LAST stance - the wrong end.
+		state.stance = state.coil or creature.poseStances or 1
+		model:SetAttribute(ATTR_STANCE, state.stance)
+		model:SetAttribute(ATTR_STANCES, creature.poseStances or 1)
 		if RIG_POSE[creature.poseKind].planted then
 			model:SetAttribute(ATTR_SLUMP, state.slump or 0)
 			model:SetAttribute(ATTR_PLANTED, state.planted or 0)
@@ -4351,6 +5039,302 @@ local function hideColossusModel(creature)
 	end
 end
 
+-- ============================================================ pyrelisk: the mount (2026-08-31)
+--
+-- THE POINT OF THE WHOLE FIGHT. A `handfall` baited onto a monolith leaves an
+-- arm down across the lava moat (`state.planted`) and opens a stagger; for as
+-- long as that window lasts the players CLIMB that arm, cross the deck on its
+-- back and smash the vent shafts. Everything the climb needs that a client
+-- cannot provide - real footing, the lava under it, the vents' health - is
+-- here.
+--
+-- WHY THE SLABS ARE SPAWNED AND NOT BORROWED. `hideColossusModel` sets
+-- Transparency and never touches CanCollide, so the server's own model IS
+-- still solid - but it is the row's CreaturePack proxy, a ~23-stud lump
+-- standing at the colossus's feet, nothing like the 270-stud body the client
+-- draws over it. Standing on that is standing in the lake. So the footing is
+-- built here from PyreliskPath.climbSlabs, the same joints
+-- PyreliskBodyController draws the arm and the deck from, which is the only
+-- reason the rock you see and the rock you stand on are the same rock.
+--
+-- WHY IT ONLY EXISTS INSIDE THE WINDOW, AND WHY THE BODY FREEZES WHILE IT
+-- DOES. A player standing on an anchored part that is CFrame-moved does NOT
+-- move with it: the part slides out from under them. So the slabs are placed
+-- ONCE, at the instant the window opens, and the bearing the body planted on
+-- is pinned for the duration. A colossus that went on turning to watch
+-- whoever is nearest would swing the drawn arm out from under an invisible
+-- plate with someone standing on it, a hundred studs over lava. The stillness
+-- of the punish window is not an animation choice - it is what makes the
+-- footing honest, and it is why the footing ends when the stillness does.
+-- (The other half of that rule lives in PyreliskPath: `breath` and `lean`
+-- both switch off while an arm is planted, because both sides compute them.)
+
+-- The lake, and the two numbers that decide what happens to someone in it.
+-- 120 is the caldera lake's edge (the row's `arena.radius` reasoning, and
+-- handfall's `minReach`): everything inside it is lava.
+local PY_LAKE_R = 120.0
+-- Where a rescue puts you down: the middle of the rim path, forty studs off
+-- the lake and forty inside the lip's undercut - the same band the summon
+-- ring drops the party on, and the only stretch of floor the whole fight can
+-- reach you on.
+local PY_RESCUE_R = 150.0
+-- HOW FAR ABOVE THE LAKE STILL COUNTS AS IN IT, and this is the load-bearing
+-- half of the test. Everyone on the mount is inside the lake's radius - the
+-- back deck is 202 studs straight up over it - so a flat radius check would
+-- boil the entire party the moment they finished the climb they were asked
+-- to make. Only something at the lava's own surface is in the lava.
+local PY_LAVA_HEAD = 16.0
+local PY_LAVA_TICK = 0.75
+local PY_LAVA_DAMAGE = { 70, 95 }
+-- The shrug. Radius is the LAKE's, not the arena's: it has to reach everyone
+-- standing on the body and nobody standing on the rim path, and those two
+-- sets are separated by exactly that circle.
+local PY_SHAKE_PUSH = 62
+local PY_SHAKE_TIME = 0.55
+-- How long the lava keeps watching after the window shuts. The shove happens
+-- as the slabs go, so anyone it throws is still in the air at that instant -
+-- a watch that ended with the window would miss every death it exists for.
+local PY_SHAKE_GRACE = 4.0
+-- The vents: how close is "at it", how many swings it takes, and what a
+-- broken one costs the boss. Three of them at 7% is a fifth of its health -
+-- the mount has to be worth the climb, and this is most of the reason to
+-- make it.
+local PY_VENT_REACH = 30.0
+local PY_VENT_HITS = 4
+local PY_VENT_FRACTION = 0.07
+local PY_SWING_GAP = 0.28
+
+-- Every fight that currently has footing standing (creature -> mount). Only
+-- ever zero or one entries, but keyed rather than a single upvalue so a
+-- second arena on one server cannot make two windows share a state.
+local pyreliskMounts = {}
+-- Per-player swing throttle for the vent hits below. Weak keys: this is a
+-- rate limit, not a record, and it must not be the reason a Player instance
+-- outlives the player.
+local pyreliskSwingAt = setmetatable({}, { __mode = "k" })
+
+-- One piece of the climb. Invisible and unqueryable, exactly like the maw
+-- floor: the rock the player SEES is the client's, and a queryable slab in
+-- the middle of the arena would eat the ranged shots aimed at the body behind
+-- it and re-seat every ground telegraph drawn under it.
+local function pyreliskSlab(folder: Folder, name: string, size: Vector3, cframe: CFrame)
+	local part = Instance.new("Part")
+	part.Name = name
+	part.Size = size
+	part.CFrame = cframe
+	part.Anchored = true
+	part.CanCollide = true
+	part.CanQuery = false
+	part.CanTouch = false
+	part.Transparency = 1
+	part.Parent = folder
+end
+
+-- No `local`: this fills the forward declaration beside `clearMawFloor`, so
+-- the two exits that can take a boss out from under its own furniture -
+-- removeOwnedParts and kill - can both reach it. A leaked mount is a set of
+-- invisible solid platforms left standing two hundred studs over the arena
+-- for the rest of the server's life.
+function clearPyreliskMount(creature)
+	local mount = creature.pyreliskMount
+	if not mount then
+		return
+	end
+	creature.pyreliskMount = nil
+	pyreliskMounts[creature] = nil
+	mount.folder:Destroy()
+end
+
+-- Stand the climb up, once, from the pose as it is at this instant.
+local function openPyreliskMount(creature, state, now: number)
+	if creature.pyreliskMount then
+		return
+	end
+	local slabs = PyreliskPath.climbSlabs(state)
+	if #slabs == 0 then
+		return -- nothing planted: there is no footing to offer, and no lie told
+	end
+	local folder = Instance.new("Folder")
+	folder.Name = "PyreliskMount"
+	for _, slab in slabs do
+		pyreliskSlab(folder, slab.name, slab.size, slab.cframe)
+	end
+	folder.Parent = Workspace
+	-- The vents' world points, taken now and kept: the body is about to be
+	-- held still, so these stay true for the whole window, and reading them
+	-- once means a swing can never be judged against a body that has moved
+	-- since the slab it is standing on was placed.
+	local vents = {}
+	for index in PyreliskPath.VENTS do
+		vents[index] = (PyreliskPath.ventPoint(state, index))
+	end
+	creature.pyreliskBroken = creature.pyreliskBroken or {}
+	local mount = {
+		folder = folder,
+		-- The bearing it planted on, restored every frame below.
+		faceAngle = state.faceAngle or 0,
+		aimAngle = state.aimAngle or state.faceAngle or 0,
+		vents = vents,
+		hits = {},
+		openedAt = now,
+	}
+	creature.pyreliskMount = mount
+	pyreliskMounts[creature] = mount
+end
+
+-- The window closes: it takes its arm back. The slabs go, and everyone still
+-- standing on the body is thrown off it.
+local function shakePyreliskMount(creature, state, now: number)
+	if not creature.pyreliskMount then
+		return
+	end
+	clearPyreliskMount(creature)
+	-- BROADCAST, not a velocity. Each client shoves its OWN character out of
+	-- the circle (EVENTS.gust is the lure pull's machinery run outward), the
+	-- same bargain the boss pull and the anchor chain already strike - the
+	-- server never writes a player's motion, so nothing here fights the
+	-- client's own physics ownership of its character.
+	fireEvent("gust", Vector3.new(state.center.X, state.center.Y, state.center.Z), {
+		radius = PY_LAKE_R,
+		push = PY_SHAKE_PUSH,
+		duration = PY_SHAKE_TIME,
+		skin = "lava",
+	})
+	creature.pyreliskLavaUntil = now + PY_SHAKE_GRACE
+	-- BACK TO REST. Opening a window skips the handler's `recover` (see
+	-- openStagger), so the attack that earned this one is still sitting on
+	-- the rig with blend 1 - and the moment `planted` clears, the working arm
+	-- would snap back into a handfall windup it is not performing. The pose
+	-- is this fight's furniture too; putting it down is part of packing up.
+	--
+	-- Except during the death, which is a pose of its own and has already been
+	-- set for this frame (updateBossCollapse runs before placeColossus): a
+	-- boss killed on the mount must not have its collapse wiped by the same
+	-- teardown that takes the slabs away.
+	if not creature.collapsing then
+		state.attack = ""
+		state.blend = 0
+		state.strike = 0
+	end
+end
+
+-- ANYONE IN THE LAVA: hurt, then put back on the path. Rescue rather than
+-- kill, because the lake is not a hazard the fight ever asks you to read -
+-- it is the floor the arena does not have, and drowning in it is a fall out
+-- of the fight rather than a death you could have avoided.
+local function pyreliskLavaWatch(creature, def, state, now: number)
+	if now < (creature.pyreliskLavaAt or 0) then
+		return
+	end
+	creature.pyreliskLavaAt = now + PY_LAVA_TICK
+	local center = state.center
+	local lo, hi = bossRoll(creature, def, PY_LAVA_DAMAGE)
+	for _, player in Players:GetPlayers() do
+		local character = player.Character
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		if root and humanoid and humanoid.Health > 0 then
+			local out = Vector3.new(root.Position.X - center.X, 0, root.Position.Z - center.Z)
+			if out.Magnitude < PY_LAKE_R and root.Position.Y <= center.Y + PY_LAVA_HEAD then
+				local burn = Vector3.new(root.Position.X, center.Y, root.Position.Z)
+				fireEvent("slam", burn, { radius = 11, skin = "lava" })
+				PlayerService.damage(player, math.random(lo, hi), creature, { bypassIframe = true })
+				local dir = if out.Magnitude > 0.01 then out.Unit else Vector3.xAxis
+				local at = center + dir * PY_RESCUE_R + Vector3.new(0, 4, 0)
+				-- Set down facing the thing that threw them, on their own
+				-- bearing out of the lake, so a rescue never spins the camera
+				-- round or drops two players on the same stud.
+				root.CFrame = CFrame.lookAt(at, at - dir * 10)
+			end
+		end
+	end
+end
+
+-- One frame of the mount, run from placeColossus so it ticks in every mode
+-- this boss can be in - including the collapse, which is the one exit that
+-- does not pass through the stagger's own end.
+local function updatePyreliskMount(creature, def, state, now: number)
+	if creature.mode == "stagger" and (state.planted or 0) ~= 0 and not creature.collapsing then
+		if not creature.pyreliskMount then
+			openPyreliskMount(creature, state, now)
+		end
+		local mount = creature.pyreliskMount
+		if mount then
+			-- HELD STILL. placeColossus has already turned the body toward
+			-- the nearest player this frame; this puts it back. Both angles,
+			-- because `bearing` folds one into the other and the slabs were
+			-- placed from the result.
+			state.faceAngle = mount.faceAngle
+			state.aimAngle = mount.aimAngle
+		end
+	elseif creature.pyreliskMount then
+		shakePyreliskMount(creature, state, now)
+	end
+	if creature.pyreliskMount or now < (creature.pyreliskLavaUntil or 0) then
+		pyreliskLavaWatch(creature, def, state, now)
+	end
+end
+
+-- THE VENTS, and the one thing on this page that is not geometry.
+--
+-- A vent is not a creature and cannot be: creature targeting is proximity to
+-- a struct's pivot, and there is no Creatures row for a shaft on a boss's
+-- back. Nor can a swing find the boss itself from up there - `inRange`
+-- measures melee as pivot distance minus hitRadius, and the deck is ~202
+-- studs from a pivot with a 96-stud radius, so a player standing ON the
+-- colossus is a hundred studs out of reach of it. That is deliberate (the
+-- moat is made of that number) and must not be widened: raising hitRadius
+-- enough to be hittable from the deck would also make it hittable from the
+-- shore.
+--
+-- So the swing is read where it is actually sent. RequestAttack is
+-- argument-less and CombatService silently drops a swing that finds nothing
+-- in reach, which is exactly what every swing on this deck does. A second
+-- listener on the same remote costs nothing, needs no new network surface,
+-- and cannot affect any other fight: it only ever does anything while a
+-- mount is standing and the swinger is within 30 studs of an unbroken shaft.
+--
+-- Rate-limited on its own clock because it does NOT go through
+-- CombatService's weapon cooldown - a client spamming the remote must not be
+-- able to break three vents in a frame.
+local function pyreliskVentSwing(player: Player)
+	local now = os.clock()
+	if now - (pyreliskSwingAt[player] or 0) < PY_SWING_GAP then
+		return
+	end
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not root or not humanoid or humanoid.Health <= 0 then
+		return
+	end
+	for creature, mount in pyreliskMounts do
+		local broken = creature.pyreliskBroken or {}
+		for index, at in mount.vents do
+			if not broken[index] and (root.Position - at).Magnitude <= PY_VENT_REACH then
+				pyreliskSwingAt[player] = now
+				local hits = (mount.hits[index] or 0) + 1
+				mount.hits[index] = hits
+				fireEvent("strikeHit", at, { radius = 9, skin = "lava" })
+				if hits >= PY_VENT_HITS then
+					-- BROKEN FOR THE FIGHT, not for the window: the record
+					-- lives on the creature, so a second stagger cannot spend
+					-- the same shaft twice and the party's third climb is for
+					-- the one they have not opened yet.
+					broken[index] = true
+					creature.pyreliskBroken = broken
+					fireEvent("slam", at, { radius = 26, skin = "lava" })
+					local chunk = math.max(1, math.floor(creature.maxHealth * PY_VENT_FRACTION))
+					CreatureService.damage(creature, chunk, player)
+				end
+				return
+			end
+		end
+	end
+end
+
+Remotes.RequestAttack.OnServerEvent:Connect(pyreliskVentSwing)
+
 -- ------------------------------------------------------------- the choir
 --
 -- Everything below is Noctyss's, and it is deliberately small: seven stalks
@@ -4368,8 +5352,23 @@ local function updateChoir(creature, state, dt: number)
 	for _, stalk in state.stalks do
 		stalk.standing = false
 	end
-	for _, part in creatures do
-		if part.partOf == creature and not part.dead and part.socketIndex then
+	-- HER OWN RING, NOT THE WORLD. This walked the entire `creatures` array
+	-- every frame to find seven parts - O(everything alive) per boss per
+	-- frame, against an ambient population capped at 40 (Tuning SPAWNER
+	-- GLOBAL_CAP) plus raid waves, hatchlings, the boss and the choir itself:
+	-- ~50 structs and ~50 field tests, sixty times a second, to touch seven.
+	-- `spawnBossParts` already knows exactly which seven it planted, so it
+	-- hands them over. Entries leave the list as they leave the fight: a kill
+	-- flags `dead`, a withdrawal (`removeOwnedParts`) clears `partOf`, and
+	-- both are checked here rather than trusted - the list is a cache of a
+	-- fact those two own, never a second owner of it.
+	local ring = creature.choirParts
+	-- Backwards, because a departed stalk is removed from under the walk.
+	for i = (if ring then #ring else 0), 1, -1 do
+		local part = ring[i]
+		if part.dead or part.partOf ~= creature or not part.socketIndex then
+			table.remove(ring, i)
+		else
 			local index = part.socketIndex
 			local stalk = state.stalks[index]
 			if stalk then
@@ -4395,14 +5394,17 @@ local function updateChoir(creature, state, dt: number)
 			stalk.lean = math.max((stalk.lean or 0) - dt * 1.6, 0)
 		end
 	end
-	local down = 0
-	for index, stalk in state.stalks do
+	-- `down` means KILLED, not merely absent. It is the client's collapse cue
+	-- and its lantern-break sound, so the survivors withdrawn at `closeMaw`
+	-- must not set bits: marking them toppled seven stalks and fired seven
+	-- breaks the party did not cause, at the end of every single window.
+	local down = creature.choirKilled or 0
+	for _, stalk in state.stalks do
 		if not stalk.standing then
 			stalk.alive = false
 			stalk.fall = math.min((stalk.fall or 0) + dt * 1.4, 1)
 			stalk.douse = 1
 			stalk.lean = 0
-			down += 2 ^ (index - 1)
 		end
 	end
 	-- Published only on a change: seven sockets go down a handful of times a
@@ -4437,22 +5439,13 @@ local function pickChoirStalk(state, root: BasePart?): number?
 end
 
 -- JOLT THE WHOLE CHOIR AT ONCE: the lights dying, the lights coming back, a
--- wave leaving the pit. Every attack's recoil is the shape module's one
--- impulse (NoctyssPath.flinch) rather than an animation of its own, so a new
--- beat costs a line and can never disagree with what the client draws.
---
--- The direction is per socket - outward from the pit unless `inward` - because
--- seven stalks whipping the same way would read as one object being shoved,
--- and the ring is the whole silhouette.
-local function flinchChoir(state, strength: number, inward: boolean?)
-	for index, stalk in state.stalks do
-		if stalk.alive and stalk.standing then
-			local angle = NoctyssPath.socketAngle(index)
-			local out = Vector3.new(math.cos(angle), 0, math.sin(angle))
-			NoctyssPath.flinch(state, index, strength, if inward then -out else out)
-		end
-	end
-end
+-- NOTE: the choir's attack-beat flinches were REMOVED, not lost. A flinch is
+-- drawn from `stalk.impulse`, which lives in each side's own pose state and is
+-- not replicated - so a server-side flinch moved nothing a player could see,
+-- and (before `bulbPosition` was made solid) moved the hitbox invisibly while
+-- it did it. The recoils that survive are the ones the CLIENT raises off the
+-- hits it watches land, which is the only place a flinch has both a cause the
+-- player produced and an audience.
 
 -- THE PUNISH WINDOW'S FLOOR. Creature meshes are collision-free (the client
 -- draws them; the server model is authority only), so standing INSIDE her
@@ -4534,9 +5527,11 @@ local function placeColossus(creature, def, now: number, root: BasePart?)
 	state.targetPos = root and root.Position or nil
 	if def.pose == "kraken" then
 		-- The head does not prowl, so nothing else ever writes its yaw - and
-		-- bossFacing() reads THAT, not the pose. Left alone, the beak's cone
-		-- fired along whatever compass bearing the yaw happened to spawn on,
-		-- for the whole fight, no matter where you stood.
+		-- bossFacing() reads THAT, not the pose. Left alone, everything drawn
+		-- or thrown along the boss's facing (the stock tell's wedge, the
+		-- mouth an ink glob leaves from) used whatever compass bearing the
+		-- yaw happened to spawn on, for the whole fight, no matter where you
+		-- stood.
 		--
 		-- Taking it from the pose rather than from the player is the point:
 		-- faceAngle above is already turn-rate limited, so the cone inherits
@@ -4544,6 +5539,49 @@ local function placeColossus(creature, def, now: number, root: BasePart?)
 		-- negation is the two conventions meeting - yawToward is
 		-- atan2(-z, x), faceAngle is atan2(z, x).
 		creature.yaw0 = -state.faceAngle
+		-- AND THE HIDDEN MODEL GOES WHERE THE DRAWN BODY IS. Two faults, one
+		-- line, and the second is the one that matters.
+		--
+		-- (a) NOTHING PUT IT BACK. `poseCFrame` + `PivotTo` is how every
+		-- stock handler animates, and the posed branch had no counterpart to
+		-- the entrenched poses that re-place the model each frame - so any
+		-- handler this boss borrowed shoved the pivot somewhere and left it
+		-- there permanently. Re-asserting it here, after updateBossAttack has
+		-- run for the frame, makes that structurally impossible rather than a
+		-- rule each handler has to remember.
+		--
+		-- (b) THE CAPTURE SPHERE WAS IN THE WATER. `raycastNearest` takes
+		-- anything within shotRadius + hitRadius of the ray, measured from
+		-- the model's PIVOT - a ~38-stud ball. The pivot sat on the waterline
+		-- under a mantle drawn 65 studs tall (HEAD_HEIGHT 46.2 x SCALE 1.4),
+		-- so the ball covered the foam and the lower skirt while the body you
+		-- are aiming at stood entirely above it. Lifted to 0.4 of the mantle
+		-- - `lift` (the rise-aware CROWN_LIFT) plus HEAD_HEIGHT*SCALE*0.4,
+		-- about +31 at full height - the ball is centred in the silhouette.
+		-- Raising `hitRadius` instead is the trap Pyrelisk's note describes:
+		-- that number is also melee reach.
+		--
+		-- WHAT ELSE READS THIS PIVOT, traced before moving it, all fine:
+		--   * `inRange` measures melee off it - but the kraken row is
+		--     `rangedOnly` and the melee pick passes `skipRangedOnly`, so the
+		--     head is not in that list at all. Splash callers see the head
+		--     30 studs higher, which is where the body is.
+		--   * `bossMouth` / `throwGlob`'s launch point: visual origin only,
+		--     and better for it - globs now leave the mantle, not the foam.
+		--   * CombatService's `hitPoint` (impact VFX) and its knockback
+		--     direction: VFX follows the drawn body, and the knockback is
+		--     overwritten the same frame by `creature.pos = creature.anchor`.
+		--   * BossHudController's boss pick uses `flatDistance` - Y-blind.
+		--   * KrakenBodyController reads the PoseCenter attribute, not the
+		--     pivot, so nothing drawn moves.
+		--   * Attack origins do NOT read it: the barrage family grounds off
+		--     player roots, `undertow` and the stock tell read
+		--     `creature.anchor`, and the arm moves read the arms.
+		-- `creature.pos` is untouched and stays at the anchor, so every
+		-- damagePlayersInRadius origin in the fight is the same point it was.
+		local head = state.center
+		local lift = KrakenPath.lift(state) + KrakenPath.HEAD_HEIGHT * KrakenPath.SCALE * 0.4
+		creature.model:PivotTo(CFrame.new(head.X, head.Y + lift, head.Z) * CFrame.Angles(0, -(state.faceAngle or 0), 0))
 	end
 	if def.pose == "noctyss" then
 		-- Her authority position is the MOUTH when it is up and the pit's
@@ -4564,12 +5602,39 @@ local function placeColossus(creature, def, now: number, root: BasePart?)
 			creature.model:PivotTo(CFrame.fromMatrix(creature.pos, forward, right.Unit:Cross(forward).Unit))
 		end
 	end
+	if def.pose == "pyrelisk" then
+		-- WHAT THE STOCK TELL POINTS AT. beginBossAttack draws the row's
+		-- telegraph from bossFacing(), which reads `yaw0` - and for an
+		-- entrenched boss nothing writes yaw0 except an attack's own windup
+		-- tracking, which starts from whatever the last attack happened to
+		-- leave. So a directional stock tell (ventbreath's `coneTell`) drew its
+		-- wedge on a stale compass bearing. Held on the tracked player here,
+		-- one frame ahead of the latch that is about to commit to the same
+		-- bearing, so the wedge drawn is the wedge that burns. The negation is
+		-- the two conventions meeting - yawToward is atan2(-z, x), faceAngle is
+		-- atan2(z, x) - the same seam the Kraken's branch above closes.
+		local watching = state.targetPos
+		if watching then
+			local out = Vector3.new(watching.X - state.center.X, 0, watching.Z - state.center.Z)
+			if out.Magnitude > 0.01 then
+				creature.yaw0 = -math.atan2(out.Z, out.X)
+			end
+		end
+	end
 	if def.pose == "pyrelisk" and creature.mode ~= "stagger" then
 		-- The ramp is furniture ONLY inside the punish window. Clearing it
 		-- here rather than in the stagger exit keeps the whole rule in this
 		-- boss's own code: the client stops drawing the ramp and the fight
 		-- stops offering footing at the same instant, because both read this.
 		state.planted = 0
+	end
+	if def.pose == "pyrelisk" then
+		-- The mount ticks HERE rather than in the stagger branch, because this
+		-- is the one call every mode of this fight passes through - entrenched,
+		-- attacking, staggered and collapsing. The window's end, the shove and
+		-- the lava watch that outlives both are all consequences of the mode
+		-- changing, so they belong where the mode is always visible.
+		updatePyreliskMount(creature, def, state, now)
 	end
 	publishPose(creature, state)
 end
@@ -4651,6 +5716,13 @@ beginBossCollapse = function(creature, killer: Player?): boolean
 		slump = state.slump or 0,
 		unwind = state.unwind or 0,
 		sweepHeight = state.sweepHeight or BrinejawPath.SWEEP_LOW,
+		-- The rigged colossus's three. Same idea as the four above and the
+		-- same reason for existing: the fall starts from wherever the fight
+		-- left the body - mid-swing, mid-breath, or with an arm still down
+		-- across the moat - instead of snapping to a pose and then falling.
+		blend = state.blend or 0,
+		strike = state.strike or 0,
+		rise = state.rise or 1,
 	}
 	setMode(creature, "collapse", COLLAPSE_TIME, os.clock())
 	fireEvent("bossCollapse", creature.pos, { name = def.name, duration = COLLAPSE_TIME })
@@ -4674,6 +5746,35 @@ local function updateBossCollapse(creature, def, now: number)
 		state.slump = from.slump + (1 - from.slump) * e
 		state.unwind = from.unwind + (1 - from.unwind) * e
 		state.sweepHeight = from.sweepHeight + (BrinejawPath.SWEEP_LOW - from.sweepHeight) * e
+	elseif creature.poseKind == "pyrelisk" then
+		-- IT LETS GO. `collapse` is a real pose in PyreliskPath - both arms
+		-- sliding slack into the lake - so the death is that pose driven in
+		-- rather than a body being deleted where it stands.
+		--
+		-- Three numbers, and each one is a claim about what dying looks like
+		-- for a thing that is holding itself up:
+		--   * `planted` is cleared FIRST. A planted arm is furniture the pose
+		--     machinery holds rigid for the whole window (poseFor returns the
+		--     plant pose at full blend and ignores everything else), so a
+		--     colossus that died mid-mount would have fallen with one arm still
+		--     bolted across the moat. Clearing it also takes the climb's slabs
+		--     with it the next frame, which is correct: nobody stands on this
+		--     while it goes down.
+		--   * `blend` runs UP into the collapse pose, not down out of the last
+		--     attack - the fall is the last thing it does, so it gets the rig's
+		--     full commitment.
+		--   * `strike` runs to zero, because `armJoints` reads it as "drive the
+		--     working arm back toward rest THROUGH the pose", and a limb still
+		--     swinging a blow it never landed is the one thing a death must not
+		--     look like.
+		-- `slump` and `rise` carry the mass: the head goes down and the body
+		-- sinks back into the lava it came up out of.
+		state.planted = 0
+		state.attack = "collapse"
+		state.blend = from.blend + (1 - from.blend) * e
+		state.strike = from.strike * (1 - e)
+		state.slump = from.slump + (1 - from.slump) * e
+		state.rise = from.rise * (1 - e * 0.45)
 	end
 	-- No `root`: a dying boss does not track anybody, so the face angle it
 	-- died on is the one it falls on.
@@ -4686,8 +5787,19 @@ local function updateBossCollapse(creature, def, now: number)
 	end
 end
 
--- The reef stones a slam can be baited onto: three of them, and each one
--- shatters as it is spent, so a wasted bait is a real cost.
+-- The reef stones a slam can be baited onto, and each one shatters as it is
+-- spent, so a wasted bait is a real cost. Three in the cove; nine round the
+-- Ashfall Throne.
+--
+-- ON THE IMPORTED PYRELISK ARENA THERE IS NO `part` AT ALL, and every branch
+-- below is written to survive that. assets/arena_gen.py exports the monoliths
+-- as ONE merged `PyreliskArena_Teeth` object, so the per-stone `ReefStone<n>`
+-- lookup finds nothing: the bait radius still works (it is `position`, which
+-- comes from the config and not from a part), but a spent stone neither sinks
+-- nor shatters, so the only feedback for spending one is the window it opens.
+-- That is a known limitation and not something to paper over here - the real
+-- fix is for the generator to emit the nine teeth as nine named objects.
+-- Until it does, the rule for this table is: nothing may assume `part`.
 local function colossusStones(creature, def)
 	if creature.stones then
 		return creature.stones
@@ -4723,9 +5835,16 @@ local function colossusStones(creature, def)
 			-- rocks visibly snapped up to 63 degrees straight round the moment
 			-- the fight began. Sinking a stone is a pure translation, so the
 			-- live rotation is always the authored one and is safe to keep.
-			restCFrame = part
-					and (CFrame.new(part.Position.X, World.WATER_Y + 1.6, part.Position.Z) * part.CFrame.Rotation)
-				or nil,
+			--
+			-- AND THE PART'S OWN HEIGHT, not the waterline. This used to read
+			-- World.WATER_Y + 1.6, which is only the arena floor when the
+			-- arena is at sea level. Pyrelisk's is a volcano summit 292 studs
+			-- above it, so the first entrenched frame teleported all nine
+			-- monoliths that far under the caldera - and with them the bait
+			-- the whole punish window is earned on. BossArenaService.buildStones
+			-- has already stood each part on its own floor; the only thing
+			-- worth recording here is where it is.
+			restCFrame = part and (CFrame.new(part.Position) * part.CFrame.Rotation) or nil,
 		})
 		-- A new fight starts with every stone standing, so raise anything the
 		-- last party sank. Nothing else does this: the previous boss's table
@@ -5038,6 +6157,12 @@ ATTACK_HANDLERS.tailslam = {
 -- answer is the dark behind a shadow fin, or outrunning the arc, and both are
 -- things you do with your feet rather than your cooldowns. Nothing spawns and
 -- no geometry is built: a beam is a bearing and a half-angle (NoctyssPath).
+-- Defined with the other four handlers below, and forward-declared here for
+-- the same reason the file forward-declares removeOwnedParts and
+-- clearMawFloor: handfall's closures are built before that point, so a plain
+-- `local` there would bind as a nil global by the time one of them ran.
+local pyreliskLatch
+
 -- HANDFALL: the colossus lifts a fist over the rim and brings it down on the
 -- path. It is the fight's opener and its bait in one - come down beside one of
 -- the arena's obsidian monoliths and the rock shatters, the arm stays down
@@ -5059,25 +6184,12 @@ ATTACK_HANDLERS.handfall = {
 			-- impact across most of the rim path while the player is reading
 			-- the telegraph drawn for the old one.
 			a.aimed = true
-			local angle = state.faceAngle or 0
-			local radius = (p.maxReach or 232) * 0.75
-			local at = state.targetPos
-			if at then
-				local to = Vector3.new(at.X - state.center.X, 0, at.Z - state.center.Z)
-				if to.Magnitude > 0.01 then
-					angle = math.atan2(to.Z, to.X)
-					-- Clamped to the arena's walkable band: a fist that lands
-					-- in the lava or out past the lip is a blow nobody could
-					-- have been standing under.
-					radius = math.clamp(to.Magnitude, p.minReach or 120, p.maxReach or 232)
-				end
-			end
-			PyreliskPath.latch(state, angle)
-			a.impact = Vector3.new(
-				state.center.X + math.cos(angle) * radius,
-				state.center.Y,
-				state.center.Z + math.sin(angle) * radius
-			)
+			-- Shared with the other four, and it aims the ARM: passing the
+			-- pose turns the body far enough that the fist swings onto the
+			-- target instead of 60-70 degrees past it. `HANDFALL_IMPACT`
+			-- is where in the swing the blow lands, so the point marked here
+			-- is where the fist will BE then - not where it starts.
+			a.impact = pyreliskLatch(creature, def, p, "handfall", HANDFALL_IMPACT)
 			-- The shadow on the ground, for the whole lead time. `slam` is a
 			-- real telegraph branch on the client (a pulsing ring at the
 			-- radius); an unknown kind would degrade to a 3-stud sparkle,
@@ -5097,13 +6209,19 @@ ATTACK_HANDLERS.handfall = {
 		local state = colossusState(creature, def)
 		local a = creature.attack
 		state.strike = u
-		if a.fired or u < 0.45 then
+		-- The blow lands when the ARM does. This used to fire at 0.45, which
+		-- is 0.77s before the pose brings the fist down - the shockwave went
+		-- off while the hand was still 235 studs in the air and 60 studs
+		-- outside the arena.
+		if a.fired or u < HANDFALL_IMPACT then
 			return
 		end
 		a.fired = true
 		local lo, hi = bossRoll(creature, def, p.damage)
 		damagePlayersInRadius(a.impact, p.radius, lo, hi, creature, 0.35, BOSS_HEIGHT_TOLERANCE)
-		fireEvent("bossSlam", a.impact, { radius = p.radius, skin = "lava" })
+		-- `strikeHit`, not `bossSlam`: there is no EVENTS.bossSlam on the
+		-- client, so that call hit the catch-all and drew nothing at all.
+		fireEvent("strikeHit", a.impact, { radius = p.radius, skin = "lava" })
 		-- The bait. A monolith within reach shatters and buys the long window
 		-- with the arm left lying across the moat; open rock buys a jar.
 		local stone = spendStone(creature, def, a.impact, p.stoneReach or 26)
@@ -5122,6 +6240,381 @@ ATTACK_HANDLERS.handfall = {
 		if u >= 1 then
 			state.attack = ""
 		end
+	end,
+}
+
+-- ---------------------------------------------------- pyrelisk's other four
+--
+-- RIMSWEEP, VENTBREATH, ASHFALL, SHARDHURL. Every one of them drives the same
+-- three numbers `handfall` does - state.attack (which pose), state.blend (how
+-- far into it) and state.strike (how far through the blow) - because
+-- PyreliskBodyController draws the body from those and from nothing else. A
+-- handler that forgets one of them does not leave the rig unanimated: the rig
+-- holds whatever the last handler left on it, so a missed `strike = 0` is a
+-- fist that starts its windup already swung.
+--
+-- And every one of them LATCHES ITS AIM ONCE, on the first windup frame. The
+-- reason belongs next to the code and not only in PyreliskPath's header: the
+-- fist is 228 studs from the shoulder, so re-picking a target between frames
+-- swings the hazard across most of the rim path while the player is still
+-- reading the telegraph that was drawn for the old one. Three other bosses in
+-- this repo have been bitten by exactly that.
+--
+-- WHERE A BLOW MAY LAND. The rim path runs r=120 (the lake's edge) to r=232
+-- (the lip), but anything that comes down from ABOVE is capped at 200: past
+-- roughly r205 the lip undercuts and the outer strip of path is roofed, so a
+-- fist or a falling slab aimed out there arrives through the ceiling. That is
+-- why `pyreliskLatch` clamps the aim to [120, 200] and will not let a row
+-- widen it - only narrow it. A rake, which travels horizontally at path
+-- height, is not bound by that and the rimsweep row rakes to 228 on purpose.
+local PY_BAND_OUT = 200.0 -- PY_CLEAR_R: the outer edge of open sky
+local PY_PATH_OUT = 232.0 -- the lip itself: the last stud anyone can stand on
+
+-- COMMIT. Latches the pose's aim and hands back the ground point the attack
+-- has just promised, clamped into the band. Called once, from a windup, and
+-- never again for the life of that attack.
+function pyreliskLatch(creature, def, p, poseName: string?, strikeAt: number?): (Vector3, number, number)
+	local state = colossusState(creature, def)
+	local angle = state.faceAngle or 0
+	local radius = (PY_LAKE_R + PY_BAND_OUT) * 0.5
+	local near = math.max(p.minReach or PY_LAKE_R, PY_LAKE_R)
+	local far = math.min(p.maxReach or PY_BAND_OUT, PY_BAND_OUT)
+	local at = state.targetPos
+	if at then
+		local to = Vector3.new(at.X - state.center.X, 0, at.Z - state.center.Z)
+		if to.Magnitude > 0.01 then
+			angle = math.atan2(to.Z, to.X)
+			-- The row may narrow the band; it may not widen it. A minReach
+			-- under the lake's edge is a fist in its own lava, and a maxReach
+			-- past the undercut is a blow nobody could have been standing
+			-- under - neither is a row's decision to make.
+			radius = math.clamp(to.Magnitude, near, math.max(near, far))
+		end
+	end
+	-- AIM THE ARM, NOT THE BODY. A caller that passes a pose is aiming a
+	-- FIST, and this colossus cannot put a fist in front of itself: its
+	-- shoulders are 118 studs off-axis, so the arm lands 60-70 degrees round
+	-- its own flank (PyreliskPath.fistOffset explains why that is geometry
+	-- rather than a tunable). Latching the body at the target's own bearing
+	-- therefore puts the shockwave on the player and the visible fist ~200
+	-- studs of arc away. Turning the body that much further lands the arm on
+	-- the target and keeps the two together, which is the promise
+	-- PyreliskPath's header makes and could not previously keep.
+	local side = PyreliskPath.plantSide(state, angle)
+	local bodyAngle = angle
+	if poseName then
+		local localBearing, fistRadius = PyreliskPath.fistOffset(poseName, side, strikeAt)
+		bodyAngle = angle - localBearing
+		-- The reach is the ARM's, not the player's distance: where the fist
+		-- can be is a property of the pose. Clamped only as a sanity rail -
+		-- if this ever clamps, the pose and the band disagree and the
+		-- telegraph would stop marking the real landing point.
+		radius = math.clamp(fistRadius, near, math.max(near, far))
+	end
+	PyreliskPath.latch(state, bodyAngle, side)
+	local impact = Vector3.new(
+		state.center.X + math.cos(angle) * radius,
+		state.center.Y,
+		state.center.Z + math.sin(angle) * radius
+	)
+	return impact, angle, radius
+end
+
+-- The pose half of a windup, shared by all four: hold the attack's shape,
+-- blend into it over the windup, and make sure the blow reads as unswung.
+local function pyreliskWindupPose(state, name: string, u: number)
+	state.attack = name
+	state.blend = u
+	state.strike = 0
+end
+
+-- ...and the recovery, which is the same three numbers unwound. Clearing
+-- `attack` at the end matters: `poseFor` reads POSE[state.attack], so a name
+-- left behind holds the working arm in a pose it is no longer performing.
+local function pyreliskRecoverPose(state, u: number)
+	state.blend = 1 - u
+	state.strike = 1 - u
+	if u >= 1 then
+		state.attack = ""
+	end
+end
+
+-- Shortest signed way from `from` to `to`, in radians.
+local function pyreliskWrap(a: number): number
+	return (a + math.pi) % (math.pi * 2) - math.pi
+end
+
+-- RIMSWEEP: the arm draws back low and rakes an arc of the path. The whole
+-- forearm is the hazard, so the shape is a BAND of the ring rather than a
+-- point - which is why the row's tell is a `ringTell` at the boss (the stock
+-- draw's annulus, inner to radius) rather than a mark on the ground.
+--
+-- Bespoke on purpose. `orbitsweep` is the same idea and cannot be borrowed:
+-- every line of it drives sweepAngle / sweepHeight / unwind through
+-- BrinejawPath, which is a different animal's spine.
+ATTACK_HANDLERS.rimsweep = {
+	windup = function(creature, def, p, u, _sub)
+		local state = colossusState(creature, def)
+		local a = creature.attack
+		if not a.aimed then
+			a.aimed = true
+			local _, angle = pyreliskLatch(creature, def, p)
+			a.arc = p.arc or math.rad(150)
+			-- WHICH WAY IT RAKES: away from the shoulder that throws it,
+			-- decided by the arm the latch picked, never by a coin toss. A
+			-- direction the body cannot explain is a direction the player
+			-- cannot read, and this is a move you answer by running the right
+			-- way round the ring.
+			a.dir = if (state.aimSide or 1) < 0 then -1 else 1
+			-- Starting behind the target so the arm sweeps THROUGH them
+			-- rather than at them.
+			a.startAngle = angle - a.dir * a.arc * 0.5
+			a.angle = a.startAngle
+			a.inner = math.max(p.inner or 160, PY_LAKE_R)
+			a.outer = math.min(p.radius or PyreliskPath.REACH, PyreliskPath.REACH)
+			a.hit = {}
+			-- WHERE THE RAKE BEGINS, on the band, for the whole lead time.
+			-- The row's stock `ringTell` says which annulus is about to be
+			-- dangerous; this one says which end of it the arm enters from,
+			-- and the two together are the difference between "get out of the
+			-- outer band" and "get out of the outer band THAT way".
+			local mid = (a.inner + a.outer) * 0.5
+			local entry = Vector3.new(
+				state.center.X + math.cos(a.startAngle) * mid,
+				state.center.Y,
+				state.center.Z + math.sin(a.startAngle) * mid
+			)
+			fireEvent("telegraph", entry, {
+				kind = "mark",
+				radius = (a.outer - a.inner) * 0.5,
+				duration = p.windup + p.duration,
+				skin = p.skin,
+			})
+		end
+		pyreliskWindupPose(state, "rimsweep", u)
+	end,
+	strike = function(creature, def, p, _now, dt, u, _root, _sub)
+		local state = colossusState(creature, def)
+		local a = creature.attack
+		state.strike = u
+		local from = a.angle
+		a.angle = from + a.dir * (a.arc / math.max(p.duration, 1e-3)) * dt
+		local step = (a.angle - from) * a.dir
+		local lo, hi = bossRoll(creature, def, p.damage)
+		for _, entry in livingRootsNear(state.center, a.outer + 8) do
+			if not a.hit[entry.player] then
+				local stood = entry.root.Position
+				local to = Vector3.new(stood.X - state.center.X, 0, stood.Z - state.center.Z)
+				local d = to.Magnitude
+				local level = math.abs(stood.Y - state.center.Y) <= BOSS_HEIGHT_TOLERANCE
+				if level and d >= a.inner and d <= a.outer then
+					-- THE WEDGE THE ARM CROSSED THIS FRAME, not the bearing
+					-- it happens to be on now. A 150-degree arc in 1.8s
+					-- travels 83 deg/s while the arm is only about 9 degrees
+					-- wide out at the band, so on a loaded server one 20fps
+					-- step can straddle a player entirely and the boss
+					-- whiffs for free. Testing the swept interval instead
+					-- makes the hit independent of the frame rate, and the
+					-- pad is the forearm's own girth in radians at that
+					-- player's distance rather than a guessed constant.
+					local pad = (p.girth or PyreliskPath.WALK_ARM_SIZE.Z) * 0.5 / math.max(d, 1)
+					local rel = pyreliskWrap(math.atan2(to.Z, to.X) - from) * a.dir
+					if rel >= -pad and rel <= step + pad then
+						a.hit[entry.player] = true
+						PlayerService.damage(entry.player, math.random(lo, hi), creature, { bypassIframe = true })
+					end
+				end
+			end
+		end
+	end,
+	recover = function(creature, def, _p, u, _sub)
+		pyreliskRecoverPose(colossusState(creature, def), u)
+	end,
+}
+
+-- VENTBREATH: the head rears, the jaw opens (PyreliskPath.jawAngle and
+-- headCFrame both read this attack BY NAME) and a molten cone comes out along
+-- the bearing it committed to. What it leaves behind is the point: pools of
+-- burning ground that take path away for the rest of the fight.
+--
+-- `conebreath` is the generic version of this and was tried first. It cannot
+-- be used here, for three separate reasons, and each one fails SILENTLY:
+--   * it re-aims every frame off `root` (`the jet tracks slowly`), which is
+--     the one thing PyreliskPath's contract forbids;
+--   * it takes its cone's origin from `creature.pos`, which for a colossus is
+--     the proxy's pivot lifted by half its own thickness, and
+--     damagePlayersInCone gates on 12 studs of height difference - so at this
+--     body's scale the cone would simply miss everyone, every time, with no
+--     error anywhere;
+--   * it PivotTo's the model each frame, dragging the invisible authority
+--     hitbox around under a body the client draws from the pose.
+-- The tick-and-pool SHAPE below is conebreath's, deliberately, so the two
+-- moves stay recognisably the same move.
+ATTACK_HANDLERS.ventbreath = {
+	windup = function(creature, def, p, u, _sub)
+		local state = colossusState(creature, def)
+		local a = creature.attack
+		if not a.aimed then
+			a.aimed = true
+			local _, angle = pyreliskLatch(creature, def, p)
+			a.facing = Vector3.new(math.cos(angle), 0, math.sin(angle))
+			-- No telegraph of its own: the row's stock `coneTell` IS this
+			-- move's warning, drawn along bossFacing at the pivot, and
+			-- placeColossus now holds this boss's yaw0 on the tracked player
+			-- one frame ahead of this latch - so the wedge that was drawn is
+			-- the wedge that burns.
+		end
+		pyreliskWindupPose(state, "ventbreath", u)
+	end,
+	fire = function(creature, def, p, _now, _root)
+		local state = colossusState(creature, def)
+		local a = creature.attack
+		local reach = p.range or p.reach or 250
+		-- The jet, once, from the jaw rather than from the pivot: this body's
+		-- mouth is 214 studs up and the whole read of the move is that the
+		-- fire comes out of the head. Once and not per tick because the
+		-- client's beam draws a puff every five studs, and at this reach that
+		-- is fifty parts a tick for two and a half seconds.
+		local head = PyreliskPath.headCFrame(state).Position
+		fireEvent("beam", head, {
+			to = state.center + a.facing * reach,
+			skin = p.skin,
+		})
+	end,
+	strike = function(creature, def, p, now, _dt, u, _root, _sub)
+		local state = colossusState(creature, def)
+		local a = creature.attack
+		state.strike = u
+		local reach = p.range or p.reach or 250
+		if now >= (a.nextTickAt or 0) then
+			a.nextTickAt = now + (p.tick or p.tickEvery or 0.35)
+			local lo, hi = bossRoll(creature, def, p.damage)
+			-- From the CENTRE at path height, not from the head: the cone
+			-- test is horizontal and gates on height, and the players are on
+			-- the floor the lake's surface defines.
+			damagePlayersInCone(state.center, a.facing, reach, p.cone or math.rad(44), false, lo, hi, creature)
+			-- The fire walking out along the wedge, one cheap ring a tick.
+			local walk = reach * (0.3 + 0.6 * u)
+			fireEvent("strikeHit", state.center + a.facing * walk, { radius = 18, skin = p.skin })
+		end
+		-- WHAT IT LEAVES. Three pools down the axis rather than one at the
+		-- end: the move's whole job is to take a wedge of path away, and a
+		-- single pool 250 studs out takes away a spot nobody stands on.
+		if p.pool and not a.fired and u >= 0.95 then
+			a.fired = true
+			for _, along in { 0.45, 0.7, 0.95 } do
+				spawnPool(creature, state.center + a.facing * (reach * along), p.pool, now)
+			end
+		end
+	end,
+	recover = function(creature, def, _p, u, _sub)
+		pyreliskRecoverPose(colossusState(creature, def), u)
+	end,
+}
+
+-- ASHFALL: the summit sheds, and marked ground lands under every player at
+-- once. The one move in the book you cannot answer by being somewhere else.
+--
+-- The strike itself is an ordinary `barrage` - delegated, not reimplemented,
+-- so its marks, its damage and its client effects are the ones every other
+-- boss in the game uses. Only `fire` is borrowed: barrage's own windup and
+-- strike PivotTo the model, which for a posed colossus would drag the
+-- invisible authority hitbox around under a body drawn from the rig.
+--
+-- There is no direction to latch and nothing here re-aims: `everyone` places
+-- one mark under each player at the moment the strike begins and those marks
+-- do not move afterwards, so the telegraph still cannot lie. The latch is
+-- still taken, for the body: it decides which way the mountain is facing when
+-- it throws its arms up.
+ATTACK_HANDLERS.ashfall = {
+	windup = function(creature, def, p, u, _sub)
+		local state = colossusState(creature, def)
+		local a = creature.attack
+		if not a.aimed then
+			a.aimed = true
+			pyreliskLatch(creature, def, p)
+		end
+		pyreliskWindupPose(state, "ashfall", u)
+	end,
+	fire = function(creature, def, p, now, root)
+		local base = ATTACK_HANDLERS.barrage.fire
+		if base then
+			base(creature, def, p, now, root)
+		end
+	end,
+	strike = function(creature, def, _p, _now, _dt, u, _root, _sub)
+		colossusState(creature, def).strike = u
+	end,
+	recover = function(creature, def, _p, u, _sub)
+		pyreliskRecoverPose(colossusState(creature, def), u)
+	end,
+}
+
+-- SHARDHURL: it tears a slab off its own shell and throws it. Chip damage,
+-- and the only thing in the book that reaches the outer band under the lip.
+--
+-- The throw is `volley`'s primitive (throwGlob: one queued rock that lands on
+-- its own clock and takes the damage with it), but volley's own `fire` cannot
+-- be used - it scatters around `root` at the moment of the strike, which
+-- re-aims after the telegraph and cannot respect this arena's bands. So the
+-- landings are chosen at WINDUP, marked there, and merely spent at `fire`.
+ATTACK_HANDLERS.shardhurl = {
+	windup = function(creature, def, p, u, _sub)
+		local state = colossusState(creature, def)
+		local a = creature.attack
+		if not a.aimed then
+			a.aimed = true
+			local impact = pyreliskLatch(creature, def, p)
+			a.landings = {}
+			local count = p.count or 3
+			for i = 1, count do
+				-- Scattered around the committed point, then pulled back onto
+				-- the path: the aim is capped at r200 (open sky), but a slab
+				-- comes in on a low arc rather than straight down, so its
+				-- scatter is allowed the full walkable band. What it may
+				-- never do is land in the lake or off the arena entirely.
+				local theta = math.random() * math.pi * 2
+				local spread = math.sqrt(math.random()) * (p.spread or 30)
+				local at = impact + Vector3.new(math.cos(theta) * spread, 0, math.sin(theta) * spread)
+				local out = Vector3.new(at.X - state.center.X, 0, at.Z - state.center.Z)
+				local d = math.clamp(out.Magnitude, PY_LAKE_R + 4, PY_PATH_OUT)
+				local dir = if out.Magnitude > 0.01 then out.Unit else Vector3.xAxis
+				local landing = state.center + dir * d
+				table.insert(a.landings, landing)
+				-- MARKED FROM THE WINDUP, each for its own whole lead time -
+				-- the windup that is left plus that slab's flight. A mark
+				-- fired when the rock is released would appear at the same
+				-- moment as the rock and warn nobody.
+				fireEvent("telegraph", landing, {
+					kind = "mark",
+					radius = p.radius,
+					duration = p.windup + (i - 1) * (p.stagger or 0.25) + (p.flight or 1.2),
+					skin = p.skin,
+				})
+			end
+		end
+		pyreliskWindupPose(state, "shardhurl", u)
+	end,
+	fire = function(creature, def, p, now, _root)
+		local a = creature.attack
+		for i, landing in (a.landings or {}) do
+			throwGlob(
+				creature,
+				def,
+				p,
+				landing,
+				(p.flight or 1.2) + (i - 1) * (p.stagger or 0.25),
+				now,
+				"strikeHit",
+				"spine"
+			)
+		end
+	end,
+	strike = function(creature, def, _p, _now, _dt, u, _root, _sub)
+		colossusState(creature, def).strike = u
+	end,
+	recover = function(creature, def, _p, u, _sub)
+		pyreliskRecoverPose(colossusState(creature, def), u)
 	end,
 }
 
@@ -5152,12 +6645,6 @@ ATTACK_HANDLERS.lightsweep = {
 				-- ANTICIPATION. The stalk rocks back off the bearing it is
 				-- about to sweep, so the lean reads as a wind-up rather than
 				-- a drift - the same beat a thrown punch has.
-				NoctyssPath.flinch(
-					state,
-					a.stalk,
-					0.35,
-					-Vector3.new(math.cos(a.startAngle), 0, math.sin(a.startAngle))
-				)
 			end
 		end
 		local stalk = a.stalk and state.stalks[a.stalk]
@@ -5194,12 +6681,6 @@ ATTACK_HANDLERS.lightsweep = {
 			a.apex = NoctyssPath.bulbPosition(state, a.stalk)
 			-- The snap out of the wind-up, along the bearing the light is
 			-- about to travel.
-			NoctyssPath.flinch(
-				state,
-				a.stalk,
-				0.9,
-				Vector3.new(math.cos(stalk.beamAngle), 0, math.sin(stalk.beamAngle))
-			)
 			-- THE ONLY THING THAT TELLS THE CLIENT A SWEEP IS HAPPENING.
 			-- The hitbox is analytic (a bearing and a half-angle, tested per
 			-- tick), so nothing about the beam exists as an object for the
@@ -5258,6 +6739,35 @@ ATTACK_HANDLERS.lightsweep = {
 -- The strike itself is an ordinary `barrage` - delegated, not reimplemented,
 -- so its telegraphs, damage and client effects stay the ones every other
 -- boss uses. All this handler owns is the dark.
+-- LUREPULL: the stock pull, with a telegraph that is actually above ground.
+-- The true lure flares and hauls the whole shelf toward the pit; the drag is
+-- the shared handler's, and all this adds is the one thing it could not do -
+-- announce itself somewhere the player can see.
+ATTACK_HANDLERS.lurepull = {
+	windup = function(creature, def, p, u, sub)
+		local a = creature.attack
+		if not a.told then
+			a.told = true
+			local state = colossusState(creature, def)
+			-- At the rim, at shelf height, for the whole wind-up: the lure
+			-- flaring is the warning, and it has to be read from the floor.
+			fireEvent("telegraph", state.center + Vector3.new(0, 1.5, 0), {
+				kind = "mark",
+				duration = p.windup,
+				radius = NoctyssPath.PIT_R + 3,
+				skin = p.skin,
+			})
+		end
+		local base = ATTACK_HANDLERS.pull.windup
+		if base then
+			base(creature, def, p, u, sub)
+		end
+	end,
+	fire = ATTACK_HANDLERS.pull.fire,
+	strike = ATTACK_HANDLERS.pull.strike,
+	finish = ATTACK_HANDLERS.pull.finish,
+}
+
 ATTACK_HANDLERS.dousehunt = {
 	windup = function(creature, def, p, u, sub)
 		local state = colossusState(creature, def)
@@ -5284,7 +6794,6 @@ ATTACK_HANDLERS.dousehunt = {
 		creature.relightAt = now + (p.dark or 1.6)
 		-- The choir jolts as it goes out, so the dark has a moment rather
 		-- than the lanterns simply ceasing to be drawn.
-		flinchChoir(state, 0.55)
 		-- The client blacks the arena down for exactly as long as the server
 		-- holds the lanterns off: `dark` is the one number both sides run the
 		-- scare on, so the light cannot come back before the fear does.
@@ -5332,20 +6841,34 @@ ATTACK_HANDLERS.dousehunt = {
 --     writes its cooldown, silenced or not.
 local ProjectileService = require(script.Parent.ProjectileService)
 
--- How far past the roam disc a ball flies before it is retired. The Careenage
--- is walkable to r 78 and awash flat to r 88 with Wrack planted at its
--- centre, so this has to clear the whole shoal or the far edge becomes a safe
--- room. Overridable per row as `p.bound`.
-local WRACK_BOUND_MARGIN = 48
+-- How far past the roam disc a ball flies before it is retired. THE REBUILT
+-- CAREENAGE (231a200) is walkable to r 132 with nothing standing on it, and
+-- the palisade of grounded hulls starts at r 140, so this has to clear the
+-- whole beach or the far edge becomes a safe room - which on a floor this big
+-- would be an enormous one. `arena.radius` is 80, so 60 retires a ball at
+-- r 140: eight studs past the last walkable sand, on the palisade itself.
+--
+-- AND IT IS NOW CONSISTENT WITH `lifetime`. Every ballistic row's lifetime is
+-- authored as (140 - spawnAt) / speed, so a ball expires at almost exactly the
+-- radius the bound would have retired it at. Before this retune the bound was
+-- 88 against reaches of 106-183, so `lifetime` never fired on any of the eight
+-- ballistic rows and was a dead knob that read as a live one. Overridable per
+-- row as `p.bound`.
+local WRACK_BOUND_MARGIN = 60
 local WRACK_MUZZLE_LIFT = 5
 
--- THE GUN DECKS ARE THE GUNS. Every pattern's ball count scales with how many
--- batteries still stand, so silencing one is visible on the screen the same
--- second it dies - and silencing all four stops the guns dead, which IS the
--- melee burst window (`vulnerableWhen = "partsDown"` opens the hull at the
--- same instant). The 0.4 floor is a judgement call: a straight linear scale
--- made the last battery a formality, and no floor at all made three-down feel
--- like the fight had already ended.
+-- THE GUN DECKS ARE THE GUNS - and since 2026-09-06 that is literal: every
+-- ball in the fight leaves a live battery (see wrackDeckPositions and
+-- ProjectileService's muzzleOf / deckRunOut), not a circle drawn round the
+-- middle of the hull. Every pattern's ball count ALSO scales with how many
+-- batteries still stand - slewfire included, which used to be the one
+-- exception and is now not - so silencing one is visible on the screen the
+-- same second it dies, in both the amount of fire and where it comes from.
+-- Silencing all four stops the guns dead, which IS the melee burst window
+-- (`vulnerableWhen = "partsDown"` opens the hull at the same instant). The 0.4
+-- floor is a judgement call: a straight linear scale made the last battery a
+-- formality, and no floor at all made three-down feel like the fight had
+-- already ended.
 local function wrackScale(creature, def, now: number): number
 	local parts = def.parts
 	if not parts or creature.partsAlive == nil then
@@ -5397,8 +6920,104 @@ local function wrackAim(creature): Vector3
 		local centre = creature.anchor or creature.pos
 		local root = nearestPlayerRoot(centre)
 		a.wrackAim = if root then flatUnit(root.Position - centre) else bossFacing(creature)
+		-- AND THE POINT, not only the bearing. Every aimed pattern now leaves
+		-- a gun deck standing up to 40 studs off the hull's centre, and a
+		-- bearing measured from the centre, fired from the bow, misses by that
+		-- whole offset - by more than the width of its own cone at anything
+		-- under 90 studs. The MARK is what is actually latched; the bearing
+		-- above is what a caller with no muzzle of its own still asks for.
+		a.wrackMark = if root then Vector3.new(root.Position.X, centre.Y, root.Position.Z) else centre + a.wrackAim * 90
 	end
 	return a.wrackAim
+end
+
+-- The latched target, re-aimed from a gun that is not at the centre.
+local function wrackAimFrom(creature, from: Vector3): Vector3
+	local a = creature.attack
+	local mark = a and a.wrackMark
+	if not mark then
+		return wrackAim(creature)
+	end
+	local to = Vector3.new(mark.X - from.X, 0, mark.Z - from.Z)
+	return if to.Magnitude > 0.001 then to.Unit else wrackAim(creature)
+end
+
+-- THE LIVE GUN DECKS, where they actually stand. `livingArms` is not
+-- Kraken-specific despite the name - `partOf` and `socketIndex` are stamped by
+-- spawnBossParts for every parts boss - so this reuses it rather than growing
+-- a second parts list to keep in sync, which is the thing spawnBossParts'
+-- `ringParts` comment refuses to do for exactly this reason. Sorted by socket,
+-- so a wisp's round-robin is stable across volleys.
+local function wrackDeckPositions(creature): { Vector3 }
+	local out = {}
+	for _, part in livingArms(creature) do
+		table.insert(out, part.pos)
+	end
+	return out
+end
+
+-- The four decks as flat offsets from the arena centre - what a radial
+-- pattern and the wisps read, and what picks the gun for an aimed one.
+local function wrackDeckOffsets(creature, centre: Vector3): ({ Vector3 }, { Vector3 })
+	local at = wrackDeckPositions(creature)
+	local offsets = table.create(#at)
+	for _, world in at do
+		table.insert(offsets, Vector3.new(world.X - centre.X, 0, world.Z - centre.Z))
+	end
+	return offsets, at
+end
+
+-- THE GUN AN AIMED PATTERN FIRES FROM, latched like the aim and for the same
+-- reason (rule 1 at the top of this section): the telegraph and the balls have
+-- to leave the same brass, and a fan that changes which deck it is coming out
+-- of halfway through its own windup is a tell that lies.
+--
+-- Chosen once, as the live battery best lined up with the latched bearing.
+-- Held by POSITION rather than by index, because indices shift the moment a
+-- deck dies: if the latched gun is broken before the volley lands, the shot
+-- hands off to the nearest battery still standing instead of firing out of a
+-- wreck. Returns the gun's world position and the bearing re-aimed from it,
+-- or nil when nothing is left standing (the burst window - nothing fires).
+local function wrackGunFor(creature): (Vector3?, Vector3)
+	local a = creature.attack
+	local centre = creature.anchor or creature.pos
+	local aim = wrackAim(creature)
+	local offsets, at = wrackDeckOffsets(creature, centre)
+	if #at == 0 then
+		return nil, aim
+	end
+	local want = a and a.wrackGunAt
+	local best, bestScore = nil, -math.huge
+	for i, world in at do
+		local score
+		if want then
+			local dx, dz = world.X - want.X, world.Z - want.Z
+			score = -(dx * dx + dz * dz)
+		else
+			local off = offsets[i]
+			score = if off.Magnitude > 0.001 then (off.X * aim.X + off.Z * aim.Z) / off.Magnitude else -1
+		end
+		if score > bestScore then
+			bestScore, best = score, world
+		end
+	end
+	if a and not a.wrackGunAt then
+		a.wrackGunAt = best
+	end
+	return best, wrackAimFrom(creature, best)
+end
+
+-- How far the furthest live deck stands from the centre. The ring and mark
+-- tells are drawn round the muzzle LOCUS, which is no longer a circle of
+-- radius `spawnAt` but that circle pushed out to each gun's own range.
+local function wrackDeckReach(creature): number
+	local centre = creature.anchor or creature.pos
+	local far = 0
+	for _, world in wrackDeckPositions(creature) do
+		local dx, dz = world.X - centre.X, world.Z - centre.Z
+		far = math.max(far, math.sqrt(dx * dx + dz * dz))
+	end
+	return far
 end
 
 -- World angle of a flat bearing, in ProjectileService's convention
@@ -5406,6 +7025,13 @@ end
 local function wrackAngle(dir: Vector3): number
 	return math.atan2(dir.Z, dir.X)
 end
+
+-- Which patterns fire from ONE gun. The rest are all-round: broadside and
+-- slewfire radiate from the arena centre with each ball born at the range of
+-- the deck facing it, and wisps take one lantern per deck. See
+-- ProjectileService's "firing from the guns" block for why the radial two
+-- cannot simply be translated onto their decks.
+local WRACK_AIMED = { grapeshot = true, chainshot = true, anchorsweep = true }
 
 -- One volley out. Returns the ball count (0 when the decks are silent).
 --
@@ -5430,11 +7056,32 @@ local function wrackEmit(pattern: string, creature, def, p, now: number, gap: nu
 		(def.parts and def.parts.count) or 4,
 		"cannon"
 	)
+	-- THE BRASS FIRES. `centre` stays the arena centre and keeps its one
+	-- remaining job (it is what `bound` is measured from); `decks` and
+	-- `muzzle` are where the shot actually leaves. An aimed pattern gets one
+	-- gun and a bearing re-aimed from it; the rest get the whole live list.
+	local decks = wrackDeckOffsets(creature, centre)
+	local aim = wrackAim(creature)
+	local muzzle, flash = nil, nil
+	if WRACK_AIMED[pattern] then
+		local gun, from = wrackGunFor(creature)
+		if gun then
+			muzzle = Vector3.new(gun.X, centre.Y, gun.Z)
+			aim = from
+			-- The flash at the gun's own HEIGHT - the Deck battery is 35.7
+			-- studs up. The balls stay on the flat flight plane, because the
+			-- hit test is flat; only the muzzle burst knows about the mortar
+			-- deck it came off.
+			flash = gun + Vector3.new(0, WRACK_MUZZLE_LIFT, 0)
+		end
+	end
 	return ProjectileService.emit(pattern, {
 		owner = creature,
 		centre = centre,
-		origin = creature.model:GetPivot().Position + Vector3.new(0, WRACK_MUZZLE_LIFT, 0),
-		aim = wrackAim(creature),
+		muzzle = muzzle,
+		decks = decks,
+		origin = flash or (creature.model:GetPivot().Position + Vector3.new(0, WRACK_MUZZLE_LIFT, 0)),
+		aim = aim,
 		gap = gap or 0,
 		phase = phase,
 		scale = scale,
@@ -5485,8 +7132,8 @@ local function wrackRingTell(creature, p, radius: number)
 	})
 end
 
-local function wrackLaneTell(creature, p, aim: Vector3, width: number, length: number)
-	fireEvent("wrackTell", creature.model:GetPivot().Position, {
+local function wrackLaneTell(p, at: Vector3, aim: Vector3, width: number, length: number)
+	fireEvent("wrackTell", at, {
 		shape = "lane",
 		aim = aim,
 		width = width,
@@ -5496,8 +7143,11 @@ local function wrackLaneTell(creature, p, aim: Vector3, width: number, length: n
 	})
 end
 
-local function wrackConeTell(creature, p, aim: Vector3, arcDeg: number, wedges: number)
-	local at = creature.model:GetPivot().Position
+-- `at` IS THE GUN, not the pivot. The client marches the wedge's rings out
+-- along `facing` from the point it is given, so a cone drawn at the middle of a
+-- 67-stud hull for a fan that leaves the bowsprit points at ground the shot
+-- never crosses.
+local function wrackConeTell(p, at: Vector3, aim: Vector3, arcDeg: number, wedges: number)
 	local base = wrackAngle(aim)
 	local arc = math.rad(arcDeg)
 	local step = if wedges > 1 then arc / (wedges - 1) else 0
@@ -5528,11 +7178,15 @@ ATTACK_HANDLERS.broadside = {
 				+ math.rad(p.gapStep or 46) * (0.5 + math.random())
 			a.wrackGapAt = creature.wrackGap
 			-- Two cues, because a ring with a hole in it needs both: the ring
-			-- itself (loud, and readable from any facing), then the gap.
-			wrackRingTell(creature, p, (p.spawnAt or 16) + (p.markAt or 22))
+			-- itself (loud, and readable from any facing), then the gap. Both
+			-- are drawn OUTSIDE the muzzle locus - which is no longer a plain
+			-- circle of radius `spawnAt` but that circle pushed out to each
+			-- live deck's own range - so the cue never lands inside the wall
+			-- it is announcing.
+			local mark = wrackDeckReach(creature) + (p.spawnAt or 16) + (p.markAt or 22)
+			wrackRingTell(creature, p, mark)
 			-- THE ANSWER, DRAWN: a disc out on the sand where the gap opens.
 			local centre = creature.anchor or creature.pos
-			local mark = (p.spawnAt or 16) + (p.markAt or 22)
 			local dir = Vector3.new(math.cos(a.wrackGapAt), 0, math.sin(a.wrackGapAt))
 			fireEvent("telegraph", groundedPos(centre + dir * mark, 0), {
 				kind = "mark",
@@ -5574,8 +7228,10 @@ ATTACK_HANDLERS.grapeshot = {
 		local a = creature.attack
 		if not a.wrackTold then
 			a.wrackTold = true
-			-- One wedge: the fan is 30-38 degrees, which IS a wedge.
-			wrackConeTell(creature, p, wrackAim(creature), 0, 1)
+			-- One wedge, from the gun that is going to fire it: the fan is a
+			-- wedge's width, and it leaves one battery.
+			local gun, from = wrackGunFor(creature)
+			wrackConeTell(p, gun or creature.model:GetPivot().Position, from, 0, 1)
 		end
 		creature.model:PivotTo(poseCFrame(creature, sub, 0, math.rad(-9) * u))
 	end,
@@ -5606,8 +7262,17 @@ ATTACK_HANDLERS.chainshot = {
 		if not a.wrackTold then
 			a.wrackTold = true
 			-- One wedge per pair, so the tell shows where the PAIRS go and
-			-- the lanes between them read as the lanes they are.
-			wrackConeTell(creature, p, wrackAim(creature), p.fanDeg or 120, p.pairs or 3)
+			-- the lanes between them read as the lanes they are. Drawn from
+			-- the gun the pairs actually leave, and capped at three wedges
+			-- because each one is another bossTell one-shot (see above).
+			local gun, from = wrackGunFor(creature)
+			wrackConeTell(
+				p,
+				gun or creature.model:GetPivot().Position,
+				from,
+				p.fanDeg or 120,
+				math.min(p.pairs or 3, 3)
+			)
 		end
 		creature.model:PivotTo(
 			poseCFrame(creature, sub + 0.3 * u, math.sin(u * 22) * math.rad(3) * u, math.rad(11) * u)
@@ -5631,10 +7296,12 @@ ATTACK_HANDLERS.slewfire = {
 		if not a.wrackTold then
 			a.wrackTold = true
 			a.wrackGapAt = wrackAngle(wrackAim(creature))
+			-- The annulus has to cover the whole muzzle locus, which runs from
+			-- `spawnAt` out to `spawnAt` + the furthest live deck's range.
 			fireEvent("telegraph", creature.anchor or creature.pos, {
 				kind = "ringTell",
 				duration = p.windup,
-				radius = (p.spawnAt or 14) + 4,
+				radius = wrackDeckReach(creature) + (p.spawnAt or 14) + 4,
 				inner = math.max(0, (p.spawnAt or 14) - 4),
 				skin = p.skin,
 			})
@@ -5661,19 +7328,25 @@ ATTACK_HANDLERS.slewfire = {
 }
 
 -- Wisps: a few slow homing lantern-lights. Weak, and that is the point - they
--- deny standing still and make the breakwater hulks worth using, because each
--- one turns at a fixed rate and a tight orbit makes it overshoot. p: count,
--- speed, homingDeg, radius, damage, spawnAt, lifetime, spreadDeg.
+-- deny standing still. Each turns at a fixed rate (15.6 studs of turn radius
+-- at the authored speed) and a player has none, so a circle run tighter than
+-- that makes every one of them overshoot: the answer is a movement, not a
+-- place, and it works on the bare floor the rebuild left. One lantern lifts
+-- off each live deck. p: count, speed, homingDeg, radius, damage, spawnAt,
+-- lifetime, spreadDeg.
 ATTACK_HANDLERS.wisps = {
 	windup = function(creature, _def, p, u, sub)
 		local a = creature.attack
 		if not a.wrackTold then
 			a.wrackTold = true
 			wrackAim(creature)
-			fireEvent("telegraph", creature.model:GetPivot().Position, {
+			-- The ring they are born from, which is now the DECKS' ring: one
+			-- lantern lifts off each live battery, so the mark has to reach
+			-- the furthest of them or it points at empty hull.
+			fireEvent("telegraph", creature.anchor or creature.pos, {
 				kind = "mark",
 				duration = p.windup,
-				radius = p.spawnAt or 12,
+				radius = wrackDeckReach(creature) + (p.spawnAt or 12),
 				skin = p.skin,
 			})
 		end
@@ -5699,9 +7372,9 @@ ATTACK_HANDLERS.anchorsweep = {
 			-- the camera's rear blind spot. So it gets a RING first - drawn
 			-- around the player's own ground, legible whichever way they face
 			-- - and then a lane naming the half about to become a wall.
-			local aim = wrackAim(creature)
-			wrackRingTell(creature, p, (p.spawnAt or 16) + (p.tellReach or 30))
-			wrackLaneTell(creature, p, aim, p.tellWidth or 96, p.tellRange or 90)
+			local gun, from = wrackGunFor(creature)
+			wrackRingTell(creature, p, wrackDeckReach(creature) + (p.spawnAt or 16) + (p.tellReach or 30))
+			wrackLaneTell(p, gun or creature.model:GetPivot().Position, from, p.tellWidth or 96, p.tellRange or 90)
 		end
 		local e = smoothstep(u)
 		creature.model:PivotTo(poseCFrame(creature, sub + 0.9 * e, 0, math.rad(-24) * e))
@@ -5721,7 +7394,16 @@ local function spawnBossParts(creature, def)
 		warn(string.format("[CreatureService] boss %q parts name unknown row %q", def.id, parts.row))
 		return
 	end
+	-- THE SAME CENTRE THE POSE USES, not the raw anchor. `spawn` lifts a
+	-- creature by half its own thickness and `colossusState` snaps that back
+	-- to the waterline so the arena's authored heights hold. Publishing the
+	-- unlifted anchor here put every client-drawn lantern ~5.5 studs above
+	-- the hitbox the server stands at that socket - which, against a
+	-- 2.6-stud lantern, is every shot in the fight missing what it hit.
 	local centre = creature.anchor or creature.pos
+	if creature.pose and creature.pose.center then
+		centre = creature.pose.center
+	end
 	-- WHERE THEY STAND. `at = "sockets"` takes the AUTHORED offsets from the
 	-- arena row (BossArenas), so the Lantern Choir grows out of the arena's
 	-- seven carved collars instead of a guessed circle - the one thing that
@@ -5748,10 +7430,34 @@ local function spawnBossParts(creature, def)
 		count = math.min(count, #offsets)
 	elseif mounts then
 		count = math.min(count, #mounts)
+	elseif parts.bearings then
+		-- A short bearings list would silently plant a ring with holes in it
+		-- and, worse, index nil into the position maths below. Clamped and
+		-- said out loud, because "the fan is one arm short" is not something
+		-- anybody would ever notice from inside the fight.
+		if #parts.bearings ~= count then
+			warn(
+				string.format(
+					"[CreatureService] boss %q has %d bearings for %d parts - planting %d",
+					def.id,
+					#parts.bearings,
+					count,
+					math.min(count, #parts.bearings)
+				)
+			)
+		end
+		count = math.min(count, #parts.bearings)
 	end
 	-- THE TRUE LURE: one of them, redrawn every time the choir grows back, so
 	-- "which light is real" is never answered twice by the same socket.
 	local marked = if parts.mark then math.random(1, count) else nil
+	local planted, markedPlanted = 0, false
+	-- THE CHOIR, AS A LIST. `updateChoir` needs these seven every frame and
+	-- used to find them by scanning the whole world; this is the same seven,
+	-- written down once where they are made. Built for every parts boss but
+	-- published (below) only for a marked ring, so nothing else grows a
+	-- second, unowned copy of its parts list to keep in sync.
+	local ringParts = {}
 	for i = 1, count do
 		local at
 		if mounts then
@@ -5776,7 +7482,27 @@ local function spawnBossParts(creature, def)
 		elseif offsets then
 			at = Vector3.new(centre.X + offsets[i].X, centre.Y, centre.Z + offsets[i].Z)
 		else
-			local angle = (i / count) * math.pi * 2
+			-- `bearings` is the AUTHORED form of the ring: an explicit list of
+			-- world bearings in radians (+X = 0, +Z = pi/2), one per part, in
+			-- the order they are planted - so entry `i` IS socket index `i`,
+			-- which is the number stamped below and the number the client
+			-- claims its arm by. `ring` still gives the radius; only the
+			-- angles move here.
+			--
+			-- WHY IT EXISTS. The even fallback plants part `i` at
+			-- (i / count) * 2pi, which for count 8 puts part #2 at exactly
+			-- pi/2 - dead on +Z. On the Maelstrom that bearing is the landing
+			-- stack the island generator deliberately keeps clear, and the
+			-- ring's 46 studs put the arm two studs from the spawn point:
+			-- every player arriving at the finale materialised inside a
+			-- tentacle's slam. An even circle cannot express "not there"
+			-- without a per-island special case buried in generic code.
+			local angle
+			if parts.bearings then
+				angle = parts.bearings[i]
+			else
+				angle = (i / count) * math.pi * 2
+			end
 			at = Vector3.new(centre.X + math.cos(angle) * parts.ring, centre.Y, centre.Z + math.sin(angle) * parts.ring)
 		end
 		local model = CreatureService.spawn(row, at, nil, "Neutral", {
@@ -5786,9 +7512,22 @@ local function spawnBossParts(creature, def)
 		})
 		local part = byModel[model]
 		if part then
+			planted += 1
+			markedPlanted = markedPlanted or i == marked
 			part.partOf = creature
 			part.socketIndex = i
 			part.marked = i == marked
+			-- A RING WAKES STAGGERED. `updateTentacle` reads
+			-- `nextSlamAt or 0`, so a freshly planted arm is off cooldown the
+			-- instant it exists: eight arms spawned in one loop iteration all
+			-- pass their own-initiative test on the same frame and the ring
+			-- regrows into a single simultaneous eight-arm slam that nothing
+			-- ordered and nothing telegraphs as a pattern. Seeded here rather
+			-- than in `spawn` because it is the RING that has the problem -
+			-- one arm waking ready is fine, and is how the fight opens.
+			-- Harmless on any other parts row: nothing else reads the field.
+			part.nextSlamAt = os.clock() + randomBetween(1.5, 4.0)
+			table.insert(ringParts, part)
 			model:SetAttribute(ATTR_SOCKET_INDEX, i)
 			-- The client needs this to draw the off-rhythm pulse, which IS
 			-- the tell - so it is published, not hidden. The honest
@@ -5801,8 +7540,23 @@ local function spawnBossParts(creature, def)
 			end
 		end
 	end
-	creature.partsAlive = count
+	-- Counted from the parts that actually REGISTERED, not from the loop's
+	-- trip count: the window opens on exactly one event - `kill` seeing the
+	-- marked stalk - and there is no timeout anywhere in the fight. A marked
+	-- stalk that never planted is a boss nothing can ever make vulnerable
+	-- again, with a party hitting it forever and no error to explain why.
+	creature.partsAlive = planted
 	creature.partsDownAt = nil
+	-- Replaced wholesale, never appended to: the previous choir is gone by
+	-- the time a new one stands (`closeMaw` withdraws the survivors), and a
+	-- list that accumulated across cycles would be the leak this replaces.
+	creature.choirParts = if parts.mark then ringParts else nil
+	if parts.mark and planted > 0 and not markedPlanted then
+		warn(string.format("[CreatureService] boss %q planted no true lure - opening its window", def.id))
+		creature.mawDueAt = os.clock()
+	end
+	-- A new choir is standing: nothing has been shot yet.
+	creature.choirKilled = 0
 	-- The ring is back up, so the window is shut again.
 	creature.model:SetAttribute(ATTR_EXPOSED, nil)
 	creature.choir = parts.mark == true
@@ -5836,7 +7590,10 @@ local function openMaw(creature, def, now: number)
 		local to = root.Position - state.center
 		state.mawYaw = NoctyssPath.laneFor(math.atan2(to.Z, to.X))
 	end
-	fireEvent("bossStagger", NoctyssPath.mawMouth(state).Position, {
+	-- At the PIT'S MOUTH, not at hers: this fires before `mawRise` has moved,
+	-- so `mawMouth` is still 40-odd studs down, and the fight's payoff was
+	-- announcing itself - burst, shockwave, camera shove - under the arena.
+	fireEvent("bossStagger", state.center + Vector3.new(0, 1, 0), {
 		name = def.name,
 		duration = creature.mawUntil - now,
 	})
@@ -5860,17 +7617,41 @@ local function closeMaw(creature, def, now: number)
 	-- 70-95 still ends a hurt player and still means "leave when it starts to
 	-- shut", which is the read the window is teaching.
 	local lo, hi = bossRoll(creature, def, { 70, 95 })
+	-- ...AND IT ACTUALLY LANDS. `bypassIframe` skips the ordinary contact
+	-- window but NOT the previous bypassing burst's, and bursts gate each
+	-- other for 0.35s (PlayerService `lastBurst`). She keeps attacking while
+	-- the jaw shuts, so a strobe ring or a feeler landing a fraction before
+	-- the close swallowed the bite outright - and the one lesson the window
+	-- teaches, "leave when it starts to shut", was enforced or not by a coin
+	-- flip nobody could see. What could not be delivered is written down and
+	-- re-offered by `updateNoctyss` until it lands. The ROLL is kept: the
+	-- bite happened at the close, only its delivery is late.
+	local owed = nil
 	for _, player in Players:GetPlayers() do
 		local character = player.Character
 		local root = character and character:FindFirstChild("HumanoidRootPart")
 		if root and NoctyssPath.insideMouth(state, root.Position) then
-			PlayerService.damage(player, math.random(lo, hi), creature, { bypassIframe = true })
+			local amount = math.random(lo, hi)
+			if not PlayerService.damage(player, amount, creature, { bypassIframe = true }) then
+				owed = owed or {}
+				table.insert(owed, { player = player, amount = amount })
+			end
 		end
 	end
+	creature.biteOwed = owed
+	-- 0.6s, comfortably past one 0.35s burst window and far short of anything
+	-- a player would read as a delayed second hit.
+	creature.biteOwedUntil = if owed then now + 0.6 else nil
 	fireEvent("slam", NoctyssPath.mawMouth(state).Position, { radius = 16, skin = "ink" })
 	-- The head jars on its own bite, so the jaw shutting is something she
 	-- does rather than a number easing to zero.
 	NoctyssPath.shudder(state, 1.2)
+	-- Cleared here, not only in `openMaw`. A marked-stalk death remembered
+	-- across a close would re-open the window on the next frame - no dark
+	-- beat, no new choir - and the regrow would then fire INSIDE that window.
+	-- Unreachable today, but only because three unrelated invariants happen
+	-- to hold, and two lines is cheaper than depending on them.
+	creature.mawDueAt = nil
 	clearMawFloor(creature)
 	-- THE CHOIR SINKS WITH HER. Only the MARKED stalk had to die to open this
 	-- window, so up to six were still standing - and the regrow gate waits on
@@ -5883,28 +7664,15 @@ local function closeMaw(creature, def, now: number)
 	creature.choirDueAt = now + ((def.parts and def.parts.regrow) or 5)
 end
 
--- THE CHOIR'S BEAT UNDER A BORROWED MOVE. Strobewave and abysscall are
--- ordinary `barrage` entries - the same rings and fans every other boss
--- throws - and the shared handler has no business learning what a choir is.
--- So the punctuation lives out here: while one of them is striking, the ring
--- jolts on the move's OWN `interval`, the number its pulses are already
--- spaced by, so the lights kick with the rings rather than near them. Floored
--- so a fast fan (abysscall's 0.15s) reads as a handful of beats instead of a
--- shiver.
-local CHOIR_PULSE_MOVES = { strobewave = true, abysscall = true }
-
-local function choirPulseBeat(creature, state, now: number)
-	local a = creature.attack
-	if not a or a.phase ~= "strike" or not CHOIR_PULSE_MOVES[a.name] then
-		creature.choirPulseAt = nil
-		return
-	end
-	if now < (creature.choirPulseAt or 0) then
-		return
-	end
-	creature.choirPulseAt = now + math.max(a.p.interval or 0.5, 0.35)
-	flinchChoir(state, 0.4)
-end
+-- THE CHOIR'S BEAT UNDER A BORROWED MOVE, REMOVED - and this is the headstone
+-- rather than the code. Strobewave and abysscall are ordinary `barrage`
+-- entries, and the punctuation that used to live here jolted the ring on the
+-- move's own `interval` by writing `stalk.impulse`. That field is not
+-- replicated (see the note above `mawFloor`), so the jolt moved nothing any
+-- player could see; the recoils that survive are the ones the CLIENT raises
+-- off the hits it watches land. The comment outlived its function and had run
+-- headlong into the one below it, mid-sentence, describing machinery that no
+-- longer exists.
 
 -- The whole Gloomtrench fight, in one pass: keep the choir standing, answer
 -- a broken lure, run the maw window, and let the book pick what happens next.
@@ -5934,15 +7702,12 @@ local function updateNoctyss(creature, def, now: number, dt: number, root, playe
 		end
 		-- The choir shudders back alight - inward, against the way it flinched
 		-- when the lights died, so the pair reads as one breath out and in.
-		flinchChoir(state, 0.5, true)
 	end
 
 	-- A FALSE lure was broken: it flares white, and the trench takes a swing
 	-- at whoever broke it. Answered one frame after the kill, so the player
 	-- is still looking at the light they shot when the answer arrives.
-	if creature.flareAt then
-		local at = creature.flareAt
-		creature.flareAt = nil
+	for _, at in creature.flareAt or {} do
 		-- WHITE, not black. This borrowed `inkBlast` until now, which blots
 		-- the screen dark - the exact opposite of a lantern going off in your
 		-- face, and the one moment in the fight the trench is bright.
@@ -5956,6 +7721,7 @@ local function updateNoctyss(creature, def, now: number, dt: number, root, playe
 		local lo, hi = bossRoll(creature, def, { 40, 58 })
 		damagePlayersInRadius(ground, 15, lo, hi, creature, 0.35)
 	end
+	creature.flareAt = nil
 
 	-- The TRUE lure broke: she comes up.
 	if creature.mawDueAt and not creature.mawOpen then
@@ -5985,8 +7751,36 @@ local function updateNoctyss(creature, def, now: number, dt: number, root, playe
 		state.mawRise = math.max((state.mawRise or 0) - dt * 0.5, 0)
 	end
 
+	-- A BITE THAT COULD NOT BE DELIVERED AT THE CLOSE. See `closeMaw`: the
+	-- burst window that swallowed it is 0.35s, so this resolves within a
+	-- handful of frames, and a player who died in the meantime simply fails
+	-- forever and is dropped at the deadline.
+	if creature.biteOwed then
+		if now >= (creature.biteOwedUntil or 0) then
+			creature.biteOwed, creature.biteOwedUntil = nil, nil
+		else
+			local pending = nil
+			for _, owed in creature.biteOwed do
+				local landed = PlayerService.damage(owed.player, owed.amount, creature, { bypassIframe = true })
+				if not landed then
+					pending = pending or {}
+					table.insert(pending, owed)
+				end
+			end
+			creature.biteOwed = pending
+			if not pending then
+				creature.biteOwedUntil = nil
+			end
+		end
+	end
+
 	-- The choir grows back, and a DIFFERENT socket carries the real light.
-	if creature.choirDueAt and now >= creature.choirDueAt and (creature.partsAlive or 0) == 0 then
+	if
+		creature.choirDueAt
+		and now >= creature.choirDueAt
+		and (creature.partsAlive or 0) == 0
+		and not creature.mawOpen
+	then
 		creature.choirDueAt = nil
 		spawnBossParts(creature, def)
 		fireEvent("regrow", creature.anchor or creature.pos, { count = def.parts.count, name = def.name })
@@ -5995,9 +7789,34 @@ local function updateNoctyss(creature, def, now: number, dt: number, root, playe
 	if creature.mode == "attack" then
 		updateBossAttack(creature, def, now, dt, root, player, dist, -def.submerge)
 	elseif root and now >= creature.nextAttackAt and dist <= def.aggro then
-		beginBossAttack(creature, def, pickBossAttack(creature, def, now), now)
+		local name = pickBossAttack(creature, def, now)
+		-- LIGHTSWEEP WITHOUT A STALK IS FOUR AND A HALF SECONDS OF NOTHING.
+		-- Its handler needs a living, LIT lantern to sweep from; with none it
+		-- plays no telegraph, fires no beam and lands nothing, then spends
+		-- windup + duration + recover (4.5s) and its 5.5s cooldown doing it.
+		-- That is not a rare case: it is the whole 4-second regrow dark after
+		-- every window, every dousehunt, and any moment the party has cleared
+		-- the choir - and lightsweep is listed TWICE in stances 1 and 3 and is
+		-- what `pickBossAttack`'s empty-pool fallback returns (the phase
+		-- list's first entry). Checked here, before the attack begins, because
+		-- this is the fight's only call site and a handler cannot un-begin
+		-- itself once `beginBossAttack` has drawn its tell and set its clock.
+		if name == "lightsweep" and not pickChoirStalk(state, root) then
+			-- Held off for a beat so the re-pick below cannot hand back the
+			-- same move, and so a dark that lasts several attack gaps does not
+			-- re-ask the same question every time.
+			creature.cooldowns = creature.cooldowns or {}
+			creature.cooldowns.lightsweep = now + (def.attacks.lightsweep.cooldown or 5.5)
+			name = pickBossAttack(creature, def, now)
+			-- The fallback's fallback: everything else is on cooldown too, so
+			-- it returned the phase list's first entry, which is lightsweep
+			-- again. A feeler is her one move that needs nothing but a player.
+			if name == "lightsweep" and def.attacks.feelerstrike then
+				name = "feelerstrike"
+			end
+		end
+		beginBossAttack(creature, def, name, now)
 	end
-	choirPulseBeat(creature, state, now)
 	placeColossus(creature, def, now, root)
 end
 
@@ -6015,6 +7834,16 @@ local function updateBoss(creature, now: number, dt: number)
 		creature.anchor = creature.pos
 		creature.untargetable = true
 		creature.hitRadius = (def.hitRadius or 0) * (creature.row.body.scale or 1)
+		-- AND HOW TALL IT IS, for shots only (raycastNearest's capsule). Set
+		-- for the one boss that is far taller than its hitRadius: a 263-stud
+		-- colossus over a 96-stud sphere at its feet, where the seams the fight
+		-- asks you to shoot are 130-260 studs up. Everything else leaves this
+		-- nil and keeps the pivot sphere it has always had - and hitRadius
+		-- itself is untouched, because that number is the MOAT (see the row):
+		-- 96 + the longest melee reach lands inside the lava.
+		if def.pose == "pyrelisk" then
+			creature.hitHeight = PyreliskPath.CROWN
+		end
 		creature.cooldowns = {}
 		creature.nextAttackAt = now + def.riseTime + 1.2
 		model:SetAttribute(ATTR_BOSS_NAME, def.name)
@@ -6058,9 +7887,19 @@ local function updateBoss(creature, now: number, dt: number)
 				hideColossusModel(creature)
 			end
 			local state = colossusState(creature, def)
+			-- AND THE RISE, on the same curve the non-entrenched branch below
+			-- uses. Nothing wrote it here, and `rise` is not a wake-up flourish
+			-- for a rigged colossus - it is a HEIGHT: PyreliskPath.lift returns
+			-- -RISE_DEPTH * (1 - rise), so a rooted boss that publishes 0
+			-- forever draws its whole body 40 studs under the lava, plant wrist
+			-- and climb ramp included, for the entire fight. Brinejaw shares
+			-- this branch and has no `rise` on its state, so this is inert
+			-- there rather than a second meaning for the same field.
+			state.rise = 1 - (1 - u) ^ 3
 			state.slump = 1 - (1 - (1 - u) ^ 2)
 			placeColossus(creature, def, now, root)
 			if u >= 1 then
+				state.rise = 1
 				state.slump = 0
 				-- Still untouchable: the only way in is an earned stagger.
 				creature.untargetable = true
@@ -6322,13 +8161,21 @@ local function updateTentacle(creature, now: number, dt: number)
 		if u >= 1 then
 			creature.tentaclePhase = "recover"
 			creature.tentacleStart = now
+			-- BOSS_HEIGHT_TOLERANCE, like every other AoE in the boss kit,
+			-- and this was the only one in the family without it. An arm
+			-- stands at the waterline while the whole fight is conducted from
+			-- rock caps 4-6 studs up - plus the character's own hip height -
+			-- so the default 6-stud gate threw away most of the slams that
+			-- visually connected. An arm that rears, comes down on you and
+			-- does nothing is the worst thing a telegraph can do.
 			damagePlayersInRadius(
 				creature.pos,
 				C.TENTACLE_RADIUS,
 				C.TENTACLE_DAMAGE_MIN,
 				C.TENTACLE_DAMAGE_MAX,
 				creature,
-				0.5
+				0.5,
+				BOSS_HEIGHT_TOLERANCE
 			)
 			fireEvent("slam", creature.pos, { radius = C.TENTACLE_RADIUS })
 		end
@@ -6352,16 +8199,36 @@ local function updateTentacle(creature, now: number, dt: number)
 		-- its own heading).
 		local sway = math.sin(now * 1.3 + creature.yaw0 * 3)
 		creature.model:PivotTo(poseCFrame(creature, sway * 0.5, sway * math.rad(5), math.sin(now * 0.8) * math.rad(4)))
+		-- THE ORDER EXPIRES BEFORE IT IS READ. This is the only place an order
+		-- can ever be performed, so it is the only place it can be retired -
+		-- see SLAM_ORDER_GRACE. An arm busy when the beat came round arrives
+		-- here late and finds nothing to obey, which is the intended outcome.
+		if creature.slamAt and now > creature.slamAt + SLAM_ORDER_GRACE then
+			creature.slamAt = nil
+			creature.slamOrderWindup = nil
+			creature.slamOrderLift = nil
+		end
 		local ordered = creature.slamAt ~= nil and now >= creature.slamAt
 		local ownChoice = root and dist <= C.TENTACLE_AGGRO and now >= (creature.nextSlamAt or 0)
 		if ordered or ownChoice then
-			creature.slamAt = nil
 			-- The order becomes this swing's numbers here and nowhere else.
 			-- Slamming on its own account means its own reach, so they clear.
 			creature.slamWindup = if ordered then creature.slamOrderWindup else nil
 			creature.slamLift = if ordered then creature.slamOrderLift else nil
-			creature.slamOrderWindup = nil
-			creature.slamOrderLift = nil
+			-- CONSUMED ONLY BY THE SWING THAT PERFORMS IT. Clearing `slamAt`
+			-- for an own-initiative slam too meant an arm that happened to
+			-- decide for itself in the same frame silently ate a pending
+			-- order: the wave lost a limb with nothing to show for it. A
+			-- not-yet-due order now SURVIVES the arm's own swing - and,
+			-- because that swing costs windup + recover (~1.7s), the order is
+			-- comfortably stale by the time the arm is idle again and is
+			-- dropped by the expiry above. No special case; the ordinary rule
+			-- is what handles it.
+			if ordered then
+				creature.slamAt = nil
+				creature.slamOrderWindup = nil
+				creature.slamOrderLift = nil
+			end
 			creature.tentaclePhase = "windup"
 			creature.tentacleStart = now
 			fireEvent("telegraph", creature.pos, {
@@ -6773,7 +8640,18 @@ local function update(dt: number)
 				local glob = creature.globs[g]
 				if now >= glob.landAt then
 					table.remove(creature.globs, g)
-					damagePlayersInRadius(glob.landing, glob.radius, glob.min, glob.max, creature, 0.5)
+					-- `glob.tolerance` is the opt-in height gate, and nil on
+					-- every glob that does not ask for one - so this is the
+					-- default 6-stud AOE gate, to the stud, for everything
+					-- that has ever thrown one. A glob lands on GROUND
+					-- (scatterAround runs its point through groundedPos), and
+					-- when the scatter falls off a rock cap into open water
+					-- that ground is the waterline while the target is still
+					-- up on the cap: 7-9 studs, which the default gate throws
+					-- away. The rest of the boss kit already answers this with
+					-- BOSS_HEIGHT_TOLERANCE; a glob simply had no way to say
+					-- so. See ATTACK_HANDLERS.undertow, the one caller today.
+					damagePlayersInRadius(glob.landing, glob.radius, glob.min, glob.max, creature, 0.5, glob.tolerance)
 					fireEvent(glob.event, glob.landing, { radius = glob.radius })
 					if glob.pool then
 						-- A poolvolley glob leaves its lingering hazard.

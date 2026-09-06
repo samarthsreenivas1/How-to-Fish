@@ -246,149 +246,305 @@ Bosses.items.brinejaw = {
 }
 
 -- ============================================================ Ashfall Caldera
--- Pyrelisk, the Caldera Wyrm: an obsidian-scaled magma serpent that rises
--- out of the boiling shallows off the shore jetty (the ponds move with every
--- mesh regen, so the arena sits in the sea off the dock - the one spot the
--- generator keeps stable). Summoned by casting Caldera's Call (Bait.luau).
--- Its fight is HEAT MANAGEMENT: lava-wake charges, hardening slag pools and
--- summit vent-storms burn the standable ground away all fight (see the
--- phases block). Tuned for the FINAL slot-4 band (L22-28, ~40k HP on the
--- creature row; docs/revamp-plan.md).
+-- Pyrelisk, the Ashfall Colossus: a 270-stud obsidian rock golem rooted in
+-- the caldera lake of its own arena (BossArenas.volcano, the Ashfall
+-- Throne). Summoned by casting Caldera's Call (Bait.luau).
+--
+-- REDESIGNED 2026-08-31. The book this replaces (maul / slagspit / lavawake
+-- / magmajet / ventstorm / cinderring) belonged to a magma SERPENT that swam
+-- at you off the shore jetty, and every one of those moves assumed a boss
+-- that closes the distance. This one cannot and never will: it is rooted in
+-- its own lake, `speed = 0`, and the arena is a ring of flat basalt across a
+-- 120-stud moat of lava from it. Nothing it does is a charge, because
+-- nothing it has can leave the lake.
+--
+-- THE LOOP - the Brinejaw grammar, spoken at colossus scale:
+--   1. SURVIVE A PATTERN, and the pattern is a squeeze rather than a wall.
+--      `rimsweep` rakes the OUTER path and herds you inward toward the
+--      lava; `handfall` comes down on the inner band you were herded into;
+--      `ventbreath` burns a wedge of the ring and leaves it burning, so the
+--      ground you are being herded across gets smaller all fight.
+--   2. EARN THE OPENING. Bait a hand-slam onto one of the arena's nine
+--      obsidian MONOLITHS (BossArenas.volcano.stones). Bare basalt absorbs
+--      the blow; obsidian does not, and the arm that shatters one is left
+--      lying down across the moat.
+--   3. SPEND IT. That arm IS the ramp. `stagger` is twenty seconds because
+--      the window is not a damage phase, it is a journey: run the rim to
+--      the planted arm, climb the forearm, cross the deck on its back and
+--      break a vent before the body stands up again. Every other boss's
+--      window is measured in swings; this one is measured in ground.
+--
+-- `stances = 3` is the ground it loses. Each health phase costs it a stance,
+-- and the arm it can still lift comes down nearer to you.
+--
+-- Tuned for the volcano band's capstone (L22-28, 40,000 HP on the creature
+-- row). Damage sits in the same family as Rimefang's - a player is 100 base
+-- health plus their armour - because the pressure here is POSITION, not the
+-- size of any one number.
 Bosses.items.pyrelisk = {
 	id = "pyrelisk",
-	name = "Pyrelisk, the Caldera Wyrm",
+	name = "Pyrelisk, the Ashfall Colossus",
 	shortName = "Pyrelisk",
 	creature = "pyrelisk",
 	islandId = "volcano",
 	-- The bait is the gate, as with Brinejaw: level only, matching Caldera's
 	-- Call's own recipe level (the volcano band's end).
 	gate = { level = 28 },
-	-- Off the END of the shore jetty: the dock STARTS at r~527 on +Z and its
-	-- planks run 110 studs seaward to r~637 (island_gen.py volcano overrides),
-	-- so the arena centre sits at 680 - the whole roam disc (Z 650-710) is
-	-- open sea past the last plank, and it hauls itself TOWARD the deck the
-	-- way Brinejaw does. (The 2026-08-25 review caught the original 590, which
-	-- put the fight underneath the jetty's mid-span.)
-	-- Keyed to the dock (walk-room re-key 2026-08-28; HANDOFF: planks run
-	-- rel Z=532..597 on the +Z lane): the arena centre sits 40 studs of open
-	-- sea past the last plank, fought from the dock end exactly like
-	-- Brinejaw's - stable because the dock bearing/length are pinned
-	-- overrides, not sampled geometry.
-	arena = { offset = Vector3.new(0, 0, 637), radius = 30 },
-	aggro = 90,
-	standoff = 14,
-	hitRadius = 6, -- at scale 1, pivot to the jaw; x1.5 = 9, matching Brinejaw's frame
-	submerge = 2.4,
-	riseDepth = 18,
-	riseTime = 3.8,
-	speed = 8,
-	turnRate = math.rad(80),
-	attackGapMin = 0.7,
-	attackGapMax = 1.3,
+
+	entrenched = true,
+	pose = "pyrelisk",
+	stances = 3,
+
+	-- `offset` is the old roam disc off the shore jetty, dead the moment
+	-- BossArenas.volcano existed and kept only as BossService's fallback
+	-- spawn for an island with no lair row.
+	--
+	-- `radius` IS NOT A ROAM RADIUS ANY MORE - this boss is `entrenched`
+	-- with `speed = 0` and could not leave its lake if it wanted to. It
+	-- survives as one thing: BossArenaService.ringPositions drops the
+	-- challengers on a circle of `radius + 8`, so this number decides where
+	-- the party lands at summon, and it is bounded on BOTH sides.
+	--   * OUTSIDE r120, the caldera lava lake, whose edge wobbles +/-3.4
+	--     studs - and the lake is deliberately non-collidable, so a ring
+	--     inside it is not a burn, it is a 292-stud fall into the sea. The
+	--     old 30 dropped the whole party at r38, in the lava.
+	--   * INSIDE r200 (PY_CLEAR_R, measured): past that the rim path runs
+	--     under the lip's undercut, and a drop-in under a ceiling puts
+	--     players somewhere nothing aimed at the path can reach them.
+	-- 152 lands the ring at 160: forty studs of margin off the lake's edge
+	-- and forty inside the overhang, which is the middle of the band the
+	-- fight is actually played on. ringPositions warns by name if this ever
+	-- lands on a hazard, but that fires at summon time, after the players
+	-- have already been moved - it is a net, not the decision.
+	arena = { offset = Vector3.new(0, 0, 637), radius = 152 },
+
+	-- The rim path runs r=120 (the lake's edge) to r=232 (the lip), so
+	-- "anywhere a player can stand" is 232 studs out and aggro has to cover
+	-- all of it plus the lip itself. Anything less and a party that spread
+	-- to the outer band would watch a colossus stand idle in its own arena.
+	aggro = 260,
+	-- Dead numbers, stated rather than omitted: it is rooted. `standoff` is
+	-- how close a PROWLING boss comes, and this one has no prowl.
+	standoff = 0,
+	speed = 0,
+	-- 96, and the number is set by the MOAT rather than by the body.
+	--
+	-- `inRange` measures melee to `hitRadius * body.scale` off the pivot,
+	-- and the row's scale is 1.0 (Creatures.luau), so this reads in real
+	-- studs. The longest melee reach in Weapons.luau is 16; 96 + 16 = 112,
+	-- eight studs inside the lake's 120-stud edge. That is the whole fight's
+	-- ranged-only premise, and it is GEOMETRY rather than a `rangedOnly`
+	-- flag: you cannot swing at it from the shore, so the only way to put a
+	-- blade in it is to climb the planted arm. Every stud added here is a
+	-- stud of free melee across the lava.
+	--
+	-- What it costs: `raycastNearest` captures a shot by its perpendicular
+	-- distance from the PIVOT, and this pivot is at the feet of a 250-stud
+	-- body. A shot aimed at the crown from the inner path passes ~130 studs
+	-- off it and is dropped, so ranged fire lands on the mass and not on the
+	-- head. The fix is a pivot-to-crown capsule in `raycastNearest`, not a
+	-- bigger number here - which would trade the moat away for it.
+	hitRadius = 96,
+	submerge = 0,
+	-- = PyreliskPath.RISE_DEPTH. It waits under the lava and comes up out of
+	-- it, and the drawn rise reads the same 40 studs the server does.
+	riseDepth = 40,
+	riseTime = 6.5, -- a mountain standing up; Brinejaw's wake is 4.2
+	-- A MOUNTAIN TURNING. ~28 deg/s, so a full half-turn is six and a half
+	-- seconds - longer than any windup in the book. That is deliberate and
+	-- it is the fight's one mercy: because it cannot spin to follow you,
+	-- running around it is always an answer to something, and a party that
+	-- splits the ring is genuinely making it choose.
+	turnRate = math.rad(28),
+	-- Long gaps. At this scale the beat between attacks is when you cross
+	-- ground, and a colossus that chained blows would just be a wall.
+	attackGapMin = 2.2,
+	attackGapMax = 3.6,
 	enrageBelow = 0.3,
-	enrageCooldownMult = 0.55,
-	enrageDamageMult = 1.4,
-	-- THE FIGHT: heat management. Everything Pyrelisk does sets the arena on
-	-- fire - the wake of its charge, its spit, the summit's vent-storms -
-	-- so the space you can stand in shrinks all fight and the dodge is
-	-- always "where WON'T be burning in two seconds". The magmajet beam
-	-- sweeps you across whatever ground is left.
+	-- Gentler than the roster's usual 0.55/1.4. Every attack here is read
+	-- and answered with your feet across a hundred studs of path; cutting
+	-- the cooldowns hard would not make it fiercer, it would make it
+	-- unreadable, which is the one thing this fight cannot be.
+	enrageCooldownMult = 0.7,
+	enrageDamageMult = 1.25,
+
+	-- Phase = stance. It opens with the two arms it can still swing freely
+	-- and the slabs it tears off itself; at the second stance the head comes
+	-- into it; at the third the mountain itself starts falling on you.
+	-- `handfall` is in every phase because it is the ONLY route to a punish
+	-- window - drop it from a phase and that stretch of the fight becomes
+	-- unwinnable rather than merely harder.
 	phases = {
-		{ below = 1.0, attacks = { "maul", "slagspit", "lavawake" } },
-		{ below = 0.6, attacks = { "maul", "slagspit", "lavawake", "magmajet", "ventstorm" } },
-		{ below = 0.3, attacks = { "maul", "lavawake", "magmajet", "ventstorm", "cinderring", "cinderring" } },
+		{ below = 1.0, attacks = { "handfall", "rimsweep", "shardhurl" } },
+		{ below = 0.66, attacks = { "handfall", "rimsweep", "shardhurl", "ventbreath" } },
+		{
+			below = 0.33,
+			attacks = { "handfall", "rimsweep", "ventbreath", "ashfall", "shardhurl" },
+		},
 	},
+
+	-- EVERY `tell` BELOW NAMES A REAL BRANCH of CreatureEventController's
+	-- EVENTS.telegraph, and the branch is named in each attack's comment. An
+	-- unrecognised kind does not error - it falls through the catch-all and
+	-- draws a 3-stud sparkle, which on a blow from a 270-stud body is no
+	-- warning at all, and is invisible from the far side of the ring.
+	--
+	-- The stock tell fires at the boss's PIVOT, which for this boss is the
+	-- middle of the lake: it is the BODY flaring as it commits, not a mark
+	-- on the ground. Where the blow actually lands is the handler's own
+	-- telegraph, placed at the impact point (handfall already does this).
 	attacks = {
-		-- The obsidian jaws: fast, short, its melee punish.
-		maul = {
-			handler = "snap",
-			tell = "snap",
+		-- THE OPENER AND THE BAIT. A fist goes up over the rim and comes
+		-- down on the path. Beside a monolith it shatters the rock and the
+		-- arm stays down as the ramp; on bare basalt it only jars the body.
+		-- Handler: ATTACK_HANDLERS.handfall (CreatureService).
+		handfall = {
+			handler = "handfall",
+			-- Client branch: `slam` - a pulsing ember ring at `radius` plus
+			-- a flash on the body. The handler fires a SECOND `slam` at the
+			-- real impact point out on the path, and that one is the mark
+			-- you read; this one is the mountain winding up.
+			tell = "slam",
 			skin = "lava",
-			windup = 0.7,
-			duration = 0.35,
-			recover = 0.55,
-			cooldown = 1.8,
-			lunge = 14,
-			radius = 17,
-			cone = math.rad(65),
-			damage = { 60, 85 },
+			-- 2.6s, the longest windup in the book. The bait is a DECISION,
+			-- not a reaction: you have to already be standing at a monolith
+			-- when the fist arrives, and from the far side of the ring that
+			-- is 200 studs of running.
+			windup = 2.6,
+			duration = 1.4, -- the handler lands the blow at 0.45 of this
+			recover = 1.6,
+			cooldown = 11.0,
+			-- 34 studs of shockwave against 112 studs of path: a third of
+			-- the width, so it is dodged by moving rather than by having
+			-- guessed right, and a monolith is still a place you can stand.
+			radius = 34,
+			damage = { 78, 108 },
+			-- WHERE A FIST MAY LAND. 120 is the lake's edge (PY_LAKE_R): it
+			-- will not punch its own lava. 200 is PY_CLEAR_R, NOT the path's
+			-- 232 - the lip undercuts back to r205, so the outer 32 studs of
+			-- the path are a roofed shelf and a fist aimed there comes down
+			-- through the ceiling. Measured with scratchpad/floor_check.py.
+			minReach = 120,
+			maxReach = 200,
+			-- The monoliths stand out to r=217, so a blow capped at 200 is
+			-- up to 17 studs short of the farthest of them radially; 28
+			-- covers that gap plus the angular slop of an aim latched a full
+			-- windup earlier, and still will not spend a stone you were
+			-- nowhere near.
+			stoneReach = 28,
+			-- TWENTY SECONDS, and it is the most important number in the
+			-- file. The window is a journey, not a burst: reach the arm,
+			-- climb the forearm, cross the back, break a vent. A Brinejaw-
+			-- sized 8s window would be spent entirely on the run there.
+			stagger = 20.0,
+			-- Bare basalt only jars it. Enough to keep the fight winnable
+			-- with every stone wasted, far too short to be the plan.
+			weakStagger = 3.0,
 		},
-		-- Magma spit whose globs harden into burning pools where they land.
-		slagspit = {
-			handler = "poolvolley",
+		-- THE HERD. The arm draws back low and rakes an arc of the path.
+		-- The forearm is the hazard along its whole length, so the danger is
+		-- a BAND of the ring, and the band is the outer one - which is why
+		-- this move and `handfall` are a pair: this drives you in toward the
+		-- lava, and the fist lands on the inner strip you were driven onto.
+		-- Handler: `rimsweep` (CreatureService, concurrent lane).
+		rimsweep = {
+			handler = "rimsweep",
+			-- Client branch: `ringTell` - the annulus between `inner` and
+			-- `radius`, drawn in the skin colour, which is exactly the shape
+			-- of the hazard: safe inside it (the lake's edge) and safe
+			-- outside it (under the lip). Note the stock draw defaults
+			-- `inner` to radius * 0.7 when a handler does not pass one, so
+			-- 228 alone still reads as a band from 160 out.
+			tell = "ringTell",
 			skin = "lava",
-			windup = 0.7,
-			duration = 0.9,
-			recover = 0.5,
-			cooldown = 5.5,
-			count = 4,
-			spread = 11,
-			flight = 1.0,
-			stagger = 0.18,
-			radius = 7,
-			damage = { 22, 32 },
-			pool = { radius = 6.5, duration = 6.5, min = 8, max = 12, skin = "lava" },
+			windup = 2.2,
+			duration = 1.8,
+			recover = 1.4,
+			cooldown = 12.0,
+			arc = math.rad(150), -- less than half the ring: running is an answer
+			radius = 228, -- = PyreliskPath.REACH, the outer edge it can rake
+			inner = 160, -- and the strip inside this is the survivable one
+			girth = 26, -- = PyreliskPath.WALK_ARM_SIZE.Z, the forearm's own width
+			damage = { 62, 88 },
 		},
-		-- The signature: it surges across the shallows in a straight line and
-		-- its wake IS lava - a burning fence laid straight through the arena.
-		lavawake = {
-			handler = "charge",
+		-- THE HEAD, finally in it. It rears, the jaw opens on the throat
+		-- glow (PyreliskPath.jawAngle reads this attack by name) and a
+		-- molten cone comes out along its facing. The ground it crosses
+		-- stays burning, so this is the move that permanently takes path
+		-- away rather than the one that kills you.
+		-- Handler: `ventbreath` (CreatureService, concurrent lane).
+		ventbreath = {
+			handler = "ventbreath",
+			-- Client branch: `coneTell` - rings marching out along `facing`
+			-- for the whole windup, "step out of the line". The stock tell
+			-- already passes `facing = bossFacing(creature)`, so this branch
+			-- draws correctly without the handler placing anything.
+			tell = "coneTell",
 			skin = "lava",
-			windup = 1.0,
-			duration = 1.1,
-			recover = 0.8,
-			cooldown = 6.5,
-			length = 36,
-			width = 10,
-			damage = { 58, 80 },
-			trail = { every = 7, radius = 6.5, duration = 7, min = 10, max = 14, skin = "lava" },
+			-- Long, because the answer is to leave the wedge before it
+			-- opens and a turnRate of 28 deg/s means it cannot follow you.
+			windup = 2.4,
+			duration = 2.6,
+			recover = 1.6,
+			cooldown = 17.0,
+			cone = math.rad(44),
+			range = 250, -- clears the far lip: the wedge crosses the whole ring
+			radius = 250, -- the tell reads `radius` as the wedge's length
+			tick = 0.35,
+			-- Per tick, not per hit. Standing in it is a decision that gets
+			-- worse; clipping its edge on the way out is survivable.
+			damage = { 20, 28 },
+			-- What it leaves behind: the reason the arena shrinks.
+			pool = { radius = 15, duration = 10, min = 12, max = 18, skin = "lava" },
 		},
-		-- Rears up and hoses a magma jet across a 120-degree arc; run WITH
-		-- the sweep or eat ticks.
-		magmajet = {
-			handler = "beam",
+		-- THE MOUNTAIN ANSWERS. Phase three only: the summit sheds and rings
+		-- of ash land on marked ground under EVERY player at once, plus a
+		-- scatter. The one move in the book that cannot be solved by
+		-- standing somewhere else on the ring, because it follows the ring.
+		-- Handler: `ashfall` (CreatureService, concurrent lane).
+		ashfall = {
+			handler = "ashfall",
+			-- Client branch: `mark` - a pulsing ring at each landing point
+			-- for the whole arm window, in the skin colour. `barrage`-shaped
+			-- handlers fire one of these per marked spot; the stock tell at
+			-- the pivot is the sky closing over the boss.
+			tell = "mark",
 			skin = "lava",
-			windup = 0.9,
-			duration = 2.2,
-			recover = 0.7,
-			cooldown = 8.0,
-			sweep = 120,
-			cone = 16,
-			range = 30,
-			tick = 0.3,
-			damage = { 12, 16 },
-		},
-		-- The mountain answers: the summit rains bombs on marked rings - one
-		-- under every player plus a scatter, arena-wide.
-		ventstorm = {
-			handler = "barrage",
-			skin = "lava",
-			windup = 0.8,
-			duration = 2.2,
-			recover = 0.6,
-			cooldown = 10.0,
+			windup = 1.7,
+			duration = 3.2,
+			recover = 1.1,
+			cooldown = 19.0,
 			pattern = "everyone",
-			extra = 2,
-			spread = 12,
-			arm = 1.2,
-			radius = 7,
-			damage = { 40, 55 },
+			extra = 3, -- plus a scatter, so standing on someone else is no answer
+			spread = 30,
+			arm = 1.5, -- the marks are readable for a second and a half
+			radius = 16,
+			damage = { 54, 76 },
 		},
-		-- Concentric fire novas detonating outward from its body: step across
-		-- a band before it blows, or stand in the gaps.
-		cinderring = {
-			handler = "barrage",
+		-- CHIP DAMAGE, and the only thing it does that reaches the outer
+		-- band under the lip. It tears a slab off its own shell - the seams
+		-- it opens doing it are the shell the design wants you shooting -
+		-- and throws it. The debris does NOT persist (arena state would have
+		-- to be cleaned up on a wipe; decided against).
+		-- Handler: `shardhurl` (CreatureService, concurrent lane).
+		shardhurl = {
+			handler = "shardhurl",
+			-- Client branch: `slam` - the ember ring and flash on the body
+			-- as it wrenches the slab loose. Same branch `handfall` borrows,
+			-- and for the same reason: at the pivot, this kind reads as the
+			-- body committing, and the landing marks are the handler's.
+			tell = "slam",
 			skin = "lava",
-			windup = 1.2,
-			duration = 2.2,
-			recover = 0.7,
-			cooldown = 9.0,
-			pattern = "rings",
-			rings = { 9, 16, 24, 32 },
-			ringWidth = 5,
-			interval = 0.5,
-			arm = 0.55,
-			damage = { 42, 58 },
+			windup = 1.9,
+			duration = 1.3,
+			recover = 1.0,
+			cooldown = 8.5,
+			count = 3,
+			spread = 34, -- wide: it is throwing rock, not aiming
+			flight = 1.7, -- a long arc across the moat - you can walk out of it
+			stagger = 0.3,
+			radius = 18,
+			damage = { 46, 66 },
 		},
 	},
 }
@@ -615,7 +771,13 @@ Bosses.items.rimefang = {
 	arena = { offset = Vector3.new(0, 0, 268), radius = 28 },
 	aggro = 90,
 	standoff = 14,
-	hitRadius = 6, -- x1.6 scale = 9.6, Brinejaw's frame
+	-- Reach is measured to the HIDE, not the pivot: inRange subtracts
+	-- `hitRadius * body.scale`. The row's scale of 1.6 was sized for the old
+	-- leviathan stand-in; the chain rig draws the pack at its authored size
+	-- (girth peaks at 1.0), so the visible whale is ~6.6 studs half-width and
+	-- the old 6 * 1.6 = 9.6 let you hit three studs of open water. 4.2 * 1.6
+	-- = 6.7 puts the reach back on the body you can actually see.
+	hitRadius = 4.2,
 	submerge = 2.4,
 	riseDepth = 18,
 	riseTime = 3.8,
@@ -654,7 +816,7 @@ Bosses.items.rimefang = {
 			lunge = 14,
 			radius = 17,
 			cone = math.rad(65),
-			damage = { 58, 82 },
+			damage = { 52, 70 }, -- capped: x1.4 enrage on 82 one-shots a 100 HP player
 		},
 		-- It rises out of the water and LOOKS at someone. No damage: the beat
 		-- where nothing is coming is what makes the rest readable, and the
@@ -667,7 +829,12 @@ Bosses.items.rimefang = {
 			duration = 0.8,
 			recover = 0.7,
 			cooldown = 11.0,
-			rise = 11,
+			-- No `rise` here. It carried 11 and NOTHING read it: how far the
+			-- spy-hop stands is RimefangPath's RISE_HEIGHT (24), which is what
+			-- both the drawn body and the hit chain are built from. A field
+			-- that advertises a number the game does not run is worse than no
+			-- field - it is a lie the next reader tunes. (Same ruling as the
+			-- bait-effects purge.)
 			radius = 7,
 			hold = 1.1,
 		},
@@ -690,9 +857,15 @@ Bosses.items.rimefang = {
 			slamRadius = 15,
 			radius = 15, -- tell only; `charge` never reads it
 
-			damage = { 62, 86 },
+			damage = { 56, 70 }, -- capped, and this one has no distance falloff at all
 			trail = { every = 9, radius = 7, duration = 6, slow = 0.55, skin = "frost" },
 			expose = 4.0,
+			-- ...and the window is the whole point of the move, so HOLD it:
+			-- without this the 0.65-1.25s attack gap (0.36-0.69 enraged) let
+			-- the next attack start a fifth of the way into the four seconds,
+			-- which also ends the beached pose the punish is made of. Opt-in
+			-- on purpose - see endBossAttack.
+			holdExpose = true,
 		},
 		-- The signature. A wall of slush shouldered across the floe: light
 		-- damage, heavy displacement, and the arena's bergs and frozen whaler
@@ -708,26 +881,52 @@ Bosses.items.rimefang = {
 			radius = 34,
 			cone = math.rad(70),
 			push = 74,
+			-- THE WALL'S OWN CLOCK, and the one source both sides read. The
+			-- crest is born at the whale's shoulder (`sweepFrom`) and crosses
+			-- to `radius` in `sweep` seconds; the handler inverts that line to
+			-- decide WHEN each player in the wedge is hit, so the damage rides
+			-- the wall instead of landing on the whole floe at once. Mirrored
+			-- on the client as WASH_SWEEP / WASH_INNER in
+			-- CreatureEventController - if these move, move those.
+			sweep = 0.22,
+			sweepFrom = 7,
 			damage = { 26, 38 },
 			slick = { radius = 12, duration = 7, slow = 0.6, skin = "frost" },
 		},
 		-- The tail comes up through a hole beside you and hammers down.
 		flukeslam = {
-			handler = "slam",
-			tell = "burst",
+			-- ITS OWN HANDLER, not the shared `slam`. `slam` rings the boss's
+			-- own position, and on a 56-stud animal that put a 24-stud circle
+			-- at the HEAD while the fluke came down most of the arena away.
+			-- This one aims at the tail and lands when the tail does.
+			handler = "flukeslam",
+			-- Opts OUT of the stock tell, which is drawn at the pivot (the
+			-- nose) before any handler has run. The handler fires its own, at
+			-- the fluke's landing point and running through the fall;
+			-- `tellKind` is the shape it asks the client for.
+			tell = false,
+			tellKind = "burst",
 			skin = "frost",
 			windup = 0.9,
 			duration = 0.5,
 			recover = 0.7,
 			cooldown = 7.5,
 			radius = 24,
-			damage = { 55, 78 },
+			damage = { 50, 68 }, -- capped
 		},
 		-- Orcas ring a bait ball and drive it inward. Here the current does
 		-- the driving while bergs of shattered sheet rain on the middle.
 		carousel = {
 			handler = "undertow",
-			tell = "ringTell",
+			-- NOT ringTell: an annulus reads "safe inside it AND outside it", but
+			-- undertow pulls across the WHOLE radius and drops globs anywhere in
+			-- it. There is no safe middle to promise.
+			tell = "mark",
+			-- ONE CENTRE. The pull and the bergs are both centred on the
+			-- arena's middle (undertow reads `creature.anchor`), so the mark
+			-- is drawn there too - it used to be drawn at the whale's nose,
+			-- which is up to 28 studs away and moving.
+			at = "anchor",
 			skin = "frost",
 			windup = 1.0,
 			duration = 3.2,
@@ -740,9 +939,11 @@ Bosses.items.rimefang = {
 			damage = { 30, 44 },
 		},
 		-- Phase three: the storm closes and icicles come down on marked ground
-		-- under EVERY player at once. The blizzard visual is still owed - the
-		-- arenas render "clear" (WeatherController STANDING_MODES is keyed by
-		-- island), so this currently lands as the strikes alone.
+		-- under EVERY player at once. The `storm` block opens a timed weather
+		-- window IN THE LAIR (WeatherController's arena storms) for the whole
+		-- attack: the client stamps its own deadline on arrival, so the fog
+		-- lifts on time even if the boss dies mid-attack and the close never
+		-- comes. Duration covers windup + duration + recover end to end.
 		whiteout = {
 			handler = "barrage",
 			tell = "mark",
@@ -757,6 +958,7 @@ Bosses.items.rimefang = {
 			extra = 1,
 			spread = 11,
 			damage = { 48, 66 },
+			storm = { mode = "blizzard", duration = 4.3 },
 		},
 	},
 }
@@ -814,7 +1016,12 @@ Bosses.items.noctyss = {
 		-- ~9,000 inside one window, so her 46,000 is about five punish cycles
 		-- - a capstone fight, not a twenty-minute grind. Solo is deliberately
 		-- much longer; this is the island's raid-tier fight.
-		window = 14,
+		-- 15, not 14: the window became POSITIONAL (damage needs the gullet
+		-- in reach), and the gullet spends the first ~second of the rise
+		-- still under the arena - the extra second gives back the ~7% of the
+		-- DPS budget that change cost, so the five-cycle fight the health
+		-- was priced against still holds.
+		window = 15,
 		regrow = 4,
 	},
 	aggro = 130,
@@ -860,6 +1067,7 @@ Bosses.items.noctyss = {
 		-- the tell, the attack and the thing you shoot are all one object.
 		lightsweep = {
 			handler = "lightsweep",
+			tell = false,
 			skin = "lure",
 			windup = 1.1,
 			duration = 2.6,
@@ -867,7 +1075,11 @@ Bosses.items.noctyss = {
 			cooldown = 5.5,
 			arc = math.rad(155),
 			girth = 3.0,
-			tick = 0.45,
+			-- The wedge crosses a standing player in about 0.3s, so a 0.45
+			-- tick made the fight's signature move land once or zero times.
+			-- It ticks now, which is what "standing in a moving light is a
+			-- continuous mistake" was supposed to mean.
+			tick = 0.22,
 			damage = { 18, 26 },
 		},
 		-- The whole choir flashes as one and each flash throws a ring
@@ -876,14 +1088,20 @@ Bosses.items.noctyss = {
 		-- kill you while it shows you.
 		strobewave = {
 			handler = "barrage",
+			tell = false,
 			skin = "lure",
 			windup = 0.95,
 			duration = 2.0,
 			recover = 0.6,
 			cooldown = 10.0,
 			pattern = "rings",
-			rings = { 14, 26, 38 },
-			ringWidth = 5,
+			-- Out to the SHELF's edge (r 68), not to the roam radius. At
+			-- {14, 26, 38} every band stopped at r 40.5 - so the party's own
+			-- arrival ring (44) and every shadow fin (46-58) were immune, and
+			-- the one attack that lights the whole arena could not touch
+			-- anyone standing where the fight tells them to stand.
+			rings = { 16, 30, 44, 58 },
+			ringWidth = 6,
 			interval = 0.5,
 			arm = 0.5,
 			damage = { 30, 42 },
@@ -892,8 +1110,14 @@ Bosses.items.noctyss = {
 		-- the hole she is under. Chased by a feeler, so being dragged into
 		-- the open is not survivable on its own.
 		lurepull = {
-			handler = "pull",
-			tell = "pull",
+			-- Its own handler, not the stock `pull`, for one reason: the tell.
+			-- Every borrowed telegraph fires at the boss's PIVOT, and hers is
+			-- the submerged maw ~26 studs under the arena, so this - the only
+			-- move in her book with no damage, no dodge and no counterplay -
+			-- was hauling the party off their feet with nothing on screen to
+			-- explain it. `lurepull` draws its warning at the pit's rim.
+			handler = "lurepull",
+			tell = false,
 			skin = "lure",
 			windup = 0.7,
 			duration = 2.2,
@@ -907,13 +1131,18 @@ Bosses.items.noctyss = {
 		-- the punish for standing still after a pull.
 		feelerstrike = {
 			handler = "barrage",
+			tell = false,
 			skin = "ink",
 			windup = 0.6,
 			duration = 1.2,
 			recover = 0.5,
 			cooldown = 2.2,
 			pattern = "everyone",
+			-- 0.5, not the 0.3 that `extra` defaults to: two strikes closer
+			-- together than the 0.35s burst i-frame means the second one is
+			-- silently swallowed for the player it was scattered around.
 			extra = 1,
+			extraDelay = 0.5,
 			spread = 9,
 			arm = 0.75,
 			radius = 8,
@@ -924,6 +1153,7 @@ Bosses.items.noctyss = {
 		-- the dark is her weapon even where there is light.
 		inkveil = {
 			handler = "barrage",
+			tell = false,
 			skin = "ink",
 			windup = 0.8,
 			duration = 1.4,
@@ -944,13 +1174,17 @@ Bosses.items.noctyss = {
 		-- read one light's rhythm, three more lights is the attack.
 		falselight = {
 			handler = "decoys",
+			tell = false,
 			skin = "lure",
 			windup = 0.9,
 			duration = 0.6,
 			recover = 0.5,
 			cooldown = 14.0,
 			count = 3,
-			spread = 22,
+			-- The spawn floor is `spread * 0.35`, so at 22 a decoy could
+			-- appear 7.7 studs away against a 7-stud trigger - 0.7 studs of
+			-- margin, and none at all for an ally standing near the target.
+			spread = 30,
 			trigger = 7,
 			blast = 10,
 			lifetime = 12,
@@ -960,6 +1194,7 @@ Bosses.items.noctyss = {
 		-- The trench answers: fans of grasping arms march out of the pit.
 		abysscall = {
 			handler = "barrage",
+			tell = false,
 			skin = "ink",
 			windup = 0.9,
 			duration = 1.6,
@@ -967,9 +1202,12 @@ Bosses.items.noctyss = {
 			cooldown = 8.5,
 			pattern = "line",
 			fan = { -28, 0, 28 },
-			count = 5,
-			spacing = 6,
-			startAt = 8,
+			-- The arms march from the PIT'S RIM outward across the stone.
+			-- Starting at 8 put the first two ranks inside the pit and ended
+			-- the last at r 37, so anyone at the cover ring was untouchable.
+			count = 7,
+			spacing = 8,
+			startAt = 18,
 			interval = 0.15,
 			arm = 0.5,
 			radius = 5,
@@ -981,6 +1219,7 @@ Bosses.items.noctyss = {
 		-- it just stops being able to be seen by.
 		dousehunt = {
 			handler = "dousehunt",
+			tell = false,
 			skin = "ink",
 			windup = 0.5,
 			dark = 1.6,
@@ -989,7 +1228,12 @@ Bosses.items.noctyss = {
 			cooldown = 13.0,
 			pattern = "everyone",
 			spread = 7,
-			arm = 0.55,
+			-- 0.65s to clear r 9 needs 13.8 studs/s against a walk of 16. At
+			-- 0.55 it needed 16.36 - a hair MORE than the player has, which
+			-- made a blind sprint a coin flip decided by rounding rather than
+			-- by the player. The dark is the attack; the escape should be
+			-- possible and hard, not arithmetically impossible.
+			arm = 0.65,
 			radius = 9,
 			damage = { 44, 60 },
 			hitEvent = "emerge",
@@ -1052,8 +1296,10 @@ Bosses.items.noctyss = {
 --               and a trap; the lane is between pairs, on the spin's beat.
 --   slewfire    a spiral off the turning deck - read the rotation, walk
 --               against it, cross the arms the short way.
---   wisps       slow homing lights - keep moving, and orbit a breakwater
---               hulk tight enough that their turn rate overshoots.
+--   wisps       slow homing lights - keep moving, and run a circle tighter
+--               than their 15.6-stud turn radius. Any bare sand will do; the
+--               breakwater hulks this used to name are gone and were never
+--               the mechanism.
 --   anchorsweep the one big telegraph - a wall across half the arena. The
 --               answer is the other half, and the long windup is the time to
 --               get there.
@@ -1064,15 +1310,26 @@ Bosses.items.admiral_wrack = {
 	creature = "admiral_wrack",
 	islandId = "wreck",
 	gate = { level = 42 },
-	-- The Careenage (BossArenas.wreck, model "WrackArena"): he is planted at
-	-- its centre, sand walkable to r 78 around him, six breakwater hulks at
-	-- r 33-52 for cover. `offset` is dead for an arena'd island (BossService
-	-- spawns at the arena centre) and kept only for the shape. `radius` is the
-	-- roam disc - meaningless for a boss that does not roam, but it is also
-	-- what BossService rings the party in at (radius + 8), so 40 lands
-	-- challengers at 48: out among the outer hulks with a clean view of the
-	-- platform and a real approach to make.
-	arena = { offset = Vector3.new(0, 0, -20), radius = 40 },
+	-- The Careenage (BossArenas.wreck, model "WrackArena") AS REBUILT: he is
+	-- planted at its centre on one plain beach, walkable to r 132, with
+	-- NOTHING standing on it - the six breakwater hulks, the cradle, the
+	-- furrows, the spoil and the pools are all gone, and the boundary is now a
+	-- palisade of grounded hulls at r 140-160. `offset` is dead for an arena'd
+	-- island (BossService spawns at the arena centre) and kept only for the
+	-- shape.
+	--
+	-- `radius` IS THE PARTY'S DROP RING, at radius + 8, and it is why this
+	-- number had to move with the floor. His own hull reaches 48.2 studs, so
+	-- the old 40 was ringing challengers in at 48 - INSIDE the boss's own
+	-- footprint, which on the old 78-stud shoal was already wrong and on a
+	-- 132-stud one is absurd. 80 drops them at 88: forty studs clear of the
+	-- hull, forty-four short of the sand's edge, so there is real floor both
+	-- in front of them and behind them, and the walk in is a walk.
+	--
+	-- It is also what `bound` is measured from - the Wrack handlers retire a
+	-- ball at radius + WRACK_BOUND_MARGIN (60) = r 140, eight studs past the
+	-- last walkable sand.
+	arena = { offset = Vector3.new(0, 0, -20), radius = 80 },
 	-- THE FOUR GUN DECKS - the things the player actually shoots, so they stand
 	-- ON THE DRAWN BRASS rather than on a guessed circle. `at = "mounts"` is the
 	-- three-dimensional placement mode: the offsets below are BOSS-LOCAL, with Y
@@ -1126,9 +1383,14 @@ Bosses.items.admiral_wrack = {
 	-- a free damage phase.
 	staggerFor = 4.0,
 	windowFire = 0.3,
-	-- Covers the whole shoal: he must keep firing at anyone still on the sand
-	-- (r 78) or the far edge becomes a rest area.
-	aggro = 110,
+	-- Covers the whole beach: `dist <= def.aggro` is what gates him STARTING an
+	-- attack at all, so anything short of the walkable edge hands the player a
+	-- rest area simply by standing still out there - and on a floor of r 132
+	-- that rest area would be most of the arena's area. 165 covers the sand
+	-- (132) and the awash flat out to the palisade (140-152), so there is
+	-- nowhere on this shoal a player can stand and not be shot at. He is
+	-- planted, so a long aggro costs nothing but his attention.
+	aggro = 165,
 	standoff = 200, -- unreachable on purpose; see the header
 	hitRadius = 7, -- x2.0 scale = 14: half ship, after all
 	submerge = 2.8,
@@ -1195,7 +1457,8 @@ Bosses.items.admiral_wrack = {
 	attacks = {
 		-- Bread and butter, and the shortest cooldown, so it is also the
 		-- phase list's fallback pick.
-		-- TELL: one "coneTell" wedge along the latched bearing.
+		-- TELL: one "coneTell" wedge along the latched bearing, drawn at the
+		-- gun deck that fires it and re-aimed from there.
 		grapeshot = {
 			handler = "grapeshot",
 			tell = false,
@@ -1204,21 +1467,39 @@ Bosses.items.admiral_wrack = {
 			duration = 0.45,
 			recover = 0.5,
 			cooldown = 6.0,
-			-- Six across 48 degrees born at r14: ~2.4 studs between pellet
-			-- centres. The GAP is what the player dodges, and under ~2 studs
-			-- the pellets merge into a texture you cannot read a lane through.
-			pellets = 6,
-			fanDeg = 48,
-			speed = 62,
-			spawnAt = 14,
+			-- RE-DENSIFIED FOR THE 132-STUD FLOOR. A fan's pellet lanes open
+			-- with range and the range doubled: six across 48 degrees left 8.8
+			-- studs of clear air between pellet centres where the party now
+			-- stands, which is not a fan, it is a picket you walk between.
+			-- Eight across 40 gives 2.2 studs at the muzzle - the readable
+			-- floor, under which the pellets merge into a texture you cannot
+			-- read a lane through - and 4.0 studs clear at the party ring,
+			-- which is threadable and meant to be.
+			--
+			-- `spawnAt` IS NO LONGER A RADIUS ROUND THE ARENA CENTRE. The fan
+			-- leaves ONE GUN DECK (the live battery best lined up with the
+			-- shot), so this is how far in front of that gun's muzzle the
+			-- pellets appear. 22 is what spreads them to the 2.2 studs above
+			-- before they are anything the player can read.
+			pellets = 8,
+			fanDeg = 40,
+			speed = 66,
+			spawnAt = 22,
 			radius = 1.6,
-			lifetime = 2.4,
-			tellRange = 70,
+			-- REACH = spawnAt + speed x lifetime = 141, against a `bound` of
+			-- r 140 and walkable sand to r 132. Every ballistic row below is
+			-- authored this way: the ball expires within a stud of where the
+			-- bound would have retired it, so the two knobs say the same
+			-- thing. Before this retune bound was 88 against reaches of
+			-- 106-183 - five rows could not even reach the floor's edge, and
+			-- `lifetime` never fired on any of them.
+			lifetime = 1.8,
+			tellRange = 110,
 			damage = { 40, 54 },
 		},
 		-- Phase 3: wider, and a second burst offset half a pellet so the
 		-- lanes of the first one are exactly where the second one lands.
-		-- TELL: one "coneTell" wedge along the latched bearing.
+		-- TELL: one "coneTell" wedge along the latched bearing, at the gun.
 		grapeshotTwin = {
 			handler = "grapeshot",
 			tell = false,
@@ -1227,18 +1508,20 @@ Bosses.items.admiral_wrack = {
 			duration = 0.9,
 			recover = 0.45,
 			cooldown = 6.5,
-			-- Seven across 58 degrees at r14: ~2.4 studs between centres, the
-			-- same readable floor. The second burst fills these lanes 0.4s
-			-- later - two waves you can read, not one wall you cannot.
-			pellets = 7,
-			fanDeg = 58,
+			-- Nine across 56 degrees at a 22-stud muzzle: 2.7 studs between
+			-- centres, the same readable floor, and 5.6 studs clear out at the
+			-- party ring. The second burst is offset half a step - 4.4 studs
+			-- at that range, dead centre of the first burst's lane - and lands
+			-- 0.4 s later: two waves you can read, not one wall you cannot.
+			pellets = 9,
+			fanDeg = 56,
 			speed = 66,
-			spawnAt = 14,
+			spawnAt = 22,
 			radius = 1.6,
-			lifetime = 2.4,
+			lifetime = 1.8, -- reach 141
 			bursts = 2,
 			burstGap = 0.4,
-			tellRange = 70,
+			tellRange = 110,
 			damage = { 42, 56 },
 		},
 		-- The signature. Three rings, one gap, the gap walking 46 degrees
@@ -1254,12 +1537,33 @@ Bosses.items.admiral_wrack = {
 			duration = 2.5,
 			recover = 0.8,
 			cooldown = 9.0,
-			count = 22,
-			speed = 26,
-			radius = 2.4,
+			-- HEAVIER, BECAUSE AN ANGULAR WALL THINS WITH RADIUS. Twenty-two
+			-- balls of radius 2.4 were solid only inside r 19; at the old
+			-- party ring that left 7.6 studs of clear lane between neighbours
+			-- and at the new one it would leave 15.5, which is a fence, not a
+			-- broadside. Thirty at radius 3.0 hold the wall solid to r 30 and
+			-- keep the lane at 11.5 studs where the party stands - the same
+			-- lane-to-radius ratio the old fight shipped. A ring cannot be
+			-- solid at r 132 without about a hundred balls, so this is the
+			-- honest compromise and `solid_to_r` in the generator prints it.
+			count = 30,
+			speed = 30,
+			radius = 3.0,
 			spawnAt = 16,
-			markAt = 22,
-			lifetime = 4.2,
+			-- Both windup cues are drawn at deckReach + spawnAt + markAt, so
+			-- they land outside the muzzle locus rather than inside the wall
+			-- they are announcing.
+			markAt = 26,
+			lifetime = 4.15, -- reach 140.5
+			-- 34 degrees, AND IT IS NOW 34 DEGREES. The balls used to sit half
+			-- a step inside a span of (360 - gapDeg), which left the last one
+			-- a half-step short of the first: the hole the player actually
+			-- walked into was gapDeg PLUS one step - 48.8 degrees against an
+			-- authored 34, a 44% lie in the one number this pattern is read
+			-- by. PATTERNS.broadside now lays the balls inclusive of both
+			-- ends, so the empty wedge is exactly this number. 34 degrees is
+			-- 46 studs of arc at the party ring, 40 of it clear of the two
+			-- balls that edge it.
 			gapDeg = 34,
 			gapStep = 46,
 			volleys = 3,
@@ -1277,23 +1581,28 @@ Bosses.items.admiral_wrack = {
 			duration = 3.4,
 			recover = 0.7,
 			cooldown = 10.0,
-			count = 30,
-			speed = 28,
-			radius = 2.4,
+			count = 40,
+			speed = 34,
+			radius = 3.0,
 			spawnAt = 16,
-			markAt = 22,
-			lifetime = 4.0,
-			gapDeg = 26,
+			markAt = 26,
+			lifetime = 3.65, -- reach 140.1
+			-- Two thirds of the standard broadside's 34, and like it this is
+			-- now the true empty wedge: 37 studs of arc at the party ring.
+			-- Forty balls hold this wall solid to r 40.
+			gapDeg = 24,
 			gapStep = 58,
 			volleys = 4,
 			interval = 0.85,
 			damage = { 48, 64 },
 		},
-		-- The trap. Three pairs across a 120-degree fan, each pair chained
-		-- twelve studs apart and spinning at 126 deg/s - a full turn every
+		-- The trap. Four pairs across a 130-degree fan, each pair chained
+		-- eighteen studs apart and spinning at 126 deg/s - a full turn every
 		-- 2.9 seconds, slow enough to count.
-		-- TELL: three "coneTell" wedges, one per pair, so the lanes BETWEEN
-		-- the wedges read as the lanes they actually are.
+		-- TELL: three "coneTell" wedges across the fan (three, not one per
+		-- pair - each wedge is another bossTell one-shot and three is the
+		-- ceiling), DRAWN AT THE GUN DECK THE PAIRS LEAVE, so the lanes
+		-- BETWEEN the wedges read as the lanes they actually are.
 		chainshot = {
 			handler = "chainshot",
 			tell = false,
@@ -1302,21 +1611,30 @@ Bosses.items.admiral_wrack = {
 			duration = 0.5,
 			recover = 0.7,
 			cooldown = 11.0,
-			pairs = 3,
-			fanDeg = 120,
-			chain = 12,
+			-- FOUR pairs across 130 degrees, not three across 120: the fan now
+			-- leaves one gun deck ~70 studs from the party ring, where a
+			-- 60-degree step is 75 studs of open water between pairs. Four
+			-- pairs bring that to 54, which is still a lane you can see from
+			-- across the beach and no longer a corridor. The chain goes to 18
+			-- with them, so the fake lane inside a pair scales with everything
+			-- else - it is the trap, and a trap that shrank while the arena
+			-- grew stops being one.
+			pairs = 4,
+			fanDeg = 130,
+			chain = 18,
 			chainRadius = 1.8,
 			spinDeg = 126,
-			speed = 20,
+			speed = 28,
 			radius = 2.4,
 			spawnAt = 14,
-			lifetime = 5.0,
-			tellRange = 60,
+			lifetime = 4.5, -- reach 140
+			tellRange = 110,
 			damage = { 54, 72 },
 		},
 		-- The sustained one: five seconds of two arms laying spiral lanes.
-		-- TELL: a "ringTell" annulus on the deck radius the spiral streams
-		-- from - the origin, which is not the pivot.
+		-- TELL: a "ringTell" annulus over the whole muzzle locus the spiral
+		-- streams from - `spawnAt` out to `spawnAt` + the furthest live deck's
+		-- range, which is the origin and is not the pivot.
 		slewfire = {
 			handler = "slewfire",
 			tell = false,
@@ -1325,13 +1643,21 @@ Bosses.items.admiral_wrack = {
 			duration = 5.0,
 			recover = 0.8,
 			cooldown = 13.0,
+			-- `arms` IS THIS ROW'S BALL COUNT, and it scales with the gun
+			-- decks like every other row's does since 2026-09-06 -
+			-- PATTERNS.slewfire used to read it raw. Two arms with four decks
+			-- standing, two with three, one with two or one.
 			arms = 2,
-			every = 0.15,
+			-- A tick every 0.13 s at 78 deg/s steps the deck 10.1 degrees,
+			-- which at the new party ring is a 10.9-stud hole along one arm -
+			-- the same hole-to-radius ratio as the old 0.15 s at r 48. The
+			-- spiral reads as arms rather than as dots because of this number.
+			every = 0.13,
 			spinDeg = 78,
-			speed = 22,
-			radius = 2.0,
+			speed = 30,
+			radius = 2.6,
 			spawnAt = 14,
-			lifetime = 4.5,
+			lifetime = 4.2, -- reach 140
 			damage = { 32, 42 },
 		},
 		-- Phase 3: three arms, tighter cadence, and the spin REVERSED - the
@@ -1348,41 +1674,64 @@ Bosses.items.admiral_wrack = {
 			arms = 3,
 			every = 0.13,
 			spinDeg = -96,
-			speed = 24,
-			radius = 2.0,
+			speed = 32,
+			radius = 2.6,
 			spawnAt = 14,
-			lifetime = 4.3,
+			lifetime = 3.95, -- reach 140.4
 			damage = { 34, 46 },
 		},
-		-- The one big telegraph. Fifteen heavy balls overlapping across 180
-		-- degrees: a wall, not a pattern - you do not thread it, you leave.
-		-- Nearly two seconds of windup, because the answer is a long walk.
-		-- TELL: three "coneTell" wedges fanned across the whole 180 degrees,
-		-- so the telegraph names the HALF about to become a wall. Capped at
-		-- three because each wedge is another bossTell one-shot.
+		-- The one big telegraph. Twenty-three heavy balls overlapping across
+		-- 180 degrees: a wall, not a pattern - you do not thread it, you
+		-- leave. Over three seconds of windup, because on a 132-stud floor the
+		-- answer is a long walk and the walk is the only answer left.
+		-- TELL: a "ring" wrackTell round the player's own ground first
+		-- (legible whichever way the camera faces), then a "lane" naming the
+		-- half about to become a wall, drawn from the gun deck it leaves.
 		anchorsweep = {
 			handler = "anchorsweep",
 			tell = false,
 			skin = "anchor",
-			windup = 1.9,
+			-- 3.2 SECONDS OF WINDUP, up from 1.9, AND THAT IS THE WHOLE RETUNE
+			-- OF THIS MOVE. Its two answers were "be in the other half" and
+			-- "duck inside the spawn radius", and the second one died with the
+			-- rebuild: 1.9 s of walk is 30 studs, which used to put you inside
+			-- r 18 from a party ring at 48 and now leaves you at r 58 on a
+			-- floor of 132 - nowhere. The first answer needs you to cross the
+			-- line through the gun, 72 studs away at the drop ring, and
+			-- 1.9 s of tell plus 2.2 s of flight only buys 65. 3.2 buys 86.
+			-- The margin is deliberately thin: this is the fight's one big
+			-- telegraph and it should be a walk you only just make.
+			windup = 3.2,
 			duration = 0.6,
 			recover = 1.1,
 			cooldown = 16.0,
-			count = 15,
+			-- Twenty-three anchors of radius 4.2 across the half: solid out to
+			-- 59 studs from the gun and within 2 studs of solid at the party
+			-- ring, which is what "a wall, not a pattern" has to mean at this
+			-- scale. Fifteen 3.4s would have left 14-stud lanes to stroll
+			-- through.
+			count = 23,
 			arcDeg = 180,
-			speed = 18,
-			radius = 3.4,
+			speed = 26,
+			radius = 4.2,
 			spawnAt = 16,
-			lifetime = 5.0,
-			ripple = 0.05,
-			tellRange = 90,
-			tellWidth = 96, -- the lane tell's width: the half it is about to wall off
-			tellReach = 30, -- ring tell radius = spawnAt + this
+			lifetime = 4.8, -- reach 140.8
+			-- The arc's own head start, scaled with it: 0.09 x 22 x 26 gives
+			-- the leading end 51 studs and makes it arrive 2.0 s before the
+			-- trailing end. That lag IS the second answer - commit to the
+			-- trailing end and it is passable for a beat.
+			ripple = 0.09,
+			tellRange = 130,
+			tellWidth = 150, -- the lane tell's width: the half it is about to wall off
+			tellReach = 40, -- ring tell radius = deckReach + spawnAt + this
 			damage = { 78, 104 },
 		},
-		-- Three slow lights that follow you. They barely hurt; what they do
-		-- is take standing still off the table for the next nine seconds.
-		-- TELL: a "mark" ring at the radius they are born from.
+		-- Three slow lights that follow you. They barely hurt; what they do is
+		-- take standing still off the table for the next six seconds. One
+		-- lantern lifts off each live gun deck, so three decks down is three
+		-- fewer places they can come from.
+		-- TELL: a "mark" ring at the radius they are born from - which is the
+		-- DECKS' ring, not a circle round the pivot.
 		wisps = {
 			handler = "wisps",
 			tell = false,
@@ -1392,11 +1741,30 @@ Bosses.items.admiral_wrack = {
 			recover = 0.5,
 			cooldown = 13.0,
 			count = 3,
+			-- SPEED AND TURN RATE ARE UNTOUCHED, and that is the point: 19
+			-- against a 16 stud/s walk is a 3 stud/s close, and 70 deg/s at
+			-- speed 19 is a 15.6-STUD TURN RADIUS. A player has no turn radius
+			-- at all, so any circle run tighter than 15.6 studs is a circle a
+			-- wisp physically cannot hold - it overshoots, swings wide, and
+			-- comes back to overshoot again. That was always the answer; the
+			-- hulks were only ever a landmark to run it around, and bare sand
+			-- does the job identically.
 			speed = 19,
 			homingDeg = 70,
 			radius = 2.2,
 			spawnAt = 12,
-			lifetime = 9,
+			-- SIX SECONDS, DOWN FROM NINE - the one number that was actually
+			-- broken. Nine survived NO straight-line heading out of 72, and
+			-- the reason was not the closing speed (3 studs/s claws back 27
+			-- studs against a 76-100 stud head start; it can never catch a
+			-- runner in the open). It was the WALL: a straight line runs out
+			-- of beach, and a player pinned on the rim is closed on at the
+			-- full 19. Six seconds is the longest chase a runner can outlast
+			-- from the drop ring, and it opens a real band - 26 of 72 headings
+			-- survive, the widest of them a 90-degree arc of TANGENTIAL
+			-- breaks (bearings 130-220 from the party ring) that keep sand
+			-- ahead of you instead of spending it.
+			lifetime = 6,
 			spreadDeg = 360,
 			damage = { 24, 32 },
 		},
@@ -1431,8 +1799,8 @@ Bosses.items.kraken = {
 	-- posed boss holds its ground - updateBoss stops walking it at you, since
 	-- its head IS the centre of the arena.
 	pose = "kraken",
-	-- The tentacle ring: `count` kraken_tentacle rows planted evenly on
-	-- `ring` studs around the arena centre. While any lives, the head is
+	-- The tentacle ring: `count` kraken_tentacle rows planted on `ring` studs
+	-- around the arena centre, at the bearings below. While any lives, the head is
 	-- untouchable; `regrow` seconds after the last one dies, they respawn
 	-- (if the boss still lives). CreatureService.updateBoss owns this.
 	--
@@ -1441,11 +1809,58 @@ Bosses.items.kraken = {
 	-- same number seen from two sides. `ring` sits outside the 28-stud head
 	-- and out where the platforms are, so the arms have real length and you
 	-- fight them from the rocks rather than off the hide.
+	--
+	-- AN ARC, NOT A CIRCLE, and this is the fight's staging decision rather
+	-- than a tweak. `bearings` names each arm's world bearing in radians
+	-- (+X = 0, +Z = pi/2) in the order they are planted, so entry `i` is
+	-- socket index `i` - the number the server stamps on the model and the
+	-- client claims its arm by. Ascending, so the ring order the wave and the
+	-- fist travel in is the order they are laid out in.
+	--
+	-- A 206-degree fan centred on +Z, which is where the players land: the
+	-- Maelstrom's spawn stack is at (4800, 6, -13456), 44 studs up +Z of the
+	-- arena centre. The even fallback would have put arm #2 at exactly pi/2 -
+	-- two studs from the spawn point, so arriving at the finale meant
+	-- materialising inside a slam. Centred at 90 degrees and opened out in
+	-- pairs (+-25, +-51, +-77, +-103), the nearest two arms sit 21.2 studs
+	-- from the spawn point (measured at ring 50; it was 19.6 at the old 46),
+	-- clear of its 13.5-stud cap with room to walk out.
+	--
+	-- The far semicircle is DELIBERATELY empty water. The fight reads as a
+	-- front you approach and fall back from rather than a pit you are dropped
+	-- into, and there is always a behind - which is what makes the closing
+	-- fist's open seat somewhere you can actually run to.
 	parts = {
 		row = "kraken_tentacle",
 		count = 8,
-		ring = 46,
+		-- 50, and it is set by THREE things now, not just staging. Raising it
+		-- from 46 is cheap in every one of them and the next person to shrink
+		-- it should know what they are giving back:
+		--   * ARM CURVATURE. The drawn arm bends hardest where it crests, and
+		--     the tightest radius it can hold scales as the SQUARE of its
+		--     radial span (socket 25.5 -> ring). 46 gives 20.5 studs of span
+		--     and admits an arch of hump 2.85; 50 gives 24.5 and admits 3.93,
+		--     a 38% gain for 4 studs. KrakenBodyController's BOUND comment
+		--     carries the measurement and what it still does not buy.
+		--   * THE PLATFORMS sit at r 38-52, so 50 puts the tentacles INSIDE
+		--     the rock band instead of 4 studs inboard of it - they stand
+		--     where the party stands, and melee reaches them off the rocks
+		--     rather than off the edge.
+		--   * SPAWN CLEARANCE improves rather than degrades: the two nearest
+		--     arms (bearings 65 and 115) move from 19.6 to 21.2 studs from
+		--     the spawn stack, further clear of its 13.5-stud cap.
+		ring = 50,
 		regrow = 24,
+		bearings = {
+			math.rad(-13),
+			math.rad(13),
+			math.rad(39),
+			math.rad(65),
+			math.rad(115),
+			math.rad(141),
+			math.rad(167),
+			math.rad(193),
+		},
 	},
 	aggro = 120,
 	standoff = 18,
@@ -1460,18 +1875,26 @@ Bosses.items.kraken = {
 	enrageBelow = 0.25,
 	enrageCooldownMult = 0.5,
 	enrageDamageMult = 1.4,
-	-- THE FIGHT: the storm escalates. Early it's the beak and the arms; by
+	-- THE FIGHT: the storm escalates. Early it's the ink and the arms; by
 	-- the middle the sky is falling on marked ground; at the end the
 	-- whirlpool itself pulls while everything else keeps coming. The
 	-- tentacle-ring loop (parts, above) runs through all of it.
+	--
+	-- `ringwave` LEADS EVERY LIST, and that is a rule rather than a taste.
+	-- `pickBossAttack` falls back to `attacks[1]` when everything in the pool
+	-- is still cooling, so entry [1] is the move this boss plays when it has
+	-- nothing else - which means it has to be a move that can actually land.
+	-- The arms reach the whole arc from the ring itself, so the wave always
+	-- can. (This is also why the head's move is now ranged: nothing the head
+	-- does physically reaches standable ground.)
 	phases = {
-		{ below = 1.0, attacks = { "maw", "ringwave", "wreckhurl" } },
-		{ below = 0.65, attacks = { "maw", "ringwave", "wreckhurl", "stormcall", "inknova", "tentaclelash" } },
+		{ below = 1.0, attacks = { "ringwave", "inkspit", "wreckhurl" } },
+		{ below = 0.65, attacks = { "ringwave", "inkspit", "wreckhurl", "stormcall", "inknova", "tentaclelash" } },
 		{
 			below = 0.4,
 			attacks = {
-				"maw",
 				"ringwave",
+				"inkspit",
 				"closingfist",
 				"tentaclelash",
 				"stormcall",
@@ -1511,8 +1934,11 @@ Bosses.items.kraken = {
 			windupEach = 0.8,
 			lift = 13,
 		},
-		-- Phase three only. Six arms up at once is the fight's loudest moment
-		-- and it should not be something you have seen twenty times by then.
+		-- Phase three only. FIVE arms up at once (three of the eight seats are
+		-- left open) is the fight's loudest moment and it should not be
+		-- something you have seen twenty times by then. On a ring ground down
+		-- below eight the handler scales the gap to what is left rather than
+		-- taking this number literally - see ATTACK_HANDLERS.armgap.
 		closingfist = {
 			tell = false, -- the ARMS telegraph; see below
 			handler = "armgap",
@@ -1525,19 +1951,40 @@ Bosses.items.kraken = {
 			windupEach = 2.0,
 			lift = 16,
 		},
-		-- The hooked beak, from a maw the size of a harbor mouth.
-		maw = {
-			handler = "snap",
-			tell = "snap",
+		-- INK SPIT: the head's only move, and it is RANGED, because the head
+		-- is stationary furniture that never physically attacks. It cannot:
+		-- it holds the middle of the arena, its own hide is 27.7 studs of
+		-- half-width and the nearest standable rock is 38 studs out, so the
+		-- bite this replaced (`snap`, a 15-stud lunge into a 19-stud cone)
+		-- could not reach ground a player is able to occupy from ANY bearing.
+		-- It was the boss's shortest cooldown and it had never once landed.
+		--
+		-- The volley is the answer that fits the animal: five globs bracketing
+		-- wherever you are on the arc, so the counterplay is to keep moving
+		-- across the platforms instead of standing and trading. `spread` is
+		-- wider than the glob radius on purpose - it brackets you rather than
+		-- landing on you, which is what makes stepping out of it work.
+		--
+		-- `at = "anchor"` puts the stock tell on the arena centre at water
+		-- level. The pivot - the other option, and the default - is now
+		-- carried 31 studs up inside the mantle so that the head's capture
+		-- sphere sits in the drawn body, and a warning flashing in mid-air is
+		-- not a warning.
+		inkspit = {
+			handler = "volley",
+			tell = "burst",
+			at = "anchor",
 			skin = "ink",
-			windup = 0.7,
-			duration = 0.35,
-			recover = 0.55,
-			cooldown = 1.8,
-			lunge = 15,
-			radius = 19,
-			cone = math.rad(70),
-			damage = { 70, 95 },
+			windup = 0.9,
+			duration = 1.0,
+			recover = 0.6,
+			cooldown = 5.5,
+			count = 5,
+			spread = 14,
+			flight = 1.1,
+			stagger = 0.16,
+			radius = 8,
+			damage = { 40, 55 },
 		},
 		-- Arms erupting out of the WATER under each player - not the eight on
 		-- the ring, which is `ringwave` above. Nobody spectates the Kraken:
