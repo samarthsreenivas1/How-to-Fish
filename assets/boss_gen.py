@@ -464,18 +464,31 @@ def _capsule(bm, length, r_mid, r_end, sides=12):
     """A barrel with rounded ends, along +X. Overlapping capsules read as one
     continuous limb through any bend - the whole point."""
     half = length / 2
-    # Full radius across the middle 80%, rounding off only at the very ends.
+    # Full radius across the middle 80%, rounding off only at the very ends:
+    # stations at 0.88 of the half-length still carry 0.92 of the radius, then
+    # 0.95/0.72, then 1.00/0.30.
+    #
     # THE RULE: that parallel section must stay LONGER than the pitch the
     # segments are planted at (KR_ARM_SPACING), or neighbouring barrels only
     # meet on their shoulders, the surface dips at every joint, and the arm
     # ribs up like a caterpillar. It is the same trap as tapering the length.
+    #
+    # AND THE END MUST BE A DOME, not a pair of shoulders. The ends used to
+    # step 1.0 -> 0.86 -> 0.34 in two jumps, which is fine while an end stays
+    # buried in its neighbour - but on the OUTSIDE of a bend it surfaces, and
+    # those two hard shoulder rings read as notches cut into the limb. A
+    # tighter chain pitch makes that WORSE, not better: it exposes more ends,
+    # so the fix has to be the profile. These four stations are a cosine-ish
+    # falloff, so an end that does surface reads as a rounded knuckle.
     loft(bm, [
-        ring_pts(-half, 0.0, r_end * 0.34, r_end * 0.34, sides=sides),
-        ring_pts(-half * 0.94, 0.0, r_end * 0.86, r_end * 0.86, sides=sides),
+        ring_pts(-half, 0.0, r_end * 0.30, r_end * 0.30, sides=sides),
+        ring_pts(-half * 0.95, 0.0, r_end * 0.72, r_end * 0.72, sides=sides),
+        ring_pts(-half * 0.88, 0.0, r_end * 0.92, r_end * 0.92, sides=sides),
         ring_pts(-half * 0.80, 0.0, r_mid, r_mid, sides=sides),
         ring_pts(half * 0.80, 0.0, r_mid, r_mid, sides=sides),
-        ring_pts(half * 0.94, 0.0, r_end * 0.86, r_end * 0.86, sides=sides),
-        ring_pts(half, 0.0, r_end * 0.34, r_end * 0.34, sides=sides),
+        ring_pts(half * 0.88, 0.0, r_end * 0.92, r_end * 0.92, sides=sides),
+        ring_pts(half * 0.95, 0.0, r_end * 0.72, r_end * 0.72, sides=sides),
+        ring_pts(half, 0.0, r_end * 0.30, r_end * 0.30, sides=sides),
     ])
 
 
@@ -649,18 +662,82 @@ def build_kr_pupil():
     return finish("Kraken_Pupil", bm, KR_PUPIL)
 
 
+def _kr_mandible(bm, spine, sides=9):
+    """One mandible: a tube swept down a spine that lives in the XZ plane.
+
+    `spine` is (x, z, half_width, half_thick) from ROOT to TIP. The sections
+    are laid perpendicular to the spine's own tangent, which is the whole
+    point - a beak is a curve, and rings stacked flat on -Z would flatten the
+    hook back into a cone the moment the curve turns under.
+
+    Winding matches loft()'s rule (outward faces): with the ring advancing
+    along +n and the tube advancing along the tangent, n x T comes out +Y,
+    which is where the a=0 point sits.
+    """
+    rings = []
+    for i, (x, z, half_w, half_t) in enumerate(spine):
+        prev = spine[max(i - 1, 0)]
+        nxt = spine[min(i + 1, len(spine) - 1)]
+        tangent = Vector((nxt[0] - prev[0], 0.0, nxt[1] - prev[1])).normalized()
+        normal = Vector((-tangent.z, 0.0, tangent.x))
+        centre = Vector((x, 0.0, z))
+        rings.append([
+            tuple(centre
+                  + normal * (half_t * math.sin((k / sides) * TAU))
+                  + Vector((0.0, half_w * math.cos((k / sides) * TAU), 0.0)))
+            for k in range(sides)
+        ])
+    loft(bm, rings)
+
+
+# The beak's two spines. Authored in the head's own space, NOT at the origin:
+# the crown is a solid cone out to r 19.6 and anything at its centre is simply
+# swallowed by it - which is exactly how the last beak came to be invisible.
+# Both roots are buried a stud or two INSIDE the crown's underside near the +X
+# rim, and everything below z=-6 hangs proud of it, in the open, facing the
+# players. Parrot-shaped: the upper is the long hook and overshoots the lower
+# by ~1.6 studs, and the two part into a V going down, so the ambient shadow
+# between them reads as a mouth held slightly open.
+KR_BEAK_UPPER = [
+    (14.8, -1.4, 4.8, 3.0),
+    (18.6, -2.2, 4.6, 2.8),
+    (21.8, -4.4, 4.0, 2.3),
+    (23.8, -7.0, 2.8, 1.7),
+    (23.6, -8.6, 1.6, 1.1),
+    (22.4, -9.6, 0.40, 0.40),
+]
+KR_BEAK_LOWER = [
+    (13.0, -6.2, 4.6, 3.0),
+    (16.6, -8.2, 4.4, 2.5),
+    (19.8, -10.2, 3.8, 1.9),
+    (22.0, -11.8, 2.6, 1.4),
+    (22.8, -13.0, 1.3, 0.8),
+    (22.4, -13.9, 0.30, 0.30),
+]
+# The last stud of each hook, as (base, tip, radius) in the same XZ plane. The
+# lofts stop on a small ring rather than a vertex so the sweep stays even;
+# these are the points that finish them, and the HANDOFF line reads the
+# animal's lowest bone off them instead of guessing.
+KR_BEAK_HOOKS = (
+    ((22.4, -9.6), (21.4, -10.4), 0.40),
+    ((22.4, -13.9), (21.6, -14.5), 0.30),
+)
+
+
 def build_kr_beak():
     bm = bmesh.new()
-    # The beak, at the centre of the arm crown on the underside: two hooked
-    # mandibles crossing like shears. Both halves ride one object and the
-    # server rotates them about KR_BEAK_HINGE.
-    for sign in (1, -1):
-        loft(bm, [
-            ring_pts(0.0, sign * 0.6, 2.6, 1.4, sides=7),
-            ring_pts(1.8, sign * 0.9, 2.0, 1.1, sides=7),
-            ring_pts(3.2, sign * 1.5, 1.2, 0.7, sides=7),
-        ], cap_end=False)
-        spike(bm, (3.2, 0, sign * 1.5), (4.0, 0, -sign * 0.3), 0.5, sides=5)
+    # The beak: two hooked mandibles, upper over lower, slung under the front
+    # of the arm crown so it breaks the crown's silhouette from the +X side -
+    # the side the fight is fought from. It does NOT hinge and never opens:
+    # the head is ranged-only now, so this is a face, not a weapon. It is
+    # authored permanently parted instead, because a beak clamped shut is a
+    # seam and reads as no mouth at all.
+    _kr_mandible(bm, KR_BEAK_UPPER)
+    _kr_mandible(bm, KR_BEAK_LOWER)
+    # A hard point on each hook. The lofts end on a small ring rather than a
+    # vertex so the sweep stays even; these are the last stud of bone.
+    for (base, tip, radius) in KR_BEAK_HOOKS:
+        spike(bm, (base[0], 0, base[1]), (tip[0], 0, tip[1]), radius, sides=6)
     return finish("Kraken_Beak", bm, KR_BEAK)
 
 
@@ -711,13 +788,36 @@ def build_kraken():
         build_kr_arm_tip(),
         build_kr_sucker(),
     ]
-    print("HANDOFF kraken: head is a dome on +Z - half-width 20.0, 33.2 TALL; arm crown under it to z=-4.2")
-    print("HANDOFF kraken: EIGHT arm sockets on the crown at r=18.2, evenly spaced - the ring the entities plant on")
-    print("HANDOFF kraken: beak at the crown's centre, hinge %s - the server rotates both mandibles about it" % (KR_BEAK_HINGE,))
-    print("HANDOFF kraken: eyes at (5.8, +/-16.4, 13.2) r6.0 with a slit pupil - Neon swap for the wind-up flare")
+    # These lines ARE the mesh-to-code contract, so every number in them is
+    # read back off the geometry above (or measured off the arm path) rather
+    # than typed in. A figure that has to be kept in step by hand is a figure
+    # that goes stale, which is how the last set came to describe a head that
+    # no longer existed.
+    eye_x = KR_EYE_SEAT * math.cos(KR_EYE_BEARING)
+    eye_y = KR_EYE_SEAT * math.sin(KR_EYE_BEARING)
+    beak_bottom = min(tip[1] for _, tip, _ in KR_BEAK_HOOKS)
+    reaches = []
+    for k in range(8):
+        angle = (k / 8) * TAU + 0.20
+        prev = _kraken_arm_path(angle, 0.0)
+        length = 0.0
+        for i in range(1, 201):
+            here = _kraken_arm_path(angle, i / 200)
+            length += (here - prev).length
+            prev = here
+        reaches.append(length)
+
+    print("HANDOFF kraken: mantle is a FLUTED dome on +Z - profile half-width %.1f at z=14.5, top at z=%.1f; arm crown slung under it to z=-6.4"
+          % (max(r for _, r in KR_HEAD_PROFILE), KR_HEAD_TOP))
+    print("HANDOFF kraken: EIGHT arm sockets on the crown at r=18.2, z=-2.0, evenly spaced - the ring the entities plant on")
+    print("HANDOFF kraken: beak is FIXED and DECORATIVE - two bone mandibles rooted inside the crown's +X rim (x %.1f-%.1f), hooks hanging in the open to z=%.1f, held permanently parted. No hinge: the head is ranged-only and never bites"
+          % (KR_BEAK_LOWER[0][0], KR_BEAK_UPPER[0][0], beak_bottom))
+    print("HANDOFF kraken: eyes at (%.1f, +/-%.1f, %.1f) - %.0f deg off the nose on an %.1f seat, lens 5.0x6.4x5.4, slit pupil at r=%.1f - Neon swap for the wind-up flare"
+          % (eye_x, eye_y, KR_EYE_Z, math.degrees(KR_EYE_BEARING), KR_EYE_SEAT, KR_EYE_SEAT + 3.4))
     print("HANDOFF kraken: arm segment is a CAPSULE %.1f long placed every %.1f - %.1f studs of overlap, so an arm is one limb"
           % (KR_SEG_LENGTH, KR_ARM_SPACING, KR_SEG_LENGTH - KR_ARM_SPACING))
-    print("HANDOFF kraken: %d segments + tip = ~%.0f studs of arm at scale 1; base half-width 2.55" % (KR_ARM_SEGMENTS, KR_ARM_SPACING * KR_ARM_SEGMENTS + 8.0))
+    print("HANDOFF kraken: rest arms run %.0f-%.0f studs of arc (front pair shortest), so %d-%d capsules + tip per arm at pitch %.1f; base half-width 4.3, tip reach r=82"
+          % (min(reaches), max(reaches), int(min(reaches) / KR_ARM_SPACING), int(max(reaches) / KR_ARM_SPACING), KR_ARM_SPACING))
 
 
     return objects
@@ -1662,10 +1762,10 @@ def build_noctyss():
         % (NC_BULB[0], NC_BULB[1], NC_BULB[2], NC_BULB_R)
     )
     print("HANDOFF noctyss: Cage/Bulb/Barbs are authored in the HOOD's space - one CFrame places all four")
-    print("HANDOFF noctyss: maw faces +X; skull half-width 6.0 at scale 1 -> 10.8 at the row's 1.8 = hitRadius 6")
+    print("HANDOFF noctyss: maw faces +X; skull half-width 6.0 at scale 1 -> 14.4 at the row's 2.4 = hitRadius 6")
     print("HANDOFF noctyss: snout tip x=+11.5, brow horns back to x=-11.5; jaw hinge (%.1f, %.1f, %.1f)" % NC_JAW_HINGE)
     print(
-        "HANDOFF noctyss: jaw scoop interior ~11.2 wide x 13 long at scale 1 (20 x 23 at 1.8) - the punish"
+        "HANDOFF noctyss: jaw scoop interior ~11.2 wide x 13 long at scale 1 (27 x 31 at the row's 2.4) - the punish"
         " platform's footprint; the walkable floor is anchored parts pinned inside it, not this mesh"
     )
     print(
@@ -2076,23 +2176,129 @@ def _py_ring(bm, z, rx, ry, sides, twist, jitter, rng):
     return pts
 
 
+def _py_plate(index):
+    """Ring `index` as the plates on it: (z, radius, count, twist, half width, half height).
+
+    Half width is half the ring's pitch times PY_PLATE_TAN, half height is
+    half the gap to the next ring times PY_PLATE_VERT - so what is NOT plate
+    is the crack, and the crack is what the whole design is made of.
+    """
+    z, radius, count, twist = PY_SHELL_RINGS[index]
+    if index + 1 < len(PY_SHELL_RINGS):
+        span = PY_SHELL_RINGS[index + 1][0] - z
+    else:
+        span = z - PY_SHELL_RINGS[index - 1][0]
+    # The pitch that matters is the one AT THE OUTER FACE, not on the ring
+    # line the chunk is centred on: a plate 16 studs proud of a 57-stud ring
+    # meets its neighbour on a 73-stud circle, which is 28% more room than
+    # the ring's own pitch. Sizing off the ring line is why the first tuning
+    # pass left 19-stud canyons and read as studs on a glowing column.
+    return (
+        z,
+        radius,
+        count,
+        math.radians(twist),
+        (TAU * (radius + PY_PLATE_DEPTH) / count) * 0.5 * PY_PLATE_TAN,
+        span * 0.5 * PY_PLATE_VERT,
+    )
+
+
+# WHICH PLATE EACH SEAM IS CUT INTO: (ring index, bearing in degrees). Both
+# have to be a plate that actually exists on that ring - `_py_seam_slot`
+# asserts it - and mirrored pairs have to be the same plate on both flanks,
+# which is why the ring table's counts and twists are chosen rather than
+# decorative. Seam 1 is the chest, dead ahead: sealed for two phases, then
+# phase 3's target.
+PY_SEAM_PLATES = [
+    (6, 0.0),  # chest, dead centre
+    (5, 36.0),
+    (5, -36.0),
+    (4, 80.0),
+    (4, -80.0),
+    (2, 60.0),
+    (2, -60.0),
+]
+# The vent shafts are mounted breakables, so they are placed against the DECK
+# in build_py_walk_deck's numbers, not against a plate - see PY_VENT_SITES.
+
+
+def _py_seam_slot(index, bearing_deg):
+    """The plate index on ring `index` that carries a seam at `bearing_deg`.
+
+    Asserts the bearing IS a plate centre. Five of seven seams were buried in
+    the rock (up to 23 studs) because they were eyeballed against loft radii
+    the shell was never built from; nothing here is allowed to be eyeballed
+    again.
+    """
+    _z, _radius, count, twist = PY_SHELL_RINGS[index]
+    pitch = 360.0 / count
+    k = round(((bearing_deg - twist) % 360.0) / pitch)
+    actual = twist + k * pitch
+    delta = (actual - bearing_deg + 180.0) % 360.0 - 180.0
+    if abs(delta) > 0.05:
+        raise SystemExit(
+            "PYRELISK: ring %d has no plate at %.1f deg (nearest %.1f) - fix PY_SHELL_RINGS' count/twist"
+            % (index, bearing_deg, actual)
+        )
+    return index, k % count
+
+
+PY_SEAM_SLOTS = {_py_seam_slot(i, b) for i, b in PY_SEAM_PLATES}
+
+
+def py_seam_site(index, bearing_deg, proud=1.5):
+    """The outer face centre of the plate at `bearing_deg` on ring `index`.
+
+    Seams are placed HERE and nowhere else, and the plate underneath is built
+    seated at its nominal depth with almost no jitter (see build_py_torso), so
+    this position IS the rock's surface rather than an estimate of it.
+    """
+    z, radius, _count, _twist = PY_SHELL_RINGS[index]
+    a = math.radians(bearing_deg)
+    r = radius + PY_PLATE_DEPTH + proud
+    return (
+        (round(math.cos(a) * r, 1), round(math.sin(a) * r, 1), z),
+        (round(math.cos(a), 3), round(math.sin(a), 3), 0.0),
+    )
+
+
+def _py_ring_radius(z):
+    """The shell ring radius at any height, linearly between the rings."""
+    if z <= PY_SHELL_RINGS[0][0]:
+        return PY_SHELL_RINGS[0][1]
+    for (z0, r0, _c0, _t0), (z1, r1, _c1, _t1) in zip(PY_SHELL_RINGS, PY_SHELL_RINGS[1:]):
+        if z <= z1:
+            t = (z - z0) / (z1 - z0)
+            return r0 + (r1 - r0) * t
+    return PY_SHELL_RINGS[-1][1]
+
+
 def build_py_core(rng):
     bm = bmesh.new()
-    # The molten body. Every gap in the shell shows THIS, so it is a complete
-    # form in its own right rather than a glow card: a smooth tapering mass
-    # inset ~5 studs inside the plating, running the full height.
-    rings = []
-    for z, rx, ry in PY_TORSO:
-        rings.append(_py_ring(bm, z, rx - 9.0, ry - 9.0, 9, 0.0, 0.02, rng))
+    # The molten body. Every crack in the shell shows THIS, so it is a
+    # complete form in its own right rather than a glow card - and it is
+    # built off the SAME ring table as the plates, sitting PY_CORE_OUT of a
+    # plate-thickness OUTBOARD of the ring line. That is the fix for the
+    # original defect: the old core was lofted 9 studs inside a loft the
+    # plates were then centred on, which left it ~27 studs behind their
+    # inner faces and invisible even where a gap existed. Now it stands
+    # just behind the plate faces, so a crack is a shallow trough with
+    # lava at the bottom - the reference's broken rock with veins in it.
+    sections = [(PY_SHELL_RINGS[0][0] - 24.0, (PY_SHELL_RINGS[0][1] + PY_PLATE_DEPTH * PY_CORE_OUT) * 0.80)]
+    for z, radius, _count, _twist in PY_SHELL_RINGS:
+        sections.append((z, radius + PY_PLATE_DEPTH * PY_CORE_OUT))
+    # Close the top INSIDE the shoulder plates - a molten dome standing proud
+    # of the rock would read as a lamp on its back, not as an interior.
+    sections.append((PY_SHELL_RINGS[-1][0] + 8.0, 50.0))
+    rings = [_py_ring(bm, z, r, r, PY_CORE_SIDES, 0.0, 0.02, rng) for z, r in sections]
     for a, b in zip(rings, rings[1:]):
-        for i in range(9):
-            j = (i + 1) % 9
+        for i in range(PY_CORE_SIDES):
+            j = (i + 1) % PY_CORE_SIDES
             bm.faces.new((a[i], a[j], b[j], b[i]))
     bm.faces.new(list(reversed(rings[0])))
+    bm.faces.new(rings[-1])
     # Neck and head core: the throat glow the jaw opens onto.
-    top = rings[-1]
-    bm.faces.new(top)
-    ellipsoid(bm, (12.0, 0.0, 196.0), (21.0, 20.0, 19.0), subdiv=1)  # the throat: molten light AT THE NECK, so a dark head reads against it
+    ellipsoid(bm, (14.0, 0.0, 202.0), (25.0, 24.0, 23.0), subdiv=1)
     return finish("Pyrelisk_Core", bm, PY_MOLTEN)
 
 
@@ -2117,68 +2323,167 @@ def _py_chunk(bm, center, radii, rng, jitter=0.30, rot=None):
     return verts
 
 
+def _py_plate_chunk(bm, center, bearing, radii, rng, jitter=0.26, tilt=0.0, roll=0.0, yaw=0.0):
+    """An armour PLATE laid on the surface: local +X radial, +Y tangential, +Z up.
+
+    Orienting the chunk is what makes a crack possible at all - a sphere sized
+    to be a thick slab is a thick slab in every direction, so the first pass's
+    27-stud "chunks" on a 40-stud pitch overlapped their neighbours by 14
+    studs and sealed the shell completely.
+
+    The plate starts as a BOX, not an icosphere: an icosphere's outline is a
+    hexagon, and hexagons on a ring-and-column grid leave a diamond of open
+    lava at every corner, which turned the first tuned pass into a honeycomb.
+    A box's outline is the rectangle the spacing was computed from, so the
+    crack ends up the width the ring table authored.
+
+    It is then CUT AND BROKEN before it is used, in a scratch mesh so the
+    jitter only ever touches this plate's own vertices: subdivide once, then
+    push every vertex around. A bare 8-vertex box only jitters into a skewed
+    box, and a wall of those is masonry - the read this whole model was
+    rebuilt to escape.
+    """
+    rot = Matrix.Rotation(bearing, 3, "Z")
+    if tilt:
+        rot = rot @ Matrix.Rotation(tilt, 3, "Y")
+    if roll:
+        rot = rot @ Matrix.Rotation(roll, 3, "X")
+    if yaw:
+        rot = rot @ Matrix.Rotation(yaw, 3, "Z")
+    scratch = bmesh.new()
+    bmesh.ops.create_cube(scratch, size=2.0, matrix=Matrix.Diagonal(Vector(radii)).to_4x4())
+    bmesh.ops.subdivide_edges(scratch, edges=scratch.edges[:], cuts=1, use_grid_fill=True)
+    smallest = min(radii)
+    for vert in scratch.verts:
+        vert.co += Vector((rng.uniform(-1, 1), rng.uniform(-1, 1), rng.uniform(-1, 1))) * jitter * smallest
+    bmesh.ops.transform(scratch, matrix=Matrix.Translation(Vector(center)) @ rot.to_4x4(), verts=scratch.verts)
+    mesh = bpy.data.meshes.new("_plate")
+    scratch.to_mesh(mesh)
+    scratch.free()
+    bm.from_mesh(mesh)
+    bpy.data.meshes.remove(mesh)
+
+
 def build_py_torso(rng):
     bm = bmesh.new()
-    # THE SHELL, as broken rock: rings of boulders stacked into a hunched
-    # golem - heavy hips at the lake, a pinched waist, and a chest that
-    # widens into shoulder mass twice the head's width. The GAPS between
-    # chunks are the design; `Pyrelisk_Core` burns through every one.
-    for z, radius, count, size in (
-        (-34.0, 50.0, 8, 25.0),  # submerged: the hips, so the body enters the lake instead of ending at it
-        (-6.0, 57.0, 9, 27.0),
-        (26.0, 59.0, 9, 28.0),
-        (60.0, 57.0, 9, 27.0),
-        (94.0, 56.0, 9, 27.0),
-        (128.0, 59.0, 9, 28.0),
-        (158.0, 64.0, 9, 30.0),
-        (184.0, 66.0, 9, 30.0),
-    ):
+    # THE SHELL, as broken rock: rings of PLATES with real cracks between
+    # them, and `Pyrelisk_Core` burning through every one. The plates are
+    # sized off PY_SHELL_RINGS so the crack is a fraction of the pitch, not
+    # a leftover - the first pass sized each chunk at ~1.5x its own spacing
+    # in both directions and sealed the body completely.
+    for index in range(len(PY_SHELL_RINGS)):
+        z, radius, count, twist, half_tan, half_h = _py_plate(index)
         for k in range(count):
-            a = (k / count) * TAU + z * 0.021
-            _py_chunk(
+            a = twist + (k / count) * TAU
+            # Some plates are FUSED to their neighbours and some are not, and
+            # that is the difference between broken rock and a honeycomb of
+            # scales. An even crack round every plate reads as a lattice; a
+            # coin-flip oversize closes roughly two cracks in five, so the
+            # lava runs in irregular fissures across patches of solid stone.
+            grow = 1.30 if rng.random() < 0.34 else rng.uniform(0.90, 1.00)
+            if (index, k) in PY_SEAM_SLOTS:
+                # A SEAM PLATE. Seated at exactly the nominal radius and depth,
+                # barely jittered and not wobbled, so `py_seam_site` can state
+                # where its face is instead of guessing - and so the mirrored
+                # pair really is mirrored instead of clear by jitter luck.
+                _py_plate_chunk(
+                    bm,
+                    (math.cos(a) * radius, math.sin(a) * radius, z),
+                    a,
+                    (PY_PLATE_DEPTH, half_tan * 0.98, half_h * 0.98),
+                    rng,
+                    jitter=0.06,
+                )
+                continue
+            # A plate is also SET at its own depth and its own angle. Rings of
+            # identically seated slabs read as courses of brickwork; +/-4
+            # studs of radial set and a wobble on all three axes turns the
+            # same rings into a rock face that happens to be plated.
+            seat = radius + rng.uniform(-4.0, 3.0)
+            _py_plate_chunk(
                 bm,
-                (math.cos(a) * radius, math.sin(a) * radius, z + rng.uniform(-3.0, 3.0)),
-                (size * rng.uniform(0.85, 1.2), size * rng.uniform(0.85, 1.2), size * rng.uniform(0.9, 1.25)),
+                (math.cos(a) * seat, math.sin(a) * seat, z + rng.uniform(-2.2, 2.2)),
+                a,
+                (
+                    PY_PLATE_DEPTH * rng.uniform(0.92, 1.16),
+                    half_tan * grow * rng.uniform(0.94, 1.06),
+                    half_h * grow * rng.uniform(0.92, 1.08),
+                ),
                 rng,
+                jitter=0.28,
+                tilt=rng.uniform(-0.13, 0.13),
+                roll=rng.uniform(-0.20, 0.20),
+                yaw=rng.uniform(-0.11, 0.11),
             )
-    # The shoulder mass: the golem's whole silhouette. Big boulders piled
-    # wide and high, so the head sits DOWN IN a shoulder line rather than on
-    # top of a neck - the single strongest read in both references.
+    # Tie-rock straddling the horizontal cracks at a third of the bearings,
+    # dropped into the vertical cracks so it bridges both. Without these the
+    # shell reads as a stack of separate hoops; with them it reads as one
+    # broken rock face with a NETWORK of cracks, which is the reference.
+    for index in range(len(PY_SHELL_RINGS) - 1):
+        z0, r0, count, twist, half_tan, _half_h = _py_plate(index)
+        z1, r1 = PY_SHELL_RINGS[index + 1][0], PY_SHELL_RINGS[index + 1][1]
+        for k in range(0, count, 3):
+            a = twist + ((k + 0.5) / count) * TAU
+            _py_plate_chunk(
+                bm,
+                (math.cos(a) * (r0 + r1) * 0.5, math.sin(a) * (r0 + r1) * 0.5, (z0 + z1) * 0.5),
+                a,
+                (PY_PLATE_DEPTH * 0.80, half_tan * 0.50, (z1 - z0) * 0.44),
+                rng,
+                jitter=0.26,
+            )
+    # The shoulder mass: the golem's whole silhouette. Wide, but LOW and set
+    # BACK - the first pass piled it to z=232 around a 68-stud head and the
+    # head simply vanished into it in the staged render. The head has to be
+    # the first thing found on this silhouette, so the shoulders give it air
+    # above and in front and take their bulk sideways instead.
     for side in (-1, 1):
-        for index, (y, z, size) in enumerate(((62.0, 178.0, 32.0), (86.0, 190.0, 32.0), (104.0, 182.0, 26.0), (80.0, 206.0, 26.0))):
+        for x, y, z, radii in (
+            (2.0, 68.0, 166.0, (30.0, 31.0, 21.0)),
+            (-12.0, 92.0, 174.0, (28.0, 30.0, 21.0)),
+            (-20.0, 110.0, 164.0, (24.0, 25.0, 19.0)),
+            (-34.0, 84.0, 180.0, (23.0, 24.0, 15.0)),
+        ):
             _py_chunk(
                 bm,
-                (rng.uniform(-8, 8), side * y, z),
-                (size * rng.uniform(0.9, 1.15), size * rng.uniform(0.9, 1.15), size * rng.uniform(0.75, 1.0)),
+                (x + rng.uniform(-5, 5), side * y, z + rng.uniform(-3, 3)),
+                tuple(r * rng.uniform(0.92, 1.08) for r in radii),
                 rng,
+                jitter=0.24,
             )
-            _ = index
     # A low back ridge of smaller rubble, no spines - the references have no
-    # dorsal fin, just more rock.
+    # dorsal fin, just more rock. Sat ON the shell's back face (it used to be
+    # authored at a fixed x and ended up buried inside the plating).
     for i in range(6):
         t = i / 5
-        _py_chunk(bm, (-52.0 + t * 6.0, rng.uniform(-12, 12), 40.0 + t * 130.0), (18.0, 16.0, 15.0), rng)
+        z = 40.0 + t * 132.0
+        r = _py_ring_radius(z) + PY_PLATE_DEPTH * 0.70
+        _py_plate_chunk(bm, (-r, rng.uniform(-11, 11), z), math.pi, (14.0, 13.0, 11.0), rng, jitter=0.28)
     return finish("Pyrelisk_Torso", bm, PY_OBSIDIAN)
 
 
 def build_py_head(rng):
     bm = bmesh.new()
-    # A ROCK, not a skull - but ONE rock. The first version was a cluster of
-    # chunks the same size as the shoulder rubble around it, so at any real
-    # distance the head simply vanished into the body. This is a single
-    # dominant mass with a flat face plane and a hard brow over it, sized to
-    # beat everything near it.
-    _py_chunk(bm, (0.0, 0.0, 2.0), (34.0, 33.0, 31.0), rng, jitter=0.16)
-    # Cranium: a lower dome behind, so the profile has a back to it.
-    _py_chunk(bm, (-20.0, 0.0, 8.0), (18.0, 22.0, 18.0), rng, jitter=0.20)
-    # The brow: a heavy slab thrown forward over the eyes. This is the
-    # silhouette line that says "face" from 200 studs out.
-    box(bm, (23.0, 0.0, 15.0), (24.0, 52.0, 12.0), Matrix.Rotation(math.radians(-14), 3, "Y"))
-    # Jaw corners, squared off, framing a recessed face.
+    # A ROCK, not a skull - but ONE BIG rock, and the first thing you find on
+    # this silhouette. The version before this was a 34-stud chunk standing in
+    # a shoulder line of 26-32 stud chunks that piled to z=232 around it, and
+    # in the staged render there was no discernible head at all. It is now
+    # ~42, the shoulders were dropped and pulled back off it (build_py_torso),
+    # and the whole cluster reads from outside the crater.
+    _py_chunk(bm, (2.0, 0.0, 6.0), (42.0, 40.0, 38.0), rng, jitter=0.15)
+    # Cranium: a lower mass behind, so the profile has a back to it.
+    _py_chunk(bm, (-28.0, 0.0, 10.0), (26.0, 30.0, 24.0), rng, jitter=0.18)
+    # The brow: a heavy slab thrown forward over the eyes, its underside
+    # overhanging the face plane. This is the silhouette line that says
+    # "face" from 200 studs out, so it is the biggest single feature here.
+    box(bm, (30.0, 0.0, 24.0), (34.0, 74.0, 16.0), Matrix.Rotation(math.radians(-16), 3, "Y"))
+    # Cheeks, squared off, framing a recessed face between them.
     for side in (-1, 1):
-        _py_chunk(bm, (10.0, side * 23.0, -6.0), (15.0, 12.0, 14.0), rng, jitter=0.18)
-    # A short thick neck stub - the head sits ON something now.
-    _py_chunk(bm, (-6.0, 0.0, -24.0), (16.0, 17.0, 12.0), rng, jitter=0.2)
+        _py_chunk(bm, (16.0, side * 33.0, -8.0), (23.0, 16.0, 21.0), rng, jitter=0.18)
+    # The muzzle block the jaw closes onto.
+    _py_chunk(bm, (26.0, 0.0, -12.0), (20.0, 25.0, 15.0), rng, jitter=0.20)
+    # A short thick neck stub - the head sits ON something.
+    _py_chunk(bm, (-12.0, 0.0, -34.0), (21.0, 23.0, 16.0), rng, jitter=0.2)
     return finish("Pyrelisk_Head", bm, PY_OBSIDIAN)
 
 
@@ -2186,30 +2491,34 @@ def build_py_jaw(rng):
     bm = bmesh.new()
     # A blunt rock underjaw - it hinges open for the vent-breath and shows
     # the throat. No teeth: these things are broken stone, not animals.
-    _py_chunk(bm, (8.0, 0.0, -16.0), (20.0, 20.0, 9.0), rng, jitter=0.22)
-    _py_chunk(bm, (20.0, 0.0, -14.0), (13.0, 15.0, 7.0), rng, jitter=0.22)
+    _py_chunk(bm, (12.0, 0.0, -25.0), (26.0, 26.0, 12.0), rng, jitter=0.22)
+    _py_chunk(bm, (32.0, 0.0, -22.0), (17.0, 19.0, 9.0), rng, jitter=0.22)
     return finish("Pyrelisk_Jaw", bm, PY_OBSIDIAN)
 
 
 def build_py_crown(rng):
     bm = bmesh.new()
-    # Short, thick shards standing off the crown and the shoulder line - the
-    # reference's pointed head and spiked shoulders. Stubby and rock-like,
-    # NOT the raked basalt colonnade this model had first.
+    # Short, thick shards standing off the crown - the reference's pointed
+    # head. Stubby and rock-like, NOT the raked basalt colonnade this model
+    # had first, but scaled with the head so they still crest it.
     for i in range(3):
         t = i / 2
         side = -1 if i % 2 else 1
-        base = Vector((-8.0 - t * 6.0, side * t * 9.0, 22.0))
-        spike(bm, tuple(base), tuple(base + Vector((-4.0, side * 3.0, 20.0 + rng.uniform(-5, 7)))), rng.uniform(5.0, 8.0), sides=5)
+        base = Vector((-10.0 - t * 8.0, side * t * 12.0, 34.0))
+        spike(bm, tuple(base), tuple(base + Vector((-6.0, side * 4.0, 26.0 + rng.uniform(-6, 9)))), rng.uniform(7.0, 10.0), sides=5)
     return finish("Pyrelisk_Crown", bm, PY_BASALT)
 
 
 def build_py_eyes():
     bm = bmesh.new()
     # Two slits under the brow. Small - they are the only bright thing on the
-    # head, and the references keep them mean.
+    # head - but they have to be PROUD OF THE SKULL, which the first pass was
+    # not: they sat at x=19 inside a skull whose face plane is at x=+40, so
+    # nine studs of rock stood in front of both of them and only one ever
+    # showed, through a jitter dent. Proud by ~3, and set wide enough apart
+    # that the brow's shadow cannot weld them into one bar.
     for side in (-1, 1):
-        box(bm, (19.0, side * 11.0, 3.0), (6.0, 13.0, 5.5), Matrix.Rotation(math.radians(side * 8), 3, "X"))
+        box(bm, (36.0, side * 20.0, 7.0), (11.0, 14.0, 5.5), Matrix.Rotation(math.radians(side * 8), 3, "X"))
     return finish("Pyrelisk_Eyes", bm, PY_EMBER)
 
 
@@ -2222,7 +2531,7 @@ def build_py_shoulder(rng):
     return finish("Pyrelisk_Shoulder", bm, PY_OBSIDIAN)
 
 
-def _py_limb(bm, length, r0, r1, rng, links):
+def _py_limb(bm, length, r0, r1, rng, links, flat=1.0):
     """A limb along +X from its joint: a run of boulders, tapering.
 
     Every chunk is CENTRED ON THE AXIS with symmetric radii. The first pass
@@ -2259,7 +2568,7 @@ def build_py_upper_arm(rng):
 
 def build_py_forearm(rng):
     bm = bmesh.new()
-    _py_limb(bm, PY_RIG["forearm"], 25.0, 20.0, rng, 4)
+    _py_limb(bm, PY_RIG["forearm"], 25.0, 20.0, rng, 4, flat=0.72)
     return finish("Pyrelisk_Forearm", bm, PY_OBSIDIAN)
 
 
@@ -2318,21 +2627,56 @@ def build_py_vent(rng):
     return obj
 
 
+# THE CLIMB ROUTE, in one place, because PyreliskPath mirrors these exact
+# numbers and the server cuts collidable slabs from them. Every one of them is
+# measured against the built rock (assets scratch probe: cast down onto the
+# shell across each slab's footprint), NOT derived from the joint numbers -
+# which is how the first pass put both walkable surfaces INSIDE their own
+# rock: the ramp 4-8 studs under a forearm it was authored 13 studs above,
+# and the deck up to 29 studs under the shoulder boulders at 21 of 35 sample
+# points. A mounted player would have walked chest-deep through boulders.
+PY_WALK_ARM_LIFT = 16.5  # slab CENTRE above the forearm axis; its top face is 19.0
+# Shorter than the forearm and centred on it, so the rig's elbow-to-wrist
+# midpoint is still the slab's centre while both ends stop short of the elbow
+# rock and the fist - the two places the arm's crown climbs back above 19.
+PY_WALK_ARM_SIZE = (88.0, 22.0, 5.0)
+# (centre, size) in boss space, all three topping out at 202.0 - just clear of
+# the 186..200 the shell and the shoulder mass reach up here. The shape is set
+# by where the HEAD is: its cranium hangs back over the spine to within 0-9
+# studs of this height for x >= -24 and |y| <= 40, so a single bar across the
+# shoulders (which is what was here) puts a mounted player under the jaw with
+# no headroom. The route is instead a back plateau aft of the skull and a pad
+# on each shoulder, one vent standing on each.
+PY_WALK_DECKS = [
+    ((-56.0, 0.0, 199.5), (36.0, 160.0, 5.0)),  # the spine plateau, aft of the head
+    ((-20.0, 72.0, 200.5), (64.0, 40.0, 5.0)),  # left shoulder pad, overlapping the plateau aft
+    ((-20.0, -72.0, 200.5), (64.0, 40.0, 5.0)),  # right shoulder pad
+]
+
+
+def py_deck_top(index):
+    """The walking face of deck `index` - what a vent's base stands on."""
+    center, size = PY_WALK_DECKS[index]
+    return center[2] + size[2] * 0.5
+
+
 def build_py_walk_arm():
     bm = bmesh.new()
     # THE RAMP. A plain slab matching the forearm's upper surface, because the
     # climb has to be walkable geometry a humanoid never trips on - and simple
-    # boxes are exact where a convex hull of the plated arm would not be.
-    box(bm, (PY_RIG["forearm"] * 0.5, 0.0, 11.0), (PY_RIG["forearm"] + 16.0, 26.0, 4.0))
+    # boxes are exact where a convex hull of the plated arm would not be. It
+    # only works because the forearm is FLATTENED (see _py_limb): a round arm
+    # has no single height a flat slab can sit at.
+    box(bm, (PY_RIG["forearm"] * 0.5, 0.0, PY_WALK_ARM_LIFT), PY_WALK_ARM_SIZE)
     return finish("Pyrelisk_WalkArm", bm, PY_SLAG)
 
 
 def build_py_walk_deck():
     bm = bmesh.new()
-    # The shoulder deck and the spine walk between them: where the mounted
-    # phase actually happens.
-    box(bm, (-26.0, 0.0, 196.0), (54.0, 170.0, 4.0))
-    box(bm, (-48.0, 0.0, 172.0), (32.0, 88.0, 4.0))
+    # The shoulder bar and the spine walk aft of it: where the mounted phase
+    # actually happens, and what the three vents stand on.
+    for center, size in PY_WALK_DECKS:
+        box(bm, center, size)
     return finish("Pyrelisk_WalkDeck", bm, PY_SLAG)
 
 
@@ -2358,9 +2702,31 @@ def build_pyrelisk():
     print("HANDOFF pyrelisk: shoulder joint (%.0f, +/-%.0f, %.0f); upper arm %.0f, forearm %.0f, hand %.0f - reach %.0f from the shoulder"
           % (PY_RIG["shoulder"][0], PY_RIG["shoulder"][1], PY_RIG["shoulder"][2], PY_RIG["upper_arm"], PY_RIG["forearm"], PY_RIG["hand"],
              PY_RIG["upper_arm"] + PY_RIG["forearm"] + PY_RIG["hand"]))
-    print("HANDOFF pyrelisk: neck joint (%.0f, %.0f, %.0f); head faces +X, snout tip x=+64" % PY_RIG["neck"])
+    head_x = max(v.co.x for obj in objects if obj.name == "Pyrelisk_Head" for v in obj.data.vertices)
+    crown_z = PY_RIG["neck"][2] + max(
+        v.co.z for obj in objects if obj.name in ("Pyrelisk_Crown", "Pyrelisk_Head") for v in obj.data.vertices)
+    print("HANDOFF pyrelisk: neck joint (%.0f, %.0f, %.0f); head faces +X, snout tip x=+%.0f (head-local), crown top z=%.0f"
+          % (PY_RIG["neck"] + (head_x, crown_z)))
     print("HANDOFF pyrelisk: Seam and Vent are MODULES - authored at the origin, +Z is the outward surface normal, placed many times by the rig")
     print("HANDOFF pyrelisk: _Walk* are the ONLY collidable parts (the climb route); every shell piece is non-collide")
+    print("HANDOFF pyrelisk: jaw hinge (head-local) (%.1f, %.1f, %.1f)" % PY_JAW_HINGE)
+    # Everything PyreliskPath mirrors, printed off the built numbers so the two
+    # files cannot drift. Seam and vent sites are derived from the shell's own
+    # ring table and from the decks, not estimated against them.
+    for index, (position, normal) in enumerate(PY_SEAM_SITES, 1):
+        print("HANDOFF pyrelisk: SEAM %d at (%.1f, %.1f, %.1f) out (%.3f, %.3f, %.3f)"
+              % ((index,) + position + normal))
+    for index, (position, normal) in enumerate(PY_VENT_SITES, 1):
+        print("HANDOFF pyrelisk: VENT %d at (%.1f, %.1f, %.1f) out (%.3f, %.3f, %.3f)"
+              % ((index,) + tuple(position) + tuple(normal)))
+    for index, (center, size) in enumerate(PY_WALK_DECKS, 1):
+        print("HANDOFF pyrelisk: DECK %d at (%.1f, %.1f, %.1f) ROBLOX size (%.1f, %.1f, %.1f) - walking face z %.1f"
+              % (index, center[0], center[1], center[2], size[0], size[2], size[1], py_deck_top(index - 1)))
+    print("HANDOFF pyrelisk: WALK_ARM_LIFT %.1f (slab centre above the forearm axis), ROBLOX size (%.1f, %.1f, %.1f)"
+          % (PY_WALK_ARM_LIFT, PY_WALK_ARM_SIZE[0], PY_WALK_ARM_SIZE[2], PY_WALK_ARM_SIZE[1]))
+    print("HANDOFF pyrelisk: the Forearm is FLATTENED (it is the ramp's footing), so its ROLL matters - "
+          "aim it with an UP-REFERENCED basis (see _py_aim_up), not a shortest-arc rotation, and lift the "
+          "ramp slab along THAT basis's up, not world up: on a steeply planted arm world up runs along the bone")
     return objects
 
 
@@ -2401,6 +2767,26 @@ def _py_aim(origin, direction):
     return Matrix.Translation(Vector(origin)) @ rot
 
 
+def _py_aim_up(origin, direction):
+    """`_py_aim`, but with the piece's local +Z ROLLED as near world up as it gets.
+
+    `rotation_difference` gives the shortest rotation onto the bone and takes
+    whatever roll falls out of it, which is fine for a boulder chain that is
+    the same from every side. It is NOT fine for the forearm and its ramp: the
+    forearm is flattened so it has a top to walk on, and the walk slab is a
+    flat plate that has to lie ON that top. Both need a basis referenced to
+    up, and the client rig has to build the same one - see the HANDOFF.
+    """
+    x = Vector(direction).normalized()
+    up = Vector((0.0, 0.0, 1.0))
+    if abs(x.dot(up)) > 0.999:
+        up = Vector((1.0, 0.0, 0.0))
+    y = up.cross(x).normalized()
+    z = x.cross(y)
+    rot = Matrix((x, y, z)).transposed().to_4x4()
+    return Matrix.Translation(Vector(origin)) @ rot
+
+
 def _py_surface(position, normal):
     """A module's transform: +Z along the outward surface normal."""
     rot = Vector((0, 0, 1)).rotation_difference(Vector(normal).normalized()).to_matrix().to_4x4()
@@ -2416,9 +2802,9 @@ def _py_arm(parts, made, side, elbow_dir, wrist_dir, hand_dir, walk=False):
     made.append(_py_copy(parts["UpperArm"], _py_aim(shoulder, elbow_dir)))
     elbow = shoulder + elbow_dir.normalized() * PY_RIG["upper_arm"]
     wrist_dir = Vector((wrist_dir[0], side * wrist_dir[1], wrist_dir[2]))
-    made.append(_py_copy(parts["Forearm"], _py_aim(elbow, wrist_dir)))
+    made.append(_py_copy(parts["Forearm"], _py_aim_up(elbow, wrist_dir)))
     if walk:
-        made.append(_py_copy(parts["WalkArm"], _py_aim(elbow, wrist_dir)))
+        made.append(_py_copy(parts["WalkArm"], _py_aim_up(elbow, wrist_dir)))
     wrist = elbow + wrist_dir.normalized() * PY_RIG["forearm"]
     hand_dir = Vector((hand_dir[0], side * hand_dir[1], hand_dir[2]))
     made.append(_py_copy(parts["Hand"], _py_aim(wrist, hand_dir)))
@@ -4098,9 +4484,48 @@ def _spire_radius(z):
 BJ_SWEEP_REACH = 66.0
 BJ_SWEEP_INNER = 13.0
 BJ_SWEEP_LOW = 1.6
-BJ_SWEEP_HIGH = 5.4
+# 8.5, NOT 5.4. This was a hand-copy that never got the fix: the Luau raised
+# HIGH from 5.4 because |3.0 - 5.4| = 2.4 sits INSIDE girth 3.6, so standing
+# under a high sweep was hit and half the mechanic taught the opposite of
+# what it means. A render at 5.4 would show a sweep nobody can stand under.
+BJ_SWEEP_HIGH = 8.5
 BJ_MAX_COIL = 3
 BJ_COIL_DROP = (BJ_REST["top_z"] - BJ_REST["bottom_z"]) / BJ_REST["turns"]
+
+# THE ATTACK CHANNEL, ported whole from BrinejawPath's contract header: the
+# server publishes (AttackKind, AttackU, AimX, AimZ) alongside the original
+# six attributes, and every pose below is a function of those ten values. The
+# Luau is the source of truth for all of it; read that file's header for what
+# U means per kind, and keep these numbers equal to it.
+#
+# Blender is Z-up, so the Luau's BELL (x, y, z) = (8.6, 53.0, -2.8) arrives
+# here as (x, y, z) = (8.6, -2.8, 53.0) - the bell hung off the lighthouse
+# gallery by arena_gen's build_bj_dressing, NOT the half-buried one on the
+# sand that the first draft struck.
+BJ_BELL = (8.6, -2.8, 53.0)
+BJ_AIM_MIN, BJ_AIM_MAX = 16.0, 58.0
+BJ_LUNGE_COCK_U, BJ_LUNGE_IMPACT_U = 0.35, 0.50
+BJ_LUNGE_COCK_R, BJ_LUNGE_RISE, BJ_LUNGE_SIT = 16.0, 12.0, 2.4
+BJ_BELL_WINDUP_U, BJ_BELL_IMPACT_U, BJ_BELL_LIFT = 0.35, 0.55, 1.7
+BJ_BELL_COCK_R, BJ_BELL_RISE = 15.0, 14.0
+BJ_REAR_U, BJ_REAR_OUT, BJ_REAR_LIFT = 0.30, 10.0, 24.0
+BJ_UNDER_T0, BJ_UNDER_T1 = 0.34, 0.67
+BJ_UNDER_INNER, BJ_UNDER_OVERRUN = 10.0, 10.0
+BJ_UNDER_DEPTH, BJ_UNDER_HUMP, BJ_UNDER_SIGMA = 4.5, 7.1, 6.0
+BJ_SPIRAL_CLOSE = 8.0
+# The whip. drag(r) = BJ_WHIP_DRAG * (r - inner) * rate, so the arm TRAILS its
+# base bearing: 28.2 degrees at the tip at the book's fastest sweep. A render
+# has no angular velocity of its own, so `sweep_rate` is just another field of
+# the state dict - set it to see the arm curve.
+BJ_WHIP_DRAG, BJ_WHIP_RATE_MAX = 0.0039, 3.0
+BJ_ATTACK = {
+    "lunge": {"mode": "neck", "span": 0.26, "entry": 0.10, "exit": 0.28, "arch": 5.0},
+    "belltoll": {"mode": "neck", "span": 0.24, "entry": 0.10, "exit": 0.14, "arch": 7.0},
+    "rear": {"mode": "rear", "span": 0.50, "entry": 0.16, "exit": 0.16},
+    "undertow": {"mode": "undertow", "entry": 0.30, "exit": 0.30},
+    "spiral": {"mode": "sweep"},
+    "collapse": {"mode": "fall"},
+}
 
 
 def _bj_sand_z(r):
@@ -4125,19 +4550,75 @@ def bj_state(**overrides):
         "unwind": 0.0,
         "sweep_angle": 0.0,
         "sweep_height": BJ_SWEEP_LOW,
+        # DERIVED on both sides from sweep_angle, never replicated - see the
+        # Luau's contract header. A still render just sets it.
+        "sweep_rate": 0.0,
         "slump": 0.0,
         "face_angle": BJ_REST["bearing"] - 0.8,
+        "attack_kind": "",
+        "attack_u": 0.0,
+        "aim_x": 0.0,
+        "aim_z": 0.0,
         "time": 0.0,
     }
     state.update(overrides)
     return state
 
 
+def _wrap(a):
+    return (a + math.pi) % TAU - math.pi
+
+
+def _bj_cyl_of(p):
+    """(bearing, radius, height) - Blender's Z is the Luau's Y."""
+    r = math.hypot(p.x, p.y)
+    return (math.atan2(p.y, p.x) if r > 1e-4 else 0.0), r, p.z
+
+
+def _bj_from_cyl(th, r, z):
+    return Vector((math.cos(th) * r, math.sin(th) * r, z))
+
+
+def _bj_rest_bearing_ref(t):
+    """The bearing the rest pose is WINDING THROUGH at t - continuous, and
+    growing past +-pi rather than wrapping. Cylindrical blends MUST use this:
+    the pose is a three-turn helix, so neighbouring vertebrae sit up to a full
+    turn apart and a per-point 'short way round' tears the curve (measured in
+    the Luau as a 144-degree kink in the tail at half weight)."""
+    rest = BJ_REST
+    if t <= rest["helix_end"]:
+        k = max(0.0, min(1.0, (t - rest["neck_end"]) / (rest["helix_end"] - rest["neck_end"])))
+        return rest["bearing"] + rest["turns"] * TAU * k
+    k = (t - rest["helix_end"]) / (1.0 - rest["helix_end"])
+    return rest["bearing"] + rest["turns"] * TAU + rest["tail_turn"] * TAU * k
+
+
+def _bj_rest_bearing(t, wrapped):
+    ref = _bj_rest_bearing_ref(t)
+    return ref + _wrap(wrapped - ref)
+
+
+def _bj_cyl_blend(th, r, z, t_th, t_r, t_z, w):
+    return _bj_from_cyl(th + (t_th - th) * w, r + (t_r - r) * w, z + (t_z - z) * w)
+
+
+def _bj_coil_offset(state):
+    """How far the whole stack has slid down the tower, in studs - CLAMPED to
+    the beach, exactly as the Luau does. Unclamped (which is what this port
+    carried) the third stance puts 43% of the body underground and the death
+    collapse buries two thirds of it 22 studs into the sand: measured 16.0
+    studs of divergence at coil=1 and 26.6 during a collapse, so a render of
+    either state was showing a pose the game does not have."""
+    drop = (BJ_MAX_COIL - state["coil"]) * BJ_COIL_DROP
+    floor = BJ_REST["bottom_z"] - _bj_sand_z(0) - BJ_REST["clearance"]
+    return max(0.0, min(drop, max(floor, 0.0)))
+
+
 def _bj_rest_path(t, state=None):
     """Head (t=0) to rattle (t=1) in arena-local space, waterline at z=0."""
     rest = BJ_REST
     state = state or bj_state()
-    drop = (BJ_MAX_COIL - state["coil"]) * BJ_COIL_DROP
+    drop = _bj_coil_offset(state)
     neck_end, helix_end = rest["neck_end"], rest["helix_end"]
 
     def helix(k):
@@ -4201,24 +4682,175 @@ def _bj_rest_path(t, state=None):
     return p0 * (2 * k3 - 3 * k2 + 1) + m0 * (k3 - 2 * k2 + k) + p1 * (3 * k2 - 2 * k3) + m1 * (k3 - k2)
 
 
-def _bj_swept_point(state, t, blend_start):
-    """The tail laid out along one bearing at sweep height - the arm."""
+def _bj_sweep_reach(state):
+    """How far out the arm reaches. `spiral` contracts it with U, and this one
+    function is read by the drawn tip AND by the Luau's hit test."""
+    if state.get("attack_kind", "") != "spiral":
+        return BJ_SWEEP_REACH
+    closed = BJ_SWEEP_INNER + BJ_SPIRAL_CLOSE
+    return BJ_SWEEP_REACH + (closed - BJ_SWEEP_REACH) * _smoothstep(
+        max(0.0, min(1.0, state.get("attack_u", 0.0)))
+    )
+
+
+def _bj_sweep_bearing_at(state, r):
+    """THE ARM IS A DRAG CURVE, NOT A SPOKE. The bearing at radius r trails
+    the base bearing in proportion to how far out it is and how fast the base
+    is turning - a rigid rotating line has no tail in it."""
+    rate = max(-BJ_WHIP_RATE_MAX, min(BJ_WHIP_RATE_MAX, state.get("sweep_rate", 0.0)))
+    return state["sweep_angle"] - BJ_WHIP_DRAG * max(r - BJ_SWEEP_INNER, 0.0) * rate
+
+
+def _bj_swept_cyl(state, t, blend_start):
+    """The arm at t, as (UNWRAPPED bearing, radius, height). The branch is
+    picked once per state AT THE TIP, because the tip is the part that
+    actually swings and so the part that must take the short way round."""
     k = max(0.0, min(1.0, (t - blend_start) / max(1 - blend_start, 1e-3)))
-    r = BJ_SWEEP_INNER + (BJ_SWEEP_REACH - BJ_SWEEP_INNER) * k
-    theta = state["sweep_angle"]
-    return Vector((math.cos(theta) * r, math.sin(theta) * r, _bj_sand_z(r) + state["sweep_height"]))
+    reach = _bj_sweep_reach(state)
+    r = BJ_SWEEP_INNER + (reach - BJ_SWEEP_INNER) * k
+    turns = round((_bj_rest_bearing_ref(1.0) - _bj_sweep_bearing_at(state, reach)) / TAU)
+    return _bj_sweep_bearing_at(state, r) + turns * TAU, r, _bj_sand_z(r) + state["sweep_height"]
+
+
+def _bj_swept_point(state, t, blend_start):
+    return _bj_from_cyl(*_bj_swept_cyl(state, t, blend_start))
+
+
+def _bj_fall_amount(state):
+    """How far into the death fall. DERIVED from the attack channel - kind
+    'collapse' means fall = U - because the Luau's `fall` used to be read by
+    the slump and written by nobody, so the collapse eased four values that
+    were already at their targets."""
+    if state.get("attack_kind", "") == "collapse":
+        return max(0.0, min(1.0, state.get("attack_u", 0.0)))
+    return max(0.0, min(1.0, state.get("fall", 0.0)))
 
 
 def _bj_slump_point(state, t):
     """Where the head goes when it loses its grip: down, onto the sand."""
     rest = BJ_REST
-    drop = (BJ_MAX_COIL - state["coil"]) * BJ_COIL_DROP
+    drop = _bj_coil_offset(state)
     theta = state["face_angle"]
-    reach = 26.0
+    fall = _bj_fall_amount(state)
+    reach = 26.0 + 8.0 * fall
     k = max(0.0, min(1.0, t / 0.30))
     bottom = rest["bottom_z"] - drop
     r = reach - (reach - (_spire_radius(bottom) + rest["clearance"])) * k
-    return Vector((math.cos(theta) * r, math.sin(theta) * r, _bj_sand_z(r) + 2.6 + 9.0 * k**1.5))
+    z = _bj_sand_z(r) + 2.6 - 1.8 * fall + 9.0 * k**1.5
+    return Vector((math.cos(theta) * r, math.sin(theta) * r, z))
+
+
+# ------------------------------------------------------------ attack shapes
+#
+# Ported whole from BrinejawPath.luau. Every bearing below is UNWRAPPED and
+# continuous in U: each target is the rest head's own bearing plus a swing
+# that never wraps. Wrapping here put a 180-degree flip in the middle of the
+# bell's recoil - 15.6 studs of body in one step of U.
+
+
+def _bj_progress(state):
+    return max(0.0, min(1.0, state.get("attack_u", 0.0)))
+
+
+def _bj_envelope(u, entry, exit_):
+    """The fade in and out. An attack whose kind is cleared at U < 1 SNAPS."""
+    return min(_smoothstep(u / max(entry, 1e-3)), _smoothstep((1 - u) / max(exit_, 1e-3)))
+
+
+def _bj_aim_cyl(state):
+    ax, az = state.get("aim_x", 0.0), state.get("aim_z", 0.0)
+    r = math.hypot(ax, az)
+    if r < 1e-3:
+        return state["face_angle"], BJ_AIM_MIN
+    return math.atan2(az, ax), max(BJ_AIM_MIN, min(BJ_AIM_MAX, r))
+
+
+def _bj_head_rest_cyl(state):
+    wrapped, r, z = _bj_cyl_of(_bj_rest_path(0.0, state))
+    return _bj_rest_bearing(0.0, wrapped), r, z
+
+
+def _bj_neck_arc(state, target, target_theta, span, arch, t):
+    """The neck, one cylindrical arc from the head's target to where the body
+    still grips the tower. LINEAR in k so the arc's tangent DIRECTION is
+    constant along its length; ease it and the neck stands itself vertical at
+    the joint, which is where ChainPose's frame is undefined."""
+    k = max(0.0, min(1.0, t / max(span, 1e-3)))
+    a_wrapped, r1, z1 = _bj_cyl_of(_bj_rest_path(span, state))
+    t1 = _bj_rest_bearing(span, a_wrapped)
+    _, r0, z0 = _bj_cyl_of(target)
+    z = z0 + (z1 - z0) * k + arch * math.sin(math.pi * k)
+    r = r0 + (r1 - r0) * k
+    return (
+        target_theta + (t1 - target_theta) * k,
+        max(r, _spire_radius(z) + BJ_REST["clearance"]),
+        z,
+    )
+
+
+def _bj_lunge_target(state, u):
+    aim_t, aim_r = _bj_aim_cyl(state)
+    th0, r0, z0 = _bj_head_rest_cyl(state)
+    swing = _wrap(aim_t - th0)
+    cock = BJ_LUNGE_COCK_U
+    if u <= cock:
+        a = _smoothstep(u / cock)
+        return th0 + swing * a, Vector((r0 + (BJ_LUNGE_COCK_R - r0) * a, 0.0, z0 + BJ_LUNGE_RISE * a))
+    b = _smoothstep(max(0.0, min(1.0, (u - cock) / (BJ_LUNGE_IMPACT_U - cock))))
+    z_top = z0 + BJ_LUNGE_RISE
+    z_land = _bj_sand_z(aim_r) + BJ_LUNGE_SIT
+    return th0 + swing, Vector(
+        (BJ_LUNGE_COCK_R + (aim_r - BJ_LUNGE_COCK_R) * b, 0.0, z_top + (z_land - z_top) * b)
+    )
+
+
+def _bj_bell_strike():
+    return Vector((BJ_BELL[0], BJ_BELL[1], BJ_BELL[2] + BJ_BELL_LIFT))
+
+
+def _bj_bell_target(state, u):
+    b_t, b_r, b_z = _bj_cyl_of(_bj_bell_strike())
+    th0, r0, z0 = _bj_head_rest_cyl(state)
+    swing = _wrap(b_t - th0)
+    cock_r, cock_z = BJ_BELL_COCK_R, z0 + BJ_BELL_RISE
+    windup, impact = BJ_BELL_WINDUP_U, BJ_BELL_IMPACT_U
+    if u <= windup:
+        a = _smoothstep(u / windup)
+        return th0 + swing * 0.55 * a, Vector((r0 + (cock_r - r0) * a, 0.0, z0 + (cock_z - z0) * a))
+    if u <= impact:
+        b = _smoothstep((u - windup) / (impact - windup))
+        return th0 + swing * (0.55 + 0.45 * b), Vector(
+            (cock_r + (b_r - cock_r) * b, 0.0, cock_z + (b_z - cock_z) * b)
+        )
+    c = _smoothstep((u - impact) / (1 - impact))
+    return th0 + swing * (1 - c), Vector((b_r + (r0 - b_r) * c, 0.0, b_z + (z0 - b_z) * c))
+
+
+def _bj_rear_offset(state, t):
+    """`rear` DISPLACES the front half outward and upward and touches no
+    bearing at all, so the coils rear with it. A 'straighten the front into an
+    arc' version had to unwind 1.86 turns of coil to reach a straight neck,
+    which is both wrong and the fastest way to stand a limb dead vertical."""
+    shape = BJ_ATTACK["rear"]
+    u = _bj_progress(state)
+    rise = _smoothstep(max(0.0, min(1.0, u / BJ_REAR_U))) * _bj_envelope(u, shape["entry"], shape["exit"])
+    fade = 1 - _smoothstep(max(0.0, min(1.0, t / shape["span"])))
+    return BJ_REAR_OUT * rise * fade, BJ_REAR_LIFT * rise * fade
+
+
+def _bj_undertow_cyl(state, t):
+    """The buried run: the middle third rides under the beach except where the
+    travelling bulge lifts it proud. The run EXTENDS with the bulge rather
+    than being laid out to full length at U = 0."""
+    aim_t, aim_r = _bj_aim_cyl(state)
+    inner = BJ_UNDER_INNER
+    k = max(0.0, min(1.0, (t - BJ_UNDER_T0) / (BJ_UNDER_T1 - BJ_UNDER_T0)))
+    travel = inner + (aim_r - inner) * _bj_progress(state)
+    r = inner + ((travel + BJ_UNDER_OVERRUN) - inner) * k
+    d = r - travel
+    hump = BJ_UNDER_HUMP * math.exp(-(d * d) / (2 * BJ_UNDER_SIGMA * BJ_UNDER_SIGMA))
+    ref = _bj_rest_bearing_ref(0.5 * (BJ_UNDER_T0 + BJ_UNDER_T1))
+    return ref + _wrap(aim_t - ref), r, _bj_sand_z(r) - BJ_UNDER_DEPTH + hump
 
 
 def bj_pose_path(state):
@@ -4227,17 +4859,52 @@ def bj_pose_path(state):
     def path(t):
         t = max(0.0, min(1.0, t))
         point = _bj_rest_path(t, state)
+        kind = state.get("attack_kind", "")
+        shape = BJ_ATTACK.get(kind)
+        mode = shape["mode"] if shape else None
 
+        # EVERY CYLINDRICAL BLEND IS GUARDED BY w > 0, and not just for speed:
+        # a round trip through atan2/cos/sin would move the rest pose by a
+        # float ulp for nothing. Guarded, the idle pose is bit-identical.
         unwind = state["unwind"]
         if unwind > 0:
             blend_start = 1.0 - 0.40 * unwind
             w = _smoothstep((t - blend_start) / 0.14) * unwind
             if w > 0:
-                point = point.lerp(_bj_swept_point(state, t, blend_start), w)
+                # CYLINDRICAL, because a positional lerp between a body coiled
+                # at bearing 300 and an arm parked at 120 goes straight
+                # through the lighthouse - measured 7.98 studs inside the
+                # masonry, passing 0.24 studs from the axis.
+                th, r, z = _bj_cyl_of(point)
+                a_th, a_r, a_z = _bj_swept_cyl(state, t, blend_start)
+                point = _bj_cyl_blend(_bj_rest_bearing(t, th), r, z, a_th, a_r, a_z, w)
 
         slump = state["slump"]
         if slump > 0 and t < 0.34:
             point = point.lerp(_bj_slump_point(state, t), _smoothstep((0.34 - t) / 0.34) * slump)
+
+        if mode == "neck":
+            u = _bj_progress(state)
+            w = _bj_envelope(u, shape["entry"], shape["exit"]) * _smoothstep((shape["span"] - t) / shape["span"])
+            if w > 0:
+                target_th, target = (_bj_lunge_target if kind == "lunge" else _bj_bell_target)(state, u)
+                th, r, z = _bj_cyl_of(point)
+                a_th, a_r, a_z = _bj_neck_arc(state, target, target_th, shape["span"], shape["arch"], t)
+                point = _bj_cyl_blend(_bj_rest_bearing(t, th), r, z, a_th, a_r, a_z, w)
+        elif mode == "undertow" and BJ_UNDER_T0 < t < BJ_UNDER_T1:
+            edge = 0.06
+            w = _bj_envelope(_bj_progress(state), shape["entry"], shape["exit"]) * _smoothstep(
+                min((t - BJ_UNDER_T0) / edge, (BJ_UNDER_T1 - t) / edge)
+            )
+            if w > 0:
+                th, r, z = _bj_cyl_of(point)
+                a_th, a_r, a_z = _bj_undertow_cyl(state, t)
+                point = _bj_cyl_blend(_bj_rest_bearing(t, th), r, z, a_th, a_r, a_z, w)
+        elif mode == "rear":
+            dr, dz = _bj_rear_offset(state, t)
+            if dr > 0 or dz > 0:
+                th, r, z = _bj_cyl_of(point)
+                point = _bj_from_cyl(th, r + dr, z + dz)
 
         # Mirrors BrinejawPath: amplitude grows toward the tail so the body
         # whips rather than wobbling, and the last tenth flicks sideways so
@@ -4457,13 +5124,13 @@ NC_MAW = {
     # the arena fighting its own boss, and the party arrives down these lanes.
     "yaw": 284.0,
     "gape": 44.0,  # degrees the jaw hinges open
-    "origin_z": 4.2,  # the skull's authored origin, relative to the waterline
-    # 2.4, not the row's current 1.8: at 1.8 she is a crocodile in a hole, and
-    # the whole design rests on her being the thing the shelf was built over.
-    # At 2.4 the skull is 28.8 studs across against a 30-stud pit mouth - she
-    # FILLS it, jaws overhanging the lip, without clipping the rim slabs. The
-    # data slice moves Creatures.noctyss body.scale to match (hitRadius 6 then
-    # reads as 14.4 studs of hide, which is what the eye sees).
+    # Mirrors NoctyssPath.MAW.Y_UP - solved so the OPEN mouth's floor lands
+    # just above the arena's shelf, because that floor is where the party
+    # fights. The skull's origin is not the thing that has to be placed.
+    "origin_z": 30.7,
+    # 2.4 matches Creatures.noctyss body.scale: the skull is 28.8 studs
+    # across against a 30-stud pit mouth, and hitRadius 6 reads as 14.4 studs
+    # of hide, which is what the eye sees.
     "scale": 2.4,
 }
 NC_STALK_SCALE = 1.0
@@ -4861,7 +5528,13 @@ def _place_rimefang(objects):
 
 
 PREVIEW_CAMS = {
-    "kraken": (0.95, -0.62, 0.30),
+    # Nearly head-on, and at a bearing chosen AGAINST THE ARM RING rather
+    # than for composition: the sockets sit every 45 deg from +11.5, so the
+    # old 3/4 angle looked straight down the arm at -33.5 and that arm's dive
+    # off the crown hung right over the face. -11 deg is the gap between the
+    # two front arms, which is also the side the fight is fought from - the
+    # only bearing that shows the eyes AND the beak with no limb across them.
+    "kraken": (0.99, -0.19, 0.26),
     # A boss that never moves is judged from the angle it is PLAYED at:
     # high, pitched down ~37 deg, off the stern quarter so the canted
     # deck, the broadside and the Admiral are all in one frame.
