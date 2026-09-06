@@ -698,10 +698,17 @@ Creatures.items.brinejaw = {
 	rarity = "Boss",
 	archetype = "boss",
 	boss = "brinejaw",
-	-- A true endgame wall: big HP so even the highest-DPS weapon (Drowncleaver,
-	-- ~113 dps) is a long fight, on top of Bosses.luau's harder attacks. Tuned
-	-- with roblox-game-83 against the boss fight loop's uptime.
-	health = 9000,
+	-- 9000 -> 4400 (2026-09-06 rebalance). The old number was priced against a
+	-- fight in which the boss was invulnerable outside an earned window, and a
+	-- trace of it found 40 minutes solo at 5% uptime. The rebuild puts a chip
+	-- floor under it (Bosses.items.brinejaw.chip = 0.25), so the SAME weapon
+	-- now does real damage for the whole fight and the health bar has to come
+	-- down to match. Simulated over 60 runs per tier at DPS 71/80/89: an
+	-- engaged solo player (baits, punishes lunges, breaks polyps) lands at
+	-- 8.5/7.5/6.6 minutes, and one who never baits and ignores the polyps at
+	-- 13.6/11.8/10.7. Move this number and re-run that sim before shipping -
+	-- everything about the fight's pace is priced off it.
+	health = 4400,
 	rewards = { coins = { 900, 1300 }, xp = 2600 },
 	-- Its heart is NOT a material drop: BossService sets the permanent
 	-- Heart_brinejaw attribute on every participant instead (the trophy that
@@ -723,6 +730,43 @@ Creatures.items.brinejaw = {
 		color = Color3.fromRGB(46, 62, 74), -- drowned armour-grey hide
 		finColor = Color3.fromRGB(96, 118, 128), -- fins, fangs, spines
 		markColor = Color3.fromRGB(120, 255, 214), -- the lure + eye glow (neon)
+	},
+}
+
+-- Brinejaw's heal, made killable. `polyps` (Bosses.luau) grows three of these
+-- on the arena's cover stones; every one still alive at the deadline detonates
+-- and feeds its share of the serpent's health back. So this row is not an
+-- enemy in the ordinary sense - it is a TIMER with hit points, and its health
+-- is the whole difficulty of the mechanic: 260 is about three seconds of one
+-- player's attention each, which is three of the twelve seconds the deadline
+-- gives a solo player to break all three and still dodge whatever the boss is
+-- doing meanwhile.
+--
+-- `archetype = "flopper"` because it must not move or fight: it sits where the
+-- attack planted it and waits to be broken. `rarity = "Boss"` for the same
+-- reason the leviathan's row carries it - that tier is not in FishingService's
+-- RARITY_ORDER, so nothing can ever roll one out of a cast. No `waters`, no
+-- drops, and zero rewards on purpose: killing one is paid for by the boss not
+-- healing, and a payout here would make the mechanic a farm.
+Creatures.items.brine_polyp = {
+	id = "brine_polyp",
+	name = "Brine Polyp",
+	rarity = "Boss",
+	archetype = "flopper",
+	health = 260,
+	rewards = { coins = { 0, 0 }, xp = 0 },
+	body = {
+		-- No polyp species in the pack yet: the jelly's shape (CreaturePack,
+		-- the same place moonbell_jelly takes it from), shrunk and lit the
+		-- serpent's lure-green, until creatures_gen.py grows one.
+		model = "CreaturePack",
+		species = "Jelly",
+		shape = "jelly",
+		stance = "upright", -- bell up, rooted on the stone; never on its side
+		scale = 0.9,
+		color = Color3.fromRGB(52, 96, 88), -- wet, dark holdfast
+		finColor = Color3.fromRGB(96, 150, 130),
+		markColor = Color3.fromRGB(120, 255, 214), -- the same neon as the lure
 	},
 }
 

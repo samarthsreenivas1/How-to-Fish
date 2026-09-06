@@ -1187,6 +1187,32 @@ function CreatureService.damage(creature, amount: number, attacker: Player?, opt
 	end
 	amount = math.max(0, amount)
 
+	-- THE CHIP FLOOR. A boss whose row carries `chip` (Brinejaw, and only
+	-- Brinejaw) is NEVER fully invulnerable: it stays aimable and damageable
+	-- for the whole fight, taking this fraction of every hit outside a punish
+	-- window and the full hit inside one. Before this, "the only time it can
+	-- be hurt at all" plus a stone economy that could not refill meant a party
+	-- which misread its baits had no way to damage the boss AND no way to earn
+	-- another opening; the trace of that fight was 40 minutes at 5% uptime.
+	--
+	-- SCALED HERE RATHER THAN FLAGGED, and that is the point of doing it in
+	-- `damage()`. The alternative - leaving the boss `untargetable` outside
+	-- windows and special-casing the flag - would change what `untargetable`
+	-- MEANS for its other consumers, all of which were checked: `unaimable`
+	-- (and through it `inRange` and `raycastNearest`), CombatService's
+	-- re-validation of a shot in flight, and the `ignoreUntargetable` escape
+	-- Brine Rot uses. A chip boss simply never sets the flag outside its rise
+	-- and its collapse, so every one of those reads the truth and no other
+	-- boss's behaviour moves by a stud.
+	--
+	-- `creature.punishOpen` is written once per frame by the entrenched tick
+	-- (stagger mode, or the lunge's held plant), never latched, so no exit can
+	-- leave the window stuck open. Poison ticks are scaled too: rot in the
+	-- wound of an armoured animal is still hitting the armour.
+	if creature.chip and not creature.punishOpen then
+		amount *= creature.chip
+	end
+
 	-- Being hit resets the despawn timer: the fish sticks around as long as
 	-- the fight is going, and only lingers out once left alone.
 	creature.lastFoughtAt = os.clock()
@@ -1282,7 +1308,15 @@ function CreatureService.hitModifiers(creature, from: Vector3?): (number, number
 	-- A kitted creature's expose window (a move's `expose` field): the same
 	-- double-damage punish the charger's turn has always had.
 	if creature.exposedUntil and os.clock() < creature.exposedUntil then
-		return C.CHARGE_EXPOSED_DAMAGE_MULT, 0
+		-- ...EXCEPT ON A CHIP BOSS, whose window is already the step. Outside
+		-- one it takes `chip` of every hit and inside one it takes all of it,
+		-- so opening a window is a 4x change of state on its own (0.25 -> 1.0
+		-- on Brinejaw); stacking the charger's 2.0 on top made it 8x, and the
+		-- simulation put roughly 80% of the health bar inside five baited
+		-- staggers - the old 5%-uptime fight with the sign flipped, where
+		-- everything between the windows is noise. Every other boss keeps the
+		-- multiplier it has always had: no row but Brinejaw's carries `chip`.
+		return (if creature.chip then 1 else C.CHARGE_EXPOSED_DAMAGE_MULT), 0
 	end
 	-- Gimmicks that answer melee (spines' reflect, static's shock).
 	local gimmick = gimmickOf(creature)
@@ -3412,9 +3446,21 @@ local function pickBossAttack(creature, def, now: number): string
 		return forced
 	end
 	local pool = {}
+	-- ONCE PER STANCE, for a move that is an EVENT rather than a rotation
+	-- step. `once = "stance"` on a row (Brinejaw's tidal surge and its polyps)
+	-- says the move may be picked at most once per stance the boss is in: a
+	-- ten-second set-piece that ends in a guaranteed window, or a heal the
+	-- party has to answer, stops being either of those things if it comes
+	-- round on a cooldown. `creature.stanceUsed` is cleared by the stance
+	-- change itself, so entering stance 3 offers both again exactly once.
+	-- A row without the field is unaffected, which is every other row in the
+	-- project.
+	local used = creature.stanceUsed
 	for _, name in bossPhaseAttacks(def, creature.health / creature.maxHealth) do
 		local readyAt = creature.cooldowns and creature.cooldowns[name] or 0
-		if name ~= creature.lastAttack and now >= readyAt then
+		local p = def.attacks[name]
+		local spent = p and p.once == "stance" and used and used[name]
+		if name ~= creature.lastAttack and now >= readyAt and not spent then
 			table.insert(pool, name)
 		end
 	end
@@ -3455,6 +3501,19 @@ local function beginBossAttack(creature, def, name: string, now: number)
 	creature.attack =
 		{ name = name, p = p, phase = "windup", phaseStart = now, phaseUntil = now + p.windup, fired = false }
 	creature.lastAttack = name
+	-- The lunge's plant is the only punish window a HANDLER owns, and a
+	-- handler that is interrupted (a stagger, the collapse) never reaches
+	-- its own `finish`. Cleared at every attack's start as well as at the
+	-- lunge's end, so a stale `true` can never carry into another move.
+	creature.lungeOpen = false
+	-- Spent for this stance the moment it BEGINS, not when it finishes: a
+	-- set-piece interrupted by the boss's own death or a stagger has still
+	-- been shown, and offering it again in the same stance would read as the
+	-- fight repeating itself. See `once` in pickBossAttack.
+	if p.once == "stance" then
+		creature.stanceUsed = creature.stanceUsed or {}
+		creature.stanceUsed[name] = true
+	end
 	setMode(creature, "attack", 0, now)
 	-- `p.tell` lets a themed attack borrow a stock telegraph (a renamed bite
 	-- still flashes like a snap); `p.skin` colors the client's effects.
@@ -4831,6 +4890,22 @@ local ATTR_SWEEP_ANGLE = "SweepAngle"
 local ATTR_SWEEP_HEIGHT = "SweepHeight"
 local ATTR_SLUMP = "Slump"
 local ATTR_FACE_ANGLE = "FaceAngle"
+-- ...and the four the ATTACK CHANNEL rides on (BrinejawPath's header: ten
+-- attributes and nothing else). `AttackKind` names which pose the body is in,
+-- `AttackU` is progress 0..1 through it, and Aim is the strike point in
+-- ARENA-LOCAL XZ - local because PoseCenter is already on the wire and a
+-- world-space aim would be the same number written twice.
+--
+-- THE IRON RULE, and it is the server's alone: run AttackU to 1 BEFORE
+-- clearing AttackKind. Every kind's exit ramp lives in the last few percent of
+-- U (a lunge's head has 56 studs to climb), so a kind cleared at U < 1 snaps
+-- ~100 parts across the arena in one frame. Every handler below does this the
+-- same way: `finish` writes U = 1 (published that frame, kind still set) and
+-- the FIRST `recover` frame clears the kind.
+local ATTR_ATTACK_KIND = "AttackKind"
+local ATTR_ATTACK_U = "AttackU"
+local ATTR_AIM_X = "AimX"
+local ATTR_AIM_Z = "AimZ"
 -- Noctyss's replicated pose. The BOSS model publishes only the maw's three
 -- numbers, because the choir publishes itself: each stalk is its own entity
 -- with its own health bar, so it carries its own pose on its own model
@@ -4982,6 +5057,12 @@ local function publishPose(creature, state)
 		model:SetAttribute(ATTR_SWEEP_HEIGHT, state.sweepHeight)
 		model:SetAttribute(ATTR_SLUMP, state.slump)
 		model:SetAttribute(ATTR_FACE_ANGLE, state.faceAngle)
+		-- The attack channel. Defaulted here rather than at every writer, so a
+		-- handler that sets nothing publishes a coherent idle rather than nil.
+		model:SetAttribute(ATTR_ATTACK_KIND, state.attackKind or "")
+		model:SetAttribute(ATTR_ATTACK_U, state.attackU or 0)
+		model:SetAttribute(ATTR_AIM_X, state.aimX or 0)
+		model:SetAttribute(ATTR_AIM_Z, state.aimZ or 0)
 	elseif creature.poseKind == "kraken" then
 		model:SetAttribute(ATTR_RISE, state.rise)
 		model:SetAttribute(ATTR_FACE_ANGLE, state.faceAngle)
@@ -5497,6 +5578,14 @@ function clearMawFloor(creature)
 	end
 end
 
+-- Forward: Brinejaw's live hazards - the bell's rings, a crossing wave, a
+-- bombardment in flight, the flood, the polyps' deadline. Defined far below
+-- with the handlers that arm them, and forward-declared here for the same
+-- reason `pyreliskLatch` and `clearMawFloor` are: `placeColossus` is the one
+-- call every mode of this fight passes through, so it is where they have to
+-- be stepped, and it sits above the code that owns them.
+local updateBrineHazards
+
 -- Stand the model where its pose says its head is, aimed up-body.
 local function placeColossus(creature, def, now: number, root: BasePart?)
 	local state = colossusState(creature, def)
@@ -5594,6 +5683,20 @@ local function placeColossus(creature, def, now: number, root: BasePart?)
 		return
 	end
 	if def.pose == "brinejaw" then
+		-- THE WHIP'S DRAG, stepped here because this is the one call every
+		-- mode passes through and the only place `dt` exists (see
+		-- `setSweepRate`). A sweeping handler writes `sweepTargetRate` for the
+		-- frames its arm is travelling; everything else leaves it nil and the
+		-- filter decays the bend out over WHIP_TAU. Cleared after the step so
+		-- a handler that stops writing stops being believed on the next frame
+		-- rather than for the rest of the fight.
+		BrinejawPath.stepSweepRate(state, state.sweepTargetRate or 0, dt)
+		state.sweepTargetRate = nil
+		-- ...and everything the fight has left lying around: rings still
+		-- crossing the beach, a wave mid-arena, a bombardment in flight, the
+		-- flood, the polyps' deadline. Stepped here, so none of it is dropped
+		-- when the move that started it ends.
+		updateBrineHazards(creature, def, state)
 		creature.pos = BrinejawPath.headPosition(state)
 		local forward = BrinejawPath.tangentAt(state, 0)
 		local up = if math.abs(forward.Y) > 0.99 then Vector3.new(0, 0, 1) else Vector3.new(0, 1, 0)
@@ -5708,7 +5811,26 @@ beginBossCollapse = function(creature, killer: Player?): boolean
 	creature.airY, creature.vertVel = nil, nil
 	creature.stunnedUntil = nil
 	creature.exposedUntil = nil
+	creature.lungeOpen = false
+	creature.punishOpen = false
 	creature.model:SetAttribute(ATTR_EXPOSED, nil)
+	-- AND ITS HAZARDS DIE WITH IT. Brinejaw's wave, rings, bombardment and
+	-- flood are all resolved from `placeColossus`, which keeps running through
+	-- the collapse - so without this the beach would go on being shelled by an
+	-- animal that is falling off its own tower, and the polyps would detonate
+	-- and heal a corpse. The polyp CREATURES are real spawned structs, so they
+	-- have to be taken away rather than merely forgotten.
+	if creature.brine then
+		local polyps = creature.brine.polyps
+		if polyps then
+			for _, entry in polyps.entries do
+				if entry.creature and CreatureService.isAlive(entry.creature) then
+					CreatureService.despawn(entry.creature.model)
+				end
+			end
+		end
+		creature.brine = nil
+	end
 	-- Where it is easing FROM, so the fall starts wherever the fight left it -
 	-- mid-sweep, mid-stagger, still reared - instead of snapping to a pose.
 	creature.collapseFrom = {
@@ -5746,6 +5868,15 @@ local function updateBossCollapse(creature, def, now: number)
 		state.slump = from.slump + (1 - from.slump) * e
 		state.unwind = from.unwind + (1 - from.unwind) * e
 		state.sweepHeight = from.sweepHeight + (BrinejawPath.SWEEP_LOW - from.sweepHeight) * e
+		-- AND THE DEATH IS AN ATTACK KIND. `state.fall` is DERIVED in
+		-- BrinejawPath - kind "collapse" means fall = U - and nothing on
+		-- either side may write it directly, so the fall's shape is driven
+		-- from here and read there. Raw U, not the eased `e`: the ease is
+		-- already in the three numbers above, and doubling it would drag the
+		-- body and the fall out of step with each other.
+		state.attackKind = "collapse"
+		state.attackU = u
+		state.aimX, state.aimZ = 0, 0
 	elseif creature.poseKind == "pyrelisk" then
 		-- IT LETS GO. `collapse` is a real pose in PyreliskPath - both arms
 		-- sliding slack into the lake - so the death is that pose driven in
@@ -5874,8 +6005,40 @@ local function restoreStones(creature, def)
 	for _, stone in colossusStones(creature, def) do
 		if not stone.standing then
 			stone.standing = true
+			stone.regrowAt = nil
 			if stone.part and stone.part.Parent and stone.restCFrame then
 				stone.part.CFrame = stone.restCFrame
+			end
+		end
+	end
+end
+
+-- ...AND ONE AT A TIME, ON A CLOCK. The stance-change restore above was the
+-- ONLY way a spent stone ever came back, and that was a deadlock dressed as
+-- an economy: three baits cannot produce a stance's worth of damage, so a
+-- party that misread all three had no way to open another window AND (before
+-- the chip floor) no way to damage the boss at all. `stoneRegrow` on the row
+-- turns the stones into a resource that refills - slowly enough that wasting
+-- one still costs something real, fast enough that the fight cannot stall.
+--
+-- Opt-in by the field, so no other colossus's stones change: Pyrelisk's nine
+-- monoliths do not carry it and keep the stance-change rule exactly.
+local function regrowStones(creature, def, now: number)
+	if not def.stoneRegrow then
+		return
+	end
+	for _, stone in colossusStones(creature, def) do
+		if not stone.standing then
+			-- Stamped lazily rather than at `spendStone`, so a stone spent
+			-- before this ever ran still gets a clock.
+			stone.regrowAt = stone.regrowAt or (now + def.stoneRegrow)
+			if now >= stone.regrowAt then
+				stone.standing = true
+				stone.regrowAt = nil
+				if stone.part and stone.part.Parent and stone.restCFrame then
+					stone.part.CFrame = stone.restCFrame
+				end
+				fireEvent("regrow", stone.position, { count = 1, name = def.name })
 			end
 		end
 	end
@@ -5943,7 +6106,17 @@ local function aimSweep(creature, def, p)
 	a.aimed = true
 	local state = colossusState(creature, def)
 	local arc = p.arc or math.rad(320)
+	-- WHICH WAY IT TURNS. Ordinarily a coin toss, but a row carrying
+	-- `reverse` takes the OPPOSITE of the sweep before it - that is the whole
+	-- of `doublewhip`: the return stroke has to come back through the ground
+	-- you landed on, and a second random draw would make it a repeat half the
+	-- time. `creature.sweepDir` is remembered across the follow, and defaults
+	-- to 1 so a reversed sweep with no predecessor is still a valid sweep.
 	local dir = if math.random() < 0.5 then 1 else -1
+	if p.reverse then
+		dir = -(creature.sweepDir or 1)
+	end
+	creature.sweepDir = dir
 	local target = state.faceAngle or 0
 	local at = state.targetPos
 	if at then
@@ -5982,10 +6155,74 @@ local function aimSweep(creature, def, p)
 	})
 end
 
+-- THE DRAG TERM, AND WHOSE JOB IT IS. `state.sweepRate` is the arm's signed
+-- angular velocity, and it is deliberately NOT replicated - it is the
+-- derivative of SweepAngle, which already is, so both sides differentiate the
+-- same angle and push the result through the one shared low-pass
+-- (BrinejawPath.stepSweepRate, WHIP_TAU). The server knows its own rate
+-- exactly and hands it in; the client differentiates its eased angle.
+--
+-- A caller that supplies NOTHING gets rate 0 - a straight arm, which still
+-- matches its own hit test but is not the arm anybody is shown.
+--
+-- SO THE FILTER IS STEPPED FROM `placeColossus`, NOT FROM THE HANDLERS, and
+-- that is the whole reason this is a one-line field rather than a call: a
+-- handler only runs while its own attack is running, and stepSweepRate has to
+-- keep running AFTER one ends or the rate freezes at whatever it held on the
+-- last strike frame and the arm keeps its 28-degree bend for the rest of the
+-- fight. placeColossus is the one call every mode of this fight passes
+-- through and it is the only place `dt` exists, so a sweeping handler writes
+-- its exact rate here and everything else - windups, recoveries, the idle
+-- serpent, the punish window - leaves it alone and gets the 0 that unwinds
+-- the tip over about a third of a second.
+local function setSweepRate(state, rate: number)
+	state.sweepTargetRate = rate
+end
+
+-- ONE FRAME'S WORTH OF SWEPT ARM, hit-tested as a WEDGE rather than as the
+-- bearing it happens to sit on now. A 340-degree sweep in 2.6 s travels 131
+-- deg/sec while the arm is only ~6 degrees wide at full reach, so a single
+-- 20 fps step (6.5 deg) can straddle a distant player entirely and the boss
+-- whiffs for free on a loaded server. Sampling the step keeps the hit
+-- independent of framerate.
+--
+-- AND THE PROBE COMES FROM `BrinejawPath.sweepProbe`, NEVER FROM A TABLE
+-- LITERAL. This is the exact failure that module's header warns about: the
+-- literal this replaces carried `center` and `sweepHeight` and nothing else,
+-- so the moment the arm gained its drag term the hit test was comparing a
+-- STRAIGHT spoke against a curve trailing it by up to 35 degrees - and it was
+-- the drawn curve that was right. `sweepProbe` copies sweepRate, attackKind
+-- and attackU too, which is also what makes `spiral` work: its contracting
+-- reach is read off attackU by `sweepReach`, inside `sweepHits`.
+local function sweepWedgeHits(creature, def, p, state, fromAngle: number)
+	local a = creature.attack
+	local girth = p.girth or 3.2
+	local lo, hi = bossRoll(creature, def, p.damage)
+	local swept = math.abs(state.sweepAngle - fromAngle)
+	local steps = math.max(1, math.ceil(swept / math.rad(3)))
+	for _, player in Players:GetPlayers() do
+		local character = player.Character
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+		if root and not a.hit[player] then
+			for step = 0, steps do
+				local angle = fromAngle + (state.sweepAngle - fromAngle) * (step / steps)
+				if BrinejawPath.sweepHits(BrinejawPath.sweepProbe(state, angle), root.Position, girth) then
+					a.hit[player] = true
+					PlayerService.damage(player, math.random(lo, hi), creature, { bypassIframe = true })
+					break
+				end
+			end
+		end
+	end
+end
+
 ATTACK_HANDLERS.orbitsweep = {
 	windup = function(creature, def, p, u, _sub)
 		aimSweep(creature, def, p)
 		local state = colossusState(creature, def)
+		-- Not travelling yet: the arm holds the start bearing for the whole
+		-- windup, so the rate decays toward 0 and the tip straightens out.
+		setSweepRate(state, 0)
 		-- The tail peels off the tower during the windup - the telegraph is
 		-- the body itself, so a player who reads the serpent reads the attack.
 		-- It swings to the START bearing as it peels, which is now known.
@@ -6018,37 +6255,90 @@ ATTACK_HANDLERS.orbitsweep = {
 		local rate = a.arc / math.max(p.duration, 1e-3)
 		local from = state.sweepAngle
 		state.sweepAngle += a.dir * rate * dt
-		local girth = p.girth or 3.2
-		local lo, hi = bossRoll(creature, def, p.damage)
-		-- Test the WEDGE the arm crossed this frame, not the bearing it
-		-- happens to be on now. A 340-degree sweep in 2.6s travels 131
-		-- deg/sec while the arm is only ~6 degrees wide out at full reach,
-		-- so a single 20fps step (6.5 deg) can straddle a distant player
-		-- entirely and the boss whiffs for free on a loaded server. Sampling
-		-- the step keeps the hit independent of framerate.
-		local swept = math.abs(state.sweepAngle - from)
-		local steps = math.max(1, math.ceil(swept / math.rad(3)))
-		local probe = { center = state.center, sweepHeight = state.sweepHeight }
-		for _, player in Players:GetPlayers() do
-			local character = player.Character
-			local root = character and character:FindFirstChild("HumanoidRootPart")
-			if root and not a.hit[player] then
-				for step = 0, steps do
-					probe.sweepAngle = from + (state.sweepAngle - from) * (step / steps)
-					if BrinejawPath.sweepHits(probe, root.Position, girth) then
-						a.hit[player] = true
-						PlayerService.damage(player, math.random(lo, hi), creature, { bypassIframe = true })
-						break
-					end
-				end
-			end
-		end
+		-- THE EXACT RATE, signed, handed to the shared filter. The server
+		-- knows it - it is the number that drives the line above - and it is
+		-- what puts the drag in the arm that is about to be hit-tested.
+		setSweepRate(state, a.dir * rate)
+		sweepWedgeHits(creature, def, p, state, from)
 	end,
 	finish = function(creature, def, _p, _now)
 		-- The arm stays out; the entrenched branch winds it back onto the
-		-- tower, so the recovery reads as the serpent re-gripping.
+		-- tower, so the recovery reads as the serpent re-gripping - and the
+		-- rate is left to decay to 0 on its own, which IS the springback.
 		local state = colossusState(creature, def)
 		state.unwind = math.min(state.unwind or 1, 1)
+	end,
+}
+
+-- SPIRAL: constrict's new form, and the one sweep that is also a POSE. It is
+-- the orbitsweep in every respect but one - the arm's REACH contracts with U
+-- (BrinejawPath's `spiral` kind, SWEEP_REACH -> SWEEP_INNER + SPIRAL_CLOSE),
+-- so the lethal band closes in on the tower while the arm turns and hugging
+-- the masonry stops being an answer half-way through.
+--
+-- The hit test is the SAME function: `spiralHits` is an alias of `sweepHits`,
+-- and both read `sweepReach(state)`, which reads attackU. That is why the
+-- probe must come from `sweepProbe` - a hand-built table with no attackU
+-- would hit-test the full 66-stud arm against a lane the client has already
+-- drawn closing in.
+--
+-- ONE serpentSweep event, at the FULL reach, fired from the windup by the
+-- shared `aimSweep`. The contract is explicit that a shrinking reach must
+-- never go through the old static-marker path: that marker draws one fixed
+-- band for the whole move, so a contracting number sent through it would
+-- promise safe ground that the arm is still crossing. The closing edge is
+-- drawn by the body controller from `sweepReach` instead - same function,
+-- same frame.
+ATTACK_HANDLERS.serpentspiral = {
+	windup = function(creature, def, p, u, _sub)
+		aimSweep(creature, def, p)
+		local state = colossusState(creature, def)
+		state.unwind = math.max(state.unwind or 0, u)
+		state.sweepHeight = BrinejawPath.SWEEP_LOW
+		state.sweepAngle = creature.attack.startAngle or state.sweepAngle
+		setSweepRate(state, 0)
+		-- The kind goes on at the START of the windup, at U = 0, so the reach
+		-- is still SWEEP_REACH while the arm peels off the tower: the closing
+		-- only begins when the arm does.
+		state.attackKind = "spiral"
+		state.attackU = 0
+		state.aimX, state.aimZ = 0, 0 -- spiral does not aim; the header says so
+	end,
+	fire = function(creature, def, p, _now, _root)
+		local a = creature.attack
+		local state = colossusState(creature, def)
+		aimSweep(creature, def, p)
+		state.unwind = 1
+		a.hit = {}
+		state.sweepAngle = a.startAngle
+	end,
+	strike = function(creature, def, p, _now, dt, u, _root, _sub)
+		local a = creature.attack
+		local state = colossusState(creature, def)
+		state.unwind = 1
+		local rate = a.arc / math.max(p.duration, 1e-3)
+		local from = state.sweepAngle
+		state.sweepAngle += a.dir * rate * dt
+		setSweepRate(state, a.dir * rate)
+		-- U IS THE CLOSING. Run it across the whole strike so the reach
+		-- reaches its inner limit exactly as the arc finishes.
+		state.attackU = u
+		sweepWedgeHits(creature, def, p, state, from)
+	end,
+	finish = function(creature, def, _p, _now)
+		local state = colossusState(creature, def)
+		state.unwind = math.min(state.unwind or 1, 1)
+		-- U TO 1 FIRST, published this frame with the kind still set: the
+		-- spiral's arm is at its innermost here, and clearing the kind now
+		-- would snap 53 studs of reach back in one frame.
+		state.attackU = 1
+	end,
+	recover = function(creature, def, _p, _u, _sub)
+		-- ...and NOW the kind goes. The first recover frame, one frame after
+		-- the one that published U = 1.
+		local state = colossusState(creature, def)
+		state.attackKind = ""
+		state.attackU = 0
 	end,
 }
 
@@ -6149,6 +6439,848 @@ ATTACK_HANDLERS.tailslam = {
 		end
 	end,
 }
+
+-- ==========================================================================
+-- BRINEJAW'S OTHER HALF: THE FIVE ATTACKS THAT ARE NOT POSES
+-- ==========================================================================
+--
+-- A wave crossing the arena, a seeded bombardment, the bell's rings, the
+-- flood, the polyps. None of them is expressible as ten attributes on a
+-- model, so each rides a `fireEvent` payload - and every shape below is
+-- computed by a SHARED HELPER in BrinejawPath that the client calls with the
+-- same payload. Nothing here re-derives a radius, a placement or a front's
+-- position: the thing you dodge and the thing you see are one function.
+--
+-- AND THEY OUTLIVE THEIR HANDLERS. The bell's third ring is still crossing
+-- the beach five seconds after the head has finished recoiling; the polyps
+-- have twelve seconds to be broken while the boss goes on attacking; the
+-- flood ticks through a stagger. An attack handler only runs while its own
+-- attack is running, so resolving any of these inside one would silently drop
+-- the tail of every effect the moment the next move began. They are resolved
+-- instead by `updateBrineHazards`, run from `placeColossus` - the one call
+-- every mode of this fight passes through, including the collapse. The
+-- handlers below only ARM them.
+
+-- The arena's cover, plus the one piece no table lists: the lighthouse
+-- itself. Built once per fight and kept on the creature - `waveSheltered` is
+-- asked about every player on every frame of a crossing, and BrinejawPath
+-- deliberately takes the list as an argument (it is required by the pose math
+-- on both sides of the wire, so a BossArenas dependency there is a cycle
+-- waiting to happen).
+local BRINE_SPIRE_COVER = { offset = Vector3.zero, radius = 9 }
+
+local function brineCover(creature, def)
+	if creature.brineCover then
+		return creature.brineCover
+	end
+	local arena = def.islandId and BossArenas.items[def.islandId]
+	local cover = { BRINE_SPIRE_COVER }
+	for _, piece in (arena and arena.cover or {}) do
+		table.insert(cover, piece)
+	end
+	creature.brineCover = cover
+	return cover
+end
+
+-- The hazard record this boss hangs its live effects off. One table, created
+-- on demand, torn down with the creature.
+local function brineHazards(creature)
+	creature.brine = creature.brine or {}
+	return creature.brine
+end
+
+-- A DIRECTIONAL SHOVE, built out of the one shove the client already has.
+-- `EVENTS.gust` pushes the local character AWAY from the point it is fired
+-- at, so a push along `dir` is a gust fired from six studs BEHIND the player
+-- along that direction - well inside the 12-stud radius, and pushes have no
+-- close-range dead zone (that guard is for pulls). The server never writes a
+-- player's motion directly: the client owns its own character's physics, and
+-- this is the bargain the lure pull and the anchor chain already strike.
+local function shoveAlong(at: Vector3, dir: Vector3, push: number, duration: number)
+	fireEvent("gust", at - dir * 6, { radius = 12, push = push, duration = duration })
+end
+
+-- Is this root standing on the beach rather than in the air? The bell's rings
+-- and nothing else ask: a jumping player clears them, which is the entire
+-- read of that attack. 4.6 studs is a standing R15 root (~3.0 over the sand)
+-- with 1.6 of slack for the beach profile and the arena's own half-stud of
+-- authored slop, and well under the ~7 a jump's apex reaches.
+local BRINE_GROUNDED = 4.6
+
+local function brineGrounded(state, position: Vector3): boolean
+	local dx, dz = position.X - state.center.X, position.Z - state.center.Z
+	local r = math.sqrt(dx * dx + dz * dz)
+	return position.Y - (state.center.Y + BrinejawPath.sandY(r)) < BRINE_GROUNDED
+end
+
+-- How far out a player is standing, in the arena's own frame.
+local function brineRadiusOf(state, position: Vector3): number
+	local dx, dz = position.X - state.center.X, position.Z - state.center.Z
+	return math.sqrt(dx * dx + dz * dz)
+end
+
+-- ------------------------------------------------------------- the wave
+--
+-- RIPTIDE. A wall of water crosses the whole arena on one bearing, and it is
+-- TALL: jumping does not evade it, and the only answer is the lee of a rock.
+-- The server damages a player in the frame the front's `along` passes theirs,
+-- once, and only if `waveSheltered` says they are not standing in a shadow -
+-- which is the same call, with the same numbers, that shades the ground on
+-- the client. The shadow is a promise, not a suggestion.
+local function armWave(creature, def, p, state, startAt: number)
+	local bearing = math.random() * math.pi * 2
+	local at = state.targetPos
+	if at then
+		-- Aimed THROUGH the tracked player rather than at random, so the wave
+		-- is a question asked of somebody: the cover they have to reach is the
+		-- cover behind them.
+		local to = at - state.center
+		if to.Magnitude > 0.01 then
+			bearing = math.atan2(to.Z, to.X)
+		end
+	end
+	local speed, reach = p.speed or 26, p.reach or 78
+	brineHazards(creature).wave = {
+		bearing = bearing,
+		speed = speed,
+		reach = reach,
+		start = startAt,
+		hit = {},
+		p = p,
+	}
+	fireEvent("serpentWave", state.center, {
+		bearing = bearing,
+		speed = speed,
+		reach = reach,
+		start = startAt,
+		-- The arena this belongs to. Without it the client matches by centre
+		-- within 200 studs, which is a guess; with it the cover list it shades
+		-- is provably the list the server just tested against.
+		islandId = def.islandId,
+	})
+end
+
+local function stepWave(creature, def, state, now: number)
+	local wave = creature.brine and creature.brine.wave
+	if not wave then
+		return
+	end
+	local front = BrinejawPath.waveFront(wave.bearing, wave.speed, wave.reach, wave.start, now)
+	if not front then
+		creature.brine.wave = nil
+		return
+	end
+	local dir = Vector3.new(math.cos(wave.bearing), 0, math.sin(wave.bearing))
+	local cover = brineCover(creature, def)
+	local lo, hi = bossRoll(creature, def, wave.p.damage)
+	for _, player in Players:GetPlayers() do
+		local character = player.Character
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		if root and humanoid and humanoid.Health > 0 and not wave.hit[player] then
+			local along = (root.Position - state.center):Dot(dir)
+			-- THE FRAME THE FRONT PASSES THEM. No height band anywhere in this
+			-- test: the wall is taller than a jump on purpose.
+			if front >= along then
+				wave.hit[player] = true
+				if not BrinejawPath.waveSheltered(cover, state.center, wave.bearing, root.Position) then
+					PlayerService.damage(player, math.random(lo, hi), creature, { bypassIframe = true })
+					shoveAlong(root.Position, dir, wave.p.push or 46, 0.5)
+				end
+			end
+		end
+	end
+end
+
+ATTACK_HANDLERS.riptide = {
+	windup = function(creature, def, p, _u, _sub)
+		local a = creature.attack
+		if a.aimed then
+			return
+		end
+		a.aimed = true
+		local state = colossusState(creature, def)
+		-- ARMED ON THE FIRST WINDUP FRAME, TO START WHEN THE WINDUP ENDS.
+		-- `start` is a server clock, so the client draws the wall gathering
+		-- OUTSIDE the arena for the whole windup and crossing it for the
+		-- strike: the telegraph is the wave itself, arriving.
+		armWave(creature, def, p, state, Workspace:GetServerTimeNow() + p.windup)
+	end,
+	fire = function(creature, def, p, _now, _root)
+		-- A zero-windup row could reach the strike unarmed; this cannot be
+		-- reached twice (aimSweep's rule, and for the same reason).
+		ATTACK_HANDLERS.riptide.windup(creature, def, p, 0, 0)
+	end,
+	-- No `strike`: the crossing is resolved by updateBrineHazards, which runs
+	-- in every mode. `duration` on the row only has to be long enough that the
+	-- attack does not end absurdly before the water does; the wall's real
+	-- clock is 2 * reach / speed, and it is the same clock on both sides.
+}
+
+-- ------------------------------------------------------------- the rain
+--
+-- MASONRY RAIN. The coils shed the lighthouse's own stonework over one sector
+-- of the beach. Every chunk's landing point and its impact time come out of
+-- `BrinejawPath.rainChunks` off the payload's seed - the SAME table the
+-- client draws, derived rather than sent - and the server's damage circle
+-- opens at each `impactAt`. No debris is kept server-side: the client's
+-- rubble is cosmetic and despawns, and it must never enter the cover table.
+local function armRain(creature, _def, p, state, startAt: number)
+	local sector = state.faceAngle or 0
+	local at = state.targetPos
+	if at then
+		local to = at - state.center
+		if to.Magnitude > 0.01 then
+			sector = math.atan2(to.Z, to.X)
+		end
+	end
+	local payload = {
+		seed = math.random(1, 2147483000),
+		sector = sector,
+		width = p.width or 2.1,
+		inner = p.inner or 12,
+		outer = p.outer or 64,
+		-- The client's pool is 36 slots and it clamps to them, so a book that
+		-- asked for more would have the server damaging circles nobody was
+		-- ever shown. Clamped here as well, at the one place the number is
+		-- turned into chunks.
+		count = math.clamp(math.floor(p.count or 14), 0, 36),
+		start = startAt,
+		stagger = p.stagger or 0.22,
+		fall = p.fall or 1.1,
+		radius = p.radius or 7,
+	}
+	local hazards = brineHazards(creature)
+	hazards.rain = { chunks = BrinejawPath.rainChunks(payload), radius = payload.radius, p = p, fired = {} }
+	fireEvent("serpentRain", state.center, payload)
+end
+
+-- One frame of any bombardment: every chunk whose impact has arrived and has
+-- not been spent yet. Shared by masonryrain and the surge's derived rain,
+-- because they ARE the same shape - `surgeRain` only builds the payload.
+local function stepRainRun(creature, def, state, run, now: number): boolean
+	local lo, hi = bossRoll(creature, def, run.p.damage)
+	local pending = false
+	for index, chunk in run.chunks do
+		if not run.fired[index] then
+			if now >= chunk.impactAt then
+				run.fired[index] = true
+				local r = math.sqrt(chunk.pos.X * chunk.pos.X + chunk.pos.Z * chunk.pos.Z)
+				local at = state.center + Vector3.new(chunk.pos.X, BrinejawPath.sandY(r), chunk.pos.Z)
+				damagePlayersInRadius(at, run.radius, lo, hi, creature, 0.5)
+			else
+				pending = true
+			end
+		end
+	end
+	return pending
+end
+
+ATTACK_HANDLERS.masonryrain = {
+	windup = function(creature, def, p, _u, _sub)
+		local a = creature.attack
+		if a.aimed then
+			return
+		end
+		a.aimed = true
+		local state = colossusState(creature, def)
+		-- FIRST IMPACT AT THE END OF THE WINDUP, which puts each chunk's
+		-- ground marker (`fall` ahead of its own impact) inside the windup:
+		-- the markers ARE the telegraph, and they are drawn from this table.
+		armRain(creature, def, p, state, Workspace:GetServerTimeNow() + p.windup)
+	end,
+	fire = function(creature, def, p, _now, _root)
+		ATTACK_HANDLERS.masonryrain.windup(creature, def, p, 0, 0)
+	end,
+	-- Resolved by updateBrineHazards; see the note on riptide.
+}
+
+-- ------------------------------------------------------------ the rings
+--
+-- BELL TOLL. The head swings onto the keeper's bell and three rings leave the
+-- tower. JUMP EACH ONE: the hit band is grounded-only, so an airborne player
+-- passes through, and at 26 studs/second with a 1.05 s gap that is a rhythm
+-- rather than a reaction test.
+--
+-- U here is the HEAD's, and the head is the windup: BrinejawPath's `belltoll`
+-- puts the strike at BELL_IMPACT_U = 0.55, so the rings are armed in the
+-- frame U crosses it and not when the engine's windup happens to expire.
+local function armRings(creature, _def, p, state, startAt: number)
+	local payload = {
+		start = startAt,
+		count = math.clamp(math.floor(p.count or 3), 1, 4),
+		speed = p.speed or 26,
+		gap = p.gap or 1.05,
+		band = p.band or 2.6,
+	}
+	brineHazards(creature).rings = { payload = payload, p = p, hit = {} }
+	fireEvent("serpentRings", state.center, payload)
+end
+
+local function stepRings(creature, def, state, now: number)
+	local rings = creature.brine and creature.brine.rings
+	if not rings then
+		return
+	end
+	local payload = rings.payload
+	local lo, hi = bossRoll(creature, def, rings.p.damage)
+	local live = false
+	for k = 1, payload.count do
+		local radius = BrinejawPath.ringRadius(payload.start, payload.speed, payload.gap, k, now)
+		-- A ring that has not left the masonry yet is nil too, so "no ring is
+		-- anywhere" is only true once the LAST one has expired.
+		if radius or now < payload.start + (k - 1) * payload.gap + 78 / payload.speed then
+			live = true
+		end
+		if radius then
+			rings.hit[k] = rings.hit[k] or {}
+			for _, player in Players:GetPlayers() do
+				local character = player.Character
+				local root = character and character:FindFirstChild("HumanoidRootPart")
+				local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+				if root and humanoid and humanoid.Health > 0 and not rings.hit[k][player] then
+					local r = brineRadiusOf(state, root.Position)
+					if math.abs(r - radius) < payload.band * 0.5 and brineGrounded(state, root.Position) then
+						rings.hit[k][player] = true
+						PlayerService.damage(player, math.random(lo, hi), creature, { bypassIframe = true })
+					end
+				end
+			end
+		end
+	end
+	if not live then
+		creature.brine.rings = nil
+	end
+end
+
+ATTACK_HANDLERS.belltoll = {
+	windup = function(creature, def, _p, u, _sub)
+		local state = colossusState(creature, def)
+		state.attackKind = "belltoll"
+		-- U 0..BELL_WINDUP_U across the engine's windup, so the head's own
+		-- cock lands exactly where the path module says the windup ends.
+		state.attackU = u * BrinejawPath.BELL_WINDUP_U
+		state.aimX, state.aimZ = 0, 0 -- the bell is not aimed at anybody
+	end,
+	fire = function(creature, _def, _p, _now, _root)
+		creature.attack.rung = false
+	end,
+	strike = function(creature, def, p, _now, _dt, u, _root, _sub)
+		local a = creature.attack
+		local state = colossusState(creature, def)
+		-- The rest of U across the strike: BELL_WINDUP_U -> 1.
+		state.attackU = BrinejawPath.BELL_WINDUP_U + u * (1 - BrinejawPath.BELL_WINDUP_U)
+		if not a.rung and state.attackU >= BrinejawPath.BELL_IMPACT_U then
+			a.rung = true
+			-- THE FIRST RING LEAVES AS THE BELL IS STRUCK. `start` is now, so
+			-- ring 1 is at radius 0 in this frame and clears the masonry a
+			-- sixth of a second later - which is what the strike sounds like.
+			armRings(creature, def, p, state, Workspace:GetServerTimeNow())
+			fireEvent("serpentSlam", BrinejawPath.bellStrikePoint(state), { radius = 6 })
+		end
+	end,
+	finish = function(creature, def, _p, _now)
+		-- U to 1, published this frame with the kind still on: the head is
+		-- half-way back up the tower here and clearing now would snap it.
+		colossusState(creature, def).attackU = 1
+	end,
+	recover = function(creature, def, _p, _u, _sub)
+		local state = colossusState(creature, def)
+		state.attackKind = ""
+		state.attackU = 0
+	end,
+}
+
+-- ------------------------------------------------------------- the lunge
+--
+-- THIS ATTACK EXISTS TO PUNISH CAMPING. It picks the FARTHEST player past
+-- `minRange` and puts the skull on them, and then leaves it there: the head
+-- is planted on the sand at LUNGE_SIT, level with a standing root, for
+-- `hold` seconds. That plant is the only punish window in the fight nobody
+-- has to earn, and it is handed to the person standing furthest away.
+--
+-- THE SHAPE OF U, from BrinejawPath's header and not from taste:
+--   0    .. 0.35  rear and TRACK - Aim may still be rewritten
+--   0.35 .. 0.50  the strike; THE BLOW LANDS AT 0.50, not at the windup's end
+--   0.50 .. 0.72  planted. Aim frozen from 0.35 on, or the head slides.
+--   0.72 .. 1     the recover ramp, 28% of U because the skull has 56 studs
+--                 to climb and an 8% exit moved the body 5.1 studs a step.
+-- To hold the window open longer you HOLD U AT 0.72 - you do not stretch the
+-- 0.50..1 span, which would drag the climb out with it.
+local LUNGE_FALL = 0.30 -- seconds of U 0.35 -> 0.50, the descent
+local LUNGE_SETTLE = 0.35 -- seconds of U 0.50 -> 0.72, the skull settling
+local LUNGE_CLIMB = 0.85 -- seconds of U 0.72 -> 1, the peel back up the tower
+
+-- The farthest living player past `minRange`, or the farthest one at all if
+-- everybody is inside it (a party that has crowded the tower still gets
+-- lunged at - the move is a punish, not a refusal).
+local function farthestPlayerRoot(from: Vector3, minRange: number): BasePart?
+	local best, bestDist = nil, -1
+	local bestFar, bestFarDist = nil, -1
+	for _, player in Players:GetPlayers() do
+		local character = player.Character
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		if root and humanoid and humanoid.Health > 0 then
+			local d = (Vector3.new(root.Position.X, 0, root.Position.Z) - Vector3.new(from.X, 0, from.Z)).Magnitude
+			if d > bestFarDist then
+				bestFar, bestFarDist = root, d
+			end
+			if d >= minRange and d > bestDist then
+				best, bestDist = root, d
+			end
+		end
+	end
+	return best or bestFar
+end
+
+-- Write Aim from a world position, clamped to the ring the neck can reach.
+-- ARENA-LOCAL, because PoseCenter is already replicated and a world-space aim
+-- would be the same number on the wire twice.
+local function setBrineAim(state, at: Vector3)
+	local dx, dz = at.X - state.center.X, at.Z - state.center.Z
+	local r = math.sqrt(dx * dx + dz * dz)
+	if r < 1e-3 then
+		return
+	end
+	local clamped = math.clamp(r, BrinejawPath.AIM_MIN, BrinejawPath.AIM_MAX)
+	state.aimX, state.aimZ = dx / r * clamped, dz / r * clamped
+end
+
+ATTACK_HANDLERS.serpentlunge = {
+	windup = function(creature, def, p, u, _sub)
+		local state = colossusState(creature, def)
+		state.attackKind = "lunge"
+		-- U 0 -> LUNGE_COCK_U across the windup: the whole tracking window.
+		state.attackU = u * BrinejawPath.LUNGE_COCK_U
+		local root = farthestPlayerRoot(state.center, p.minRange or 25)
+		if root then
+			setBrineAim(state, root.Position)
+		end
+	end,
+	fire = function(creature, def, p, _now, _root)
+		local a = creature.attack
+		local state = colossusState(creature, def)
+		-- AIM FREEZES HERE, at LUNGE_COCK_U, and this is the last write to it.
+		-- The client draws its countdown ring from the same two numbers, so a
+		-- late correction would move the ring people are standing out of.
+		local root = farthestPlayerRoot(state.center, p.minRange or 25)
+		if root then
+			setBrineAim(state, root.Position)
+		end
+		a.hold = p.hold or 4.0
+		a.landed = false
+		state.attackU = BrinejawPath.LUNGE_COCK_U
+	end,
+	strike = function(creature, def, p, now, _dt, _u, _root, _sub)
+		local a = creature.attack
+		local state = colossusState(creature, def)
+		-- U FROM ELAPSED TIME, not from the engine's `u`, because the four
+		-- segments have wildly different rates and the middle one is a HOLD.
+		-- The row's `duration` must be hold + LUNGE_FALL + LUNGE_SETTLE +
+		-- LUNGE_CLIMB, which is where its "hold + 1.5" comment comes from.
+		local t = now - a.phaseStart
+		local cock, impact = BrinejawPath.LUNGE_COCK_U, BrinejawPath.LUNGE_IMPACT_U
+		local held = 0.72 -- the top of the punish window, from the header
+		if t < LUNGE_FALL then
+			state.attackU = cock + (impact - cock) * (t / LUNGE_FALL)
+		elseif t < LUNGE_FALL + LUNGE_SETTLE then
+			state.attackU = impact + (held - impact) * ((t - LUNGE_FALL) / LUNGE_SETTLE)
+		elseif t < LUNGE_FALL + LUNGE_SETTLE + a.hold then
+			state.attackU = held
+		else
+			local climb = (t - LUNGE_FALL - LUNGE_SETTLE - a.hold) / LUNGE_CLIMB
+			state.attackU = held + (1 - held) * math.clamp(climb, 0, 1)
+		end
+		-- THE BLOW, at LUNGE_IMPACT_U. `lungeHits` reads the same U and the
+		-- same Aim the client's shrinking ring does, and the radius comes from
+		-- the path module - never from this row - so the disc that hurts and
+		-- the disc that was drawn are one circle.
+		if not a.landed and state.attackU >= impact then
+			a.landed = true
+			local lo, hi = bossRoll(creature, def, p.damage)
+			for _, player in Players:GetPlayers() do
+				local character = player.Character
+				local root = character and character:FindFirstChild("HumanoidRootPart")
+				local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+				if root and humanoid and humanoid.Health > 0 then
+					if BrinejawPath.lungeHits(state, root.Position, BrinejawPath.LUNGE_RADIUS) then
+						PlayerService.damage(player, math.random(lo, hi), creature, { bypassIframe = true })
+					end
+				end
+			end
+			fireEvent("serpentSlam", BrinejawPath.lungeImpactPoint(state), { radius = BrinejawPath.LUNGE_RADIUS })
+		end
+		-- THE PUNISH WINDOW. Open for exactly the held span: the skull is on
+		-- the sand, `placeColossus` has already parked the authority model on
+		-- it (`creature.pos = headPosition` IS `lungeHeadPosition`), and the
+		-- chip scaling steps aside while this is true. Recomputed every frame
+		-- rather than latched, so no exit - a stagger, a death, an interrupted
+		-- attack - can leave it stuck open.
+		creature.lungeOpen = state.attackU >= impact and state.attackU <= held
+	end,
+	finish = function(creature, def, _p, _now)
+		creature.lungeOpen = false
+		colossusState(creature, def).attackU = 1
+	end,
+	recover = function(creature, def, _p, _u, _sub)
+		local state = colossusState(creature, def)
+		state.attackKind = ""
+		state.attackU = 0
+		state.aimX, state.aimZ = 0, 0
+	end,
+}
+
+-- ----------------------------------------------------------- the undertow
+--
+-- A bulge travels BENEATH the beach from the tower's foot out to where a
+-- player was standing when it started, at CONSTANT SPEED - the read is that
+-- it neither accelerates nor turns, so you step off the line. U is LINEAR IN
+-- DISTANCE for exactly that reason, and Aim is frozen at U = 0.
+--
+-- The damage rides `undertowPoint`, which is the same call the client's dust
+-- plume rides: one point, one radius (UNDERTOW_RADIUS, from the path module,
+-- never from the row), no second copy of "how fast does it travel".
+ATTACK_HANDLERS.serpentundertow = {
+	windup = function(creature, def, _p, u, _sub)
+		local a = creature.attack
+		local state = colossusState(creature, def)
+		if not a.aimed then
+			a.aimed = true
+			-- FROZEN AT U = 0, which for this kind means the moment the attack
+			-- is chosen: the body has to unwind a turn and a half of coil to
+			-- get under the sand, and an aim that kept tracking through that
+			-- would drag the whole buried run sideways.
+			local at = state.targetPos
+			if at then
+				setBrineAim(state, at)
+			end
+		end
+		-- The kind is not on yet: the windup is the body diving, which the
+		-- `undertow` pose's own entry ramp (30% of U) performs. Peel the tail
+		-- off the tower so the dive has something to dive with.
+		state.unwind = math.max(state.unwind or 0, u * 0.6)
+	end,
+	fire = function(creature, def, _p, _now, _root)
+		local state = colossusState(creature, def)
+		state.attackKind = "undertow"
+		state.attackU = 0
+		creature.attack.hit = {}
+	end,
+	strike = function(creature, def, p, _now, _dt, u, _root, _sub)
+		local a = creature.attack
+		local state = colossusState(creature, def)
+		state.attackU = u
+		local lo, hi = bossRoll(creature, def, p.damage)
+		for _, player in Players:GetPlayers() do
+			local character = player.Character
+			local root = character and character:FindFirstChild("HumanoidRootPart")
+			local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+			if root and humanoid and humanoid.Health > 0 and not a.hit[player] then
+				if BrinejawPath.undertowHits(state, root.Position, BrinejawPath.UNDERTOW_RADIUS) then
+					a.hit[player] = true
+					PlayerService.damage(player, math.random(lo, hi), creature, { bypassIframe = true })
+					local at, _ = BrinejawPath.undertowPoint(state)
+					local out = Vector3.new(root.Position.X - at.X, 0, root.Position.Z - at.Z)
+					shoveAlong(root.Position, if out.Magnitude > 0.01 then out.Unit else Vector3.xAxis, 34, 0.4)
+				end
+			end
+		end
+	end,
+	finish = function(creature, def, p, _now)
+		local state = colossusState(creature, def)
+		-- THE ERUPTION at the far end of the run, which is what makes the
+		-- bulge a threat you have to leave rather than one you outwalk.
+		state.attackU = 1
+		local at, _ = BrinejawPath.undertowPoint(state)
+		local lo, hi = bossRoll(creature, def, p.damage)
+		damagePlayersInRadius(at, p.radius or 14, lo, hi, creature, 0.4)
+		fireEvent("slam", at, { radius = p.radius or 14 })
+	end,
+	recover = function(creature, def, _p, _u, _sub)
+		local state = colossusState(creature, def)
+		state.attackKind = ""
+		state.attackU = 0
+		state.aimX, state.aimZ = 0, 0
+	end,
+}
+
+-- ------------------------------------------------------------ the surge
+--
+-- TIDAL SURGE, the stance-3 set-piece. It rears (kind "rear", U held at 0.5,
+-- which is what that pose's header says a hold is) and the sea comes up over
+-- everything outside `floodR` while its own masonry rains on the dry ground
+-- left inside. Hold the shrinking band, then punish: the set-piece ENDS in a
+-- guaranteed stagger through the existing machinery, so nothing new happens
+-- client-side and the window looks exactly like an earned one.
+--
+-- The surge's rubble is NOT a second attack. Both sides build its rain
+-- payload with `BrinejawPath.surgeRain` and hand it to the same `rainChunks`,
+-- so there is one table of numbers for it and neither side typed them.
+local SURGE_TAIL = 0.35 -- seconds at U = 1 before the window opens; see below
+
+local function armSurge(creature, _def, p, state, startAt: number)
+	local payload = {
+		start = startAt,
+		duration = p.duration,
+		floodR = p.floodR or 46,
+		seed = math.random(1, 2147483000),
+	}
+	local rainPayload = BrinejawPath.surgeRain(payload)
+	brineHazards(creature).surge = {
+		payload = payload,
+		p = p,
+		tickAt = startAt,
+		rain = { chunks = BrinejawPath.rainChunks(rainPayload), radius = rainPayload.radius, p = p, fired = {} },
+	}
+	fireEvent("serpentSurge", state.center, payload)
+end
+
+local function stepSurge(creature, def, state, now: number)
+	local surge = creature.brine and creature.brine.surge
+	if not surge then
+		return
+	end
+	local p = surge.p
+	-- STEPPED FIRST, AND IT OUTLIVES THE FLOOD BY A CHUNK OR TWO.
+	-- `surgeRain` lays one chunk every 0.45 s starting 0.8 s in, so the
+	-- last of `duration / 0.45` of them lands just PAST `start + duration`.
+	-- Tearing the record down on the flood's own clock dropped that chunk's
+	-- damage while the client - which derives the same list from the same
+	-- payload - still drew it falling. The record goes when both are done.
+	local pending = stepRainRun(creature, def, state, surge.rain, now)
+	if now >= surge.payload.start + surge.payload.duration then
+		if not pending then
+			creature.brine.surge = nil
+		end
+		return
+	end
+	if now < surge.tickAt then
+		return
+	end
+	surge.tickAt = now + (p.floodTick or 0.6)
+	local lo, hi = bossRoll(creature, def, p.damage)
+	local floodR = surge.payload.floodR
+	for _, player in Players:GetPlayers() do
+		local character = player.Character
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		if root and humanoid and humanoid.Health > 0 then
+			local r = brineRadiusOf(state, root.Position)
+			if r > floodR then
+				PlayerService.damage(player, math.random(lo, hi), creature, { bypassIframe = true })
+				-- SHOVED INWARD, toward the band they are supposed to be
+				-- standing in. The flood is a boundary, not a kill box.
+				local inward = Vector3.new(state.center.X - root.Position.X, 0, state.center.Z - root.Position.Z)
+				if inward.Magnitude > 0.01 then
+					shoveAlong(root.Position, inward.Unit, p.shove or 30, 0.5)
+				end
+			end
+		end
+	end
+end
+
+ATTACK_HANDLERS.tidalsurge = {
+	windup = function(creature, def, _p, u, _sub)
+		local state = colossusState(creature, def)
+		state.attackKind = "rear"
+		-- U 0 -> 0.5 across the windup: REAR_U is 0.30, so it reaches full
+		-- height part-way through and holds the rest, which reads as the body
+		-- standing up and then GATHERING.
+		state.attackU = u * 0.5
+		state.aimX, state.aimZ = 0, 0 -- `rear` rears on the bearings it has
+	end,
+	fire = function(creature, def, p, _now, _root)
+		local state = colossusState(creature, def)
+		state.attackU = 0.5
+		armSurge(creature, def, p, state, Workspace:GetServerTimeNow())
+	end,
+	strike = function(creature, def, p, now, _dt, _u, _root, _sub)
+		local a = creature.attack
+		local state = colossusState(creature, def)
+		local t = now - a.phaseStart
+		local fall = math.max(p.duration - SURGE_TAIL, 1e-3)
+		-- HELD AT 0.5 for the flood, then U 0.5 -> 1 to come down. It reaches
+		-- 1 with SURGE_TAIL to spare, and those frames are the whole point:
+		-- the kind is still "rear" while U sits at 1, so the body finishes its
+		-- exit ramp BEFORE the window opens and clears the kind. Running U to
+		-- 1 and clearing it in the same frame publishes neither.
+		if t >= fall then
+			state.attackU = 1
+		else
+			local down = math.max(t - (fall - 1.2), 0) / 1.2
+			state.attackU = 0.5 + 0.5 * math.clamp(down, 0, 1)
+		end
+		if t >= p.duration then
+			-- THE GUARANTEED WINDOW. Cleared first, opened second: the stagger
+			-- poses the head down on the sand and a live attack kind would be
+			-- fighting it for the body. openStagger retires the attack and
+			-- switches the mode, which is why this is safe to call from a
+			-- strike (the engine only touches the orphaned attack table
+			-- afterwards) and would NOT be from a recover.
+			state.attackKind = ""
+			state.attackU = 0
+			openStagger(creature, def, now, p.stagger or 8)
+		end
+	end,
+	finish = function(creature, def, _p, _now)
+		-- Only reached if the strike ran out without opening the window (a
+		-- duration shorter than SURGE_TAIL, or a death mid-set-piece).
+		local state = colossusState(creature, def)
+		state.attackU = 1
+	end,
+	recover = function(creature, def, _p, _u, _sub)
+		local state = colossusState(creature, def)
+		state.attackKind = ""
+		state.attackU = 0
+	end,
+}
+
+-- ------------------------------------------------------------ the polyps
+--
+-- THE HEAL, AND THE ONLY ATTACK THAT IS A QUESTION RATHER THAN A THREAT.
+-- Three brine polyps grow on the arena's cover stones - never on the tower,
+-- which is the one place a party cannot fight over. Every one still alive at
+-- the deadline DETONATES: an AoE at its own feet, and its share of the
+-- serpent's health running back up the beam. Every one broken in time pops
+-- and denies its share.
+--
+-- The polyps are ordinary spawned creatures, so they are killable by whatever
+-- the party is already carrying and they show a health bar like anything
+-- else. Nothing about them is special-cased in combat; the only thing this
+-- code owns is what happens at the deadline.
+local function polypSites(creature, def, count: number): { Vector3 }
+	local state = colossusState(creature, def)
+	local arena = def.islandId and BossArenas.items[def.islandId]
+	local sites = {}
+	for _, piece in (arena and arena.cover or {}) do
+		local offset = piece.offset or Vector3.zero
+		-- Just outside the rock rather than inside it, so a polyp is never
+		-- buried in the geometry that made it a landmark.
+		local out = Vector3.new(offset.X, 0, offset.Z)
+		local push = if out.Magnitude > 0.01 then out.Unit * ((piece.radius or 3) + 2.5) else Vector3.new(3, 0, 0)
+		local at = state.center + offset + push
+		table.insert(sites, Vector3.new(at.X, state.center.Y + BrinejawPath.sandY(brineRadiusOf(state, at)), at.Z))
+	end
+	-- Shuffle and take `count`: a fixed order would put the same three rocks
+	-- under the same three polyps every fight, and half the mechanic is
+	-- deciding which one the party can reach.
+	for i = #sites, 2, -1 do
+		local j = math.random(i)
+		sites[i], sites[j] = sites[j], sites[i]
+	end
+	local chosen = {}
+	for i = 1, math.min(count, #sites) do
+		chosen[i] = sites[i]
+	end
+	return chosen
+end
+
+local function stepPolyps(creature, def, now: number)
+	local run = creature.brine and creature.brine.polyps
+	if not run then
+		return
+	end
+	local p = run.p
+	local expired = now >= run.deadline
+	local remaining = 0
+	for _, entry in run.entries do
+		if not entry.resolved then
+			local polyp = entry.creature
+			local alive = polyp ~= nil and CreatureService.isAlive(polyp)
+			if not alive then
+				-- BROKEN IN TIME. The share is denied, and that is the whole
+				-- reward: no loot, no XP, just a serpent that does not heal.
+				entry.resolved = true
+				fireEvent("polypBurst", entry.position, { healed = false, radius = p.radius or 10 })
+			elseif expired then
+				entry.resolved = true
+				local lo, hi = bossRoll(creature, def, p.damage)
+				damagePlayersInRadius(entry.position, p.radius or 10, lo, hi, creature, 0.5)
+				-- The heal, as a fraction of MAX health so it does not shrink
+				-- as the fight goes on - a heal that scales with what is left
+				-- would be meaningless by the time it mattered.
+				local heal = (p.heal or 0.035) * creature.maxHealth
+				creature.health = math.min(creature.maxHealth, creature.health + heal)
+				creature.model:SetAttribute(ATTR_HEALTH, creature.health)
+				CreatureService.despawn(polyp.model)
+				fireEvent("polypBurst", entry.position, { healed = true, radius = p.radius or 10 })
+			else
+				remaining += 1
+			end
+		end
+	end
+	if remaining == 0 then
+		creature.brine.polyps = nil
+	end
+end
+
+ATTACK_HANDLERS.serpentpolyps = {
+	windup = function(creature, def, _p, u, _sub)
+		-- No pose kind: the serpent does not change shape to grow these, and
+		-- an attack kind with no ATTACK entry would pose nothing anyway. The
+		-- coils grind, which is the tail coming a little off the tower.
+		local state = colossusState(creature, def)
+		state.unwind = math.max(state.unwind or 0, u * 0.35)
+	end,
+	fire = function(creature, def, p, _now, _root)
+		local state = colossusState(creature, def)
+		local row = Creatures.items.brine_polyp
+		if not row then
+			return
+		end
+		local deadline = Workspace:GetServerTimeNow() + (p.deadline or 12)
+		local entries, positions = {}, {}
+		for _, at in polypSites(creature, def, p.count or 3) do
+			-- No `target`: a thrown spawn arcs off to a landing point, and
+			-- these are rooted to the rock they grew on.
+			local model = CreatureService.spawn(row, at, nil, "Neutral")
+			local polyp = model and byModel[model]
+			if polyp then
+				table.insert(entries, { creature = polyp, position = at, resolved = false })
+				table.insert(positions, at)
+			end
+		end
+		if #entries == 0 then
+			return
+		end
+		brineHazards(creature).polyps = { entries = entries, deadline = deadline, p = p }
+		fireEvent("serpentPolyps", state.center, { deadline = deadline, positions = positions })
+	end,
+	-- Resolved by updateBrineHazards for the next twelve seconds, while the
+	-- boss goes on attacking: the party has to answer the polyps AND the book
+	-- at the same time, which is the whole cost of the mechanic.
+}
+
+-- ONE FRAME OF EVERYTHING BRINEJAW HAS LEFT LYING AROUND. Run from
+-- `placeColossus`, so it ticks in every mode this boss can be in - attacking,
+-- entrenched, staggered, collapsing. That is deliberate and it is the reason
+-- these are not resolved in their handlers: a bell rung at the end of a move
+-- is still ringing through the next one, and a party that breaks the last
+-- polyp during a punish window must be credited for it.
+updateBrineHazards = function(creature, def, state)
+	if not creature.brine then
+		return
+	end
+	-- THE SERVER CLOCK, NOT THE UPDATE LOOP'S. Every payload this section
+	-- sends carries a `start` / `impactAt` / `deadline` measured in
+	-- `Workspace:GetServerTimeNow()` - that is the contract's timing base,
+	-- and it is what lets a client adopting the fight mid-attack land at
+	-- the right phase instead of at the right elapsed time. `placeColossus`
+	-- reasons in `os.clock()`, which is a completely different epoch: using
+	-- the number it is holding would compare two clocks that share nothing
+	-- but a unit, and every ring, chunk and deadline here would resolve
+	-- either instantly or never.
+	local now = Workspace:GetServerTimeNow()
+	stepWave(creature, def, state, now)
+	stepRings(creature, def, state, now)
+	stepSurge(creature, def, state, now)
+	stepPolyps(creature, def, now)
+	local rain = creature.brine.rain
+	if rain and not stepRainRun(creature, def, state, rain, now) then
+		creature.brine.rain = nil
+	end
+end
 
 -- ------------------------------------------------------ the choir's two
 --
@@ -7901,8 +9033,13 @@ local function updateBoss(creature, now: number, dt: number)
 			if u >= 1 then
 				state.rise = 1
 				state.slump = 0
-				-- Still untouchable: the only way in is an earned stagger.
-				creature.untargetable = true
+				-- Still untouchable, unless the row carries a CHIP FLOOR: for
+				-- that boss the only way to a FULL hit is an earned stagger,
+				-- but it is aimable and hurtable the whole time
+				-- (`creature.chip`, scaled in `damage`). Setting the flag here
+				-- would take it out of every target pick and make the floor
+				-- unreachable.
+				creature.untargetable = def.chip == nil
 				setMode(creature, "entrenched", 0, now)
 			end
 			return
@@ -7937,16 +9074,47 @@ local function updateBoss(creature, now: number, dt: number)
 
 	if def.entrenched then
 		local state = colossusState(creature, def)
+		-- THE CHIP FLOOR'S TWO FIELDS, WRITTEN ONCE A FRAME AND NOWHERE ELSE.
+		-- `chip` is copied off the row so `damage()` - which is handed no
+		-- `def` - can find it; `punishOpen` is RECOMPUTED rather than latched,
+		-- so no exit from a window (a stagger ending, a death mid-lunge, an
+		-- attack interrupted by a collapse) can leave it stuck open. The two
+		-- windows are the stagger and the lunge's held plant; the post-surge
+		-- window IS a stagger, so it is already counted.
+		creature.chip = def.chip
+		creature.punishOpen = creature.mode == "stagger" or (creature.mode == "attack" and creature.lungeOpen == true)
+		-- THE STONES REGROW ON A CLOCK. Here rather than in the stance branch
+		-- below, because that one fires on a health threshold and this has to
+		-- run whether or not the fight is making progress - which is the
+		-- entire point: three baits cannot produce a stance's worth of damage,
+		-- so a party that misread them used to have no way back into the fight
+		-- at all. The stance-change restore is kept on top of it.
+		regrowStones(creature, def, now)
 		-- Stance follows the health phase: each one it loses costs it ground.
 		local stance = (def.stances or 1) - (bossPhaseIndex(def, creature.health / creature.maxHealth) - 1)
 		stance = math.max(stance, 1)
 		-- `~=` alone never fires on the first pass (both start at MAX_COIL),
 		-- so anything reading Stance saw nil for the fight's first third.
 		if model:GetAttribute(ATTR_STANCE) == nil or state.coil ~= stance then
+			-- THE FIRST PASS IS NOT A STANCE CHANGE. `state.coil` is nil until
+			-- this line runs, so the attribute test above - which exists so
+			-- anything reading Stance is not left staring at nil for the
+			-- fight's first third - also fired the announcement on the boss's
+			-- very first entrenched frame: a "it shifts its stance" banner
+			-- and a sting before it had done anything, at full health, for
+			-- the stance it started in. Set the attribute, restore the
+			-- stones, say nothing.
+			local announce = state.coil ~= nil
 			state.coil = stance
 			model:SetAttribute(ATTR_STANCE, stance)
 			restoreStones(creature, def)
-			fireEvent("bossStance", creature.pos, { name = def.name, stance = stance })
+			-- A new stance is a new hand: the once-per-stance moves (`once`
+			-- in pickBossAttack) are offered again. Cleared even on the first
+			-- pass, which is harmless - there is nothing in it yet.
+			creature.stanceUsed = nil
+			if announce then
+				fireEvent("bossStance", creature.pos, { name = def.name, stance = stance })
+			end
 		end
 
 		if creature.mode == "stagger" then
@@ -7957,7 +9125,7 @@ local function updateBoss(creature, now: number, dt: number)
 			placeColossus(creature, def, now, root)
 			if u >= 1 then
 				state.slump = 0
-				creature.untargetable = true
+				creature.untargetable = def.chip == nil -- see the rise's note
 				creature.model:SetAttribute(ATTR_EXPOSED, nil)
 				creature.nextAttackAt = now + 0.6
 				setMode(creature, "entrenched", 0, now)

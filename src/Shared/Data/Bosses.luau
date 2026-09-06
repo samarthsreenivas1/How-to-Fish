@@ -105,14 +105,18 @@ Bosses.items.brinejaw = {
 	-- than spawning anything (Shared/Modules/BrinejawPath).
 	--
 	-- The loop, and the grammar every later boss speaks harder:
-	--   1. survive a pattern - low sweeps are JUMPED, high sweeps are STOOD
-	--      UNDER, and reading which is coming is the whole dodge;
+	--   1. survive a pattern - and after the 2026-09-06 rebuild each pattern
+	--      asks a DIFFERENT question: a whip is jumped, a wave is hidden
+	--      from, a bombardment is walked out of, the bell's rings are jumped
+	--      in rhythm, the spiral's closing lane is backed out of. (The old
+	--      low-vs-high sweep read is gone with `sweephigh`.)
 	--   2. earn the opening - bait a tail slam onto one of the arena's three
 	--      REEF STONES. Sand absorbs the blow; rock does not, and the rattle
 	--      cracks against it;
 	--   3. spend it - the serpent loses its grip and its head comes down on
 	--      the sand, targetable and Exposed, for `stagger` seconds. That is
-	--      the ONLY time it can be hurt at all.
+	--      when MOST of the damage happens; it is no longer the only time it
+	--      can be hurt at all (see `chip` below, and the lunge's plant).
 	-- Each stone shatters as it is spent, so a wasted bait costs something
 	-- real; the fight stays winnable without them (a slam on bare sand still
 	-- staggers it briefly - see `weakStagger`).
@@ -124,6 +128,37 @@ Bosses.items.brinejaw = {
 	entrenched = true,
 	pose = "brinejaw",
 	stances = 3,
+
+	-- ------------------------------------------------------------- the floor
+	--
+	-- THE CHIP FLOOR: BRINEJAW IS NEVER FULLY INVULNERABLE AGAIN.
+	--
+	-- The trace of the shipped fight found 40 minutes solo at 5% uptime,
+	-- because "the ONLY time it can be hurt at all" (the note above) plus a
+	-- stone economy that could not refill meant a party which misread three
+	-- baits had NO way to damage the boss and no way to earn another window.
+	-- With `chip` present the entrenched boss stays aimable and damageable at
+	-- all times, taking this fraction of every hit OUTSIDE a punish window and
+	-- the full hit INSIDE one (CreatureService.damage scales it; the windows
+	-- are stagger mode, the lunge's held plant, and the post-surge stagger).
+	--
+	-- The field is the gate as well as the number: it exists on this row and
+	-- nowhere else, so every other boss keeps `untargetable` and its meaning
+	-- exactly as they are. See the note at CreatureService.damage.
+	--
+	-- 0.25 is simulated, not chosen. It is the value at which the chip carries
+	-- about a third of the health bar and the earned windows carry the rest -
+	-- low enough that ignoring the bait is still much slower (11.8 min against
+	-- 7.5 at DPS 80), high enough that a party with no stones standing is
+	-- making progress instead of waiting.
+	chip = 0.25,
+	-- ...and the other half of that fix: a spent reef stone stands again this
+	-- many seconds later, not only when the boss changes stance. Three baits
+	-- cannot produce a stance's worth of damage, so the stance-change restore
+	-- alone was a deadlock; this is the timer that makes the stones a
+	-- RESOURCE rather than a countdown to a stalemate. The stance-change
+	-- restore is kept on top of it.
+	stoneRegrow = 25.0,
 
 	-- The old roam disc, kept because arena.offset is still the fallback
 	-- spawn for an island with no lair row. Entrenched bosses never roam.
@@ -144,22 +179,67 @@ Bosses.items.brinejaw = {
 	enrageCooldownMult = 0.6,
 	enrageDamageMult = 1.35,
 
-	-- Phase = coil. Sweeps arrive in pairs from the second coil down, and the
-	-- third opens with CONSTRICT: a slow, near-full-circle high sweep with a
-	-- fast low one chasing it.
+	-- Phase = coil, and the book is REBUILT (2026-09-06, user-approved). What
+	-- went, and why:
+	--   * `sweephigh` and `rubble` are DELETED outright. The high sweep was
+	--     half of a read the body could never sell at 100 parts of moving
+	--     serpent, and `rubble` was a stock `volley` wearing a masonry name -
+	--     the seeded bombardment below is the move it was pretending to be.
+	--     NO HIGH SWEEP REMAINS ANYWHERE: every sweep in this book is low and
+	--     is jumped.
+	--   * `constrict` is superseded by `spiral`, which is the same idea done
+	--     as geometry rather than as a pair of chained sweeps: the arm's REACH
+	--     closes with U, so the lane you can stand in shrinks while it turns.
+	--   * `sweeppair`'s low-then-high becomes `doublewhip`: a low whip whose
+	--     follow is a REVERSED low whip. Jump, land, jump again - the second
+	--     one comes back the other way, which is a read you make with your
+	--     eyes rather than one you memorise.
+	-- What arrived: the four event-driven attacks the serpent could never
+	-- express as a pose (riptide, masonryrain, belltoll, tidalsurge), the two
+	-- that punish standing still and standing off (lunge, undertow), and the
+	-- heal the party has to answer (polyps).
 	phases = {
-		{ below = 1.0, attacks = { "sweeplow", "sweephigh", "tailslam", "rubble" } },
-		{ below = 0.66, attacks = { "sweeplow", "sweephigh", "tailslam", "rubble", "sweeppair" } },
+		{ below = 1.0, attacks = { "whip", "riptide", "tailslam", "masonryrain" } },
+		{
+			below = 0.66,
+			attacks = {
+				"whip",
+				"riptide",
+				"tailslam",
+				"masonryrain",
+				"doublewhip",
+				"belltoll",
+				"lunge",
+				"undertow",
+				"polyps",
+			},
+		},
 		{
 			below = 0.33,
-			attacks = { "sweeplow", "sweephigh", "tailslam", "sweeppair", "constrict", "rubble" },
+			attacks = {
+				"whip",
+				"riptide",
+				"tailslam",
+				"masonryrain",
+				"doublewhip",
+				"belltoll",
+				"lunge",
+				"undertow",
+				"polyps",
+				"spiral",
+				"tidalsurge",
+			},
 		},
 	},
 
 	attacks = {
-		-- Jump it. 2.6 s for ~340 degrees is a wave you can see coming from
-		-- anywhere on the ring, which is the point at a level-7 capstone.
-		sweeplow = {
+		-- THE WHIP. Jump it. 2.6 s for ~340 degrees is a wave you can see
+		-- coming from anywhere on the ring, which is the point at a level-7
+		-- capstone - and the arm is now a DRAG CURVE rather than a spoke
+		-- (BrinejawPath.stepSweepRate / sweepBearingAt), so the tip trails the
+		-- base by up to 28 degrees and the lane you have to leave is the lane
+		-- you can see bending.
+		whip = {
 			handler = "orbitsweep",
 			tell = false, -- fires serpentSweep from its own windup instead
 			windup = 1.5,
@@ -170,31 +250,37 @@ Bosses.items.brinejaw = {
 			girth = 3.4,
 			damage = { 38, 55 },
 		},
-		-- Stand still. Panic-jumping this is how the cove teaches height.
-		sweephigh = {
-			handler = "orbitsweep",
-			high = true,
-			tell = false, -- fires serpentSweep from its own windup instead
-			windup = 1.6,
-			duration = 2.4,
-			recover = 1.0,
-			cooldown = 5.5,
-			arc = math.rad(320),
-			girth = 3.6,
-			damage = { 40, 58 },
-		},
-		-- Low, then immediately high: jump, land, hold. The follow chains it.
-		sweeppair = {
+		-- Low, then low again the OTHER WAY: jump, land, jump. The follow
+		-- chains `whipback`, and the whole read is that the second one is not
+		-- a repeat - it comes back through the ground you just landed on.
+		doublewhip = {
 			handler = "orbitsweep",
 			tell = false, -- fires serpentSweep from its own windup instead
 			windup = 1.2,
 			duration = 2.2,
-			recover = 0.5,
-			cooldown = 9.0,
+			recover = 0.6,
+			cooldown = 11.0,
 			arc = math.rad(300),
 			girth = 3.4,
 			damage = { 38, 55 },
-			follow = "sweephigh",
+			follow = "whipback",
+		},
+		-- The return stroke, and it is NOT in any phase list: the only way to
+		-- see it is to have just been shown a `doublewhip`. `reverse` makes
+		-- aimSweep take the opposite direction to the sweep before it rather
+		-- than rolling its own, so the pair always reads as one move that
+		-- changed its mind.
+		whipback = {
+			handler = "orbitsweep",
+			reverse = true,
+			tell = false, -- fires serpentSweep from its own windup instead
+			windup = 0.9,
+			duration = 2.0,
+			recover = 0.9,
+			cooldown = 11.0,
+			arc = math.rad(300),
+			girth = 3.4,
+			damage = { 38, 55 },
 		},
 		-- The opening. Long windup on purpose: the bait is a decision, not a
 		-- reaction - you have to be STANDING at a stone when it lands.
@@ -204,43 +290,187 @@ Bosses.items.brinejaw = {
 			windup = 1.9,
 			duration = 0.85,
 			recover = 1.1,
-			cooldown = 8.0,
+			-- 8.0 -> 12.0. The bait has to be a DECISION, and at 8 seconds
+			-- against a stance-1 pool of four it came round often enough to be
+			-- a rotation step. In the simulation it is the single largest term
+			-- in the whole fight (roughly half the health bar arrives inside
+			-- baited staggers), so its cadence is the fight's pace.
+			cooldown = 12.0,
 			radius = 13,
 			lift = 9,
 			stoneReach = 11, -- how near a stone the blow has to land
 			stagger = 8.0, -- the punish window a stone buys
-			weakStagger = 2.2, -- sand only jars it: winnable, never the plan
+			-- 2.2 -> 3.0. Sand still only jars it, but 2.2 s was under the
+			-- travel time to the tower foot from mid-arena - a window nobody
+			-- could reach is not a floor, it is a taunt. 3.0 buys about a
+			-- second of actual swinging after the run in.
+			weakStagger = 3.0,
 			damage = { 52, 74 },
 		},
-		-- Masonry knocked off the tower by the grinding coils.
-		rubble = {
-			handler = "volley",
-			tell = "burst",
-			windup = 0.8,
-			duration = 1.0,
-			recover = 0.6,
-			cooldown = 6.0,
-			count = 6,
-			spread = 22,
-			flight = 1.1,
-			stagger = 0.14,
-			radius = 8,
-			damage = { 20, 30 },
+		-- MASONRY RAIN. The grinding coils shed the lighthouse's own stonework
+		-- over one SECTOR of the beach: leave the sector, or read the markers.
+		-- Every chunk's landing point comes out of BrinejawPath.rainChunks off
+		-- this row's numbers and the payload's seed, so the client's falling
+		-- rock and the server's damage circle are one list computed twice, not
+		-- two lists sent once. `count` stays at or under 36 - the client's
+		-- pool - and 14 over 3.1 s is a rhythm you can walk out of.
+		masonryrain = {
+			handler = "masonryrain",
+			tell = false, -- fires serpentRain, whose markers ARE the telegraph
+			windup = 1.1,
+			duration = 3.6,
+			recover = 0.8,
+			cooldown = 9.0,
+			count = 14,
+			width = 2.1, -- the sector's angular width, radians (~120 degrees)
+			inner = 12,
+			outer = 64,
+			stagger = 0.22, -- seconds between impacts
+			fall = 1.1, -- how far a chunk's ground marker leads its impact
+			radius = 7, -- per-chunk damage circle
+			damage = { 24, 34 },
 		},
-		-- Phase 3: the squeeze. A slow high sweep all the way round with a
-		-- low one chasing it, so the safe answer changes mid-move.
-		constrict = {
-			handler = "orbitsweep",
-			high = true,
-			tell = false, -- fires serpentSweep from its own windup instead
+		-- RIPTIDE. A wall of water crosses the whole arena on one bearing.
+		-- It is TALL: jumping is not an answer and never will be, and the only
+		-- answer is the lee of a rock (BossArenas.tropical.cover plus the
+		-- lighthouse itself). The client shades the safe wedge behind every
+		-- piece from the same `waveSheltered` the server asks - the shadow is
+		-- a promise, not a suggestion.
+		riptide = {
+			handler = "riptide",
+			tell = false, -- fires serpentWave, and the wall is its own tell
+			windup = 1.6,
+			duration = 3.2,
+			recover = 0.9,
+			cooldown = 12.0,
+			-- THE WATER OUTLIVES THE MOVE, ON PURPOSE. The front's real clock
+			-- is 2 * reach / speed = 6.0 s, which is longer than the strike:
+			-- the serpent throws the wave and goes back to work while it is
+			-- still crossing, so a riptide overlaps whatever comes next and
+			-- the arena has two things happening in it. The crossing is
+			-- resolved by CreatureService's brine-hazard tick rather than by
+			-- this row's `duration`, and BOTH sides read the same `start`.
+			speed = 26, -- studs/second the front travels
+			reach = 78, -- half-span: the front runs -78..+78 along its axis
+			push = 46, -- knockback along the wave's own direction
+			damage = { 42, 60 },
+		},
+		-- BELL TOLL. The head strikes the keeper's bell and three rings leave
+		-- the tower. JUMP EACH ONE: the hit band is grounded-only, so an
+		-- airborne player passes through it, and 26 studs/second with a 1.05 s
+		-- gap is the rhythm that makes three jumps a phrase rather than a
+		-- reaction test.
+		belltoll = {
+			handler = "belltoll",
+			tell = false, -- the head pose IS the windup; serpentRings draws them
+			windup = 1.4,
+			duration = 2.6,
+			recover = 1.0,
+			cooldown = 13.0,
+			count = 3,
+			speed = 26,
+			gap = 1.05, -- seconds between rings leaving the tower
+			band = 2.6, -- the ring's thickness; hit inside band/2 of it
+			damage = { 34, 48 },
+		},
+		-- LUNGE. This move exists to punish CAMPING: it picks the FARTHEST
+		-- player past `minRange` and puts the skull on them. It tracks until
+		-- BrinejawPath.LUNGE_COCK_U and then commits, the blow lands at
+		-- LUNGE_IMPACT_U, and then the head is planted on the sand for `hold`
+		-- seconds - level with a standing root, fully damageable. That plant
+		-- is the fight's only punish window nobody has to earn, and it is
+		-- offered to the player standing furthest away.
+		--
+		-- `duration` is not free: the handler spends 0.30 s falling, 0.35 s
+		-- settling, `hold` planted and 0.85 s peeling back up the tower, so it
+		-- must be hold + 1.5.
+		lunge = {
+			handler = "serpentlunge",
+			tell = false, -- the shrinking ring is drawn from the pose channel
+			windup = 1.3,
+			duration = 5.5,
+			recover = 1.0,
+			cooldown = 11.0,
+			hold = 4.0, -- how long the skull stays on the sand
+			minRange = 25, -- nobody nearer than this is worth lunging at
+			damage = { 56, 78 },
+		},
+		-- UNDERTOW. A bulge travels beneath the beach from the tower's foot
+		-- out to where a player was standing when it started, at CONSTANT
+		-- speed - the read is that it does not accelerate and does not turn,
+		-- so you step off the line. It erupts at the far end.
+		undertow = {
+			handler = "serpentundertow",
+			tell = false, -- the sand-bulge dust IS the telegraph
+			windup = 1.2,
+			duration = 2.4,
+			recover = 0.9,
+			cooldown = 12.0,
+			radius = 14, -- the eruption at the end of the run
+			damage = { 46, 64 },
+		},
+		-- SPIRAL, which replaces `constrict`. The same "the safe ground moves"
+		-- idea, done as geometry instead of as two chained sweeps: this is an
+		-- ordinary low sweep whose REACH contracts with U (BrinejawPath's
+		-- `spiral` kind), so the arm closes in on the tower as it turns and
+		-- the ring you are standing in gets smaller under your feet. Hugging
+		-- the tower stops being the answer half-way through.
+		spiral = {
+			handler = "serpentspiral",
+			tell = false, -- fires serpentSweep once; the closing edge is posed
 			windup = 1.8,
 			duration = 4.4,
-			recover = 0.6,
-			cooldown = 14.0,
+			recover = 0.8,
+			cooldown = 16.0,
 			arc = math.rad(400),
 			girth = 3.8,
 			damage = { 44, 62 },
-			follow = "sweeplow",
+		},
+		-- TIDAL SURGE, the stance-3 set-piece. It rears and holds while the
+		-- sea comes up over everything outside `floodR` and its own masonry
+		-- rains on the dry ground left inside it. Hold the shrinking band,
+		-- then punish: the surge ENDS in a guaranteed 8-second stagger, which
+		-- is the one window in the fight nobody has to bait.
+		--
+		-- `once = "stance"` is the cadence: a set-piece that came round on a
+		-- cooldown would be a rotation step, and this one is an event.
+		tidalsurge = {
+			handler = "tidalsurge",
+			tell = false, -- fires serpentSurge; the risen water is the tell
+			windup = 2.0,
+			duration = 10.0,
+			recover = 1.0,
+			cooldown = 45.0,
+			once = "stance",
+			floodR = 46, -- everything outside this radius is under water
+			floodTick = 0.6, -- seconds between flood damage ticks
+			shove = 30, -- how hard the flood pushes you back inward
+			stagger = 8.0, -- the guaranteed window it ends on
+			damage = { 16, 24 }, -- per flood tick, not per hit
+		},
+		-- POLYPS, the heal, and the only attack that is a question rather than
+		-- a threat. Three brine polyps grow on the arena's cover stones; every
+		-- one still alive at the deadline detonates, hurting everyone near it
+		-- AND feeding its share of the serpent's health back up the beam.
+		--
+		-- `heal` is a fraction of MAX health per surviving polyp. 0.035 x 3 is
+		-- 10.5% a cast, and `once = "stance"` caps the fight at two casts, so
+		-- a party that ignores the mechanic entirely pays about 21% of a
+		-- health bar - the ~2 minutes the rebalance budgets for it. (6% each,
+		-- the first draft, cost 3.5-4 minutes: double the budget.)
+		polyps = {
+			handler = "serpentpolyps",
+			tell = false, -- serpentPolyps draws the beams and the countdown
+			windup = 1.0,
+			duration = 1.2,
+			recover = 0.8,
+			cooldown = 45.0,
+			once = "stance",
+			count = 3,
+			deadline = 12.0, -- seconds the party has to break them
+			heal = 0.035, -- fraction of max health each survivor returns
+			radius = 10, -- the detonation's damage circle
+			damage = { 30, 40 },
 		},
 	},
 }
