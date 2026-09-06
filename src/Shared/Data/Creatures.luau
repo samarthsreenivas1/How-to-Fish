@@ -2456,6 +2456,10 @@ Creatures.items.wrack_battery = {
 	archetype = "choirstalk",
 	health = 2800,
 	waters = "wreck",
+	-- Same reason as `choir_stalk`'s: the batteries are bolted to the hull
+	-- 10.6 to 35.7 studs up (Bosses.admiral_wrack `parts.mounts`), so melee
+	-- target-picking must not select one it can never reach.
+	rangedOnly = true,
 	rewards = { coins = { 120, 200 }, xp = 350 },
 	-- Authority only, like the tentacles: a chunk of the flagship at gun-deck
 	-- scale, so it reads as part of the hull it is bolted to.

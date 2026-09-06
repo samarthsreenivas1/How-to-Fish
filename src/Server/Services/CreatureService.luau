@@ -8224,6 +8224,28 @@ local function wrackEmit(pattern: string, creature, def, p, now: number, gap: nu
 	}, p)
 end
 
+-- WILL THIS VOLLEY ACTUALLY FIRE? `wrackEmit` returns 0 without emitting
+-- anything while `wrackScale` is 0 - the `staggerFor` seconds of true silence
+-- the moment the last battery falls - but the phase machine keeps running the
+-- move, so every windup hook below used to draw its full telegraph into that
+-- silence. The player spent the burst window they had just earned watching
+-- anchorsweep's ring-and-lane resolve into nothing: a tell that lies, in the
+-- one beat of the fight that is supposed to be a reward.
+--
+-- So each windup asks the same question the emitter will ask, and draws
+-- nothing when the answer is no. It is asked per FRAME rather than once, so a
+-- windup that starts inside the stagger and ends outside it still gets its
+-- telegraph (late, but before the balls) - the failure that matters is shots
+-- without a tell, not a tell without shots. `a.wrackTold` still makes it
+-- exactly once per attack.
+--
+-- `os.clock()` is the clock `now` is measured on everywhere in this section
+-- (updateBoss's `now`, and `partsDownAt` in kill()), and the windup hook is
+-- the one place in the handler contract that is not handed it.
+local function wrackWillFire(creature, def): boolean
+	return wrackScale(creature, def, os.clock()) > 0
+end
+
 -- THE TELL, AND WHY IT IS SHAPED LIKE THIS. The client implements exactly
 -- ten telegraph kinds (CreatureEventController.EVENTS.telegraph): slam, tail,
 -- burst, pull, dive, snap, mark, ringTell, coneTell, gustTell - and anything
@@ -8301,14 +8323,21 @@ end
 -- the same place and pre-standing in it does not work. p: count, speed,
 -- radius, damage, spawnAt, lifetime, gapDeg, gapStep, volleys, interval.
 ATTACK_HANDLERS.broadside = {
-	windup = function(creature, _def, p, u, sub)
+	windup = function(creature, def, p, u, sub)
 		local a = creature.attack
-		if not a.wrackTold then
-			a.wrackTold = true
+		-- THE GAP IS LATCHED WHETHER OR NOT THE VOLLEY FIRES, and separately
+		-- from the tell: `strike` advances `a.wrackGapAt` and would index nil
+		-- if a silenced windup had skipped this, and the walking gap is
+		-- supposed to walk on across a silenced broadside too.
+		if not a.wrackAimed then
+			a.wrackAimed = true
 			wrackAim(creature)
 			creature.wrackGap = (creature.wrackGap or math.random() * math.pi * 2)
 				+ math.rad(p.gapStep or 46) * (0.5 + math.random())
 			a.wrackGapAt = creature.wrackGap
+		end
+		if not a.wrackTold and wrackWillFire(creature, def) then
+			a.wrackTold = true
 			-- Two cues, because a ring with a hole in it needs both: the ring
 			-- itself (loud, and readable from any facing), then the gap. Both
 			-- are drawn OUTSIDE the muzzle locus - which is no longer a plain
@@ -8356,9 +8385,9 @@ ATTACK_HANDLERS.broadside = {
 -- first burst's lanes. p: pellets, fanDeg, speed, radius, damage, spawnAt,
 -- lifetime, bursts, burstGap.
 ATTACK_HANDLERS.grapeshot = {
-	windup = function(creature, _def, p, u, sub)
+	windup = function(creature, def, p, u, sub)
 		local a = creature.attack
-		if not a.wrackTold then
+		if not a.wrackTold and wrackWillFire(creature, def) then
 			a.wrackTold = true
 			-- One wedge, from the gun that is going to fire it: the fan is a
 			-- wedge's width, and it leaves one battery.
@@ -8389,9 +8418,9 @@ ATTACK_HANDLERS.grapeshot = {
 -- and the spin opens and closes it on a beat you can count. p: pairs, fanDeg,
 -- chain, chainRadius, spinDeg, speed, radius, damage, spawnAt, lifetime.
 ATTACK_HANDLERS.chainshot = {
-	windup = function(creature, _def, p, u, sub)
+	windup = function(creature, def, p, u, sub)
 		local a = creature.attack
-		if not a.wrackTold then
+		if not a.wrackTold and wrackWillFire(creature, def) then
 			a.wrackTold = true
 			-- One wedge per pair, so the tell shows where the PAIRS go and
 			-- the lanes between them read as the lanes they are. Drawn from
@@ -8423,11 +8452,16 @@ ATTACK_HANDLERS.chainshot = {
 -- the rotation and walk against it to cross the arms the short way. p: arms,
 -- every, spinDeg, speed, radius, damage, spawnAt, lifetime.
 ATTACK_HANDLERS.slewfire = {
-	windup = function(creature, _def, p, u, sub)
+	windup = function(creature, def, p, u, sub)
 		local a = creature.attack
-		if not a.wrackTold then
-			a.wrackTold = true
+		-- Latched even when the decks are silent: `strike` adds the spin to
+		-- `a.wrackGapAt` every tick and cannot be handed a nil.
+		if not a.wrackAimed then
+			a.wrackAimed = true
 			a.wrackGapAt = wrackAngle(wrackAim(creature))
+		end
+		if not a.wrackTold and wrackWillFire(creature, def) then
+			a.wrackTold = true
 			-- The annulus has to cover the whole muzzle locus, which runs from
 			-- `spawnAt` out to `spawnAt` + the furthest live deck's range.
 			fireEvent("telegraph", creature.anchor or creature.pos, {
@@ -8438,7 +8472,10 @@ ATTACK_HANDLERS.slewfire = {
 				skin = p.skin,
 			})
 		end
-		creature.model:PivotTo(poseCFrame(creature, sub, math.rad(20) * u, math.rad(4) * u))
+		-- Roll, not yaw, for the same reason the strike below no longer slews:
+		-- a 20-degree turn through poseCFrame's yawOffset swung the drawn
+		-- bowsprit battery thirteen studs off the hitbox standing at its mount.
+		creature.model:PivotTo(poseCFrame(creature, sub, 0, math.rad(7) * u))
 	end,
 	fire = function(creature, _def, p, now)
 		local a = creature.attack
@@ -8453,9 +8490,18 @@ ATTACK_HANDLERS.slewfire = {
 			wrackEmit("slewfire", creature, def, p, now, a.wrackGapAt)
 			a.wrackGapAt += a.wrackSpin * every
 		end
-		-- The hull turns with the guns: what you see rotating is what is
-		-- firing. yaw0 runs opposite to the emitter's angle convention.
-		creature.model:PivotTo(poseCFrame(creature, sub, -a.wrackGapAt - creature.yaw0, math.rad(4)))
+		-- THE HULL DOES NOT TURN WITH THE GUNS, and must not. This used to feed
+		-- `-a.wrackGapAt - creature.yaw0` into poseCFrame's yawOffset, which
+		-- ADDS to yaw0 - a full revolution of the drawn ship every 4-5 seconds,
+		-- dragging the four `Wrack_Battery*` objects the player aims at away
+		-- from the four `wrack_battery` hitboxes, which `parts.at = "mounts"`
+		-- resolved ONCE against yaw0 at spawn and which never move. His row
+		-- says it outright ("HE MUST NOT TURN... only correct for a hull that
+		-- stays put") and so does WrackBodyController ("He does NOT slew").
+		-- The spiral's rotation is legible in the balls themselves - that is
+		-- what the player reads to walk against it - so the hull only has to
+		-- lean into the recoil.
+		creature.model:PivotTo(poseCFrame(creature, sub, 0, math.rad(6)))
 	end,
 }
 
@@ -8467,9 +8513,9 @@ ATTACK_HANDLERS.slewfire = {
 -- off each live deck. p: count, speed, homingDeg, radius, damage, spawnAt,
 -- lifetime, spreadDeg.
 ATTACK_HANDLERS.wisps = {
-	windup = function(creature, _def, p, u, sub)
+	windup = function(creature, def, p, u, sub)
 		local a = creature.attack
-		if not a.wrackTold then
+		if not a.wrackTold and wrackWillFire(creature, def) then
 			a.wrackTold = true
 			wrackAim(creature)
 			-- The ring they are born from, which is now the DECKS' ring: one
@@ -8496,9 +8542,9 @@ ATTACK_HANDLERS.wisps = {
 -- end passable for a beat if you commit to it. p: count, arcDeg, speed,
 -- radius, damage, spawnAt, lifetime, ripple.
 ATTACK_HANDLERS.anchorsweep = {
-	windup = function(creature, _def, p, u, sub)
+	windup = function(creature, def, p, u, sub)
 		local a = creature.attack
-		if not a.wrackTold then
+		if not a.wrackTold and wrackWillFire(creature, def) then
 			a.wrackTold = true
 			-- THE ONE BIG TELEGRAPH, and the one pattern that can arrive from
 			-- the camera's rear blind spot. So it gets a RING first - drawn
