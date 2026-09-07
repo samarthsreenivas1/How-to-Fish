@@ -50,7 +50,15 @@ COMPILER = "luau-compile"
 
 # `--null` runs the full compile (register allocation included) and throws
 # the bytecode away; `--binary` would spray it at stdout.
-COMPILE_ARGS = [COMPILER, "--null"]
+#
+# `-O0` is pinned deliberately. The 2026-09-06 game-down (333 chunk locals)
+# fails at EVERY -O level, tested empirically on the broken blob — but the
+# consolidation lane reports that near the margin, higher levels can shave
+# register pressure and mask a file that Studio's own compile then rejects.
+# Strictest wins: a marginal false positive here is a cheap consolidation
+# prompt; a masked true positive is the game refusing to boot with five
+# gates green.
+COMPILE_ARGS = [COMPILER, "--null", "-O0"]
 
 
 def local_names(path):
