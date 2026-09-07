@@ -26,8 +26,9 @@ moment: **`docs/import-checklist.md` is the ledger, trust it over dates.**
   build ahead; stub and comment. The user reviews visually; refinement
   prompts are part of the slice, not scope creep.
 - **Pre-commit gate, no exceptions:** `stylua src` && `selene src` (0/0/0)
-  && `rojo build -o /tmp/check.rbxlx` && `python3 tools/check_content.py`.
-  Rojo doesn't parse Luau; selene alone catches syntax.
+  && `rojo build -o /tmp/check.rbxlx` && `python3 tools/check_content.py`
+  && `python3 tools/check_compile.py`. Rojo doesn't parse Luau and selene
+  doesn't allocate registers; only gate 5 compiles (200-local chunk cliff).
 - **The uploaded icon set is CANON for item art.** Model vs icon disagree →
   the model is wrong.
 - `git add <explicit paths>`, never `-A`. Commit messages explain WHY.
