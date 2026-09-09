@@ -254,9 +254,38 @@ local function aimDistance(origin: Vector3, dir: Vector3, near: number, far: num
 				if along > near and along < best then
 					local radius = aimRadius[model]
 					if not radius then
+						-- THE SERVER'S OWN NUMBER FIRST. `ShotRadius` is
+						-- published by CreatureService.spawn for any row that
+						-- carries one, and it is the SAME value that server's
+						-- `raycastNearest` will capture this creature with.
+						--
+						-- Without it this line re-derived the capture from the
+						-- model's bounding box - the identical formula, run
+						-- independently, which is exactly the failure the
+						-- attribute exists to close (user, 2026-09-08, live:
+						-- shots passing through Wrack's powder runner). For a
+						-- small target standing on open sand the sweep misses,
+						-- the depth falls through to the SAND BEHIND it, and
+						-- since the shot is fired from the shooter's root and
+						-- not the camera, that wrong depth bends the direction
+						-- by the whole rig parallax - so the server is then
+						-- handed a ray that really does miss. The client's
+						-- estimate decides the server's input, which makes
+						-- "both are individually reasonable" no defence.
 						local _, size = model:GetBoundingBox()
 						radius = math.max(1.4, size.Magnitude * 0.3)
 						aimRadius[model] = radius
+					end
+					-- READ EVERY PASS, not cached with the derived value above:
+					-- the cache is keyed on first sight, and a model that
+					-- arrives before its attributes have replicated would
+					-- otherwise be stuck with the derived number for its whole
+					-- life - the bug's own conditions, restored by the
+					-- optimisation meant to avoid it. GetAttribute is a hash
+					-- lookup; the sweep already calls GetPivot on every model.
+					local authored = model:GetAttribute("ShotRadius")
+					if type(authored) == "number" then
+						radius = authored
 					end
 					if (to - dir * along).Magnitude <= radius then
 						best = along
