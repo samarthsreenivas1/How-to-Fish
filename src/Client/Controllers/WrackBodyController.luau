@@ -20,12 +20,12 @@
 -- `speed = 0`: he is a planted gun platform and his fight is a bullet hell
 -- that happens in FRONT of him, not a body that swings.
 --
--- So there is no path module, no pose attributes and no per-frame limb maths
--- here, and none should be added. All 25 objects in assets/boss_wrack.glb are
--- authored in ONE shared space at their final positions (boss_gen.py's
--- build_wrack: "STATIC. One CFrame for the whole model - he never moves,
--- never turns"), so the entire ship places with a single CFrame and a
--- per-piece offset that is measured once at clone time and never recomputed.
+-- So there is no path module and no pose attribute here, and neither should be
+-- added. All 25 objects in assets/boss_wrack.glb are authored in ONE shared
+-- space at their final positions (boss_gen.py's build_wrack: "STATIC. One
+-- CFrame for the whole model - he never moves, never turns"), so the entire
+-- ship places with a single CFrame and a per-piece offset that is measured
+-- once at clone time and never recomputed.
 --
 -- WHAT IS STILL PER-FRAME, and why this is not a one-shot placement:
 --
@@ -36,9 +36,20 @@
 --     authored at four bearings and a hull that turns to face you presents the
 --     same two forever;
 --   * the hull SPLITS for the melee window - two plates off the keel hinge,
---     eased on one scalar. See "the melee window" below. That scalar is the
---     only thing in this file that is interpolated, and it should stay the
---     only one: it is a door opening, not a body being animated.
+--     eased on one scalar. See "the melee window" below: it is a door opening,
+--     not a body being animated;
+--   * ...and THE PIECES THEMSELVES ARE POSED, by the channel layer below.
+--
+-- THAT LAST LINE OVERTURNED WHAT THIS HEADER USED TO SAY, so it is worth
+-- saying what did and did not change (2026-09-09, from the player: "more
+-- unique attacks... make them more interesting"). The shell scalar used to be
+-- described here as the only interpolated thing in the file "and it should
+-- stay the only one". THE SHIP still is not animated - no rig, no chain, no
+-- limb maths on the hull, and the whole assembly is still one CFrame off the
+-- pivot. What is animated is the MAN on the quarterdeck and the BRASS he
+-- fires, both of which were always separate objects standing still for no
+-- reason. The shell mechanism was not replaced to do it, it was generalised:
+-- the melee window is now one row of CHANNELS with byte-identical behaviour.
 --
 -- Pieces come from ReplicatedStorage/Assets/WrackPack (assets/boss_wrack.glb,
 -- see docs/import-checklist.md row 7p). Until that import lands this draws
@@ -100,9 +111,10 @@ local AUTHORED_ANCHOR = Vector3.new(-0.1, 0.7, 0.3)
 -- `Wrack_MuzzleGlow` is the 25th object and is deliberately NOT here. It is
 -- a MODULE, not a piece: boss_gen authors it at the origin with +X as the
 -- bore and instances it once per live muzzle, so it has no single home to be
--- placed at. The import checklist calls it "decoration only, and nothing
--- breaks if it is never placed". Whoever draws muzzle flash owns it, and
--- routing it through makePiece() below is all it needs to come out Neon.
+-- placed at. See MODULES below, which instances it four times - once per gun -
+-- and is the thing the import checklist meant by "whoever draws muzzle flash
+-- owns it". Routing it through makePiece() was indeed all it needed to come
+-- out Neon.
 local PIECES = {
 	"Base",
 	"Hull",
