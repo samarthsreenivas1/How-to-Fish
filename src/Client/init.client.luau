@@ -32,6 +32,7 @@ local ORDER = {
 	"ToolHoldController", -- after CameraController (reads isThirdPerson): poses every player's arms around the welded rod/weapon so it stops swinging with the walk
 	"CombatController", -- after both melee viewmodels: click/tap swings the equipped weapon (and asks the server to resolve the hit)
 	"RangedController", -- after WeaponViewmodelController (kick + muzzle): the trigger for any `ranged` weapon row; CombatController stands down for those
+	"CrosshairController", -- after CameraController (the mode) + RangedController (the trigger it marks): the centre-screen aiming mark, third person only
 	"RangedFxController", -- after WeaponViewmodelController: pooled tracers + muzzle flashes off the ShotFired remote
 	"CombatFeedbackController", -- no dependencies; flash / health bar / damage numbers off replicated Health
 	"CombatVfxController", -- no dependencies; impact burst + camera kick off the CreatureHit remote

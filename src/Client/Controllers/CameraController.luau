@@ -36,6 +36,72 @@ local THIRD_PERSON_DISTANCE = 26
 
 local thirdPerson = false
 
+-- ============================================================ THE ORBIT
+-- RIGHT-CLICK-DRAG LOOK (user, 2026-09-08, first hands-on contact with the
+-- arena camera: "the third person needs to be revamped. you should be able to
+-- hold right click and then move the camera around. also you should implement
+-- a crosshair and allow the user to shoot in third person when you're in a
+-- boss").
+--
+-- THE CURSOR MODEL, written out once here because every mode below obeys it
+-- and every symptom in that report is a consequence of it:
+--
+--   first person - the cursor is LOCKED to the centre and hidden, and Roblox's
+--                  own camera scripts steer with every mouse move. UNCHANGED
+--                  by any of this.
+--   third person - the cursor is FREE and VISIBLE, with CrosshairController's
+--                  mark at the centre of the screen. Moving the mouse does
+--                  NOT steer the camera.
+--   RMB held     - the cursor locks where it stands and hides, and the mouse
+--                  delta turns the orbit. Releasing restores the free cursor.
+--   LMB          - fires down the camera's centre ray whatever the cursor is
+--                  doing. RangedController owns the trigger, binds it through
+--                  ContextActionService, and reads neither the cursor nor the
+--                  camera mode - so left click and right drag never contend.
+--   a menu open  - setCursorFree(true) wins over all of it.
+--
+-- WHY THE ORBIT IS THIS FILE'S AND NOT ROBLOX'S. The stock Classic camera does
+-- turn on a held right button - but only if it sees the button, and two
+-- High-priority ContextActionService binds already sink MouseButton2 for the
+-- whole session (FishingController's "CastRod", RangedController's scoped
+-- zoom). What the default camera makes of it is not something this file can
+-- depend on. The old behaviour was worse than merely unreliable: NOTHING ever
+-- put MouseBehavior back to Default on the way out of first person, so the
+-- LockCenter that first person sets survived into the arena, the mouse steered
+-- the camera every time it moved, and there was no cursor to show for it.
+--
+-- So yaw and pitch below are this client's own state, moved by nothing but a
+-- held right button - and they are what every rig in this file reads. The rigs
+-- themselves are untouched: applyOrbit writes the orbit into the camera BEFORE
+-- they run, and each of them goes on recovering yaw and pitch off the frame it
+-- is handed (`base.LookVector`) exactly as it always has. They are simply fed
+-- a frame this file authored instead of one Roblox's camera scripts authored.
+local orbitYaw = 0
+local orbitPitch = 0
+local orbiting = false -- the right button is down and the drag owns the mouse
+
+-- Radians per pixel of mouse travel, with the stock camera's own 0.77 vertical
+-- trim: a full turn is about 720 pixels, which is what the rest of the game
+-- already feels like under the hand.
+local ORBIT_SPEED = math.rad(0.5)
+local ORBIT_PITCH_TRIM = 0.77
+
+-- Guard rails on the orbit's pitch - NOT any fight's band. Every arena rig
+-- clamps further (BIRDSEYE_PITCH_CEIL and the rest) and hands what it allowed
+-- back to `orbitPitch`, so a drag stops exactly where the mode stops rather
+-- than banking travel the player cannot see and has to unwind before the view
+-- moves again. Stay wide here and let each rig speak for its own fight.
+local ORBIT_PITCH_CEIL = math.rad(80)
+local ORBIT_PITCH_FLOOR = -math.rad(80)
+
+-- The plain over-the-shoulder orbit's own geometry, for the arenas that have
+-- no rig of their own (the Maelstrom). Focus at the shoulder, and the same
+-- occlusion pull-in every raised rig uses - a blocked frame in a boss fight is
+-- a death wherever the camera is standing.
+local ORBIT_FOCUS_LIFT = 2.5
+local ORBIT_CLEARANCE = 1.6
+local ORBIT_MIN_DISTANCE = 4
+
 -- BIRDSEYE IN THE CAREENAGE (Wrack's bullet-hell pass, 2026-08-29). Wrack is
 -- a static gun platform: the fight is not the boss, it is the pattern on the
 -- ground between you and it, and over-the-shoulder third person hides the
@@ -262,6 +328,12 @@ local function birdseyeFrame(root: BasePart, base: CFrame, character: Model): CF
 	local yaw = math.atan2(-look.X, -look.Z)
 	local pitch = math.asin(math.clamp(look.Y, -1, 1))
 	local aimed = math.clamp(pitch - BIRDSEYE_PITCH, BIRDSEYE_PITCH_FLOOR, BIRDSEYE_PITCH_CEIL)
+	-- What the band allowed, handed back to the drag (see ORBIT_PITCH_CEIL) -
+	-- the inverse of the line above, since this mode's aim sits BIRDSEYE_PITCH
+	-- below the player's own pitch. Without it a drag past the 14-degree
+	-- ceiling would bank travel the player cannot see and would have to unwind
+	-- before the view moved again.
+	orbitPitch = aimed + BIRDSEYE_PITCH
 	-- min, not clamp: `aimed` is already floored at BIRDSEYE_PITCH_FLOOR, so
 	-- the boom lands inside the same floor by construction.
 	local boom = math.min(aimed, BIRDSEYE_BOOM_CEIL)
@@ -329,6 +401,64 @@ local function applyBirdseye()
 	camera.CFrame = camera.CFrame:Lerp(birdseyeFrame(root, camera.CFrame, character :: Model), birdseyeBlend)
 end
 
+-- Is the right button down and allowed to steer? POLLED each frame rather
+-- than latched on an InputBegan/InputEnded pair, for the reason
+-- RangedController's trigger carries the same poll: a release that lands on a
+-- GUI is game-processed and never comes back to a handler, and a drag latched
+-- on by a press that IS delivered would then hold the mouse hostage - locked,
+-- iconless, and steering - inside an open menu. A poll cannot latch.
+--
+-- The menu test is first: setCursorFree wins over the drag, so opening the
+-- inventory mid-orbit hands the cursor over on the same frame.
+local function updateOrbitInput()
+	orbiting = not cursorFree
+		and thirdPerson
+		and UserInputService.MouseEnabled
+		and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
+end
+
+-- THE ORBIT, WRITTEN INTO THE CAMERA. Runs first among the per-frame camera
+-- work, so every raised rig recovers this frame's yaw and pitch off it the
+-- same way it used to recover Roblox's.
+--
+-- In the plain 26-stud third person (the Maelstrom, which has no rig of its
+-- own) this IS the whole camera: the eye hangs along the same pitch the camera
+-- looks along - the ordinary coupled orbit - with the shoulder focus and the
+-- occlusion pull-in above. In an arena that has a rig, that rig lerps away
+-- from this frame onto its own geometry and the only part of this that
+-- survives is the yaw and the pitch. Which is the point: one drag, one piece
+-- of state, four modes.
+local function applyOrbit()
+	local camera = Workspace.CurrentCamera
+	if not camera then
+		return
+	end
+	if not thirdPerson then
+		-- First person owns the look. Track it, so that walking into an arena
+		-- starts the orbit exactly where the player was already looking and the
+		-- ease in has nothing to snap over.
+		local look = camera.CFrame.LookVector
+		orbitYaw = math.atan2(-look.X, -look.Z)
+		orbitPitch = math.asin(math.clamp(look.Y, -1, 1))
+		return
+	end
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if not root or not root:IsA("BasePart") then
+		return
+	end
+	orbitPitch = math.clamp(orbitPitch, ORBIT_PITCH_FLOOR, ORBIT_PITCH_CEIL)
+	local focus = (root :: BasePart).Position + Vector3.new(0, ORBIT_FOCUS_LIFT, 0)
+	local dir = CFrame.fromEulerAnglesYXZ(orbitPitch, orbitYaw, 0).LookVector
+	local distance = THIRD_PERSON_DISTANCE
+	local blocked = Workspace:Raycast(focus, -dir * distance, occlusionParams(character :: Model))
+	if blocked then
+		distance = math.max((blocked.Position - focus).Magnitude - ORBIT_CLEARANCE, ORBIT_MIN_DISTANCE)
+	end
+	local eye = focus - dir * distance
+	camera.CFrame = CFrame.lookAt(eye, eye + dir)
+end
+
 -- Which mode this place wants, from where the character is standing.
 local function updateMode()
 	local character = player.Character
@@ -360,11 +490,26 @@ local function onRenderStep()
 	else
 		lockFirstPerson()
 	end
+	-- The orbit's own frame goes in BEFORE every rig below, because every one
+	-- of them reads yaw and pitch back off the frame it is handed.
+	updateOrbitInput()
+	applyOrbit()
 	-- ...and last, because it overrides both while it is easing.
 	applyBirdseye()
 	if cursorFree then
 		UserInputService.MouseBehavior = Enum.MouseBehavior.Default
 		UserInputService.MouseIconEnabled = true
+	elseif thirdPerson then
+		-- Third person, per the cursor model at the top of this file: free and
+		-- visible so the player can reach a menu button with the pointer, and
+		-- pinned where it stands (with the icon gone) for as long as a right
+		-- drag owns it. Asserted EVERY frame for the reason everything else in
+		-- this function is - Roblox's camera scripts write these same two
+		-- properties, including on the way out of first person.
+		UserInputService.MouseBehavior = if orbiting
+			then Enum.MouseBehavior.LockCurrentPosition
+			else Enum.MouseBehavior.Default
+		UserInputService.MouseIconEnabled = not orbiting
 	else
 		UserInputService.MouseIconEnabled = false
 	end
@@ -377,6 +522,29 @@ function CameraController.init()
 end
 
 function CameraController.start()
+	-- The drag's other half: the delta. `gameProcessed` is deliberately not
+	-- consulted - the button that opens the drag is sunk session-wide by two
+	-- other High-priority binds (see THE ORBIT above), so a drag that stopped
+	-- whenever another action claimed the button is the bug being fixed, not a
+	-- safety rail. `orbiting` is the only gate, and it already answers for the
+	-- cursor, the camera mode and any open menu.
+	--
+	-- Mouse movement only reports a Delta while the cursor is locked, which is
+	-- exactly and only while a drag is running - so this reads zero the rest of
+	-- the time even before the gate.
+	UserInputService.InputChanged:Connect(function(input: InputObject)
+		if not orbiting or input.UserInputType ~= Enum.UserInputType.MouseMovement then
+			return
+		end
+		-- Right on the screen is clockwise from above, which is DECREASING yaw
+		-- in the fromEulerAnglesYXZ frame every rig here is built on; mouse
+		-- down looks down. Pitch is clamped on the way in as well as in
+		-- applyOrbit, so a drag against a rail can never run the number away.
+		orbitYaw -= input.Delta.X * ORBIT_SPEED
+		orbitPitch =
+			math.clamp(orbitPitch - input.Delta.Y * ORBIT_SPEED * ORBIT_PITCH_TRIM, ORBIT_PITCH_FLOOR, ORBIT_PITCH_CEIL)
+	end)
+
 	RunService:BindToRenderStep("CameraController", Enum.RenderPriority.Camera.Value + 1, onRenderStep)
 end
 

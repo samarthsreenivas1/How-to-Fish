@@ -34,6 +34,7 @@ local Tuning = require(Shared.Config.Tuning)
 local Weapons = require(Shared.Data.Weapons)
 local Remotes = require(Shared.Net.Remotes)
 
+local CameraController = require(script.Parent.CameraController)
 local WeaponViewmodelController = require(script.Parent.WeaponViewmodelController)
 local Sfx = require(script.Parent.Parent.Modules.Sfx)
 local Theme = require(script.Parent.Parent.UI.Theme)
@@ -363,6 +364,24 @@ end
 local function onZoomAction(_, state: Enum.UserInputState)
 	local weapon = currentRangedWeapon()
 	local ranged = weapon and weapon.ranged
+	-- RIGHT CLICK IS THE CAMERA'S IN THIRD PERSON (2026-09-08). The boss arenas
+	-- orbit on a held right button - that is the whole of the arena camera's
+	-- look control (CameraController's cursor model) - and a scope that zoomed
+	-- on the same button would fight the drag it is being dragged with: the FOV
+	-- would snap to 40 the moment the player reached for the camera, and back
+	-- out when they let go. So the scope stands down where the camera needs the
+	-- button, exactly as CombatController stands down where a gun is out, and
+	-- returns Pass so nothing else bound to the button is starved either.
+	--
+	-- First person keeps the scope byte-for-byte as it was. The state is torn
+	-- down on the way in rather than left hanging: walking into an arena while
+	-- zoomed must not strand the FOV.
+	if CameraController.isThirdPerson() then
+		if zoomed then
+			setZoom(false, nil)
+		end
+		return Enum.ContextActionResult.Pass
+	end
 	if not ranged or ranged.fireMode ~= "scoped" then
 		return Enum.ContextActionResult.Pass
 	end
@@ -459,6 +478,14 @@ function RangedController.start()
 			and not UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
 		then
 			firing = false
+		end
+		-- The scope, same idea from the other side: the camera mode can change
+		-- with no input arriving at all (it follows where the character is
+		-- standing), so a player who walks into a boss arena while zoomed would
+		-- otherwise keep the narrowed FOV over a camera that has taken the
+		-- button back. See onZoomAction.
+		if zoomed and CameraController.isThirdPerson() then
+			setZoom(false, nil)
 		end
 		if firing and weapon.ranged.fireMode == "auto" then
 			tryFire()
