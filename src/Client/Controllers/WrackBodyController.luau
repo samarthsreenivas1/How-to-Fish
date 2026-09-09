@@ -7,10 +7,12 @@
 -- file as constants: the 48-degree careen is gone (she stands up), the ship
 -- is a little over half its old bulk (48 studs bow to stern and 34.4 to the
 -- sabre tip, against 87 and 72), and the four floating "batteries" are now
--- four actual cannons built into the hull - `Wrack_CannonBow`,
--- `Wrack_CannonStarboard`, `Wrack_CannonStern`, `Wrack_CannonPort`. The old
--- `Wrack_Battery*` names are GONE from the mesh; anything still addressing
--- them draws nothing.
+-- four actual cannons. Those four then moved OUTBOARD to the ship's corners
+-- (2026-09-09) and are now `Wrack_CannonBowStbd`, `Wrack_CannonBowPort`,
+-- `Wrack_CannonSternStbd`, `Wrack_CannonSternPort`, each in its own casemate
+-- on a sponson. The old `Wrack_Battery*` names AND the one-per-flank
+-- `Wrack_CannonBow/Starboard/Stern/Port` names are both GONE from the mesh;
+-- anything still addressing either draws nothing.
 --
 -- THIS IS THE SIMPLEST OF THE SEVEN BODY CONTROLLERS, and deliberately so.
 -- Its six siblings all drive a RIG - a chain walked by arc length
@@ -118,13 +120,24 @@ local AUTHORED_ANCHOR = Vector3.new(-0.1, 0.7, 0.3)
 
 -- Every piece the assembly draws, in build order.
 --
--- `Wrack_MuzzleGlow` is the 25th object and is deliberately NOT here. It is
+-- `Wrack_MuzzleGlow` is the 36th object and is deliberately NOT here. It is
 -- a MODULE, not a piece: boss_gen authors it at the origin with +X as the
 -- bore and instances it once per live muzzle, so it has no single home to be
 -- placed at. See MODULES below, which instances it four times - once per gun -
 -- and is the thing the import checklist meant by "whoever draws muzzle flash
 -- owns it". Routing it through makePiece() was indeed all it needed to come
 -- out Neon.
+-- `Wrack_HullCollider` is the 36th object and is deliberately NOT here either,
+-- for a different reason than MuzzleGlow: it is not ours to draw. It is the
+-- shot blocker - invisible, CanCollide and CanQuery TRUE, carrying the four
+-- casemate plates so that what shields a gun on screen is what stops the ray -
+-- and CreatureService already clones it into the World folder itself
+-- (`Fn.wrackOccluder`, swept by name and destroyed with her by every route).
+-- That part is a SERVER part and replicates to us like any other, so a second
+-- copy drawn here would be a duplicate collider the server does not know
+-- about, sitting inside the real one and shoving the player's character. It
+-- keeps its AUTHORED row below, because that row is the measured geometry and
+-- is worth having written down, but nothing clones it.
 local PIECES = {
 	"Base",
 	"Hull",
@@ -136,13 +149,22 @@ local PIECES = {
 	"ShellLower",
 	"HeartGlow",
 	"HeartCage",
-	"CannonBow",
-	"CannonStarboard",
-	"CannonStern",
-	"CannonPort",
+	"CannonBowStbd",
+	"CannonBowPort",
+	"CannonSternStbd",
+	"CannonSternPort",
+	"Sponsons",
 	"Mast",
 	"Rigging",
 	"Sail",
+	"Figurehead",
+	"FigureheadGlow",
+	"Boom",
+	"BoomTackle",
+	"Hatch1",
+	"Hatch2",
+	"Hatch3",
+	"HatchGlow",
 	"Coat",
 	"Arm",
 	"Sabre",
@@ -150,6 +172,7 @@ local PIECES = {
 	"Skull",
 	"EyeGlow",
 	"Hat",
+	"Pistol",
 }
 
 -- Stand-in geometry, used only until the pack is imported: every piece's
@@ -160,103 +183,196 @@ local PIECES = {
 -- stern, 26.5 to the masthead, 34.4 to the sabre tip) instead of a grey box.
 --
 -- REGENERATED, never typed: these are the glb's own per-object bounding
--- boxes, and the export is already in Roblox space (Blender x,y,z -> x,z,-y),
--- so a row here is `at` = bbox centre and `size` = bbox extent, verbatim. The
--- redesign moved every one of them; hand-editing a subset is how a stand-in
--- ship ends up half in the old careen and half in the new one.
+-- boxes, so a row here is `at` = bbox centre and `size` = bbox extent,
+-- verbatim. The redesign moved every one of them; hand-editing a subset is how
+-- a stand-in ship ends up half in the old careen and half in the new one.
+--
+-- READ THE GLB'S NUMBERS RAW. DO NOT APPLY THE BLENDER SWAP HERE.
+-- boss_gen.py authors in Blender's z-up space and its HANDOFF lines print
+-- Blender coordinates, so every constant in this file that was copied from a
+-- HANDOFF line went through (x, y, z) -> (x, z, -y). THE GLB DID NOT: glTF is
+-- Y-up, and the exporter has already applied that swap, so a bounding box read
+-- out of the file is ALREADY in Roblox space. Applying the swap a second time
+-- is silent and plausible - it reproduced Wrack_Base as (-0.10, 0.30, -0.75)
+-- against the shipped (-0.1, 0.7, 0.3), which reads as a small authoring drift
+-- rather than as an axis error. The check that catches it: a no-conversion
+-- read must reproduce EVERY pre-existing row here exactly, and it does.
 local AUTHORED = {
-	Base = { at = Vector3.new(-0.1, 0.7, 0.3), size = Vector3.new(53.5, 2.8, 26.8), color = Color3.fromRGB(62, 59, 53) },
-	Hull = { at = Vector3.new(-0.5, 7.8, 0.3), size = Vector3.new(41, 13.5, 14.5), color = Color3.fromRGB(30, 35, 41) },
+	Base = {
+		at = Vector3.new(-0.1, 0.75, 0.3),
+		size = Vector3.new(53.48, 2.84, 26.79),
+		color = Color3.fromRGB(62, 59, 53),
+	},
+	Hull = {
+		at = Vector3.new(-0.5, 7.83, 0.29),
+		size = Vector3.new(41, 13.47, 14.53),
+		color = Color3.fromRGB(30, 35, 41),
+	},
 	Strakes = {
-		at = Vector3.new(-0.5, 8.2, 0),
-		size = Vector3.new(40.3, 14.5, 13.8),
+		at = Vector3.new(-0.53, 8.22, 0.03),
+		size = Vector3.new(40.3, 14.55, 13.81),
 		color = Color3.fromRGB(59, 67, 74),
 	},
-	Keel = { at = Vector3.new(-0.4, 6.4, 0), size = Vector3.new(45.3, 13.1, 10.3), color = Color3.fromRGB(25, 29, 34) },
-	Crust = { at = Vector3.new(-0.5, 4, -0.1), size = Vector3.new(38, 7.6, 15.3), color = Color3.fromRGB(97, 104, 90) },
+	Keel = {
+		at = Vector3.new(-0.44, 6.45, 0),
+		size = Vector3.new(45.28, 13.12, 10.34),
+		color = Color3.fromRGB(25, 29, 34),
+	},
+	Crust = {
+		at = Vector3.new(-0.52, 3.97, -0.07),
+		size = Vector3.new(37.97, 7.65, 15.34),
+		color = Color3.fromRGB(97, 104, 90),
+	},
 	Ribs = {
-		at = Vector3.new(3, 5.9, -0.1),
-		size = Vector3.new(15.2, 10.3, 11.8),
+		at = Vector3.new(3, 5.94, -0.06),
+		size = Vector3.new(15.2, 10.29, 11.82),
 		color = Color3.fromRGB(218, 212, 189),
 	},
 	ShellUpper = {
-		at = Vector3.new(3, 6.6, 3.3),
-		size = Vector3.new(12, 11.4, 6.7),
+		at = Vector3.new(3, 6.62, 3.31),
+		size = Vector3.new(12, 11.44, 6.67),
 		color = Color3.fromRGB(30, 35, 41),
 	},
-	ShellLower = { at = Vector3.new(3, 6.6, -2), size = Vector3.new(12, 11.5, 9.2), color = Color3.fromRGB(30, 35, 41) },
+	ShellLower = {
+		at = Vector3.new(3, 6.61, -2.05),
+		size = Vector3.new(12, 11.46, 9.2),
+		color = Color3.fromRGB(30, 35, 41),
+	},
 	HeartGlow = {
 		at = Vector3.new(3, 6.8, 0),
-		size = Vector3.new(3.6, 5.4, 3.8),
+		size = Vector3.new(3.61, 5.4, 3.8),
 		color = Color3.fromRGB(255, 199, 107),
 	},
-	HeartCage = { at = Vector3.new(3, 7.2, 0), size = Vector3.new(5.4, 7, 4), color = Color3.fromRGB(186, 132, 53) },
-	CannonBow = {
-		at = Vector3.new(17.6, 12.2, 1.1),
-		size = Vector3.new(13.7, 6.3, 8.4),
+	HeartCage = {
+		at = Vector3.new(3, 7.21, 0),
+		size = Vector3.new(5.36, 7.03, 4.04),
 		color = Color3.fromRGB(186, 132, 53),
 	},
-	CannonStarboard = {
-		at = Vector3.new(12.5, 9, -6.2),
-		size = Vector3.new(9.8, 7.8, 11.3),
+	CannonBowStbd = {
+		at = Vector3.new(15.19, 13.3, -8.57),
+		size = Vector3.new(12.37, 6.16, 9.91),
 		color = Color3.fromRGB(186, 132, 53),
 	},
-	CannonStern = {
-		at = Vector3.new(-18.9, 9.6, -1),
-		size = Vector3.new(11.3, 8.3, 10.4),
+	CannonBowPort = {
+		at = Vector3.new(15.18, 13.1, 8.57),
+		size = Vector3.new(12.39, 6.16, 9.91),
 		color = Color3.fromRGB(186, 132, 53),
 	},
-	CannonPort = {
-		at = Vector3.new(-11, 9.2, 6.8),
-		size = Vector3.new(9.8, 7.8, 11.3),
+	CannonSternStbd = {
+		at = Vector3.new(-15.18, 14.1, -8.57),
+		size = Vector3.new(12.39, 6.16, 9.91),
 		color = Color3.fromRGB(186, 132, 53),
+	},
+	CannonSternPort = {
+		at = Vector3.new(-15.19, 13.9, 8.57),
+		size = Vector3.new(12.37, 6.16, 9.91),
+		color = Color3.fromRGB(186, 132, 53),
+	},
+	Sponsons = {
+		at = Vector3.new(0, 12.85, 0.02),
+		size = Vector3.new(44.55, 13.13, 30.51),
+		color = Color3.fromRGB(59, 67, 74),
+	},
+	HullCollider = {
+		at = Vector3.new(0, 9.99, 0),
+		size = Vector3.new(43.84, 18.03, 29.93),
+		color = Color3.fromRGB(30, 35, 41),
 	},
 	Mast = {
-		at = Vector3.new(10.5, 14.5, 1.2),
-		size = Vector3.new(37.8, 26.8, 23.5),
+		at = Vector3.new(10.51, 14.46, 1.25),
+		size = Vector3.new(37.81, 26.73, 23.5),
 		color = Color3.fromRGB(96, 92, 85),
 	},
 	Rigging = {
-		at = Vector3.new(3.5, 13.8, 1.2),
-		size = Vector3.new(49.2, 23.8, 23.6),
+		at = Vector3.new(3.48, 13.84, 1.25),
+		size = Vector3.new(49.16, 23.83, 23.57),
 		color = Color3.fromRGB(79, 73, 61),
 	},
 	Sail = {
-		at = Vector3.new(-6.5, 16, 2.4),
-		size = Vector3.new(3.4, 12.6, 21.4),
+		at = Vector3.new(-6.5, 16.18, 2.42),
+		size = Vector3.new(3.38, 12.94, 21.05),
 		color = Color3.fromRGB(150, 156, 163),
 	},
-	Coat = { at = Vector3.new(-13.9, 18.3, -0.4), size = Vector3.new(6, 13.8, 8.5), color = Color3.fromRGB(30, 37, 62) },
-	Arm = { at = Vector3.new(-13.8, 23.1, 0.3), size = Vector3.new(4.6, 11.7, 9.4), color = Color3.fromRGB(30, 37, 62) },
+	Figurehead = {
+		at = Vector3.new(22.27, 8.55, 0),
+		size = Vector3.new(11.98, 9, 11.36),
+		color = Color3.fromRGB(202, 212, 218),
+	},
+	FigureheadGlow = {
+		at = Vector3.new(25.87, 11.3, 0),
+		size = Vector3.new(3.82, 3.16, 0.96),
+		color = Color3.fromRGB(255, 199, 107),
+	},
+	Boom = {
+		at = Vector3.new(0.13, 16.34, -18.25),
+		size = Vector3.new(15.62, 9.73, 27.9),
+		color = Color3.fromRGB(96, 92, 85),
+	},
+	BoomTackle = {
+		at = Vector3.new(2.69, 15.56, -22.22),
+		size = Vector3.new(2.97, 6.63, 4.73),
+		color = Color3.fromRGB(186, 132, 53),
+	},
+	Hatch1 = {
+		at = Vector3.new(-5.94, 11.59, 3.2),
+		size = Vector3.new(3.29, 1.17, 3.4),
+		color = Color3.fromRGB(25, 29, 34),
+	},
+	Hatch2 = {
+		at = Vector3.new(-8.94, 12.06, 3.4),
+		size = Vector3.new(2.89, 1.17, 3.4),
+		color = Color3.fromRGB(25, 29, 34),
+	},
+	Hatch3 = {
+		at = Vector3.new(-10, 12.18, -3.8),
+		size = Vector3.new(2.74, 1.17, 3.4),
+		color = Color3.fromRGB(25, 29, 34),
+	},
+	HatchGlow = {
+		at = Vector3.new(-7.95, 11.54, -0.23),
+		size = Vector3.new(5.9, 0.98, 8.36),
+		color = Color3.fromRGB(255, 199, 107),
+	},
+	Coat = {
+		at = Vector3.new(-13.9, 18.3, -0.43),
+		size = Vector3.new(6.01, 13.8, 8.51),
+		color = Color3.fromRGB(30, 37, 62),
+	},
+	Arm = {
+		at = Vector3.new(-13.79, 23.1, 0.29),
+		size = Vector3.new(4.58, 11.7, 9.44),
+		color = Color3.fromRGB(30, 37, 62),
+	},
 	Sabre = {
-		at = Vector3.new(-11.8, 31, -2.5),
-		size = Vector3.new(2.2, 6.9, 2.2),
+		at = Vector3.new(-11.78, 31.02, -2.51),
+		size = Vector3.new(2.24, 6.86, 2.24),
 		color = Color3.fromRGB(189, 196, 201),
 	},
 	Facings = {
-		at = Vector3.new(-14, 23.3, 0.6),
-		size = Vector3.new(5.1, 12.3, 9),
+		at = Vector3.new(-13.99, 23.29, 0.61),
+		size = Vector3.new(5.07, 12.27, 8.97),
 		color = Color3.fromRGB(201, 177, 102),
 	},
-	Skull = { at = Vector3.new(-14.5, 26, 1.1), size = Vector3.new(4, 4.6, 3.4), color = Color3.fromRGB(218, 212, 189) },
+	Skull = {
+		at = Vector3.new(-14.54, 26, 1.1),
+		size = Vector3.new(3.96, 4.6, 3.41),
+		color = Color3.fromRGB(218, 212, 189),
+	},
 	EyeGlow = {
-		at = Vector3.new(-13.8, 26.6, 1.1),
-		size = Vector3.new(1, 0.9, 2.5),
+		at = Vector3.new(-13.75, 26.6, 1.1),
+		size = Vector3.new(1.05, 0.9, 2.5),
 		color = Color3.fromRGB(255, 204, 92),
 	},
-	Hat = { at = Vector3.new(-14.9, 27.9, 1.1), size = Vector3.new(3.7, 2.1, 7.8), color = Color3.fromRGB(22, 22, 27) },
-	-- THE 25TH OBJECT, and the one row here that is not a placement.
-	--
-	-- `Wrack_MuzzleGlow` is a MODULE: boss_gen authors it at the ORIGIN with +X
-	-- as the bore and it is instanced once per muzzle (see MODULES below), so
-	-- `at` is not where it goes - it is where its own bounding box sits inside
-	-- its own authored space, which is what a clone's CFrame means and what the
-	-- stand-in block has to reproduce. FLARE_CENTRE below is this row's `at.X`
-	-- and the two must move together.
-	--
-	-- Measured off assets/boss_wrack.glb by the same per-object bounding box
-	-- pass as every row above, not typed: the flare runs from -0.5 to 2.0 along
-	-- the bore with five spikes to +-1.2 across it.
+	Hat = {
+		at = Vector3.new(-14.9, 27.92, 1.1),
+		size = Vector3.new(3.74, 2.14, 7.84),
+		color = Color3.fromRGB(22, 22, 27),
+	},
+	Pistol = {
+		at = Vector3.new(-14.24, 19.23, -1.32),
+		size = Vector3.new(4.12, 3.59, 0.82),
+		color = Color3.fromRGB(189, 196, 201),
+	},
 	MuzzleGlow = {
 		at = Vector3.new(0.78, 0, -0.1),
 		size = Vector3.new(2.44, 2.03, 1.93),
@@ -414,43 +530,59 @@ local OPEN_RATE = 2.6
 --
 -- WHERE EACH CANNON ACTUALLY POINTS. Derived from `WR_GUNS` in
 -- assets/boss_gen.py - the mesh's single source of truth for the art AND for
--- the Bosses mount handoff - converted from Blender (x, y, z) to Roblox
--- (x, z, -y), which is the same conversion every constant in this file uses:
+-- the Bosses mount handoff - and taken from that file's own HANDOFF lines,
+-- converted from Blender (x, y, z) to Roblox (x, z, -y), which is the
+-- conversion every HANDOFF-derived constant in this file uses. (AUTHORED above
+-- is the one block that does NOT: it is read from the glb, which is already
+-- Roblox space. See its comment.)
 --
---   Bow        breech (14.5, -1.4, 12.2) muzzle (23.6, -1.4, 12.6)
---   Starboard  breech (12.5,  2.8,  9.0) muzzle (12.5, 11.8,  9.0)
---   Stern      breech (-15.5, 1.3,  9.5) muzzle (-24.4, 1.3,  9.2)
---   Port       breech (-11.0,-3.4,  9.2) muzzle (-11.0,-12.4, 9.2)
+-- THE GUNS MOVED TO THE CORNERS (mesh commits 114a7bc / 837949a, 2026-09-09).
+-- The four names `CannonBow` / `CannonStarboard` / `CannonStern` /
+-- `CannonPort` are GONE, and so is the layout they described: one gun per
+-- flank, integral to the hull, relying on the hull to hide the far pair. That
+-- premise was measured false - from the birdseye eye, 27.3 studs up, a sight
+-- line to a far gun cleared a 13.5-stud hull by a full stud at r 132, so the
+-- hull never occluded anything at the height this fight is watched from.
+--
+-- The four guns now stand OUTBOARD on sponsons at bearings +-30 / +-150, each
+-- in its own three-sided casemate, and `Wrack_HullCollider` carries the same
+-- casemate plates - so what the player SEES shielding a gun is what stops the
+-- shot. You have to walk round her to silence all four, and the shootable
+-- histogram is 1x60 / 2x84: never three at once, never none.
+--
+--   BowStbd     span centroid Blender (16.45,  9.50, 13.20)  bearing  +30
+--   BowPort     span centroid Blender (16.45, -9.50, 13.20)  bearing  -30
+--   SternStbd   span centroid Blender (-16.45,  9.50, 14.00) bearing +150
+--   SternPort   span centroid Blender (-16.45, -9.50, 14.00) bearing -150
 --
 -- `at` IS THE SPAN CENTROID, and it is not decoration: it is exactly the
 -- number boss_gen prints into `Bosses.items.admiral_wrack.parts.mounts`, so it
 -- is where the SERVER stands the battery creature this cannon is drawn under.
 -- That is what lets a volley's world origin be matched back to a gun, and what
--- lets a live weakpoint model be matched to the brass it belongs to. The bow
--- and stern chasers are laid with a slight rise, so their bores are not
--- axis-aligned and are carried at full precision rather than rounded to +-X -
--- the muzzle flare is placed along this vector and a rounded bore would sit it
--- visibly off the barrel.
+-- lets a live weakpoint model be matched to the brass it belongs to. The bores
+-- lie on their bearings and are carried at full precision rather than rounded
+-- to +-X - the muzzle flare is placed along this vector and a rounded bore
+-- would sit it visibly off the barrel.
 local GUNS = {
-	CannonBow = {
-		at = Vector3.new(19.05, 12.4, 1.4),
-		muzzle = Vector3.new(23.6, 12.6, 1.4),
-		bore = Vector3.new(0.999, 0.044, 0),
+	CannonBowStbd = {
+		at = Vector3.new(16.45, 13.2, -9.5),
+		muzzle = Vector3.new(20.4, 13.2, -11.8),
+		bore = Vector3.new(0.87, 0, -0.5),
 	},
-	CannonStarboard = {
-		at = Vector3.new(12.5, 9, -7.3),
-		muzzle = Vector3.new(12.5, 9, -11.8),
-		bore = Vector3.new(0, 0, -1),
+	CannonBowPort = {
+		at = Vector3.new(16.45, 13.2, 9.5),
+		muzzle = Vector3.new(20.4, 13.2, 11.8),
+		bore = Vector3.new(0.87, 0, 0.5),
 	},
-	CannonStern = {
-		at = Vector3.new(-19.95, 9.35, -1.3),
-		muzzle = Vector3.new(-24.4, 9.2, -1.3),
-		bore = Vector3.new(-0.999, -0.034, 0),
+	CannonSternStbd = {
+		at = Vector3.new(-16.45, 14, -9.5),
+		muzzle = Vector3.new(-20.4, 14, -11.8),
+		bore = Vector3.new(-0.87, 0, -0.5),
 	},
-	CannonPort = {
-		at = Vector3.new(-11, 9.2, 7.9),
-		muzzle = Vector3.new(-11, 9.2, 12.4),
-		bore = Vector3.new(0, 0, 1),
+	CannonSternPort = {
+		at = Vector3.new(-16.45, 14, 9.5),
+		muzzle = Vector3.new(-20.4, 14, 11.8),
+		bore = Vector3.new(-0.87, 0, 0.5),
 	},
 }
 
@@ -460,10 +592,10 @@ local GUNS = {
 -- it needs to come out Neon"). They are pieces in every other respect, so
 -- every channel below can name them.
 local MODULES = {
-	{ name = "MuzzleBow", module = "MuzzleGlow", gun = "CannonBow" },
-	{ name = "MuzzleStarboard", module = "MuzzleGlow", gun = "CannonStarboard" },
-	{ name = "MuzzleStern", module = "MuzzleGlow", gun = "CannonStern" },
-	{ name = "MuzzlePort", module = "MuzzleGlow", gun = "CannonPort" },
+	{ name = "MuzzleBowStbd", module = "MuzzleGlow", gun = "CannonBowStbd" },
+	{ name = "MuzzleBowPort", module = "MuzzleGlow", gun = "CannonBowPort" },
+	{ name = "MuzzleSternStbd", module = "MuzzleGlow", gun = "CannonSternStbd" },
+	{ name = "MuzzleSternPort", module = "MuzzleGlow", gun = "CannonSternPort" },
 }
 
 -- The flare's own bounding-box centre along its bore (AUTHORED.MuzzleGlow.at).
@@ -674,11 +806,19 @@ local function adaptSignal(kind: string, position: Vector3, extra): any?
 		end
 		return { what = "fire", at = position, now = os.clock() }
 	elseif kind == "wrackTell" then
+		local shape = tostring(extra.shape)
 		return {
 			what = "windup",
 			at = position,
 			-- A ring tell carries no aim and must not be given one.
-			aim = if tostring(extra.shape) == "ring" then nil else flatAim(extra.aim),
+			aim = if shape == "ring" then nil else flatAim(extra.aim),
+			-- WHICH MOVE IS WINDING UP. The ship never needed this - one gesture
+			-- served every pattern - but the duelist has four, and three of them
+			-- separate with NO new wire field because this function already
+			-- computed the discriminator and threw it away. `lane` is
+			-- sabrelunge's alone, `cone` is the cleave's, `mark` is the
+			-- flintlock's; the riposte needs none, being an attribute.
+			shape = shape,
 			duration = tonumber(extra.duration) or 0.9,
 			now = os.clock(),
 		}
@@ -692,6 +832,7 @@ local function adaptSignal(kind: string, position: Vector3, extra): any?
 			what = "windup",
 			at = position,
 			aim = aim,
+			shape = if sub == "coneTell" then "cone" elseif sub == "mark" then "mark" else "ring",
 			duration = tonumber(extra.duration) or 0.9,
 			now = os.clock(),
 		}
@@ -717,20 +858,124 @@ local ATTR_WRACK_DIVE = "WrackDive"
 local ATTR_WRACK_BOOM = "WrackBoom"
 local ATTR_WRACK_HATCHES = "WrackHatches"
 local ATTR_WRACK_WRECK = "WrackWreck"
+-- Act 3's one attribute, and it is an INTEGER rather than a boolean because
+-- the counter needs a state of its own: 0 no window, 1 the guard is up, 2 he
+-- is countering. A `1 -> 0` edge cannot be told from a window that merely
+-- expired, so drawing the counter off that edge would draw it for every whiff;
+-- the third value is what makes the beat honest, and it is level-triggered
+-- like everything else here so a client adopting mid-counter reads it.
+local ATTR_WRACK_RIPOSTE = "WrackRiposte"
 
 -- How far the Lady heels into a damaging pass, how far a hatch throws open,
 -- and how far the hull lists and the mast falls once she is a wreck. The two
 -- wreck numbers are large on purpose: this is the fight's last beat and it has
 -- to read from the birdseye camera as a shape change, not as a nudge.
 local LADY_BANK = math.rad(38)
-local HATCH_ANGLE = math.rad(75)
+local HATCH_ANGLE = math.rad(74)
 local WRECK_LIST = math.rad(16)
 local WRECK_MAST_FALL = math.rad(64)
 
--- The boom's authored bearing in BOSS space, as a direction: what `pose` turns
--- off. +X (stowed fore-and-aft along the keel) until the mesh says otherwise,
--- and the one number in this block that a mesh landing must revisit.
-local BOOM_REST = Vector3.xAxis
+-- ------------------------------------------------- the mesh's own geometry
+--
+-- THE THREE PIECES THAT CAME LOOSE, measured. Everything in this table is a
+-- boss-space Roblox value taken from `boss_gen.py`'s HANDOFF lines - which
+-- print Blender coordinates for the spar and Roblox for the rest, each
+-- converted here once so nothing downstream re-derives it. It replaces
+-- `BOOM_REST`, which was a GUESS (+X, "until the mesh says otherwise"), and
+-- the mesh has now said otherwise: the spar is stowed at yaw -62 degrees, not
+-- along the keel at all.
+--
+-- It is ONE table rather than a dozen constants because this file is a
+-- 200-local chunk like any other and the two big services already went down
+-- that way once (CreatureService 333, CreatureEventController 252, both failed
+-- to COMPILE at HEAD with every gate green).
+local RIG = {
+	-- THE BOOM. `pivot` is the gooseneck; `rest` is the spar's authored
+	-- direction, which is yaw -62 / peak +15 resolved into a unit vector -
+	-- cos(15)*cos(-62) = 0.453, sin(15) = 0.259, cos(15)*sin(-62) = -0.853.
+	--
+	-- `arc` IS A FLOOR, NOT A PATH. boss_gen measures, per 5 degrees of yaw, the
+	-- LOWEST peak the spar can take without going through the ship, and its
+	-- HANDOFF says the client must clamp to it because THE SERVER SENDS YAW
+	-- ONLY. So the elevation is not on the wire and cannot be: it is a property
+	-- of the hull's shape at that bearing, which the client already has.
+	-- Degrees, ordered, and interpolated between - see `boomAim`.
+	boom = {
+		pivot = Vector3.new(-6.5, 12.57, -5.24),
+		rest = Vector3.new(0.453, 0.259, -0.853),
+		arc = {
+			{ -52, -6 },
+			{ -57, -14 },
+			{ -62, -23 },
+			{ -67, -30 },
+			{ -72, -30 },
+			{ -77, -30 },
+			{ -82, -30 },
+			{ -87, -30 },
+			{ -92, -30 },
+			{ -97, -30 },
+			{ -102, -30 },
+			{ -107, -28 },
+			{ -112, -24 },
+		},
+	},
+	-- THE LADY. Her dock on the stem, the spine she flies along, and where her
+	-- head tops out. `dir` is only documentation today - she rides her own
+	-- hitbox model, which carries her real bearing - but it is what a cutscene
+	-- would launch her along.
+	figurehead = {
+		dock = Vector3.new(20.2, 6.4, 0),
+		dir = Vector3.new(0.77, 0.64, 0),
+		top = 13.05,
+	},
+	-- THE HATCHES: hinge AND axis, per lid, because they do not share one.
+	-- boss_gen's HANDOFF says it outright - "a single-axis pose swings two of
+	-- them into the deck" - and the axes below are the corrected ones (the first
+	-- publication had 1 and 2 on (0, 0, -1), which throws both lids INTO the
+	-- planking). Checked here rather than trusted: the free edge is
+	-- `centre - hinge`, and a positive turn about the stored axis must lift it.
+	--   Hatch1 centre x -5.94, hinge x -7.40 -> free edge +X; +Z takes +X to +Y.
+	--   Hatch2 centre x -8.94, hinge x -10.20 -> free edge +X; +Z, same.
+	--   Hatch3 centre z -3.80, hinge z -2.90 -> free edge -Z; +X maps
+	--   (0, 0, -1) to (0, sin, -cos), which rises.
+	-- boss_gen asserts the same thing every build, so the two halves agree by
+	-- construction rather than by this comment.
+	--
+	-- USE THE HINGE, NEVER THE PUBLISHED "at". Those Y values (11.01 / 11.47 /
+	-- 11.59) are each lid's bounding-box BOTTOM, not its centre - the centres
+	-- are 11.59 / 12.06 / 12.18 - and a pivot placed at a bbox centre would
+	-- hinge each lid about a point half its thickness above the deck.
+	hatches = {
+		Hatch1 = { hinge = Vector3.new(-7.4, 11.01, 3.2), axis = Vector3.new(0, 0, 1) },
+		Hatch2 = { hinge = Vector3.new(-10.2, 11.47, 3.4), axis = Vector3.new(0, 0, 1) },
+		Hatch3 = { hinge = Vector3.new(-10, 11.59, -2.9), axis = Vector3.new(1, 0, 0) },
+	},
+}
+
+-- The lowest legal peak for a boss-local boom yaw, in radians, interpolated
+-- across `RIG.boom.arc` and clamped to its ends. A table field rather than a
+-- top-level function, for the local budget named above.
+function RIG.boomAim(yaw: number): Vector3
+	local degrees = math.deg(yaw)
+	local arc = RIG.boom.arc
+	local peak = arc[1][2]
+	if degrees >= arc[1][1] then
+		peak = arc[1][2]
+	elseif degrees <= arc[#arc][1] then
+		peak = arc[#arc][2]
+	else
+		for index = 1, #arc - 1 do
+			local a, b = arc[index], arc[index + 1]
+			if degrees <= a[1] and degrees >= b[1] then
+				local t = (a[1] - degrees) / (a[1] - b[1])
+				peak = a[2] + (b[2] - a[2]) * t
+				break
+			end
+		end
+	end
+	peak = math.rad(peak)
+	return Vector3.new(math.cos(peak) * math.cos(yaw), math.sin(peak), math.cos(peak) * math.sin(yaw))
+end
 
 -- EVERY DRAWN PIECE, which is what "the hull lists" has to mean. Built rather
 -- than typed, so a piece added to PIECES or MODULES tomorrow lists with the
@@ -745,6 +990,251 @@ local BOOM_REST = Vector3.xAxis
 local WRECK_PIECES = table.clone(PIECES)
 for _, module in MODULES do
 	table.insert(WRECK_PIECES, module.name)
+end
+
+-- ====================================================================== act 3
+-- THE ADMIRAL AS A MOBILE DUELIST
+-- ======================================================================
+--
+-- WHEN THE HULL DIES the fight does not end: `kill()` destroys the ship model
+-- and `handoff` spawns a SECOND creature, `wrack_admiral`, in the same frame -
+-- the Admiral himself, off the deck and on the sand, with real `speed` and
+-- `turnRate` and the ordinary prowl machinery moving him. His model's CFrame
+-- replicates natively (the server PivotTos it), exactly as the Lady's does.
+--
+-- SO THIS CONTROLLER DRAWS TWO BODIES, and the second one reuses everything:
+-- the same pack, the same `makePiece`, the same channel layer, the same
+-- `applySignal`, the same `cue`. What it does NOT reuse is the SHIP's four
+-- conductor gestures - see `kinds` on a row.
+--
+-- THE ONE NEW LOCAL. Everything act 3 needs lives in this table, because this
+-- file is a 200-local chunk like any other and two services in this repo
+-- already failed to COMPILE at HEAD by crossing that line with every gate
+-- green. `RIG` folded the boom constant in for the same reason.
+local DUEL = {
+	ID = "wrack_admiral",
+
+	-- HIS PIECES: the Admiral assembly and nothing else. boss_gen calls it
+	-- "self-contained" and it is - the same objects the ship carries on her
+	-- quarterdeck, measured from the same `Wrack_Base`, so both bodies live in
+	-- ONE authored space and every ADM_* landmark below keeps its meaning for
+	-- both. That shared space is the whole reason act 3 is a piece subset and a
+	-- CFrame rather than a second controller.
+	PIECES = { "Coat", "Arm", "Sabre", "Facings", "Skull", "EyeGlow", "Hat", "Pistol" },
+
+	-- HE FACES +X, MEASURED, NOT ASSUMED. boss_gen's HANDOFF: "facing ROBLOX
+	-- (1, 0, 0) (measured off the coat shoulder ring: half-width 5.95 across Y
+	-- beats half-depth 4.10 across X, and the tails hang aft)". The engine's
+	-- creature convention also puts a body's heading on +X, so the seat's yaw
+	-- term is the IDENTITY today and authored space IS heading space.
+	--
+	-- It is still computed from this vector rather than folded away, so a
+	-- re-export that turns him turns the seat with him - the same argument
+	-- ARM_SWEEP_AXIS already carries.
+	FACING = Vector3.xAxis,
+
+	-- His foot origin sits 0.73 BELOW the deck he is authored standing on, so
+	-- planting him on sand means dropping him that far or his skirt floats.
+	FOOT_SINK = 0.73,
+
+	-- His left, with heading +X and up +Y. DERIVED so it cannot be mistyped.
+	LEFT = Vector3.new(0, 1, 0):Cross(Vector3.new(1, 0, 0)),
+
+	-- ------------------------------------------------------------ the walk
+	-- He is a coat to the ground: there are no legs to cycle, so the stride is
+	-- carried by the whole body swaying, bobbing and leaning, at an amplitude
+	-- tied to how fast the server is actually moving him.
+	GAIT_TAU = 0.18, -- speed low-pass: starts on the first step, ignores a jitter
+	GAIT_STRIDE = 6.5, -- studs per full sway cycle
+	GAIT_REF = 14, -- studs/sec at which the amplitudes are full
+	GAIT_SWAY = math.rad(7), -- roll about the heading: 1.9 studs at the hat
+	GAIT_YAW = math.rad(3.5), -- shoulders counter-turning, a quarter cycle out
+	GAIT_LEAN = math.rad(9), -- forward pitch, on speed and NOT on phase
+	GAIT_BOB = 0.45, -- studs, at twice the sway rate: two footfalls a cycle
+	GAIT_ARM = math.rad(6), -- the sabre arm counter-swinging at the shoulder
+	GAIT_HAT = math.rad(2.6),
+	-- A PHASE lag, not a time lag. The existing `admHatLag` can use seconds
+	-- because the idle's period is fixed; at a gait frequency that changes with
+	-- speed, a fixed delay is a moving phase and reads as a stutter when he
+	-- accelerates.
+	GAIT_HAT_PHASE = 0.9,
+	IDLE_YIELD = 0.8, -- a walking Admiral keeps a fifth of his breathing
+	GUARD_YIELD = 0.5, -- he sidesteps rather than strides behind the guard
+
+	-- ----------------------------------------------------------- the lunge
+	LUNGE_RATE = 12,
+	LUNGE_TAIL = 0.25,
+	LUNGE_COIL = 0.62, -- of the window spent coiling; the rest is the thrust
+	LUNGE_LEAN = math.rad(24),
+	-- 1.2 studs, and the number is a HITBOX decision rather than a taste one:
+	-- the body must not travel far from the pivot his shot capture is centred
+	-- on. The reach lives in the arm below, which is decoration and not a
+	-- target.
+	LUNGE_REACH = 1.2,
+	LUNGE_THRUST = 2.2,
+
+	-- ---------------------------------------------------------- the cleave
+	CLEAVE_RATE = 11,
+	CLEAVE_TAIL = 0.2,
+	CLEAVE_WIND = 0.55,
+	-- A touch past the server's 120-degree cone so the blade leads it and
+	-- trails it rather than stopping dead on the edges.
+	CLEAVE_ARC = math.rad(130),
+	CLEAVE_TORSO = math.rad(28),
+
+	-- --------------------------------------------------------- the riposte
+	RIPOSTE_RATE = 9, -- 90% up in 0.26s: a guard you can still swing through is not one
+	RIPOSTE_CROUCH = 0.9,
+	RIPOSTE_TURN = math.rad(38), -- he blades his stance and shows you his shoulder
+	RIPOSTE_LEAN = math.rad(-6),
+	RIPOSTE_ARM_MAX = math.rad(95),
+	RIPOSTE_PULSE = math.rad(1.8),
+	-- Deliberately well under the weakpoint flash's HOT_RATE (13). One pulse
+	-- means "shoot here" and the other means "do not"; they must not rhyme.
+	RIPOSTE_PULSE_RATE = 7.5,
+	RIPOSTE_RISE = 0.12,
+
+	COUNTER_RATE = 18,
+	COUNTER_ARC = math.rad(115),
+	COUNTER_STEP = 1,
+	COUNTER_SNAP = math.rad(30),
+	COUNTER_COLOR = Color3.fromRGB(255, 240, 200),
+
+	-- -------------------------------------------------------- the flintlock
+	FLINT_RATE = 10,
+	FLINT_TAIL = 0.3,
+	FLINT_DRAW = 0.35, -- of the window: holster to the extended hand
+	FLINT_HOLD = 0.85, -- ...held out steady until here, then the recoil
+	FLINT_RECOIL = math.rad(18),
+	-- The extended hand, and the pistol's own bore. The hand is measured off the
+	-- mesh (sabre-hand offset from the foot, ROBLOX (2.20, 15.20, -2.50)) and is
+	-- NOT the same landmark as ADM_WRIST: they sit 1.22 studs apart, which is a
+	-- grip against a joint, and reconciling them would move the ship's own
+	-- `admFlick`. ADM_WRIST stays the rotation pivot; this is a placement.
+	HAND = Vector3.new(-11.8, 27.6, -2.5),
+	PISTOL_BORE = Vector3.xAxis,
+
+	-- ---------------------------------------------------------- the stagger
+	EXPOSED_RATE = 4,
+	EXPOSED_SAG = 1.1,
+	EXPOSED_PITCH = math.rad(21),
+	EXPOSED_ROLL = math.rad(7),
+	EXPOSED_DROP_MAX = math.rad(70),
+
+	-- ---------------------------------------------------------- the arrival
+	ARRIVE_ATTACK = 0.06,
+	ARRIVE_RELEASE = 0.85,
+	ARRIVE_DRAW_RELEASE = 1.1,
+	ARRIVE_CROUCH = 2.1,
+	ARRIVE_PITCH = math.rad(34),
+	ARRIVE_SABRE_LOW = math.rad(62),
+	-- How long after the hull's wreck ramp begins an arrival still counts as
+	-- THIS handoff. It has to span the 2.5s ramp plus the spawn, and it exists
+	-- so a player who streams in an hour later does not watch a landing that
+	-- never happened.
+	ARRIVE_GRACE = 6,
+	-- Where and when this client last saw a hull begin to wreck. Mutable, and
+	-- file-level rather than on the entry ON PURPOSE: the hull's entry is torn
+	-- down in the SAME frame the duel model is adopted, so a latch living on it
+	-- would or would not still exist depending on whether ChildRemoved or
+	-- ChildAdded is delivered first - an ordering nobody should have to be right
+	-- about. Latching the ATTRIBUTE EDGE instead puts the record 2.5 seconds
+	-- ahead of both events.
+	seen = { at = -1e9, pos = Vector3.zero },
+}
+
+-- His body, for the rows that move all of him at once.
+DUEL.BODY = DUEL.PIECES
+
+-- The two kinds of body this controller draws, by the `CreatureId` each is
+-- adopted on. A row carries the piece list, whether the modules are built, and
+-- whether the walk cycle runs.
+DUEL.KINDS = {
+	[CREATURE_ID] = { kind = "ship", pieces = PIECES, modules = MODULES, seat = false, gait = false },
+	[DUEL.ID] = { kind = "duel", pieces = DUEL.PIECES, modules = nil, seat = true, gait = true },
+}
+
+-- Authored ship-space -> a duel model's own frame: stand his foot origin on
+-- the model's sand point (sunk by FOOT_SINK) and swing his authored facing
+-- onto +X, the engine's heading axis. With FACING measured at +X the yaw term
+-- is the identity and this is a pure translation, CFrame.new(14, -13.13, 0).
+function DUEL.seat(): CFrame
+	local flat = Vector3.new(DUEL.FACING.X, 0, DUEL.FACING.Z)
+	local yaw = if flat.Magnitude > 1e-4 then math.atan2(flat.Z, flat.X) else 0
+	return CFrame.new(0, -DUEL.FOOT_SINK, 0) * CFrame.Angles(0, yaw, 0) * CFrame.new(-ADM_PLANT)
+end
+
+-- How far through a `hold` window this frame is, 0 at the opening edge and 1
+-- at the end of the tail. The two-beat duel moves (coil then thrust, wind then
+-- sweep, draw then fire) are shaped from this, so a lane or cone tell drives a
+-- whole gesture without the wire carrying a second edge.
+--
+-- NOT called `envelope`: that name is taken by the pulse driver's own time
+-- envelope above, and two differently-shaped functions under one name in one
+-- file is how the wrong one gets called.
+-- Which way this cleave sweeps. `cleaveDouble`'s second beat comes back the
+-- other way, and the server sends one cone tell per beat, so the direction is
+-- latched in the channel's own scratch and flipped on each NEW signal - the
+-- same trick `boomSweep` uses to remember its last bearing.
+--
+-- COMPARED BY `sig.now` AGAINST WEDGE_COALESCE, NOT BY TABLE IDENTITY. A cone
+-- arrives as several wedge tells in one frame and the `merge` path builds a
+-- NEW table for each, so an identity test would flip three times in a frame
+-- and the double cleave would sometimes go the same way twice.
+function DUEL.cleaveDir(ctx): number
+	local sig = ctx.sig
+	if sig and sig.now - (ctx.state.lastNow or -1e9) > WEDGE_COALESCE then
+		ctx.state.lastNow = sig.now
+		ctx.state.dir = -(ctx.state.dir or -1)
+	end
+	return ctx.state.dir or 1
+end
+
+function DUEL.progress(ctx): number
+	local sig = ctx.sig
+	if not sig then
+		return 0
+	end
+	local span = (sig.duration or 0.9) + DUEL.LUNGE_TAIL
+	if span <= 0 then
+		return 1
+	end
+	return math.clamp(1 - (ctx.state.holdUntil - ctx.now) / span, 0, 1)
+end
+
+-- THE WALK, derived once a frame and read by five poses - the same rule
+-- `stepGuns` and `stepLady` follow, and for the same reason: two readers of
+-- one fact must not be able to disagree about it.
+--
+-- FLAT, DELIBERATELY. The hull rises 22 studs out of the shoal on spawn, and a
+-- three-dimensional speed would give the SHIP a gait for four seconds. The
+-- `gait` flag on her kind closes it too, but the flat rule is the real one.
+--
+-- THE PHASE IS ACCUMULATED, never `now * speed`. Multiplying a changing speed
+-- by absolute time makes the phase jump BACKWARDS the instant he slows, which
+-- reads as the model snapping.
+function DUEL.step(entry, base: CFrame, dt: number)
+	entry.exposed = if entry.model:GetAttribute(ATTR_EXPOSED) then 1 else 0
+	entry.riposte = tonumber(entry.model:GetAttribute(ATTR_WRACK_RIPOSTE)) or 0
+	if not entry.gait then
+		entry.gaitDrive = 0
+		return
+	end
+	local here = base.Position
+	local last = entry.lastPos or here
+	entry.lastPos = here
+	local flat = (here - last) * Vector3.new(1, 0, 1)
+	local raw = if dt > 1e-4 then flat.Magnitude / dt else 0
+	entry.speed += (raw - (entry.speed or 0)) * math.clamp(dt / DUEL.GAIT_TAU, 0, 1)
+	entry.gaitPhase += dt * (math.pi * 2) * (entry.speed / DUEL.GAIT_STRIDE)
+	local drive = math.clamp(entry.speed / DUEL.GAIT_REF, 0, 1)
+	-- He does not stride while doubled over, and he sidesteps rather than
+	-- strides behind the guard.
+	drive *= (1 - entry.exposed)
+	if entry.riposte >= 1 then
+		drive *= DUEL.GUARD_YIELD
+	end
+	entry.gaitDrive = drive
 end
 
 -- ------------------------------------------------------------- the channels
@@ -786,7 +1276,10 @@ local function signalAim(ctx): Vector3?
 	if not sig or not sig.aim then
 		return nil
 	end
-	return ctx.base:VectorToObjectSpace(sig.aim)
+	-- THROUGH `frame`, NOT `base`. See drawBody: a bearing has to arrive in the
+	-- space the pose is written in, and for the duelist those differ by his
+	-- seat.
+	return ctx.frame:VectorToObjectSpace(sig.aim)
 end
 
 -- EVERY ANIMATED THING ON THIS BOSS, in layering order. See the essay at the
@@ -877,14 +1370,14 @@ local CHANNELS = {
 	{
 		name = "gunDroop",
 		pieces = {
-			"CannonBow",
-			"CannonStarboard",
-			"CannonStern",
-			"CannonPort",
-			"MuzzleBow",
-			"MuzzleStarboard",
-			"MuzzleStern",
-			"MuzzlePort",
+			"CannonBowStbd",
+			"CannonBowPort",
+			"CannonSternStbd",
+			"CannonSternPort",
+			"MuzzleBowStbd",
+			"MuzzleBowPort",
+			"MuzzleSternStbd",
+			"MuzzleSternPort",
 		},
 		pivot = function(ctx): Vector3
 			return GUNS[ctx.piece.gun].at
@@ -915,14 +1408,14 @@ local CHANNELS = {
 	{
 		name = "gunRecoil",
 		pieces = {
-			"CannonBow",
-			"CannonStarboard",
-			"CannonStern",
-			"CannonPort",
-			"MuzzleBow",
-			"MuzzleStarboard",
-			"MuzzleStern",
-			"MuzzlePort",
+			"CannonBowStbd",
+			"CannonBowPort",
+			"CannonSternStbd",
+			"CannonSternPort",
+			"MuzzleBowStbd",
+			"MuzzleBowPort",
+			"MuzzleSternStbd",
+			"MuzzleSternPort",
 		},
 		pivot = Vector3.zero,
 		driver = {
@@ -953,7 +1446,7 @@ local CHANNELS = {
 	-- forward of the barrel unless it is pulled back.
 	{
 		name = "muzzleFlash",
-		pieces = { "MuzzleBow", "MuzzleStarboard", "MuzzleStern", "MuzzlePort" },
+		pieces = { "MuzzleBowStbd", "MuzzleBowPort", "MuzzleSternStbd", "MuzzleSternPort" },
 		pivot = Vector3.zero,
 		driver = {
 			kind = "pulse",
@@ -1056,6 +1549,7 @@ local CHANNELS = {
 	-- clamp here that would cost the gesture to save a ring.
 	{
 		name = "admPoint",
+		kinds = { ship = true },
 		pieces = { "Arm", "Sabre" },
 		pivot = ADM_SHOULDER,
 		driver = {
@@ -1081,6 +1575,7 @@ local CHANNELS = {
 	-- off", spent on the one gesture the whole silhouette is built around.
 	{
 		name = "admSweep",
+		kinds = { ship = true },
 		pieces = { "Arm", "Sabre" },
 		pivot = ADM_SHOULDER,
 		driver = { kind = "pulse", signal = "fire", attack = SWEEP_ATTACK, release = SWEEP_RELEASE },
@@ -1093,6 +1588,7 @@ local CHANNELS = {
 	-- bearing-free, so the radial patterns still get a tell on the man.
 	{
 		name = "admHigh",
+		kinds = { ship = true },
 		pieces = { "Sabre" },
 		pivot = ADM_WRIST,
 		driver = { kind = "hold", signal = "windup", rate = HIGH_RATE },
@@ -1106,11 +1602,475 @@ local CHANNELS = {
 	-- WRIST, so the hilt stays in his hand while it does.
 	{
 		name = "admFlick",
+		kinds = { ship = true },
 		pieces = { "Sabre" },
 		pivot = ADM_WRIST,
 		driver = { kind = "pulse", signal = "fire", attack = SWEEP_ATTACK, release = FLICK_RELEASE },
 		pose = function(ctx): CFrame
 			return CFrame.fromAxisAngle(ARM_SWEEP_AXIS, -FLICK_ANGLE * ctx.value)
+		end,
+	},
+
+	-- ========================================================================
+	-- ACT 3 - THE DUELIST. `kinds = { duel = true }` throughout.
+	-- ========================================================================
+	-- Body rows first, then shoulder, then wrist, then the hat: the layer
+	-- right-multiplies, so each acts in the frame the ones above it left.
+
+	-- THE WALK. Amplitude IS the crossfade - every term is multiplied by
+	-- `gaitDrive`, so at a standstill this is the identity, the layer skips it,
+	-- and `admIdle` is all that is left. No state machine and no blend.
+	{
+		name = "admDuelGait",
+		kinds = { duel = true },
+		pieces = DUEL.BODY,
+		pivot = ADM_PLANT,
+		driver = { kind = "free" },
+		pose = function(ctx): CFrame
+			local drive = ctx.entry.gaitDrive
+			if drive < 1e-3 then
+				return CFrame.identity
+			end
+			local phase = ctx.entry.gaitPhase
+			-- Roll about the heading is the sway; a NEGATIVE turn about +Z takes
+			-- +X toward -Y, which is nose-down, so the lean is negative. Both
+			-- claims hold because the seat put his heading on +X.
+			return CFrame.new(0, DUEL.GAIT_BOB * drive * math.sin(phase * 2), 0)
+				* CFrame.Angles(
+					DUEL.GAIT_SWAY * drive * math.sin(phase),
+					DUEL.GAIT_YAW * drive * math.sin(phase + math.pi / 2),
+					-DUEL.GAIT_LEAN * drive
+				)
+		end,
+	},
+
+	-- THE STAGGER. Same attribute the hull's melee window uses, because it is
+	-- one rule for every way a boss opens up. He hangs the way a silenced gun
+	-- hangs in its port - a read the player has already learned on the brass.
+	{
+		name = "admDuelExposed",
+		kinds = { duel = true },
+		pieces = DUEL.BODY,
+		pivot = ADM_PLANT,
+		driver = {
+			kind = "level",
+			rate = DUEL.EXPOSED_RATE,
+			goal = function(ctx): number
+				return ctx.entry.exposed
+			end,
+		},
+		pose = function(ctx): CFrame
+			return CFrame.new(0, -DUEL.EXPOSED_SAG * ctx.value, 0)
+				* CFrame.Angles(DUEL.EXPOSED_ROLL * ctx.value, 0, -DUEL.EXPOSED_PITCH * ctx.value)
+		end,
+	},
+
+	-- THE GUARD, and it has to be legible from 58 studs up.
+	--
+	-- The 12-stud punish ring is the TELL's job; this is the second, body-level
+	-- cue, and it is a SILHOUETTE change rather than a colour one because at
+	-- that range a hue shift is worth about five pixels. At 58 studs and 70
+	-- degrees of vertical FOV the screen spans 2*58*tan(35) = 81 studs, so one
+	-- stud is about 13 pixels on a 1080-tall viewport, and the three components
+	-- here are worth roughly 90, 17 and 12 of them: the 6.9-stud sabre swinging
+	-- from a vertical spike to a horizontal bar (admRiposteBlade), a 38-degree
+	-- turn that blades his stance and moves the hat 1.3 studs sideways, and a
+	-- 0.9-stud drop.
+	{
+		name = "admRiposteStance",
+		kinds = { duel = true },
+		pieces = DUEL.BODY,
+		pivot = ADM_PLANT,
+		driver = {
+			kind = "level",
+			rate = DUEL.RIPOSTE_RATE,
+			-- >= 1, so the guard STAYS up through the counter rather than
+			-- dropping on the frame the attribute goes to 2.
+			goal = function(ctx): number
+				return if ctx.entry.riposte >= 1 then 1 else 0
+			end,
+		},
+		pose = function(ctx): CFrame
+			local value = ctx.value
+			return CFrame.new(0, -DUEL.RIPOSTE_CROUCH * value, 0)
+				* CFrame.Angles(0, DUEL.RIPOSTE_TURN * value, DUEL.RIPOSTE_LEAN * value)
+		end,
+	},
+
+	-- THE COUNTER. Level and not pulse, because the SERVER knows how long the
+	-- counter lasts and `WrackRiposte == 2` lets it say so; a pulse would make
+	-- the client guess the duration.
+	{
+		name = "admCounterBody",
+		kinds = { duel = true },
+		pieces = DUEL.BODY,
+		pivot = ADM_PLANT,
+		driver = {
+			kind = "level",
+			rate = DUEL.COUNTER_RATE,
+			goal = function(ctx): number
+				return if ctx.entry.riposte >= 2 then 1 else 0
+			end,
+		},
+		pose = function(ctx): CFrame
+			return CFrame.new(Vector3.xAxis * (DUEL.COUNTER_STEP * ctx.value))
+				* CFrame.Angles(0, DUEL.COUNTER_SNAP * ctx.value, 0)
+		end,
+	},
+
+	-- THE LUNGE. A two-beat move from a one-beat signal: the lane tell opens a
+	-- window and `DUEL.progress` shapes coil-then-thrust inside it, so the
+	-- strike lands where and when the tell said it would with no second edge on
+	-- the wire. `shape` is the discriminator, set by adaptSignal from what it
+	-- already knew - the lane belongs to `sabrelunge` alone.
+	{
+		name = "admLungeBody",
+		kinds = { duel = true },
+		pieces = DUEL.BODY,
+		pivot = ADM_PLANT,
+		driver = {
+			kind = "hold",
+			signal = "windup",
+			rate = DUEL.LUNGE_RATE,
+			tail = DUEL.LUNGE_TAIL,
+			accept = function(sig): boolean
+				return sig.shape == "lane"
+			end,
+		},
+		pose = function(ctx): CFrame
+			local p = DUEL.progress(ctx)
+			local swing = if p < DUEL.LUNGE_COIL
+				then -(p / DUEL.LUNGE_COIL)
+				else math.sqrt((p - DUEL.LUNGE_COIL) / (1 - DUEL.LUNGE_COIL))
+			local value = ctx.value
+			return CFrame.new(Vector3.xAxis * (DUEL.LUNGE_REACH * math.max(swing, 0) * value))
+				* CFrame.Angles(0, 0, -DUEL.LUNGE_LEAN * swing * value)
+		end,
+	},
+
+	-- THE CLEAVE, body half: the whole man turns into the swing, which is what
+	-- makes a 120-degree cone read from above. An arm alone does not.
+	{
+		name = "admCleaveTorso",
+		kinds = { duel = true },
+		pieces = DUEL.BODY,
+		pivot = ADM_PLANT,
+		driver = {
+			kind = "hold",
+			signal = "windup",
+			rate = DUEL.CLEAVE_RATE,
+			tail = DUEL.CLEAVE_TAIL,
+			accept = function(sig): boolean
+				return sig.shape == "cone"
+			end,
+			merge = true,
+		},
+		pose = function(ctx): CFrame
+			local p = DUEL.progress(ctx)
+			local swing = if p < DUEL.CLEAVE_WIND
+				then -(p / DUEL.CLEAVE_WIND)
+				else (p - DUEL.CLEAVE_WIND) / (1 - DUEL.CLEAVE_WIND)
+			return CFrame.Angles(0, DUEL.CLEAVE_TORSO * swing * ctx.value * DUEL.cleaveDir(ctx), 0)
+		end,
+	},
+
+	-- THE LANDING, and the only channel here that is an EVENT rather than a
+	-- state. It has to be: `entry.adopting` drives every eased level to its goal
+	-- on the first drawn frame - which is right, a client adopting mid-fight
+	-- must not animate what it did not see - so a level arrival would snap. A
+	-- pulse is computed from its own envelope and is untouched by that, which is
+	-- why arrival is a pulse and everything else in act 3 is a level.
+	{
+		name = "admArriveLand",
+		kinds = { duel = true },
+		pieces = DUEL.BODY,
+		pivot = ADM_PLANT,
+		driver = {
+			kind = "pulse",
+			signal = "arrive",
+			attack = DUEL.ARRIVE_ATTACK,
+			release = DUEL.ARRIVE_RELEASE,
+		},
+		pose = function(ctx): CFrame
+			return CFrame.new(0, -DUEL.ARRIVE_CROUCH * ctx.value, 0)
+				* CFrame.Angles(0, 0, -DUEL.ARRIVE_PITCH * ctx.value)
+		end,
+	},
+
+	-- The sabre arm counter-swinging against the walk.
+	{
+		name = "admDuelGaitArm",
+		kinds = { duel = true },
+		pieces = { "Arm", "Sabre" },
+		pivot = ADM_SHOULDER,
+		driver = { kind = "free" },
+		pose = function(ctx): CFrame
+			local drive = ctx.entry.gaitDrive
+			if drive < 1e-3 then
+				return CFrame.identity
+			end
+			return CFrame.fromAxisAngle(ARM_SWEEP_AXIS, -DUEL.GAIT_ARM * drive * math.sin(ctx.entry.gaitPhase))
+		end,
+	},
+
+	-- Opened up: the sabre point drops, the same way a dead gun's muzzle does.
+	{
+		name = "admDuelExposedArm",
+		kinds = { duel = true },
+		pieces = { "Arm", "Sabre" },
+		pivot = ADM_SHOULDER,
+		driver = {
+			kind = "level",
+			rate = DUEL.EXPOSED_RATE,
+			goal = function(ctx): number
+				return ctx.entry.exposed
+			end,
+		},
+		pose = function(ctx): CFrame
+			return turnBetween(ARM_REST, -Vector3.yAxis, ctx.value, DUEL.EXPOSED_DROP_MAX)
+		end,
+	},
+
+	-- The guard's arm: elbow up, hand at the chest, blade about to come across.
+	{
+		name = "admRiposteArm",
+		kinds = { duel = true },
+		pieces = { "Arm", "Sabre" },
+		pivot = ADM_SHOULDER,
+		driver = {
+			kind = "level",
+			rate = DUEL.RIPOSTE_RATE,
+			goal = function(ctx): number
+				return if ctx.entry.riposte >= 1 then 1 else 0
+			end,
+		},
+		pose = function(ctx): CFrame
+			local across = (DUEL.LEFT * 0.55 + Vector3.yAxis * 0.35 + Vector3.xAxis * 0.2).Unit
+			return turnBetween(ARM_REST, across, ctx.value, DUEL.RIPOSTE_ARM_MAX)
+		end,
+	},
+
+	-- ...and the counter whipping out of it, onto the bearing if the counter
+	-- carried one and straight ahead if it did not.
+	{
+		name = "admCounterArm",
+		kinds = { duel = true },
+		pieces = { "Arm", "Sabre" },
+		pivot = ADM_SHOULDER,
+		driver = {
+			kind = "level",
+			rate = DUEL.COUNTER_RATE,
+			goal = function(ctx): number
+				return if ctx.entry.riposte >= 2 then 1 else 0
+			end,
+		},
+		pose = function(ctx): CFrame
+			return CFrame.fromAxisAngle(Vector3.yAxis, DUEL.COUNTER_ARC * ctx.value)
+		end,
+		-- The blade flashes, and the restore comes from the piece's OWN captured
+		-- colour rather than a constant - the imported mesh is repainted from
+		-- MeshColors at clone time and a constant here would destroy that on the
+		-- first counter. `paint` runs every frame, including the ones at rest,
+		-- which is what puts it back.
+		paint = function(ctx)
+			if ctx.piece.name ~= "Sabre" then
+				return
+			end
+			local part = ctx.piece.part
+			local want = ctx.piece.color:Lerp(DUEL.COUNTER_COLOR, ctx.value)
+			if part.Color ~= want then
+				part.Color = want
+			end
+		end,
+	},
+
+	-- The lunge's own reach, which lives in the ARM and not in the body: the
+	-- body must not travel far from the pivot his shot capture is centred on.
+	{
+		name = "admLungeArm",
+		kinds = { duel = true },
+		pieces = { "Arm", "Sabre" },
+		pivot = ADM_SHOULDER,
+		driver = {
+			kind = "hold",
+			signal = "windup",
+			rate = DUEL.LUNGE_RATE,
+			tail = DUEL.LUNGE_TAIL,
+			accept = function(sig): boolean
+				return sig.shape == "lane"
+			end,
+		},
+		pose = function(ctx): CFrame
+			local aim = signalAim(ctx)
+			if not aim then
+				return CFrame.identity
+			end
+			local p = DUEL.progress(ctx)
+			local out = math.max(
+				if p < DUEL.LUNGE_COIL
+					then -(p / DUEL.LUNGE_COIL)
+					else math.sqrt((p - DUEL.LUNGE_COIL) / (1 - DUEL.LUNGE_COIL)),
+				0
+			)
+			return turnBetween(ARM_REST, aim, ctx.value * (0.55 + 0.45 * out), POINT_MAX)
+				* CFrame.new(ARM_REST * (DUEL.LUNGE_THRUST * out * ctx.value))
+		end,
+	},
+
+	-- The cleave, arm half. The axis is VERTICAL - a horizontal cleave is a turn
+	-- about Y - which is deliberately NOT the ship's ARM_SWEEP_AXIS, that being
+	-- an axis in the vertical plane for a stroke that falls.
+	{
+		name = "admCleaveArm",
+		kinds = { duel = true },
+		pieces = { "Arm", "Sabre" },
+		pivot = ADM_SHOULDER,
+		driver = {
+			kind = "hold",
+			signal = "windup",
+			rate = DUEL.CLEAVE_RATE,
+			tail = DUEL.CLEAVE_TAIL,
+			accept = function(sig): boolean
+				return sig.shape == "cone"
+			end,
+			merge = true,
+		},
+		pose = function(ctx): CFrame
+			local aim = signalAim(ctx)
+			if not aim then
+				return CFrame.identity
+			end
+			local p = DUEL.progress(ctx)
+			local swing = if p < DUEL.CLEAVE_WIND
+				then -(p / DUEL.CLEAVE_WIND)
+				else (p - DUEL.CLEAVE_WIND) / (1 - DUEL.CLEAVE_WIND)
+			local dir = DUEL.cleaveDir(ctx)
+			-- Onto the cone's own bearing first, then swept across it.
+			return CFrame.fromAxisAngle(Vector3.yAxis, DUEL.CLEAVE_ARC * 0.5 * swing * dir * ctx.value)
+				* turnBetween(ARM_REST, aim, ctx.value, POINT_MAX)
+		end,
+	},
+
+	-- THE DRAW, read backwards: at value 1 the sabre is DOWN, and the pulse
+	-- decaying to 0 IS him bringing it up to guard. So the arrival's second beat
+	-- costs one row and no extra state.
+	{
+		name = "admArriveDraw",
+		kinds = { duel = true },
+		pieces = { "Arm", "Sabre" },
+		pivot = ADM_SHOULDER,
+		driver = {
+			kind = "pulse",
+			signal = "arrive",
+			attack = DUEL.ARRIVE_ATTACK,
+			release = DUEL.ARRIVE_DRAW_RELEASE,
+		},
+		pose = function(ctx): CFrame
+			return turnBetween(ARM_REST, -Vector3.yAxis, ctx.value, DUEL.ARRIVE_SABRE_LOW)
+		end,
+	},
+
+	-- THE BLADE ACROSS: the single loudest thing in the guard from the fight
+	-- camera, and the reason the stance is a silhouette rather than a glow. It
+	-- also breathes, slowly - the ring tell carries the timing, this carries the
+	-- state.
+	{
+		name = "admRiposteBlade",
+		kinds = { duel = true },
+		pieces = { "Sabre" },
+		pivot = ADM_WRIST,
+		driver = {
+			kind = "level",
+			rate = DUEL.RIPOSTE_RATE,
+			goal = function(ctx): number
+				return if ctx.entry.riposte >= 1 then 1 else 0
+			end,
+		},
+		pose = function(ctx): CFrame
+			local value = ctx.value
+			local breath = math.sin(ctx.now * DUEL.RIPOSTE_PULSE_RATE)
+			return CFrame.new(0, DUEL.RIPOSTE_RISE * breath * value, 0)
+				* turnBetween(ARM_REST, DUEL.LEFT, value)
+				* CFrame.fromAxisAngle(ARM_SWEEP_AXIS, DUEL.RIPOSTE_PULSE * breath * value)
+		end,
+	},
+
+	-- THE FLINTLOCK. `mark` is the discriminator: boss_gen's fight lane gives
+	-- the pistol a landing mark rather than a lane, which is the honest tell for
+	-- a single ball AND is what separates it from the lunge for free.
+	--
+	-- The re-holster costs nothing: a pose is the identity at 0 by the layer's
+	-- contract, so the hold decaying walks the pistol home by itself.
+	{
+		name = "admFlintlockArm",
+		kinds = { duel = true },
+		pieces = { "Arm" },
+		pivot = ADM_SHOULDER,
+		driver = {
+			kind = "hold",
+			signal = "windup",
+			rate = DUEL.FLINT_RATE,
+			tail = DUEL.FLINT_TAIL,
+			accept = function(sig): boolean
+				return sig.shape == "mark"
+			end,
+		},
+		pose = function(ctx): CFrame
+			local aim = signalAim(ctx)
+			if not aim then
+				return CFrame.identity
+			end
+			local p = DUEL.progress(ctx)
+			local kick = if p > DUEL.FLINT_HOLD then (p - DUEL.FLINT_HOLD) / (1 - DUEL.FLINT_HOLD) else 0
+			return turnBetween(ARM_REST, aim, ctx.value, POINT_MAX)
+				* CFrame.fromAxisAngle(ARM_SWEEP_AXIS, DUEL.FLINT_RECOIL * kick * ctx.value)
+		end,
+	},
+
+	-- The pistol itself, off the hip and into the hand. An ABSOLUTE placement,
+	-- built the way figureheadFlight builds hers: divide out what the rows above
+	-- have already done to this piece, solve for the target, and Lerp from the
+	-- identity so value 0 is the authored holster.
+	{
+		name = "admFlintlockPistol",
+		kinds = { duel = true },
+		pieces = { "Pistol" },
+		pivot = AUTHORED_ANCHOR,
+		driver = {
+			kind = "hold",
+			signal = "windup",
+			rate = DUEL.FLINT_RATE,
+			tail = DUEL.FLINT_TAIL,
+			accept = function(sig): boolean
+				return sig.shape == "mark"
+			end,
+		},
+		pose = function(ctx): CFrame
+			local aim = signalAim(ctx)
+			if not aim then
+				return CFrame.identity
+			end
+			local draw = math.min(DUEL.progress(ctx) / DUEL.FLINT_DRAW, 1)
+			local prior = ctx.piece.offset or CFrame.identity
+			local inHand = CFrame.fromMatrix(DUEL.HAND, aim, Vector3.yAxis)
+			local onHim = prior:Inverse() * inHand * ctx.piece.relative:Inverse()
+			return CFrame.new():Lerp(onHim, ctx.value * draw)
+		end,
+	},
+
+	-- The bicorne, trailing the walk by a fixed PHASE.
+	{
+		name = "admDuelGaitHat",
+		kinds = { duel = true },
+		pieces = { "Hat" },
+		pivot = ADM_NECK,
+		driver = { kind = "free" },
+		pose = function(ctx): CFrame
+			local drive = ctx.entry.gaitDrive
+			if drive < 1e-3 then
+				return CFrame.identity
+			end
+			return CFrame.Angles(DUEL.GAIT_HAT * drive * math.sin(ctx.entry.gaitPhase - DUEL.GAIT_HAT_PHASE), 0, 0)
 		end,
 	},
 
@@ -1158,10 +2118,16 @@ local CHANNELS = {
 	-- out to need her own visible body, the change is to hide the prop the way
 	-- hideServerModel hides the boss, not to change this pose.
 	--
-	-- TO LAND IT: add "Figurehead" to PIECES and AUTHORED. Nothing else.
+	-- LANDED 2026-09-09 with the 36-object pack; both pieces are in PIECES and
+	-- AUTHORED and this row now runs.
 	{
 		name = "figureheadFlight",
-		pieces = { "Figurehead" },
+		-- BOTH pieces, and that is not cosmetic: `Wrack_FigureheadGlow` is the
+		-- lantern in her hands and boss_gen's HANDOFF says the two "ride one
+		-- CFrame". Flying the body and leaving the glow on the stem is the exact
+		-- shape of bug this file's WRECK_PIECES comment warns about, one object
+		-- smaller.
+		pieces = { "Figurehead", "FigureheadGlow" },
 		-- The layer conjugates every pose by CFrame.new(pivot - AUTHORED_ANCHOR);
 		-- naming the anchor itself makes that the identity, which is what lets
 		-- this row place the piece ABSOLUTELY rather than as an offset from
@@ -1193,7 +2159,7 @@ local CHANNELS = {
 			-- between is travelled rather than cut.
 			local prior = ctx.piece.offset or CFrame.identity
 			local onHer = prior:Inverse()
-				* ctx.base:Inverse()
+				* ctx.frame:Inverse()
 				* lady:GetPivot()
 				* CFrame.Angles(bank, 0, 0)
 				* ctx.piece.relative:Inverse()
@@ -1219,12 +2185,16 @@ local CHANNELS = {
 	-- eases home FROM where it was rather than snapping to the rest bearing on
 	-- the frame the attribute clears.
 	--
-	-- TO LAND IT: add "Boom" to PIECES and AUTHORED, and set `pivot` to the
-	-- gooseneck and BOOM_REST to the spar's authored bearing.
+	-- LANDED 2026-09-09. The pivot is the gooseneck and the rest bearing is the
+	-- spar's real stowed direction, both from RIG.boom; the guessed `+X along
+	-- the keel` is gone. `Wrack_BoomTackle` rides with the spar - it is the
+	-- tackle hanging off it, and boss_gen puts it at 0.72 of the boom's length,
+	-- so it swings about the same gooseneck or it hangs in the air where the
+	-- spar used to be.
 	{
 		name = "boomSweep",
-		pieces = { "Boom" },
-		pivot = Vector3.zero, -- REPLACE with the gooseneck
+		pieces = { "Boom", "BoomTackle" },
+		pivot = RIG.boom.pivot,
 		driver = {
 			kind = "level",
 			rate = 3.5,
@@ -1241,8 +2211,19 @@ local CHANNELS = {
 			if not bearing then
 				return CFrame.identity
 			end
+			-- THE WIRE CARRIES YAW AND NOTHING ELSE, so the elevation is derived
+			-- here from the hull's own shape: RIG.boomAim answers "the lowest peak
+			-- this bearing allows without the spar going through the ship", which
+			-- boss_gen measured per 5 degrees and its HANDOFF tells the client to
+			-- clamp to. A flat sweep would drive the boom through her rail on most
+			-- of the arc.
+			--
+			-- The yaw is taken into BOSS space FIRST and the envelope is looked up
+			-- there, because the envelope is a property of the hull, not of where
+			-- the hull is pointing.
 			local world = Vector3.new(math.cos(bearing), 0, math.sin(bearing))
-			return turnBetween(BOOM_REST, ctx.base:VectorToObjectSpace(world), ctx.value)
+			local flat = ctx.frame:VectorToObjectSpace(world)
+			return turnBetween(RIG.boom.rest, RIG.boomAim(math.atan2(flat.Z, flat.X)), ctx.value)
 		end,
 	},
 
@@ -1259,12 +2240,23 @@ local CHANNELS = {
 	-- the one-attribute-not-three-booleans decision exists to prevent, and it
 	-- would be silly to reintroduce it on this side of the wire.
 	--
-	-- TO LAND IT: add "Hatch1".."Hatch<n>" to PIECES and AUTHORED - as many as
-	-- the boss row's `hatches` list has - and give `pivot` each hatch's hinge.
+	-- LANDED 2026-09-09, and there are THREE lids, not four. The list is trimmed
+	-- to what the mesh has, so the bitmask's bit (i-1) convention keeps agreeing
+	-- with the piece names.
+	--
+	-- PER-PIECE HINGE **AND** PER-PIECE AXIS. The stub had a single-axis pose
+	-- (`CFrame.Angles(HATCH_ANGLE * value, 0, 0)`, a turn about local X) and its
+	-- own TO-LAND note asked only for a pivot function - so doing exactly what
+	-- the note said would have left Hatch1 and Hatch2 swinging SIDEWAYS out of
+	-- the deck, because they hinge about Z and only Hatch3 hinges about X.
+	-- boss_gen says it in one line: "a single-axis pose swings two of them into
+	-- the deck". See RIG.hatches for the axes and the rise check.
 	{
 		name = "hatchPops",
-		pieces = { "Hatch1", "Hatch2", "Hatch3", "Hatch4" },
-		pivot = Vector3.zero, -- REPLACE with each hatch's hinge (a pivot fn)
+		pieces = { "Hatch1", "Hatch2", "Hatch3" },
+		pivot = function(ctx): Vector3
+			return RIG.hatches[ctx.piece.name].hinge
+		end,
 		driver = {
 			kind = "level",
 			rate = 7,
@@ -1278,7 +2270,7 @@ local CHANNELS = {
 			end,
 		},
 		pose = function(ctx): CFrame
-			return CFrame.Angles(HATCH_ANGLE * ctx.value, 0, 0)
+			return CFrame.fromAxisAngle(RIG.hatches[ctx.piece.name].axis, HATCH_ANGLE * ctx.value)
 		end,
 	},
 }
@@ -1449,8 +2441,73 @@ local marks: { [Model]: Highlight } = {}
 -- this table is the redock cue as well as the "she's gone" one.
 local ladies: { [Model]: boolean } = {}
 
+-- Every model whose own body we have hidden -> the connection that keeps it
+-- hidden. Presence is also the "already done" flag, so the hide is idempotent
+-- however many times a model is re-adopted or its attribute re-fires.
+local hidden: { [Model]: RBXScriptConnection } = {}
+
+-- ANYTHING THIS FILE DRAWS PIECES ON HAS ITS OWN BODY HIDDEN - one rule, three
+-- models, because the visible thing is ours and the server's copy would stand
+-- inside it.
+--
+--   the hull        adopted on `CreatureId`, drawn from PIECES
+--   THE LADY        found by `WrackDive`; `figureheadFlight` draws the
+--                   figurehead ON her hitbox model, and that model is a
+--                   creature like any other WITH ITS OWN VISIBLE BODY - so
+--                   without this there are two Ladies, the drawn one and the
+--                   prop she is drawn on
+--   THE DUELIST     adopted on `CreatureId`, drawn from DUEL.PIECES
+--
+-- TRANSPARENCY ONLY, collision untouched, exactly as CreatureService's
+-- hideColossusModel does it: the parts stay, because hits and
+-- BossHudController read them. IT CHANGES NOTHING ABOUT THE HITBOX - shot
+-- capture is a sphere about the model's PIVOT of radius `ShotRadius` (or a
+-- bounding-box formula), and `GetBoundingBox` does not read transparency.
+--
+-- Every sibling gets this for free from the server: CreatureService's
+-- hideColossusModel does it, and every call site is gated on the Bosses row
+-- carrying `pose` (Rimefang's driver does the same thing inline). Wrack has
+-- no `pose` and must not be given one - see CREATURE_ID above - and there is
+-- no Wrack driver in CreatureService, so nothing server-side will ever hide
+-- him and the client that draws the replacement is the only place left that
+-- can. Doing it here is local to this player, costs the fight nothing, and
+-- goes quietly idempotent the day a server-side hide does land.
+--
+-- Transparency only, exactly like hideColossusModel: the parts stay, because
+-- hits and BossHudController read them, and CanCollide is never touched.
+local function hideServerModel(model: Model)
+	for _, descendant in model:GetDescendants() do
+		if descendant:IsA("BasePart") then
+			descendant.Transparency = 1
+			descendant.CastShadow = false
+		elseif descendant:IsA("Decal") or descendant:IsA("Texture") then
+			descendant.Transparency = 1
+		end
+	end
+	-- ...and anything that arrives AFTER we looked. The hull replicates whole so
+	-- she never hit this; a small prop streaming in piecewise can, and a single
+	-- part appearing at full opacity inside the drawn body is the whole bug back
+	-- again. Idempotent, and connected once per model.
+	if not hidden[model] then
+		hidden[model] = model.DescendantAdded:Connect(function(descendant)
+			if descendant:IsA("BasePart") then
+				descendant.Transparency = 1
+				descendant.CastShadow = false
+			elseif descendant:IsA("Decal") or descendant:IsA("Texture") then
+				descendant.Transparency = 1
+			end
+		end)
+	end
+end
+
 local function watchLady(model: Model)
-	ladies[model] = if model:GetAttribute(ATTR_WRACK_DIVE) ~= nil then true else nil
+	local live = model:GetAttribute(ATTR_WRACK_DIVE) ~= nil
+	ladies[model] = if live then true else nil
+	-- SHE IS DRAWN ON, SO SHE IS HIDDEN. Same rule as the boss above; see
+	-- hideServerModel's comment for the three models it covers.
+	if live then
+		hideServerModel(model)
+	end
 end
 
 local function unmarkWeakpoint(model: Model)
@@ -1513,28 +2570,13 @@ local function destroyBody(model: Model)
 	end
 end
 
--- The visible boss is ours, so the server's model has to stop showing - or
--- there are two Wracks standing in the same sand.
---
--- Every sibling gets this for free from the server: CreatureService's
--- hideColossusModel does it, and every call site is gated on the Bosses row
--- carrying `pose` (Rimefang's driver does the same thing inline). Wrack has
--- no `pose` and must not be given one - see CREATURE_ID above - and there is
--- no Wrack driver in CreatureService, so nothing server-side will ever hide
--- him and the client that draws the replacement is the only place left that
--- can. Doing it here is local to this player, costs the fight nothing, and
--- goes quietly idempotent the day a server-side hide does land.
---
--- Transparency only, exactly like hideColossusModel: the parts stay, because
--- hits and BossHudController read them, and CanCollide is never touched.
-local function hideServerModel(model: Model)
-	for _, descendant in model:GetDescendants() do
-		if descendant:IsA("BasePart") then
-			descendant.Transparency = 1
-			descendant.CastShadow = false
-		elseif descendant:IsA("Decal") or descendant:IsA("Texture") then
-			descendant.Transparency = 1
-		end
+-- Forget a model we were keeping hidden. The parts go with the model; this is
+-- only the connection.
+local function unhide(model: Model)
+	local connection = hidden[model]
+	if connection then
+		connection:Disconnect()
+		hidden[model] = nil
 	end
 end
 
@@ -1734,6 +2776,13 @@ end
 local function buildChannels(entry)
 	local out = {}
 	for _, def in CHANNELS do
+		-- A row may belong to one body only. The ship's four conductor gestures
+		-- name Arm and Sabre, which the DUELIST also has, so without this they
+		-- would layer under every duel move and muddy it. Every other ship row is
+		-- dropped by piece-absence anyway.
+		if def.kinds and not def.kinds[entry.kind] then
+			continue
+		end
 		local pieces = {}
 		for _, name in def.pieces do
 			local piece = entry.byName[name]
@@ -1753,7 +2802,11 @@ local function buildChannels(entry)
 end
 
 local function adoptBoss(model: Model)
-	if bodies[model] or model:GetAttribute("CreatureId") ~= CREATURE_ID then
+	-- TWO BODIES, ONE ADOPT. The ship in acts 1-2 and the Admiral himself in
+	-- act 3, told apart by the `CreatureId` each carries and otherwise built by
+	-- exactly this code.
+	local spec = DUEL.KINDS[model:GetAttribute("CreatureId")]
+	if bodies[model] or not spec then
 		return
 	end
 
@@ -1783,7 +2836,7 @@ local function adoptBoss(model: Model)
 	local anchor = packAnchor()
 	local pieces = {}
 	local byName = {}
-	for index, name in PIECES do
+	for index, name in spec.pieces do
 		local part = makePiece(name, folder)
 		local authored = AUTHORED[name]
 		local relative
@@ -1797,6 +2850,11 @@ local function adoptBoss(model: Model)
 			part = part,
 			relative = relative,
 			size = part.Size,
+			-- Captured, exactly as `size` is, and for the same reason: a `paint`
+			-- hook that tints a piece has to restore the colour this piece
+			-- actually had - which is MeshColors' repaint of an imported mesh, not
+			-- any constant in this file.
+			color = part.Color,
 			-- A piece whose name ends in a number carries it (`Hatch3` -> 3),
 			-- so a channel can address one of a numbered set without keeping
 			-- its own list of which is which. Parsed once here rather than in a
@@ -1813,7 +2871,7 @@ local function adoptBoss(model: Model)
 	-- the gun's muzzle, aim its +X down the bore, and push the part forward by
 	-- the flare's own bounding-box centre so the mesh - not the part - is what
 	-- lands on the barrel.
-	for _, module in MODULES do
+	for _, module in spec.modules or {} do
 		local gun = GUNS[module.gun]
 		local part = makePiece(module.module, folder)
 		local bore = CFrame.fromMatrix(gun.muzzle - AUTHORED_ANCHOR, gun.bore.Unit, Vector3.yAxis)
@@ -1840,6 +2898,18 @@ local function adoptBoss(model: Model)
 	end
 
 	local entry = {
+		model = model,
+		kind = spec.kind,
+		gait = spec.gait,
+		-- The ship draws in the space her pieces were measured in, so her seat is
+		-- the identity. The duelist's stands his foot origin on his own model and
+		-- swings his authored facing onto the engine's heading axis.
+		seat = if spec.seat then DUEL.seat() else CFrame.identity,
+		speed = 0,
+		gaitPhase = 0,
+		gaitDrive = 0,
+		exposed = 0,
+		riposte = 0,
 		folder = folder,
 		pieces = pieces,
 		byName = byName,
@@ -1848,6 +2918,7 @@ local function adoptBoss(model: Model)
 		-- adopt and the first RenderStepped and `deliverSignal` measures
 		-- against it.
 		base = CFrame.new(pivot.Position + Vector3.new(0, groundDrop, 0)) * pivot.Rotation,
+		frame = CFrame.identity,
 		gunLive = {},
 		sawGuns = false,
 		-- ADOPTED AT THE STATE THE FIGHT IS ALREADY IN, not at rest.
@@ -1866,9 +2937,31 @@ local function adoptBoss(model: Model)
 		-- nothing.
 		ctx = { model = model },
 	}
+	entry.frame = entry.base * entry.seat
 	entry.channels = buildChannels(entry)
 	entry.ctx.entry = entry
 	bodies[model] = entry
+
+	-- THE LANDING, fired from his FIRST ADOPT rather than from a wire event -
+	-- there is no "he jumped" edge on the wire and none is invented. It goes in
+	-- at the same point a real signal does, so a landed arrival and a cued one
+	-- are the same object taking the same path.
+	--
+	-- GATED, because a player who streams in an hour later must not watch a
+	-- landing that never happened. `DUEL.seen` is stamped when a hull's wreck
+	-- ramp BEGINS, which the server guarantees is 2.5 seconds before the hull is
+	-- destroyed and he is spawned - so the record is already there whichever
+	-- order this frame's ChildAdded and ChildRemoved arrive in. No hull seen
+	-- wrecking (a late joiner) means no landing, and he is simply standing,
+	-- which is this file's own "adopted at the state the fight is already in"
+	-- rule applied to the one channel that is an event.
+	if spec.kind == "duel" then
+		local seen = DUEL.seen
+		local near = (pivot.Position - seen.pos).Magnitude <= SIGNAL_RANGE
+		if near and os.clock() - seen.at < DUEL.ARRIVE_GRACE then
+			applySignal(entry, { what = "arrive", at = pivot.Position, now = os.clock() })
+		end
+	end
 end
 
 -- ---------------------------------------------------------------- the draw
@@ -1893,12 +2986,33 @@ local function drawBody(model: Model, entry, dt: number)
 	local pivot = model:GetPivot()
 	local base = CFrame.new(pivot.Position + Vector3.new(0, entry.groundDrop, 0)) * pivot.Rotation
 	entry.base = base
+	-- TWO FRAMES, AND EXACTLY ONE RULE FOR WHICH IS WHICH.
+	--   `base`  is the SERVER's pivot, dropped to sand. Range tests and gun
+	--           matching use it, because they are asking about where the model
+	--           IS (deliverSignal, gunAt).
+	--   `frame` is the AUTHORED space the pieces were measured in. Every pose
+	--           uses it, because a pose is written in the geometry's own
+	--           coordinates.
+	-- They differ only by `entry.seat`, which is the identity for the ship and a
+	-- re-seating for the duelist (see DUEL.KINDS). Getting this wrong is silent:
+	-- a pose that converts a world bearing through `base` on a seated body comes
+	-- out rotated by his authored facing, which reads as "the aim is slightly
+	-- off" rather than as a frame error.
+	local frame = base * entry.seat
+	entry.frame = frame
 
 	stepGuns(entry)
 	stepLady(entry)
+	DUEL.step(entry, base, dt)
+	-- The handoff's clock, stamped on the ATTRIBUTE EDGE. See the arrival gate
+	-- in adoptBoss for why this cannot live on the entry.
+	if entry.kind == "ship" and not entry.wrecking and model:GetAttribute(ATTR_WRACK_WRECK) then
+		entry.wrecking = true
+		DUEL.seen.at, DUEL.seen.pos = os.clock(), base.Position
+	end
 
 	local ctx = entry.ctx
-	ctx.now, ctx.dt, ctx.base = os.clock(), dt, base
+	ctx.now, ctx.dt, ctx.frame = os.clock(), dt, frame
 	for _, piece in entry.pieces do
 		piece.offset = nil
 	end
@@ -1909,7 +3023,7 @@ local function drawBody(model: Model, entry, dt: number)
 
 	for _, piece in entry.pieces do
 		local offset = piece.offset
-		piece.part.CFrame = if offset then base * offset * piece.relative else base * piece.relative
+		piece.part.CFrame = if offset then frame * offset * piece.relative else frame * piece.relative
 	end
 end
 
@@ -1946,6 +3060,7 @@ local function watch(child: Instance)
 		if not child:IsDescendantOf(Workspace) then
 			destroyBody(child)
 			unmarkWeakpoint(child)
+			unhide(child)
 			ladies[child] = nil
 		end
 	end)
@@ -1975,7 +3090,17 @@ end
 --                       aim = Vector3 (optional, flattened; omit for a
 --                             bearing-free tell, which is what the radial
 --                             patterns send),
+--                       shape = "lane" | "cone" | "mark" | "ring" (optional;
+--                             on the DUELIST this is what picks the gesture -
+--                             lane lunges, cone cleaves, mark draws the
+--                             pistol. Defaults to the aim's presence.),
 --                       at = Vector3 (optional, unused by these channels) }
+--
+--   "arrive"  the DUELIST lands, act 3's opening beat: he drops into a deep
+--             crouch and straightens out of it, sabre low and coming up to
+--             guard (admArriveLand, admArriveDraw). Ignored by the ship, whose
+--             kind does not carry those rows.
+--             extra = { at = Vector3 (optional) }
 --
 --   "fire"    the guns speak. Sabre sweeps down and the blade flicks
 --             (admSweep, admFlick); the firing deck recoils and flashes
@@ -2009,13 +3134,23 @@ function WrackBodyController.cue(model: Model, signal: string, extra): boolean
 	if signal == "fire" then
 		sig = { what = "fire", at = at, now = os.clock() }
 	elseif signal == "windup" then
+		local aim = flatAim(fields.aim)
 		sig = {
 			what = "windup",
 			at = at,
-			aim = flatAim(fields.aim),
+			aim = aim,
+			-- WHICH duel gesture, on the same field the wire uses. A cutscene that
+			-- names no shape gets the ship's bearing-free tell and none of the
+			-- duelist's four, which is the safe default: a wrong gesture is worse
+			-- than a missing one.
+			shape = if type(fields.shape) == "string" then fields.shape elseif aim then "lane" else "ring",
 			duration = tonumber(fields.duration) or 0.9,
 			now = os.clock(),
 		}
+	elseif signal == "arrive" then
+		-- The duelist's landing. A cutscene may open act 3 on a beat of its own
+		-- choosing rather than on his adopt.
+		sig = { what = "arrive", at = at, now = os.clock() }
 	else
 		return false
 	end
@@ -2037,6 +3172,7 @@ function WrackBodyController.init()
 			if child:IsA("Model") then
 				destroyBody(child)
 				unmarkWeakpoint(child)
+				unhide(child)
 				ladies[child] = nil
 			end
 		end)
