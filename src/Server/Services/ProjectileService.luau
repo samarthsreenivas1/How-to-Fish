@@ -68,10 +68,19 @@
 --     Either list may be empty. A volley whose balls are never popped
 --     individually still gets a `gone` event when they time out.
 --
--- Skins map to Wrack's six patterns: broadside -> "cannon", grapeshot ->
--- "grape", chainshot -> "chain", slewfire -> "cannon", wisps -> "wisp",
--- anchorsweep -> "anchor". Every one is set from the attack row's `p.skin`,
--- so a new pattern needs no client change beyond a new skin case.
+-- Skins map to Wrack's patterns: broadside -> "cannon", grapeshot -> "grape",
+-- chainshot -> "chain", slewfire -> "cannon", wisps -> "wisp", anchorsweep ->
+-- "anchor". Every one is set from the attack row's `p.skin`, so a new pattern
+-- needs no client change beyond a new skin case.
+--
+-- THE 2026-09-08 ROSTER REWORK added three patterns and NO wire change and NO
+-- new skin, which is the point: `megashot` is one ball (skin "cannon"),
+-- `burstring` is the ordinary radial volley it raises where it dies (also
+-- "cannon"), and `anchorline` is a single linked pair with spin 0 (skin
+-- "chain"), which rides the `links` field chainshot already ships. A client
+-- built against the contract above draws all three correctly having been told
+-- nothing. The fight's other four new mechanics are not projectiles at all -
+-- they are shootable part-creatures and area waves owned by CreatureService.
 -- ============================================================================
 
 local Players = game:GetService("Players")
@@ -98,6 +107,16 @@ local ProjectileService = {}
 -- another dense row to phase 3 should re-measure rather than assume. Oldest
 -- retires first: the wall you already dodged dies before the one still coming
 -- at you.
+--
+-- RE-MEASURED AGAIN after the 2026-09-08 roster rework, and the headroom went
+-- UP rather than down. Four ball rows left the book (chainshot, slewfire,
+-- slewfireFast, grapeshotTwin) and the two heaviest survivors cannot overlap
+-- the way the old phase-3 list let them: the worst case is now broadsideHeavy's
+-- 136 plus an anchorsweep's 23 plus a grapeshot's 8, plus the anchorline's 2
+-- and one mega-shot's 16-ball burst - about 185. The three new patterns are
+-- deliberately tiny in ball terms because the pressure they add is attention,
+-- not density: a chaser to shoot, three pillars to douse, a boarding party to
+-- stop. 320 stays as the backstop.
 local MAX_LIVE = 320
 
 -- Flight plane, above World.WATER_Y. RE-SET FOR THE REBUILT CAREENAGE, whose
@@ -134,6 +153,16 @@ local lastSyncAt = 0
 local popbox = {} -- [volleyId] = { at = Vector3, hit = { sid }, gone = { sid } }
 local popPending = false
 local connection = nil
+
+-- SECOND-STAGE VOLLEYS, QUEUED RATHER THAN FIRED IN PLACE (the cannon
+-- overload's mega-shot bursts into a radial ring where it dies). The burst has
+-- to be spawned from `retire`, which runs inside the backward walk over `live`
+-- and is defined well above `add` and the pattern table - inserting there
+-- would both grow the array under the cursor and reference three things that
+-- do not exist yet. So a retiring bullet only RECORDS its burst, and `tick`
+-- drains this the moment the sweep is done: same frame, one volley event, no
+-- reentrancy into the walk that produced it.
+local burstbox = {}
 
 -- ============================================================ helpers
 
@@ -228,6 +257,24 @@ local function retire(bullet, hit: boolean)
 	end
 	bullet.retired = true
 	notePop(bullet, hit)
+	-- THE SECOND STAGE. A mega-shot bursts where it DIES, whichever way it
+	-- died: on a player, on the bound, on its own lifetime. That is the whole
+	-- read of the move - the huge slow ball is not the threat, the ring it
+	-- leaves is - so an expiry that skipped the burst would make walking
+	-- backwards away from it a free answer.
+	if bullet.burst and not bullet.follower then
+		table.insert(burstbox, {
+			at = bullet.pos,
+			burst = bullet.burst,
+			owner = bullet.owner,
+			centre = bullet.centre,
+			bound = bullet.bound,
+			skin = bullet.skin,
+			min = bullet.min,
+			max = bullet.max,
+		})
+		bullet.burst = nil
+	end
 	local partner = bullet.link
 	if partner and not partner.retired then
 		partner.retired = true
@@ -526,6 +573,33 @@ local function tick(dt: number)
 	compact()
 	enforceCap()
 
+	-- Second stages, now that the walk is over and the array is stable. Drained
+	-- into a local first: a burst ring can itself retire on the same frame it
+	-- is born (a bound-hugging mega-shot), and re-entering a table we are
+	-- iterating is the bug this queue exists to avoid.
+	if #burstbox > 0 then
+		local pending = table.move(burstbox, 1, #burstbox, 1, {})
+		table.clear(burstbox)
+		for _, entry in pending do
+			local spec = entry.burst
+			ProjectileService.emit("burstring", {
+				owner = entry.owner,
+				centre = entry.centre,
+				spot = entry.at,
+				origin = entry.at,
+				aim = Vector3.new(1, 0, 0),
+				scale = 1,
+				bound = entry.bound,
+				now = now,
+				-- The ring is the mega-shot's OWN damage, cut by `mult`: it is
+				-- a shrapnel wave off a shot you already failed to leave, not a
+				-- second full cannonball each.
+				min = math.max(1, math.round(entry.min * (spec.mult or 0.6))),
+				max = math.max(1, math.round(entry.max * (spec.mult or 0.6))),
+			}, spec)
+		end
+	end
+
 	syncVolleys(now)
 	flushPops()
 end
@@ -557,6 +631,14 @@ local function add(batch, ctx, spec)
 		sync = batch.sync or false,
 		spin = 0,
 		retired = false,
+		-- The second-stage spec, carried to `retire` (nil on everything else).
+		burst = spec.burst,
+		-- A SERVER-SIDE HANDLE, never on the wire. One pattern (anchorline) is
+		-- a hazard the player can END - the chain's midlink is a shootable
+		-- part - so its caller needs to retire that one volley without
+		-- clearing every ball the boss has in the air, which is all
+		-- `clearOwner` can do. See ProjectileService.retireTag.
+		tag = ctx.tag,
 	}
 	table.insert(batch.bullets, bullet)
 	table.insert(batch.shots, { sid, pos.X, pos.Z, bullet.vel.X, bullet.vel.Z, spec.radius })
@@ -855,6 +937,89 @@ PATTERNS.anchorsweep = function(batch, ctx, p)
 	end
 end
 
+-- MEGASHOT. The cannon overload's payload: ONE huge slow ball out of the
+-- battery that spent three seconds winding up, which bursts into a radial ring
+-- (`p.burst`) wherever it dies. Deliberately the slowest thing in the fight -
+-- outrunning the ball is trivial and is not the question. The question is
+-- where you are standing when it stops, so the answer is to be somewhere else
+-- entirely, or to have jammed the gun during the windup and had no ball at all.
+--
+-- ONE ball, so `ctx.scale` is not applied to a count here; the density scaling
+-- that every other pattern gets is expressed on this move as the JAM - the
+-- interplay the row exists for - rather than as a thinner shot.
+PATTERNS.megashot = function(batch, ctx, p)
+	local dir = ctx.aim
+	add(batch, ctx, {
+		pos = muzzleOf(ctx) + dir * (p.spawnAt or 20),
+		vel = dir * (p.speed or 22),
+		radius = p.radius or 7,
+		lifetime = p.lifetime or 5.4,
+		burst = p.burst,
+	})
+end
+
+-- BURSTRING. The second stage, and never fired from an attack row: `tick`
+-- raises it out of a retiring bullet that carried a `burst` spec, centred on
+-- `ctx.spot` - where that ball died - rather than on the arena centre, which
+-- still owns `bound` alone.
+PATTERNS.burstring = function(batch, ctx, p)
+	local count = math.max(3, p.count or 16)
+	local speed = p.speed or 34
+	local spot = ctx.spot or ctx.centre
+	for i = 0, count - 1 do
+		local dir = bearing((math.pi * 2 / count) * i)
+		add(batch, ctx, {
+			pos = spot + dir * (p.spawnAt or 3),
+			vel = dir * speed,
+			radius = p.radius or 2.6,
+			lifetime = p.lifetime or 2.4,
+		})
+	end
+end
+
+-- ANCHORLINE. Not a volley at all: ONE linked pair with no spin, laid across
+-- the sand and dragged back toward the hull. The chain between two balls is
+-- already a segment hitbox (see `link` and the tick's segDistFlat branch), so
+-- the moving line hazard the move needs is machinery this file has had since
+-- chainshot - the only thing that changes is that the pair travels broadside
+-- to its own heading instead of nose-first, and does not rotate.
+--
+-- `ctx.spot` is where the anchor landed, `ctx.dir` the direction it is dragged
+-- (toward the ship). `ctx.tag` lets the caller kill this one hazard when the
+-- midlink is shot, which is the move's answer.
+PATTERNS.anchorline = function(batch, ctx, p)
+	local dir = ctx.dir or ctx.aim
+	local side = rotateFlat(dir, math.pi * 0.5)
+	local spot = ctx.spot or ctx.centre
+	local half = (p.chain or 34) * 0.5
+	-- THE ONE PATTERN WHOSE SPEED IS NOT AUTHORED. The chain has to take
+	-- `p.drag` seconds to cross whatever distance the anchor actually flew,
+	-- which depends on where the player was standing, so the handler computes
+	-- it and hands it down. A fixed studs/s would make the same move a
+	-- formality at the rim and unsurvivable against the hull.
+	local speed = ctx.speed or p.speed or 22
+	batch.sync = true
+	local lead = add(batch, ctx, {
+		pos = spot + side * half,
+		vel = dir * speed,
+		radius = p.radius or 3.0,
+		lifetime = p.lifetime or 4.6,
+	})
+	local follow = add(batch, ctx, {
+		pos = spot - side * half,
+		vel = dir * speed,
+		radius = p.radius or 3.0,
+		lifetime = p.lifetime or 4.6,
+	})
+	-- SPIN 0, and that is the whole difference from chainshot. A dragging
+	-- chain that rotated would sweep its own ends through ground the tell
+	-- never named.
+	link(batch, lead, follow, p.chainRadius or 4.0, 0)
+	for _, bullet in batch.bullets do
+		bullet.sync = true
+	end
+end
+
 -- ============================================================ API
 
 -- Fire one volley of `pattern`. ONE client event, however many balls.
@@ -870,6 +1035,17 @@ end
 --   aim     : Vector3  LATCHED firing bearing (flat unit)
 --   gap     : number   pattern-owned angle (broadside's gap, slewfire's deck)
 --   phase   : number?  grapeshot's sub-pellet offset
+--   spot    : Vector3? a world POINT the pattern is built around, for the two
+--                      that are not born at a gun: burstring (where the
+--                      mega-shot died) and anchorline (where the anchor
+--                      landed). `centre` still owns `bound` in both cases.
+--   dir     : Vector3? a second flat bearing, distinct from `aim` (the
+--                      anchorline's drag direction)
+--   tag     : any?     a server-side handle stamped on every ball of the
+--                      volley, for retireTag below. Never on the wire.
+--   speed   : number?  overrides the row's authored speed, for the one pattern
+--                      whose speed is a function of where the shot landed
+--                      (anchorline). Nil everywhere else - the row is truth.
 --   scale   : number   density multiplier (Wrack's surviving batteries)
 --   bound   : number   retire past this flat radius from `centre`
 --   now, min, max      clock and the rolled damage range
@@ -935,6 +1111,29 @@ function ProjectileService.clearOwner(owner)
 	end
 	compact()
 	flushPops()
+end
+
+-- Retire ONE tagged hazard, leaving the rest of the owner's fire alone.
+--
+-- The anchor line is the fight's first hazard with an off switch: its chain
+-- carries a shootable midlink, and breaking that has to end the chain THAT
+-- FRAME or the promise the part makes is a lie. `clearOwner` cannot be used
+-- for it - it would also delete the broadside wall the player is currently
+-- inside, handing them a free dodge for shooting something else entirely.
+-- Returns how many balls it took down.
+function ProjectileService.retireTag(owner, tag): number
+	local n = 0
+	for _, bullet in live do
+		if bullet.owner == owner and bullet.tag == tag and not bullet.retired then
+			retire(bullet, false)
+			n += 1
+		end
+	end
+	if n > 0 then
+		compact()
+		flushPops()
+	end
+	return n
 end
 
 function ProjectileService.liveCount(): number
