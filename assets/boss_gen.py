@@ -3741,18 +3741,28 @@ def _wr_portframe(bm, muzzle, n, bore, lid_up=True):
         span = (side * half * 2.3) if dz else (up * half * 2.3)
         _wr_tube(bm, at + offset - span / 2, at + offset + span / 2, 0.32, 0.32, 4)
     if lid_up:
-        # The lid, thrown up and out of the way, on its two chains. It goes
-        # mostly OUTBOARD rather than up: hinged on the port's top edge and
-        # hauled level, which is how a gunport lid actually sits when the gun
-        # is run out - and, less romantically, a lid swung to the vertical on
-        # a port this size stood nine studs proud of the rail and turned the
-        # broadside cannon into the tallest thing on the ship's side.
+        # NO LID, and this is the one thing the redesign's first staged sheet
+        # got wrong. A gunport lid belongs to the ship's SIDE and is timber;
+        # this object is the CANNON, and it carries one flat brass material,
+        # so a lid built here came out as a bright yellow panel the size of a
+        # door standing off the hull - reading as a signboard rather than as
+        # part of the ship, which is the exact failure the redesign existed to
+        # fix. Shrinking it does not help: the defect is the COLOUR, and the
+        # colour is not this object's to change (a second material here would
+        # break the one-material-per-object rule _wr_finish is built on).
+        # Moving the lids into Wrack_Strakes, where they would come out as
+        # timber, is the richer fix; it is two edit sites and is left as a
+        # note rather than done here.
+        #
+        # So what stays is the half that is honestly ironwork and honestly
+        # brass: the two hinge straps still bolted to the frame's top edge,
+        # with the lid long since torn off them. She has been standing on this
+        # shoal a long time, and a wreck missing her port lids is the reading
+        # the rest of the model already asks for.
         hinge = at + up * half
-        lid = hinge + up * half * 0.35 + n * half * 1.6
         for s in (-1, 1):
-            _wr_tube(bm, hinge + side * (s * half * 0.8), lid + side * (s * half * 0.8), 0.24, 0.24, 4)
-        box(bm, (lid + hinge) / 2 + n * 0.2, (0.35, half * 1.9, half * 1.5),
-            Matrix.Rotation(math.atan2(n.y, n.x), 3, "Z"))
+            root = hinge + side * (s * half * 0.8)
+            _wr_tube(bm, root - n * 0.4, root + n * half * 0.45, 0.26, 0.20, 4)
 
 
 def build_wr_cannon_bow(rng):

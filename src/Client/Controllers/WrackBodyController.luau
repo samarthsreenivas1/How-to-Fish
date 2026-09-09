@@ -168,8 +168,8 @@ local AUTHORED = {
 		color = Color3.fromRGB(186, 132, 53),
 	},
 	CannonStarboard = {
-		at = Vector3.new(12.5, 10.3, -6.3),
-		size = Vector3.new(9.8, 10.5, 11.5),
+		at = Vector3.new(12.5, 9, -6.2),
+		size = Vector3.new(9.8, 7.8, 11.3),
 		color = Color3.fromRGB(186, 132, 53),
 	},
 	CannonStern = {
@@ -178,8 +178,8 @@ local AUTHORED = {
 		color = Color3.fromRGB(186, 132, 53),
 	},
 	CannonPort = {
-		at = Vector3.new(-11, 10.5, 6.9),
-		size = Vector3.new(9.8, 10.5, 11.5),
+		at = Vector3.new(-11, 9.2, 6.8),
+		size = Vector3.new(9.8, 7.8, 11.3),
 		color = Color3.fromRGB(186, 132, 53),
 	},
 	Mast = {
