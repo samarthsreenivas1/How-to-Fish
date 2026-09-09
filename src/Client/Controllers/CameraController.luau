@@ -49,15 +49,19 @@ local thirdPerson = false
 --   first person - the cursor is LOCKED to the centre and hidden, and Roblox's
 --                  own camera scripts steer with every mouse move. UNCHANGED
 --                  by any of this.
---   third person - the cursor is FREE and VISIBLE, with CrosshairController's
---                  mark at the centre of the screen. Moving the mouse does
---                  NOT steer the camera.
---   RMB held     - the cursor locks where it stands and hides, and the mouse
---                  delta turns the orbit. Releasing restores the free cursor.
---   LMB          - fires down the camera's centre ray whatever the cursor is
---                  doing. RangedController owns the trigger, binds it through
---                  ContextActionService, and reads neither the cursor nor the
---                  camera mode - so left click and right drag never contend.
+--   third person - the cursor is FREE, and it IS the crosshair: the system
+--                  icon is off and CrosshairController draws its mark on the
+--                  pointer's pixel every frame (user, 2026-09-08: "the cursor
+--                  is the crosshair and the user shoots wherever their
+--                  crosshair is"). Moving the mouse does NOT steer the camera.
+--   RMB held     - the cursor locks where it stands - the crosshair holds that
+--                  pixel and still aims it - and the mouse delta turns the
+--                  orbit. Releasing restores the free cursor.
+--   LMB          - fires through the CURSOR's pixel (RangedController.aimRay,
+--                  ViewportPointToRay at GetMouseLocation), orbiting or not.
+--                  RangedController owns the trigger and binds it through
+--                  ContextActionService, so left click and right drag never
+--                  contend.
 --   a menu open  - setCursorFree(true) wins over all of it.
 --
 -- WHY THE ORBIT IS THIS FILE'S AND NOT ROBLOX'S. The stock Classic camera does
@@ -500,16 +504,19 @@ local function onRenderStep()
 		UserInputService.MouseBehavior = Enum.MouseBehavior.Default
 		UserInputService.MouseIconEnabled = true
 	elseif thirdPerson then
-		-- Third person, per the cursor model at the top of this file: free and
-		-- visible so the player can reach a menu button with the pointer, and
-		-- pinned where it stands (with the icon gone) for as long as a right
-		-- drag owns it. Asserted EVERY frame for the reason everything else in
-		-- this function is - Roblox's camera scripts write these same two
-		-- properties, including on the way out of first person.
+		-- Third person, per the cursor model at the top of this file: the pointer
+		-- moves FREELY (so a menu button is still reachable with it) and is
+		-- pinned where it stands for as long as a right drag owns it. The system
+		-- ICON stays off in both cases, because the pointer is drawn as a
+		-- crosshair instead - CrosshairController puts its mark on the pointer's
+		-- pixel every frame, and two pointers is what the player rejected.
+		-- Asserted EVERY frame for the reason everything else in this function
+		-- is - Roblox's camera scripts write these same two properties,
+		-- including on the way out of first person.
 		UserInputService.MouseBehavior = if orbiting
 			then Enum.MouseBehavior.LockCurrentPosition
 			else Enum.MouseBehavior.Default
-		UserInputService.MouseIconEnabled = not orbiting
+		UserInputService.MouseIconEnabled = false
 	else
 		UserInputService.MouseIconEnabled = false
 	end

@@ -1,30 +1,36 @@
 --!nonstrict
 -- CrosshairController.luau
--- The aiming mark, and ONLY in third person (user, 2026-09-08: "you should
--- ... implement a crosshair and allow the user to shoot in third person when
--- you're in a boss").
+-- The aiming mark, and ONLY in third person. THE MARK IS THE CURSOR (user,
+-- 2026-09-08, rejecting the first build's free arrow plus a separate centred
+-- mark: "the crosshair still doesnt work. you need to make it so that the
+-- cursor is the crosshair and the user shoots wherever their crosshair is").
 --
--- WHY THIRD PERSON NEEDS ONE AND FIRST PERSON DOES NOT. In first person the
--- camera sits at the head and the cursor is locked dead centre with the icon
--- hidden - the middle of the screen is where you are looking, so there is
--- nothing to mark. The boss arenas break both halves of that: the camera
--- stands 26 to 64 studs back on a rig of its own, and (CameraController's
--- cursor model) the cursor is FREE there, so the pointer is wherever the
--- player last left it and is emphatically NOT the aim. Without a mark the
--- player has no way at all to know where a shot will go.
+-- So there is exactly ONE pointer on screen in third person. The system arrow
+-- is switched off (CameraController's render step owns MouseIconEnabled) and
+-- this mark is drawn at the pointer's live pixel every frame instead - it
+-- moves with the mouse, reaches menu buttons like any cursor, and is the thing
+-- the shot goes through.
+--
+-- WHY FIRST PERSON HAS NONE. There the cursor is locked dead centre with the
+-- icon hidden and the viewmodel is on screen: the middle of the frame is where
+-- you are looking, the weapon is drawn pointing at it, and there is nothing
+-- for a mark to tell you that the gun in your hands does not.
 --
 -- WHERE IT SITS, AND WHY THAT IS THE TRUE AIM POINT. Every ranged shot is
--- resolved by RangedController.shotRay, which searches down
--- `camera.CFrame.LookVector` from the camera's position and then fires from
--- the CHARACTER at whatever it found. That ray is the camera's optical axis,
--- which lands on exactly one pixel: the centre of the viewport. So the mark
--- is centred and nothing about it is ever recomputed - a crosshair that had
--- to be positioned per frame would be a crosshair that could disagree with
--- the shot. IgnoreGuiInset is what makes the two the same point: the 3D
--- viewport is the whole window (Camera.ViewportSize), and only an
--- inset-ignoring ScreenGui shares those coordinates. With the inset on, the
--- GUI's centre would sit 18 pixels below the optical axis - a small error
--- that is a whole boss-sized miss at 200 studs.
+-- resolved by RangedController.shotRay, whose aim ray in third person is
+-- `camera:ViewportPointToRay` at UserInputService:GetMouseLocation() - the
+-- pointer's pixel. This mark is positioned from the SAME call in the same
+-- frame, so the two cannot disagree about where the player is aiming.
+--
+-- ONE COORDINATE SPACE, NOTHING ADDED TO IT. GetMouseLocation answers in
+-- viewport space (top-left of the 3D viewport is (0, 0); the 36-pixel top bar
+-- is not subtracted), ViewportPointToRay consumes that same space, and an
+-- IgnoreGuiInset ScreenGui - which is what this one is - lays out in it too.
+-- Hence Position is the raw offset with no correction term anywhere. Turn the
+-- inset back on and this frame would draw 36 pixels below the pixel it is
+-- aiming, which at 200 studs is a whole boss-sized miss; the matching trap on
+-- the ray side is reaching for ScreenPointToRay, which is the inset-offset
+-- twin of the call used here.
 --
 -- ONE THING IT DELIBERATELY DOES NOT DO: eat the click. Everything here is a
 -- Frame with Active left false, so the shot that the mark is aiming lands in
@@ -33,12 +39,9 @@
 -- trigger pull in the game.
 
 local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
-local Shared = ReplicatedStorage:WaitForChild("Shared")
-local Equipment = require(Shared.Config.Equipment)
-local Weapons = require(Shared.Data.Weapons)
+local UserInputService = game:GetService("UserInputService")
 
 local CameraController = require(script.Parent.CameraController)
 local Theme = require(script.Parent.Parent.UI.Theme)
@@ -66,20 +69,6 @@ local OUTLINE = 1
 local root: Frame? = nil
 local shown = false
 
--- Is a gun (any Weapons row with a `ranged` block) in the player's hands?
--- Read straight off the replicated Equipment attributes, the way every other
--- controller reads the loadout - RangedController gates its own trigger on
--- exactly this pair, so the mark is shown when and only when there is a
--- trigger behind it.
-local function rangedEquipped(): boolean
-	if player:GetAttribute(Equipment.ATTRIBUTE) ~= Equipment.WEAPON then
-		return false
-	end
-	local weaponId = player:GetAttribute(Equipment.WEAPON_ATTRIBUTE)
-	local weapon = weaponId and Weapons.items[weaponId]
-	return weapon ~= nil and weapon.ranged ~= nil
-end
-
 local function tick(parent: Frame, name: string, position: UDim2, size: UDim2)
 	local arm = Instance.new("Frame")
 	arm.Name = name
@@ -105,8 +94,9 @@ local function ensureGui(): Frame
 	local screen = Instance.new("ScreenGui")
 	screen.Name = "Crosshair"
 	screen.ResetOnSpawn = false
-	-- The two properties the aim depends on: no inset (so the GUI's centre is
-	-- the camera's optical axis) and nothing between the click and the game.
+	-- The two properties the aim depends on: no inset (so this GUI lays out in
+	-- the same viewport pixels the pointer is reported in and the ray is cast
+	-- through - see the header) and nothing between the click and the game.
 	screen.IgnoreGuiInset = true
 	screen.DisplayOrder = 4 -- under the ammo readout (5) and every menu
 
@@ -132,23 +122,53 @@ local function ensureGui(): Frame
 	return frame
 end
 
--- Visible exactly when all three hold: a third-person camera is up (any of
+-- Visible exactly when two things hold: a third-person camera is up (any of
 -- the arena rigs - they are all third-person variants and all answer
--- isThirdPerson), a gun is out, and no menu has borrowed the cursor. The
--- menu test is the same one the camera uses, so the mark cannot be left
--- floating over an open inventory.
+-- isThirdPerson), and no menu has borrowed the cursor. The menu test is the
+-- same one the camera uses, so the mark cannot be left floating over an open
+-- inventory - there the system arrow comes back and is the pointer again.
+--
+-- THE "GUN IS OUT" GATE IS GONE, deliberately. It made sense while this was a
+-- separate mark laid over a real cursor; now that the mark IS the cursor, the
+-- gate would leave third person with no pointer at all every time the player
+-- put the rod away. The pointer has to be SOMETHING at all times, and a
+-- crosshair with a rod in hand costs nothing (RangedController still gates the
+-- trigger on the loadout, so an empty-handed click fires nothing).
 --
 -- Polled on the render step rather than driven by events, because the camera
 -- mode itself is: CameraController decides it every frame from where the
 -- character is standing, and there is no signal to listen to.
 local function refresh()
-	local want = CameraController.isThirdPerson() and not CameraController.isCursorFree() and rangedEquipped()
-	if want == shown then
+	local want = CameraController.isThirdPerson() and not CameraController.isCursorFree()
+	local mark = ensureGui()
+	if want ~= shown then
+		shown = want
+		mark.Visible = want
+	end
+	if not want then
 		return
 	end
-	shown = want
-	local mark = ensureGui()
-	mark.Visible = want
+	-- The pointer's live pixel, in the one space this file and shotRay share
+	-- (see the header). Positioned every frame, from the same call the shot
+	-- resolves through, so the mark and the ray cannot drift apart.
+	--
+	-- WHILE A RIGHT-DRAG IS ORBITING the camera, MouseBehavior is
+	-- LockCurrentPosition: the pointer is pinned where the drag caught it, this
+	-- call keeps answering that pixel, the mark holds still there, and a left
+	-- click mid-orbit fires through it. Nothing here has to know about the
+	-- orbit - the pin does all of it.
+	--
+	-- NO MOUSE, NO MOVING MARK. On touch there is no pointer to be - the last
+	-- touch is where a finger left the glass, not where the player is aiming -
+	-- so the mark stays centred and RangedController's aimRay keeps firing down
+	-- the optical axis for exactly the same reason. That pair is mobile's
+	-- shipped behaviour, unchanged by any of this.
+	if not UserInputService.MouseEnabled then
+		mark.Position = UDim2.fromScale(0.5, 0.5)
+		return
+	end
+	local at = UserInputService:GetMouseLocation()
+	mark.Position = UDim2.fromOffset(at.X, at.Y)
 end
 
 function CrosshairController.init()

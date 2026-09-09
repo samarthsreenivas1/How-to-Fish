@@ -203,9 +203,12 @@ local CREATURES_FOLDER = "Creatures"
 -- Cached per model, dropped with it (the model is the weak key).
 local aimRadius: { [Model]: number } = setmetatable({}, { __mode = "k" }) :: any
 
--- How far down the camera ray the thing being aimed at is, searched over the
+-- How far down the AIM ray the thing being aimed at is, searched over the
 -- stretch of that ray between `near` and `far` and answering `far` when it is
--- clear. Solid world first, then creatures - creature parts are CanQuery =
+-- clear. The ray is handed in (origin, dir) rather than read off the camera,
+-- because in third person it is no longer the camera's optical axis: it is the
+-- ray through the CURSOR, which is the crosshair (see aimRay below). Solid
+-- world first, then creatures - creature parts are CanQuery =
 -- false (targeting has always been proximity, not raycast: ShotAim's header),
 -- so they cannot be raycast and are swept the same generous way
 -- CreatureService.raycastNearest sweeps them server-side. Resolving the DEPTH
@@ -216,7 +219,7 @@ local aimRadius: { [Model]: number } = setmetatable({}, { __mode = "k" }) :: any
 -- the shooter's back - a hull the raised camera is looking over, a creature
 -- standing between the lens and the body - and picking one of those as the
 -- thing being aimed at is how a shot ends up pointing at the camera.
-local function aimDistance(camCf: CFrame, near: number, far: number): number
+local function aimDistance(origin: Vector3, dir: Vector3, near: number, far: number): number
 	local best = far
 	local ignore = {}
 	local character = player.Character
@@ -234,7 +237,6 @@ local function aimDistance(camCf: CFrame, near: number, far: number): number
 	params.FilterDescendantsInstances = ignore
 	params.RespectCanCollide = true
 
-	local origin, dir = camCf.Position, camCf.LookVector
 	local hit = Workspace:Raycast(origin, dir * far, params)
 	if hit then
 		local depth = (hit.Position - origin).Magnitude
@@ -266,24 +268,80 @@ local function aimDistance(camCf: CFrame, near: number, far: number): number
 	return best
 end
 
+-- THE CURSOR IS THE AIM (user, 2026-09-08, on the first cursor-plus-centred-
+-- mark build: "you need to make it so that the cursor is the crosshair and the
+-- user shoots wherever their crosshair is"). So the ray the shot is resolved
+-- along is the ray through the cursor's pixel, not the camera's optical axis.
+--
+-- COORDINATE SPACE, which is the only thing that can go wrong here.
+-- UserInputService:GetMouseLocation() answers in VIEWPORT space - the top-left
+-- of the 3D viewport is (0, 0), the 36-pixel top bar is NOT subtracted - and
+-- Camera:ViewportPointToRay takes that same space (its ScreenPointToRay twin
+-- is the inset-offset one). The two are therefore paired with no arithmetic
+-- between them, and CrosshairController's ScreenGui carries IgnoreGuiInset =
+-- true so that the drawn mark lands on that same pixel. One space, three
+-- users, nothing added or subtracted anywhere: that is the whole convention,
+-- and any correction term added later to one of the three would be the bug.
+--
+-- FIRST PERSON IS UNTOUCHED BY CONSTRUCTION. It does not take this path at
+-- all - the early return hands back exactly the camera position and
+-- LookVector this function has always used - so the centre-locked, icon-
+-- hidden, viewmodel-scoped mode fires down its optical axis to the bit, with
+-- no dependence on where a locked cursor reports itself to be.
+local function aimRay(camera: Camera): (Vector3, Vector3)
+	local camCf = camera.CFrame
+	-- Two ways out, both to the optical axis this function has always used:
+	-- first person (above), and touch - where there is no pointer to aim, the
+	-- last touch being where a finger left the glass rather than where the
+	-- player is looking. CrosshairController parks its mark at the centre under
+	-- the same test, so the two agree there too.
+	if not CameraController.isThirdPerson() or not UserInputService.MouseEnabled then
+		return camCf.Position, camCf.LookVector
+	end
+	local view = camera.ViewportSize
+	local at = UserInputService:GetMouseLocation()
+	-- Clamped because the pointer can report a pixel outside the viewport (a
+	-- window edge, a drag leaving the client area) and a ray out of frame is a
+	-- shot the player never aimed.
+	local ray = camera:ViewportPointToRay(math.clamp(at.X, 0, view.X), math.clamp(at.Y, 0, view.Y))
+	-- Origin stays the CAMERA's position, not the ray's: ViewportPointToRay
+	-- starts on the near plane, and every distance below (`ahead`, `side`, the
+	-- search window) is measured from the lens. Only the DIRECTION is the
+	-- cursor's.
+	return camCf.Position, ray.Direction.Unit
+end
+
 -- The ray the server is asked to resolve: an origin it will accept, aimed at
 -- what the crosshair is over.
 local function shotRay(camera: Camera, ranged): (Vector3, Vector3)
 	local camCf = camera.CFrame
+	local camPos, dir = aimRay(camera)
 	local character = player.Character
 	local root = character and character:FindFirstChild("HumanoidRootPart")
 	if not root or not root:IsA("BasePart") then
-		return camCf.Position, camCf.LookVector -- no body to shoot from; first person's old behaviour
+		return camPos, dir -- no body to shoot from; fire straight down the aim ray
 	end
 	local origin = (root :: BasePart).Position + Vector3.new(0, ORIGIN_LIFT, 0)
 
-	-- Where the shooter stands on the camera ray: `ahead` studs down it and
-	-- `side` studs off it. In first person both are fractions of a stud; the
-	-- further back the rig puts the camera, the more of the ray is spent just
-	-- getting to the body, and that stretch is not the weapon's to spend.
-	local toShooter = origin - camCf.Position
-	local ahead = math.max(toShooter:Dot(camCf.LookVector), 0)
-	local side = (toShooter - camCf.LookVector * ahead).Magnitude
+	-- Where the shooter stands on the aim ray: `ahead` studs down it, and
+	-- `side` studs off the CAMERA's axis. In first person both are fractions of
+	-- a stud; the further back the rig puts the camera, the more of the ray is
+	-- spent just getting to the body, and that stretch is not the weapon's to
+	-- spend.
+	--
+	-- WHY `side` IS MEASURED OFF THE CAMERA AXIS AND NOT OFF `dir`. It exists to
+	-- size the guard below against the RIG's parallax - how far off its own
+	-- sightline the camera stands from the body - which is a property of the
+	-- mode and is a few studs in all four of them. Measured off the cursor ray
+	-- instead it would grow with the player's own aim: park the crosshair in a
+	-- corner of the birdseye Careenage and `side` becomes tens of studs, the
+	-- guard pushes the search window past the target, and the shot sails over
+	-- the very thing the crosshair is sitting on. The cursor decides WHERE to
+	-- look; the rig decides how much lead the look needs.
+	local toShooter = origin - camPos
+	local ahead = math.max(toShooter:Dot(dir), 0)
+	local rigAhead = math.max(toShooter:Dot(camCf.LookVector), 0)
+	local side = (toShooter - camCf.LookVector * rigAhead).Magnitude
 
 	-- So: search the ray from just in front of the shooter out to the end of
 	-- the weapon's reach, and hold the answer to that near edge. `to` can no
@@ -291,8 +349,8 @@ local function shotRay(camera: Camera, ranged): (Vector3, Vector3)
 	-- MIN_AIM_LEAD long by construction), so there is nothing left for the old
 	-- magnitude guard to catch.
 	local nearest = ahead + math.max(MIN_AIM_LEAD, side * AIM_LEAD_RATIO)
-	local depth = math.max(aimDistance(camCf, nearest, ahead + (ranged.range or 100)), nearest)
-	local aimAt = camCf.Position + camCf.LookVector * depth
+	local depth = math.max(aimDistance(camPos, dir, nearest, ahead + (ranged.range or 100)), nearest)
+	local aimAt = camPos + dir * depth
 	return origin, (aimAt - origin).Unit
 end
 
