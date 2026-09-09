@@ -1,8 +1,16 @@
 --!nonstrict
 -- WrackBodyController.luau
--- Draws Admiral Wrack, the Fleet-Eater: his flagship hove down on her
--- starboard bilge at 48 degrees with the drowned admiral still standing on
--- her stern.
+-- Draws Admiral Wrack, the Fleet-Eater: his flagship standing upright and
+-- keel-bedded in the shoal, with the drowned admiral on her quarterdeck.
+--
+-- REDESIGNED 2026-09-08, from the player, and all three notes land in this
+-- file as constants: the 48-degree careen is gone (she stands up), the ship
+-- is a little over half its old bulk (48 studs bow to stern and 34.4 to the
+-- sabre tip, against 87 and 72), and the four floating "batteries" are now
+-- four actual cannons built into the hull - `Wrack_CannonBow`,
+-- `Wrack_CannonStarboard`, `Wrack_CannonStern`, `Wrack_CannonPort`. The old
+-- `Wrack_Battery*` names are GONE from the mesh; anything still addressing
+-- them draws nothing.
 --
 -- THIS IS THE SIMPLEST OF THE SEVEN BODY CONTROLLERS, and deliberately so.
 -- Its six siblings all drive a RIG - a chain walked by arc length
@@ -78,7 +86,7 @@ local CREATURE_ID = "admiral_wrack"
 -- piece's offset from the real `Wrack_Base` it finds in the pack, so a
 -- re-export that shifts the ship cannot desync the imported body. This
 -- constant only has to keep the stand-in agreeing with the clone.
-local AUTHORED_ANCHOR = Vector3.new(2.8, 1.2, 0.6)
+local AUTHORED_ANCHOR = Vector3.new(-0.1, 0.7, 0.3)
 
 -- Every piece the assembly draws, in build order.
 --
@@ -99,10 +107,10 @@ local PIECES = {
 	"ShellLower",
 	"HeartGlow",
 	"HeartCage",
-	"BatteryDeck",
-	"BatteryKeel",
-	"BatteryStern",
-	"BatteryTop",
+	"CannonBow",
+	"CannonStarboard",
+	"CannonStern",
+	"CannonPort",
 	"Mast",
 	"Rigging",
 	"Sail",
@@ -119,113 +127,95 @@ local PIECES = {
 -- authored bounding box and its WR_* palette colour, read straight out of
 -- assets/boss_wrack.glb and assets/boss_gen.py. Blocks rather than shapes,
 -- but at the authored size AND the authored place, so an un-imported fight
--- shows a careened ship of the right bulk in the right spot (87 studs bow to
--- stern, 72 to the masthead) instead of a grey box.
+-- shows an upright ship of the right bulk in the right spot (48 studs bow to
+-- stern, 26.5 to the masthead, 34.4 to the sabre tip) instead of a grey box.
+--
+-- REGENERATED, never typed: these are the glb's own per-object bounding
+-- boxes, and the export is already in Roblox space (Blender x,y,z -> x,z,-y),
+-- so a row here is `at` = bbox centre and `size` = bbox extent, verbatim. The
+-- redesign moved every one of them; hand-editing a subset is how a stand-in
+-- ship ends up half in the old careen and half in the new one.
 local AUTHORED = {
-	Base = { at = Vector3.new(2.8, 1.2, 0.6), size = Vector3.new(87.1, 4.5, 47), color = Color3.fromRGB(62, 59, 53) },
-	Hull = { at = Vector3.new(-0.5, 16.8, 0.1), size = Vector3.new(67, 44.2, 44.8), color = Color3.fromRGB(30, 35, 41) },
+	Base = { at = Vector3.new(-0.1, 0.7, 0.3), size = Vector3.new(53.5, 2.8, 26.8), color = Color3.fromRGB(62, 59, 53) },
+	Hull = { at = Vector3.new(-0.5, 7.8, 0.3), size = Vector3.new(41, 13.5, 14.5), color = Color3.fromRGB(30, 35, 41) },
 	Strakes = {
-		at = Vector3.new(-0.5, 24.8, -1.2),
-		size = Vector3.new(66.2, 39.1, 46.7),
+		at = Vector3.new(-0.5, 8.2, 0),
+		size = Vector3.new(40.3, 14.5, 13.8),
 		color = Color3.fromRGB(59, 67, 74),
 	},
-	Keel = {
-		at = Vector3.new(-0.5, 11.1, 5.9),
-		size = Vector3.new(71.8, 31.8, 33.4),
-		color = Color3.fromRGB(25, 29, 34),
-	},
-	Crust = {
-		at = Vector3.new(-0.3, 18.9, 12.1),
-		size = Vector3.new(63.1, 28.9, 22.3),
-		color = Color3.fromRGB(97, 104, 90),
-	},
+	Keel = { at = Vector3.new(-0.4, 6.4, 0), size = Vector3.new(45.3, 13.1, 10.3), color = Color3.fromRGB(25, 29, 34) },
+	Crust = { at = Vector3.new(-0.5, 4, -0.1), size = Vector3.new(38, 7.6, 15.3), color = Color3.fromRGB(97, 104, 90) },
 	Ribs = {
-		at = Vector3.new(4, 14.7, 2.7),
-		size = Vector3.new(24.8, 37.3, 37),
+		at = Vector3.new(3, 5.9, -0.1),
+		size = Vector3.new(15.2, 10.3, 11.8),
 		color = Color3.fromRGB(218, 212, 189),
 	},
-	ShellUpper = { at = Vector3.new(4, 21.3, 6.8), size = Vector3.new(20, 30, 30), color = Color3.fromRGB(30, 35, 41) },
-	ShellLower = {
-		at = Vector3.new(4, 9.8, 0.3),
-		size = Vector3.new(20, 29.4, 38.9),
+	ShellUpper = {
+		at = Vector3.new(3, 6.6, 3.3),
+		size = Vector3.new(12, 11.4, 6.7),
 		color = Color3.fromRGB(30, 35, 41),
 	},
+	ShellLower = { at = Vector3.new(3, 6.6, -2), size = Vector3.new(12, 11.5, 9.2), color = Color3.fromRGB(30, 35, 41) },
 	HeartGlow = {
-		at = Vector3.new(3, 14.8, 3.1),
-		size = Vector3.new(4.8, 7.1, 5),
+		at = Vector3.new(3, 6.8, 0),
+		size = Vector3.new(3.6, 5.4, 3.8),
 		color = Color3.fromRGB(255, 199, 107),
 	},
-	HeartCage = {
-		at = Vector3.new(3, 16.7, -0.1),
-		size = Vector3.new(8.4, 11.8, 11.6),
+	HeartCage = { at = Vector3.new(3, 7.2, 0), size = Vector3.new(5.4, 7, 4), color = Color3.fromRGB(186, 132, 53) },
+	CannonBow = {
+		at = Vector3.new(17.6, 12.2, 1.1),
+		size = Vector3.new(13.7, 6.3, 8.4),
 		color = Color3.fromRGB(186, 132, 53),
 	},
-	BatteryDeck = {
-		at = Vector3.new(-19.5, 33.7, -8.7),
-		size = Vector3.new(22.2, 15, 16.3),
+	CannonStarboard = {
+		at = Vector3.new(12.5, 10.3, -6.3),
+		size = Vector3.new(9.8, 10.5, 11.5),
 		color = Color3.fromRGB(186, 132, 53),
 	},
-	BatteryKeel = {
-		at = Vector3.new(20.2, 10.1, 17.9),
-		size = Vector3.new(17.2, 13, 12.9),
+	CannonStern = {
+		at = Vector3.new(-18.9, 9.6, -1),
+		size = Vector3.new(11.3, 8.3, 10.4),
 		color = Color3.fromRGB(186, 132, 53),
 	},
-	BatteryStern = {
-		at = Vector3.new(-33.7, 29.2, -14.8),
-		size = Vector3.new(10.4, 18.8, 16.5),
-		color = Color3.fromRGB(186, 132, 53),
-	},
-	BatteryTop = {
-		at = Vector3.new(37.2, 27.8, -12),
-		size = Vector3.new(8.6, 7.9, 8.4),
+	CannonPort = {
+		at = Vector3.new(-11, 10.5, 6.9),
+		size = Vector3.new(9.8, 10.5, 11.5),
 		color = Color3.fromRGB(186, 132, 53),
 	},
 	Mast = {
-		at = Vector3.new(16.3, 24.9, -7.3),
-		size = Vector3.new(56.8, 48, 49.5),
+		at = Vector3.new(10.5, 14.5, 1.2),
+		size = Vector3.new(37.8, 26.8, 23.5),
 		color = Color3.fromRGB(96, 92, 85),
 	},
 	Rigging = {
-		at = Vector3.new(4.8, 26.6, -8),
-		size = Vector3.new(75.8, 43.7, 43.3),
+		at = Vector3.new(3.5, 13.8, 1.2),
+		size = Vector3.new(49.2, 23.8, 23.6),
 		color = Color3.fromRGB(79, 73, 61),
 	},
 	Sail = {
-		at = Vector3.new(-9, 22.8, -16.5),
-		size = Vector3.new(4.4, 47.9, 21.8),
+		at = Vector3.new(-6.5, 16, 2.4),
+		size = Vector3.new(3.4, 12.6, 21.4),
 		color = Color3.fromRGB(150, 156, 163),
 	},
-	Coat = {
-		at = Vector3.new(-23.8, 39.8, -10.4),
-		size = Vector3.new(12, 27.6, 17),
-		color = Color3.fromRGB(30, 37, 62),
-	},
-	Arm = {
-		at = Vector3.new(-23.6, 49.4, -8.9),
-		size = Vector3.new(9.2, 23.4, 18.9),
-		color = Color3.fromRGB(30, 37, 62),
-	},
+	Coat = { at = Vector3.new(-13.9, 18.3, -0.4), size = Vector3.new(6, 13.8, 8.5), color = Color3.fromRGB(30, 37, 62) },
+	Arm = { at = Vector3.new(-13.8, 23.1, 0.3), size = Vector3.new(4.6, 11.7, 9.4), color = Color3.fromRGB(30, 37, 62) },
 	Sabre = {
-		at = Vector3.new(-19.6, 65.2, -14.5),
-		size = Vector3.new(4.5, 13.7, 4.5),
+		at = Vector3.new(-11.8, 31, -2.5),
+		size = Vector3.new(2.2, 6.9, 2.2),
 		color = Color3.fromRGB(189, 196, 201),
 	},
 	Facings = {
-		at = Vector3.new(-24, 49.8, -8.3),
-		size = Vector3.new(10.1, 24.5, 17.9),
+		at = Vector3.new(-14, 23.3, 0.6),
+		size = Vector3.new(5.1, 12.3, 9),
 		color = Color3.fromRGB(201, 177, 102),
 	},
-	Skull = {
-		at = Vector3.new(-25.1, 55.2, -7.3),
-		size = Vector3.new(7.9, 9.2, 6.8),
-		color = Color3.fromRGB(218, 212, 189),
-	},
+	Skull = { at = Vector3.new(-14.5, 26, 1.1), size = Vector3.new(4, 4.6, 3.4), color = Color3.fromRGB(218, 212, 189) },
 	EyeGlow = {
-		at = Vector3.new(-23.5, 56.4, -7.3),
-		size = Vector3.new(2.1, 1.8, 5),
+		at = Vector3.new(-13.8, 26.6, 1.1),
+		size = Vector3.new(1, 0.9, 2.5),
 		color = Color3.fromRGB(255, 204, 92),
 	},
-	Hat = { at = Vector3.new(-25.8, 59, -7.3), size = Vector3.new(7.5, 4.3, 15.7), color = Color3.fromRGB(22, 22, 27) },
+	Hat = { at = Vector3.new(-14.9, 27.9, 1.1), size = Vector3.new(3.7, 2.1, 7.8), color = Color3.fromRGB(22, 22, 27) },
 }
 
 -- The pieces that must burn, by the marker boss_gen puts in the OBJECT name
@@ -268,36 +258,45 @@ local ATTR_EXPOSED = "Exposed"
 
 -- THE HINGE, in boss space: both plates turn about boss-local X through here.
 --
--- boss_gen prints this as `_wr_at(0, 0, 0)` - the ship-space origin, which is
--- the keel rabbet - and its HANDOFF states it in BLENDER space as
--- (0, -15.5, 3.2), being WR_SHIP_Y / WR_SHIP_Z. The export maps Blender
--- (x, y, z) -> Roblox (x, z, -y), so in the space this controller works in it
--- is (0, 3.2, 15.5). Taken from the handoff verbatim it would hinge about a
--- point fifteen studs underground.
+-- Upright, the keel IS the boss-local X axis, so the hinge is simply the keel
+-- rabbet on the centreline: boss_gen's WR_KEEL_Z, Blender (0, 0, 1.1). The
+-- export maps Blender (x, y, z) -> Roblox (x, z, -y), so here it is
+-- (0, 1.1, 0), and boss_gen's HANDOFF now prints BOTH spellings for exactly
+-- this reason - the careened version printed only the Blender one and taking
+-- it verbatim would have hinged about a point fifteen studs underground.
 --
 -- Stated in boss space (origin = the boss origin at sand level) and converted
 -- to assembly-local at use, because `relative` is measured from Wrack_Base.
-local HINGE = Vector3.new(0, 3.2, 15.5)
+local HINGE = Vector3.new(0, 1.1, 0)
 
 -- How far each plate swings at full open, from boss_gen's WR_OPEN_UPPER_DEG /
 -- WR_OPEN_LOWER_DEG. Opposite signs about the same axis is what makes it a
 -- ribcage splitting rather than a lid lifting.
 --
--- The signs are the authored ones and they are load-bearing: swung the other
--- way the lower plate closes ON the heart-lantern (its centre moves from 5.8
--- studs away to 4.6) instead of clearing it, so the punish window would seal
--- the very thing it exists to expose. As authored, the plates separate from
--- 13.2 studs apart to 35.1, and both retreat from the heart (to 26.6 and
--- 15.4) - the lantern is revealed by the geometry moving off it, which is why
--- nothing here touches its transparency or its material.
+-- Upright these are a PORT plate and a STARBOARD plate, so the two angles are
+-- equal and opposite and the hull opens along its own centreline like double
+-- doors - which is the read the careened version could not have had, because
+-- its low plate swung into the sand. 50 degrees is the sand's number, not a
+-- taste call: past ~55 the port rail goes through the shoal.
+--
+-- The signs are the authored ones and they are load-bearing. Re-derived for
+-- this geometry: as authored the plate centres separate from 5.3 studs apart
+-- to 11.9, and BOTH retreat from the heart-lantern at (3, 6.4, 0) - upper
+-- 3.3 -> 7.7, lower 2.0 -> 6.4. Swung the other way the upper plate closes ON
+-- the lantern instead (3.3 -> 2.2) and crosses into its sister, so the punish
+-- window would seal the very thing it exists to expose. The lantern is
+-- revealed by the geometry moving off it, which is why nothing here touches
+-- its transparency or its material.
 local SHELL_SWING = {
-	ShellUpper = math.rad(70),
-	ShellLower = math.rad(-35),
+	ShellUpper = math.rad(50),
+	ShellLower = math.rad(-50),
 }
 
 -- How fast the swing eases. Deliberately slow: this is thirty studs of hull
 -- plate, and PyreliskBodyController's note applies with more force here -
 -- something this big that snaps between states reads as a cut, not a swing.
+-- (Twelve studs of plate now rather than thirty, but they swing through the
+-- same arc in the same time - the rate is about legibility, not mass.)
 -- At this rate the hull is ~95% open in 1.2s, comfortably inside the 4.0s of
 -- true silence `staggerFor` buys, so the plates finish moving while the guns
 -- are still quiet and the opening is legible before the burst window starts.
