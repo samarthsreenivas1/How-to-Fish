@@ -5,6 +5,9 @@
 -- repeatable), "Spawn Creature" (a rarity-coloured scrolling list of every
 -- creature; a click asks AdminService to spawn it in front of you), "Travel
 -- To Island" (every island; AdminTeleport, skipping the normal travel gates)
+-- "Start Boss Fight" (every boss in Bosses.items; AdminBossStart carries you to
+-- the arena and raises it from scratch, skipping the level / hearts / gear /
+-- capstone-bait ritual a real summon costs - the playtest entry point)
 -- and "Flight" (F) - a client-side camera-steered flythrough for surveying
 -- the voyage-arc map (see the flight section).
 --
@@ -22,6 +25,7 @@ local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Bosses = require(Shared.Data.Bosses)
 local Creatures = require(Shared.Data.Creatures)
 local Islands = require(Shared.Config.Islands)
 local Rarity = require(Shared.Modules.Rarity)
@@ -67,6 +71,7 @@ local MARGIN = 24
 local gui: ScreenGui?
 local spawnList: Frame?
 local travelList: Frame?
+local bossList: Frame?
 local flightButton: TextButton?
 local open = false
 
@@ -341,6 +346,49 @@ local function buildTravelList(screen: ScreenGui)
 	travelList = panel
 end
 
+-- THE BOSS PLAYTEST LIST: one row per boss, in saga order.
+--
+-- BUILT FROM THE DATA, never from a list typed here. `Bosses.items` is a
+-- dictionary (no `Bosses.order`), so the reading order comes from the world's
+-- own: Islands.order for the saga, then every `site` island (the Maelstrom,
+-- which is deliberately out of Islands.order) - the same two-part walk the
+-- travel list above does, for the same reason. Add an eighth boss to
+-- Bosses.luau and its button appears here with no edit to this file; the only
+-- boss that could go missing is one whose islandId names no island at all,
+-- which is already a broken row.
+local function bossOrder(): { string }
+	local ids = {}
+	local islandIds = table.clone(Islands.order)
+	for id, entry in Islands.items do
+		if entry.site then
+			table.insert(islandIds, id)
+		end
+	end
+	for _, islandId in islandIds do
+		local boss = Bosses.byIsland[islandId]
+		if boss then
+			table.insert(ids, boss.id)
+		end
+	end
+	return ids
+end
+
+local function buildBossList(screen: ScreenGui)
+	local panel, body = floatingPanel(screen, "BossList", "Start Boss Fight", "BOSS", MARGIN + PANEL_WIDTH + 12, 380)
+	panel.Visible = false
+	local scroll = Kit.scroll(body, { name = "List", gap = 4, padding = 2 })
+	for i, id in bossOrder() do
+		local boss = Bosses.items[id]
+		pickerRow(scroll, i, boss.shortName, C.red, Kit.monogram(boss.shortName), function()
+			Remotes.AdminBossStart:FireServer(id)
+			-- Close, like the travel rows do: the server is about to carry us
+			-- out to the arena and the rise is the whole point of the button.
+			AdminController.setOpen(false)
+		end)
+	end
+	bossList = panel
+end
+
 local function buildPanel()
 	if gui then
 		return
@@ -354,7 +402,7 @@ local function buildPanel()
 	screen.Enabled = false
 	screen.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
-	local rows = #BUTTONS + 3 -- + spawn / travel / flight
+	local rows = #BUTTONS + 4 -- + spawn / travel / boss / flight
 	local _, body = floatingPanel(screen, "Panel", "Admin", "P", MARGIN, 52 + rows * 50 + 12)
 	Kit.listLayout(body, 6)
 
@@ -388,9 +436,17 @@ local function buildPanel()
 		textSize = 15,
 		size = UDim2.new(1, 0, 0, 44),
 	})
+	local bossButton = Kit.button(body, {
+		name = "BossToggle",
+		order = #BUTTONS + 3,
+		text = "Start Boss Fight",
+		style = "danger",
+		textSize = 15,
+		size = UDim2.new(1, 0, 0, 44),
+	})
 	local fly = Kit.button(body, {
 		name = "FlightToggle",
-		order = #BUTTONS + 3,
+		order = #BUTTONS + 4,
 		text = "Flight  (F)",
 		style = "primary",
 		textSize = 15,
@@ -401,24 +457,36 @@ local function buildPanel()
 
 	buildSpawnList(screen)
 	buildTravelList(screen)
+	buildBossList(screen)
 
-	-- The two pickers share a slot, so opening one closes the other.
-	spawnButton.Activated:Connect(function()
-		if travelList then
-			travelList.Visible = false
+	-- The three pickers share ONE slot beside the panel, so opening any of them
+	-- closes the other two. Driven off a list rather than three hand-written
+	-- pairs: with two panels the "hide the other one" line was still readable,
+	-- with three it would be six lines that have to stay in sync, and the fourth
+	-- picker is the one that quietly forgets a hide and leaves two panels
+	-- stacked on the same pixels.
+	local function toggler(which: () -> Frame?)
+		return function()
+			local target = which()
+			for _, panel in { spawnList, travelList, bossList } do
+				if panel and panel ~= target then
+					panel.Visible = false
+				end
+			end
+			if target then
+				target.Visible = not target.Visible
+			end
 		end
-		if spawnList then
-			spawnList.Visible = not spawnList.Visible
-		end
-	end)
-	travelButton.Activated:Connect(function()
-		if spawnList then
-			spawnList.Visible = false
-		end
-		if travelList then
-			travelList.Visible = not travelList.Visible
-		end
-	end)
+	end
+	spawnButton.Activated:Connect(toggler(function()
+		return spawnList
+	end))
+	travelButton.Activated:Connect(toggler(function()
+		return travelList
+	end))
+	bossButton.Activated:Connect(toggler(function()
+		return bossList
+	end))
 
 	gui = screen
 	screen.Parent = player:WaitForChild("PlayerGui")
@@ -440,6 +508,9 @@ local function setOpen(state: boolean)
 		end
 		if travelList then
 			travelList.Visible = false
+		end
+		if bossList then
+			bossList.Visible = false
 		end
 	end
 	CameraController.setCursorFree(state)

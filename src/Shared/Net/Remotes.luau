@@ -115,6 +115,17 @@ local DEFS = {
 	-- other Admin* remotes, so it existing for everyone is safe.
 	{ name = "AdminTeleport", class = "RemoteEvent" }, -- client -> server: islandId
 
+	-- Admin boss playtest (AdminController -> AdminService -> BossService).
+	-- One click starts ANY boss from scratch: it tears down whatever fight was
+	-- already up on that island, carries the caller to the arena, and raises the
+	-- boss with every summon gate (level, hearts, rod, weapon, the capstone bait,
+	-- even "already defeated") skipped. Everything downstream of the gate is the
+	-- real thing - participants, party scaling, rewards, HUD, parts ring - so
+	-- what you test is the shipping fight, not a rehearsal of it. Admin-gated
+	-- server-side exactly like the other Admin* remotes, so it existing for
+	-- everyone is safe.
+	{ name = "AdminBossStart", class = "RemoteEvent" }, -- client -> server: bossId
+
 	-- The boat (BoatController -> BoatService). One remote: "summon" builds or
 	-- recalls the player's boat to the nearest shoreline, "dismiss" parks it
 	-- away. Boat state itself replicates as attributes on the boat Model
@@ -133,7 +144,10 @@ local DEFS = {
 	-- (WeatherController); the gameplay (spawner bias) stays server-side.
 	-- (EruptionService and its "eruption" kind were REMOVED with the volcano
 	-- restart, 2026-08-27, by user order - don't reintroduce unprompted.)
-	{ name = "WorldEvent", class = "RemoteEvent" }, -- server -> clients: { kind, islandId, active }
+	-- server -> clients: { kind, islandId, active }. Kinds: "blizzard" (a
+	-- WeatherService window over the ice island) and "arrival" (WorldService /
+	-- BossService: land in the island's or lair's mood without a fade-in).
+	{ name = "WorldEvent", class = "RemoteEvent" },
 
 	-- NPCs (NpcService <-> NpcDialogController). The server pushes a dialog
 	-- PANE ({ npcId, name, title, pane, lines, choices }) when a prompt is

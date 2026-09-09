@@ -9,6 +9,11 @@
 -- exactly as a real reward would - the HUD and crafting menus update on
 -- their own off the same attributes / MaterialsUpdated push.
 --
+-- Beyond grants it also carries the panel's other cheats: spawn a creature in
+-- front of you, travel to any island past the unlock gates, and start any boss
+-- fight from scratch (onBossStart -> BossService.adminStart, the playtest entry
+-- point - see its note for the gates it deliberately skips).
+--
 -- Server-authoritative gate: the AdminGrant remote exists for everyone, but
 -- a grant only applies for Studio play, a UserId in ADMIN_USER_IDS, or the
 -- place's own creator - so it can't be abused in a live server.
@@ -35,6 +40,9 @@ local WorldService = require(script.Parent.WorldService)
 local InventoryService = require(script.Parent.InventoryService)
 local BaitService = require(script.Parent.BaitService)
 local BoatService = require(script.Parent.BoatService)
+-- Safe to require from here: BossService knows nothing about AdminService, so
+-- there is no cycle - this is a one-way dependency, like every other above.
+local BossService = require(script.Parent.BossService)
 
 local AdminService = {}
 
@@ -172,6 +180,30 @@ local function onTeleport(player: Player, islandId)
 	WorldService.teleportToIsland(player, islandId)
 end
 
+-- THE PLAYTEST BUTTON: start any boss fight, from scratch, from anywhere.
+--
+-- The panel's BOSSES section fires this with a boss id and the fight begins -
+-- no level, no hearts, no rod, no weapon, no capstone bait, no standing on the
+-- right island, and no "already defeated" refusal. That whole ritual is the
+-- right price for a player and the wrong one for iteration: checking a phase
+-- change or a new telegraph should not cost a fresh save and a shopping trip.
+--
+-- Everything downstream of that gate is untouched - BossService.adminStart
+-- reuses the real summon's own path, so the reset, the ride to the arena and
+-- the fight itself (participants, party scaling, rewards, HUD, parts ring) are
+-- the shipping ones. See the long note on adminStart for what it deliberately
+-- skips and why. Same isAdmin gate as every other Admin* remote: in a live
+-- server a non-admin caller is dropped here exactly as onGrant/onSpawn drop it.
+local function onBossStart(player: Player, bossId)
+	if not isAdmin(player) or type(bossId) ~= "string" then
+		return
+	end
+	if not Bosses.items[bossId] then
+		return
+	end
+	BossService.adminStart(player, bossId)
+end
+
 local function flagAdmin(player: Player)
 	player:SetAttribute(ADMIN_ATTRIBUTE, isAdmin(player))
 end
@@ -180,6 +212,7 @@ function AdminService.init()
 	Remotes.AdminGrant.OnServerEvent:Connect(onGrant)
 	Remotes.AdminSpawn.OnServerEvent:Connect(onSpawn)
 	Remotes.AdminTeleport.OnServerEvent:Connect(onTeleport)
+	Remotes.AdminBossStart.OnServerEvent:Connect(onBossStart)
 end
 
 function AdminService.start()
