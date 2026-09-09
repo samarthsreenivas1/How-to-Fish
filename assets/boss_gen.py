@@ -3051,6 +3051,11 @@ WR_ROPE = (0.310, 0.286, 0.239)      # shrouds and tackle
 WR_CANVAS = (0.588, 0.612, 0.639)    # sail rags - cooler than WK_CANVAS
 WR_BED = (0.243, 0.231, 0.208)       # the bedding of spoil and shattered timber
 
+WR_LADY = (0.792, 0.831, 0.855)      # the figurehead: a cold sea-glass white,
+                                     # deliberately NOT WR_BONE's warm cream -
+                                     # she is a ghost, not more ribcage
+
+
 # --- ONE SPACE --------------------------------------------------------------
 #
 # She stands upright, so there is no ship space any more - the hull is
@@ -3241,6 +3246,37 @@ def _wr_deck(x):
     return WR_KEEL_Z + WR_SECTION[5][1] * _wr_station(x)[2]
 
 
+
+def _wr_deck_at(x, y):
+    """The z of the DECK SURFACE at (x, y) - the crown ACROSS the beam.
+
+    `_wr_deck(x)` is the CENTRELINE crown, which is right for anything stood
+    amidships and wrong for anything in a waterway: WR_SECTION drops from 0.94
+    of the sheer at the centreline to 0.90 at index 4, so a hatch seated on
+    `_wr_deck(x)` alone floats by up to half a stud at the ship's side. This
+    interpolates the same three section points the deck run is built from.
+    """
+    half, _floor, sheer = _wr_station(x)
+    frac = abs(y) / half if half > 1e-6 else 0.0
+    run = ((0.000, 0.94), (0.700, 0.90), (0.840, 1.00))
+    if frac >= run[-1][0]:
+        return WR_KEEL_Z + run[-1][1] * sheer
+    for (f0, z0), (f1, z1) in zip(run, run[1:]):
+        if f0 <= frac <= f1:
+            t = (frac - f0) / (f1 - f0)
+            return WR_KEEL_Z + (z0 + (z1 - z0) * t) * sheer
+    return WR_KEEL_Z + run[0][1] * sheer
+
+
+# The deck furniture, hoisted OUT of build_wr_strakes so the builder and the
+# clearance checks below read the SAME table. They used to be a literal inside
+# the builder and a copy inside the checker, which is this project's most
+# common bug shape - a value that exists in one place and is remembered in
+# another. (x, half-length, half-width) and (x, y).
+WR_COAMINGS = ((-17.5, 1.8, 2.4), (-11.0, 1.5, 2.0), (11.5, 1.6, 2.2), (16.0, 1.2, 1.6))
+WR_BITTS = ((-8.5, -2.0), (-8.5, 2.0), (10.0, -1.6), (10.0, 1.6))
+
+
 def _wr_ring(x, scale=1.0, indices=None):
     """One hull cross-section at station `x`, in boss space.
 
@@ -3419,13 +3455,13 @@ def build_wr_strakes(rng):
     # staged sheet of the old model showed - because a plane that big gives
     # the eye no scale. These are what make it a ship's deck instead of a lid.
     # Square to the world now, because the deck is.
-    for x, run, wide in ((-17.5, 1.8, 2.4), (-11.0, 1.5, 2.0), (11.5, 1.6, 2.2), (16.0, 1.2, 1.6)):
+    for x, run, wide in WR_COAMINGS:
         deck = _wr_deck(x)
         for dx in (-run, run):
             box(bm, (x + dx, 0.0, deck + 0.5), (0.6, wide * 2.0, 1.1))
         for dy in (-wide, wide):
             box(bm, (x, dy, deck + 0.5), (run * 2.0, 0.6, 1.1))
-    for x, y in ((-8.5, -2.0), (-8.5, 2.0), (10.0, -1.6), (10.0, 1.6)):
+    for x, y in WR_BITTS:
         box(bm, (x, y, _wr_deck(x) + 0.8), (0.75, 0.75, 1.8))
     _wr_tube(bm, (-9.8, 0.0, _wr_deck(-9.8)), (-9.8, 0.0, _wr_deck(-9.8) + 2.4), 1.3, 1.6, 9)
     # The channels: the shelves the shrouds set up from, on both sides now.
@@ -3642,12 +3678,90 @@ def build_wr_heart_cage(rng):
 #
 # All four clear the waist (-3 .. +9) - a gun stepped on a shell plate would
 # fly apart when the hold opens, the same rule the mainmast obeys.
-WR_GUNS = {
-    "Bow": [((14.5, -1.4, 12.2), (23.6, -1.4, 12.6), 1.55)],
-    "Starboard": [((12.5, 2.8, 9.0), (12.5, 11.8, 9.0), 1.55)],
-    "Stern": [((-15.5, 1.3, 9.5), (-24.4, 1.3, 9.2), 1.55)],
-    "Port": [((-11.0, -3.4, 9.2), (-11.0, -12.4, 9.2), 1.55)],
-}
+# WHERE THEY ARE AND WHY - THE 2026-09-09 CORNER REWORK, and it was one note
+# from the player: the four guns move to the ship's FOUR CORNERS, mounted
+# OUTBOARD on sponsons, so a player must walk around the ship to shoot all
+# four and can never shoot a far one through the hull.
+#
+# THE OLD LAYOUT'S PREMISE WAS MEASURABLY FALSE. It put the four on four
+# bearings and leaned on the hull to hide the far pair ("an upright hull gives
+# you OCCLUSION for free"). Traced from the birdseye eye - which floats 27.3
+# studs up - a sight line to a far gun clears a 13.5-stud hull by a full stud
+# at r 132. The hull never occluded anything at the height this fight is
+# actually watched from; the old note was never checked against the camera.
+#
+# So the occlusion is now the guns' OWN: each stands in a three-sided
+# CASEMATE (back wall + two cheeks) whose mouth faces outboard. See
+# WR_CASEMATE_* and `_wr_assert_sponsons` - the property is measured on every
+# build, not asserted in a comment.
+#
+# Canonical order EVERYWHERE (WR_GUNS, the mounts handoff, the client's
+# PIECES): BowStbd, BowPort, SternStbd, SternPort.
+WR_GUN_ORDER = ("BowStbd", "BowPort", "SternStbd", "SternPort")
+WR_GUN_BEARING = {"BowStbd": 30.0, "BowPort": -30.0, "SternStbd": 150.0, "SternPort": -150.0}
+WR_GUN_R = 19.0        # the mount, out along its own bearing
+WR_GUN_HALF = 4.5      # half the barrel's length
+WR_GUN_BORE = 1.55
+WR_GUN_Z = {"BowStbd": 13.2, "BowPort": 13.2, "SternStbd": 14.0, "SternPort": 14.0}
+
+
+def _wr_gun_axis(name):
+    """(unit bearing, unit lateral) for one corner gun, in plan."""
+    b = math.radians(WR_GUN_BEARING[name])
+    return Vector((math.cos(b), math.sin(b), 0.0)), Vector((-math.sin(b), math.cos(b), 0.0))
+
+
+def _wr_gun_span(name):
+    n, _u = _wr_gun_axis(name)
+    mid = n * WR_GUN_R + Vector((0.0, 0.0, WR_GUN_Z[name]))
+    return (tuple(mid - n * WR_GUN_HALF), tuple(mid + n * WR_GUN_HALF), WR_GUN_BORE)
+
+
+WR_GUNS = {name: [_wr_gun_span(name)] for name in WR_GUN_ORDER}
+
+# THE CASEMATES. A flat inboard bulkhead CANNOT do this job at any size:
+# swept from half-width 4 to 34 it goes straight from "leaks a third gun on 92
+# of 144 samples" to "eats its own gun on 56 of them", with no window between.
+# Cheeks bound each gun's arc with the gun's OWN box and so cannot grow wide
+# enough to swallow it.
+WR_CASEMATE_R_BACK = 13.0
+WR_CASEMATE_HW = 4.0
+WR_CASEMATE_R_OUT = 23.0
+# THE BAND TOP IS 19.0, NOT 17.5, AND IT IS THE THIRD LEAK THIS DESIGN HAD.
+# The stern mounts sit at z 14.0 and the capture sphere reaches 4.0, so the
+# hittable volume tops out at 18.0 - half a stud PROUD of a 17.5 plate. A
+# third gun was reachable straight over its own casemate on 29 of 144
+# bearings. The first leak was lateral (a flat bulkhead), the second radial
+# (the sphere past the cheek mouth), this one vertical; each was invisible to
+# the check that caught the last. Control 6 below drops the band back to 17.5
+# and must FIRE.
+WR_CASEMATE_Z = (8.5, 19.0)
+# The window, re-derived under the CAPTURE-SPHERE model (see below):
+# mouth 21.5 leaks a third gun on 32 of 144 samples, 22.0 on 4; 24.5 blinds 2
+# and eats 2. 22.5..24.0 passes, and 23.0 sits mid-window.
+# Filled by build_wr_sponsons from the plates' OWN vertices, and read by the
+# guard. Measuring the exported geometry rather than the constants that made
+# it is the whole point: a constant says what was intended, a vertex says what
+# was built.
+WR_CASEMATE_MEASURED = {}
+WR_CASEMATE_WINDOW = {"back_r": (12.0, 13.0), "cheek_hw": (3.2, 4.0), "out_r": (22.5, 24.0)}
+
+# THE PLAYER'S SHOT IS A SPHERE, NOT A RAY, AND THAT IS THE WHOLE PROBLEM.
+# `Creatures.items.wrack_battery.shotRadius` is a proximity capture about the
+# MOUNT - so the hittable volume is a ball, and if that ball is bigger than
+# the aperture shielding it, it pokes out past the cheeks and every gun is
+# shootable from every bearing. Measured: at radius 5.0, 80 of 144 samples
+# could hit three or more guns THROUGH the ship. The governing constraint is
+# simply `shotRadius <= WR_CASEMATE_HW`.
+#
+# THIS VALUE IS A COPY and there is no way to make it not be one - the other
+# half lives in Luau. It MUST equal Creatures.items.wrack_battery.shotRadius.
+# The digest prints it every build so a drift shows up in the log instead of
+# in the fight, and check_content cross-checks the two files.
+WR_BATTERY_SHOT_RADIUS = 4.0
+WR_SIGHT_RINGS = (88.0, 132.0)
+WR_SHOT_Z = 4.5      # the player's muzzle: HumanoidRootPart + 1.5
+WR_EYE_Z = 27.3      # CameraController's birdseye float
 
 # Where the bowsprit runs - the beakhead out to the broken cap. It rides
 # ABOVE the bow chaser (which is why the chaser is 1.4 studs to port and 2.6
@@ -3765,97 +3879,161 @@ def _wr_portframe(bm, muzzle, n, bore, lid_up=True):
             _wr_tube(bm, root - n * 0.4, root + n * half * 0.45, 0.26, 0.20, 4)
 
 
-def build_wr_cannon_bow(rng):
-    """CANNON 1 of 4, bearing +X. The BOW CHASER: the long gun run out over
-    the beakhead on a slide rather than a truck carriage, because a chase gun
-    fires down the ship's own axis and has nowhere to recoil sideways. The
-    forecastle rail frames it and the bowsprit crosses above it."""
-    bm = bmesh.new()
-    breech, muzzle, bore = WR_GUNS["Bow"][0]
-    n, length = _wr_gun(bm, breech, muzzle, bore)
-    b = Vector(breech)
-    deck = _wr_deck(b.x)
-    # The SLIDE: a long baulk down the centreline with the gun's bed on it,
-    # bolted through the forecastle deck into the knees below.
-    _wr_tube(bm, (b.x - 3.2, b.y, deck + 0.6), (b.x + length * 0.75, b.y, deck + 0.6), 1.1, 0.9, 6)
-    for along in (-2.2, 0.4, 3.0, 5.6):
-        box(bm, (b.x + along, b.y, deck + 0.2), (0.7, bore * 3.0, 1.0))
-    # Cheeks either side of the breech, and the training tackle back to the bitts.
-    for s in (-1, 1):
-        box(bm, (b.x + 0.6, b.y + s * bore * 1.9, deck + 1.6), (2.6, 0.5, 2.0))
-    tail = b - n * 1.1
-    for s in (-1, 1):
-        eye = Vector((b.x - 3.6, b.y + s * 2.4, deck + 0.9))
-        _wr_tube(bm, tail, eye, 0.2, 0.2, 4)
-    # The beakhead rails the barrel runs out between - the ship's own timber
-    # closing round the gun, which is the whole "part of the ship" read.
-    for s in (-1, 1):
-        _wr_tube(
-            bm,
-            (b.x + 1.0, s * 2.6, deck + 1.2),
-            (Vector(muzzle).x + 0.8, s * 1.4, deck + 2.4),
-            0.5,
-            0.36,
-            5,
-        )
-    # NO PORT FRAME. A chase gun over the beakhead does not come through a
-    # port - it fires over the head rails, which are the two timbers above,
-    # and a square frame out here stood four studs proud of the forecastle
-    # rail and read as a window hanging in the air off the bow.
-    return _wr_finish("Wrack_CannonBow", bm, WR_BRASS, "M_Wrack_AdmGun")
+def _wr_corner_gun(name, rng):
+    """One corner gun: the piece, its slide, and the sponson deck under it.
 
-
-def build_wr_cannon_stern(rng):
-    """CANNON 2 of 4, bearing -X. The STERN CHASER, run out through the
-    transom below the taffrail - the ornate one, in the carved gallery, and
-    the one directly under the Admiral's boots."""
+    The CASEMATE is not built here - it is timber and this object is brass,
+    and a door-sized brass panel beside a gun is the exact failure the port
+    lids already taught this section (see `_wr_portframe`). The casemate is
+    `Wrack_Sponsons`; this is the ordnance that stands in it.
+    """
     bm = bmesh.new()
-    breech, muzzle, bore = WR_GUNS["Stern"][0]
+    breech, muzzle, bore = WR_GUNS[name][0]
     n, length = _wr_gun(bm, breech, muzzle, bore)
-    b = Vector(breech)
-    deck = _wr_deck(b.x)
-    # The gallery: a windowed box hung on the transom, stepped out past it.
+    side = Vector((-n.y, n.x, 0.0))
+    base = Vector(breech)
+    deck = WR_GUN_Z[name] - 1.6
+    # A pivot slide rather than a truck carriage: a gun in a casemate trains
+    # through its mouth on a racer, and the racer is what says "this thing
+    # tracks you" from the drop ring.
+    _wr_tube(bm, base - n * 1.6 + Vector((0, 0, -1.6)), base + n * (length * 0.55) + Vector((0, 0, -1.6)),
+             1.05, 0.85, 6)
+    for s in (-1, 1):
+        box(bm, tuple(base + n * 0.6 + side * (s * bore * 1.9) + Vector((0, 0, -0.2))),
+            (2.6, 0.5, 2.0), Matrix.Rotation(math.atan2(n.y, n.x), 3, "Z"))
+    # The racer arc the carriage runs on, and the trunnion pin.
+    for i in range(7):
+        a0 = math.radians(-42 + i * 14.0)
+        a1 = math.radians(-42 + (i + 1) * 14.0)
+        r = 3.4
+        p0 = base + (n * math.cos(a0) + side * math.sin(a0)) * r + Vector((0, 0, -2.4))
+        p1 = base + (n * math.cos(a1) + side * math.sin(a1)) * r + Vector((0, 0, -2.4))
+        _wr_tube(bm, p0, p1, 0.26, 0.26, 5)
+    _wr_tube(bm, tuple(base + side * bore * 2.6 + Vector((0, 0, -1.6))),
+             tuple(base - side * bore * 2.6 + Vector((0, 0, -1.6))), 0.3, 0.3, 6)
+    # Shot garland beside the breech - a corner gun is a crew station.
     for i in range(4):
-        t = i / 3.0
-        box(bm, (-20.4 - t * 1.4, 0.0, 8.2 + t * 3.4), (3.0 - t * 0.6, 5.6 - t * 1.4, 1.5))
-    # Its window mullions and the carved brackets under it.
-    for i in range(5):
-        y = -3.6 + i * 1.8
-        _wr_tube(bm, (-21.6, y, 9.0), (-22.6, y, 12.6), 0.26, 0.22, 4)
-    for i in range(4):
-        y = -2.7 + i * 1.8
-        _wr_tube(bm, (-20.0, y, 7.6), (-22.4, y, 6.2), 0.42, 0.3, 5)
-    # The taffrail over the whole thing.
-    _wr_tube(bm, (-21.4, -4.2, 13.2), (-21.4, 4.2, 13.2), 0.5, 0.5, 6)
-    _wr_carriage(bm, breech, n, bore, deck - 4.4, rng)
-    _wr_portframe(bm, muzzle, n, bore, lid_up=False)
-    return _wr_finish("Wrack_CannonStern", bm, WR_BRASS, "M_Wrack_AdmGun")
+        ellipsoid(bm, tuple(base - n * 2.6 + side * (-1.9 + i * 1.25) + Vector((0, 0, -1.0 + rng.uniform(-0.1, 0.1)))),
+                  (0.42, 0.42, 0.42), subdiv=1)
+    return _wr_finish("Wrack_Cannon" + name, bm, WR_BRASS, "M_Wrack_AdmGun")
 
 
-def build_wr_cannon_port(rng):
-    """CANNON 3 of 4, bearing -Y. The PORT BROADSIDE GUN: a heavy piece on a
-    four-truck carriage, run out through its own port abaft the waist, lid
-    thrown up over it. The one bearing the fight camera cannot see at the
-    same time as the starboard gun, because the hull is in the way."""
+def build_wr_cannon_bowstbd(rng):
+    """CANNON 1 of 4, the starboard bow corner - bearing +30."""
+    return _wr_corner_gun("BowStbd", rng)
+
+
+def build_wr_cannon_bowport(rng):
+    """CANNON 2 of 4, the port bow corner - bearing -30."""
+    return _wr_corner_gun("BowPort", rng)
+
+
+def build_wr_cannon_sternstbd(rng):
+    """CANNON 3 of 4, the starboard quarter - bearing +150."""
+    return _wr_corner_gun("SternStbd", rng)
+
+
+def build_wr_cannon_sternport(rng):
+    """CANNON 4 of 4, the port quarter - bearing -150."""
+    return _wr_corner_gun("SternPort", rng)
+
+
+def build_wr_sponsons(rng):
+    """The four corner CASEMATES: back wall, two cheeks, and the platform.
+
+    ONE object for all four, because they never move independently, and
+    timber-coloured because a big box beside a brass gun reads as a signboard
+    if it is brass too. One MeshColors row instead of four.
+
+    These are also the collidable occluder's shape - `Wrack_HullCollider`
+    carries the same planes - so what the player sees blocking a far gun is
+    exactly what stops the shot.
+    """
     bm = bmesh.new()
-    breech, muzzle, bore = WR_GUNS["Port"][0]
-    n, length = _wr_gun(bm, breech, muzzle, bore)
-    _wr_carriage(bm, breech, n, bore, WR_GUNS["Port"][0][0][2] - 1.5, rng)
-    _wr_portframe(bm, muzzle, n, bore)
-    return _wr_finish("Wrack_CannonPort", bm, WR_BRASS, "M_Wrack_AdmGun")
+    z0, z1 = WR_CASEMATE_Z
+    WR_CASEMATE_MEASURED.clear()
+    for name in WR_GUN_ORDER:
+        n, u = _wr_gun_axis(name)
+        back = n * WR_CASEMATE_R_BACK
+        out = n * WR_CASEMATE_R_OUT
+        # THE PLATES GO IN A SCRATCH MESH FIRST, so the guard can measure the
+        # occluder and nothing else. The platform's knees run inboard to r 7.15
+        # and would otherwise read as a back wall half the distance out.
+        plate = bmesh.new()
+        # the back wall
+        for i in range(4):
+            t = i / 3.0
+            _wr_tube(plate, tuple(back + u * (-WR_CASEMATE_HW + t * 2 * WR_CASEMATE_HW) + Vector((0, 0, z0))),
+                     tuple(back + u * (-WR_CASEMATE_HW + t * 2 * WR_CASEMATE_HW) + Vector((0, 0, z1))),
+                     0.34, 0.30, 5)
+        for zz in (z0, z1, (z0 + z1) / 2):
+            _wr_tube(plate, tuple(back - u * WR_CASEMATE_HW + Vector((0, 0, zz))),
+                     tuple(back + u * WR_CASEMATE_HW + Vector((0, 0, zz))), 0.36, 0.36, 5)
+        # the two cheeks
+        for s in (-1, 1):
+            for zz in (z0, z1):
+                _wr_tube(plate, tuple(back + u * (s * WR_CASEMATE_HW) + Vector((0, 0, zz))),
+                         tuple(out + u * (s * WR_CASEMATE_HW) + Vector((0, 0, zz))), 0.36, 0.30, 5)
+            steps = 5
+            for i in range(steps):
+                t = i / (steps - 1.0)
+                at = back.lerp(out, t) + u * (s * WR_CASEMATE_HW)
+                _wr_tube(plate, tuple(at + Vector((0, 0, z0))), tuple(at + Vector((0, 0, z1))), 0.30, 0.26, 5)
+        WR_CASEMATE_MEASURED[name] = _wr_casemate_measure(name, [tuple(v.co) for v in plate.verts])
+        scratch = bpy.data.meshes.new("_casemate")
+        plate.to_mesh(scratch)
+        plate.free()
+        bm.from_mesh(scratch)
+        bpy.data.meshes.remove(scratch)
+        # the platform the gun stands on, and knees under it
+        deck = WR_GUN_Z[name] - 3.2
+        for i in range(6):
+            t = i / 5.0
+            at = back.lerp(out, t)
+            _wr_tube(bm, tuple(at - u * WR_CASEMATE_HW + Vector((0, 0, deck))),
+                     tuple(at + u * WR_CASEMATE_HW + Vector((0, 0, deck))), 0.42, 0.42, 5)
+        for s in (-1, 1):
+            _wr_tube(bm, tuple(back + u * (s * WR_CASEMATE_HW * 0.8) + Vector((0, 0, deck))),
+                     tuple(back * 0.55 + u * (s * 1.2) + Vector((0, 0, deck - 3.4))), 0.5, 0.36, 5)
+    return _wr_finish("Wrack_Sponsons", bm, WR_WALE, "M_Wrack_AdmWale")
 
 
-def build_wr_cannon_starboard(rng):
-    """CANNON 4 of 4, bearing +Y. The STARBOARD BROADSIDE GUN, the port
-    gun's mirror - and set 23.5 studs FORWARD of it, so the pair is spread
-    fore-and-aft as well as athwartships and a bow-on camera cannot take
-    both at once either."""
+def build_wr_hull_collider(rng):
+    """THE SHOT BLOCKER - invisible in game, and the reason a far gun is safe.
+
+    `Wrack_Hull` cannot do this job: it is authored as TWO lofted blocks with
+    a 12-stud gap amidships, so it is neither closed nor gap-free once the
+    shell plates swing. This is one closed loft over the same stations with no
+    waist gap and a 0.30 margin, PLUS the four casemate boxes, so the thing
+    that stops a shot is the same shape as the thing the player sees.
+
+    It carries no MeshColors row on purpose: the client sets Transparency 1
+    and CanQuery/CanCollide true, so its colour never renders.
+    """
     bm = bmesh.new()
-    breech, muzzle, bore = WR_GUNS["Starboard"][0]
-    n, length = _wr_gun(bm, breech, muzzle, bore)
-    _wr_carriage(bm, breech, n, bore, WR_GUNS["Starboard"][0][0][2] - 1.5, rng)
-    _wr_portframe(bm, muzzle, n, bore)
-    return _wr_finish("Wrack_CannonStarboard", bm, WR_BRASS, "M_Wrack_AdmGun")
+    rings = []
+    x = WR_HULL[0][0] - 0.5
+    while x <= WR_HULL[-1][0] + 0.5:
+        half, _floor, sheer = _wr_station(x)
+        half += 0.30
+        top = WR_KEEL_Z + sheer + 0.30
+        bottom = WR_KEEL_Z - 0.40
+        pts = []
+        for i in range(10):
+            a = (i / 10.0) * TAU
+            pts.append((x, math.cos(a) * half, (top + bottom) / 2 + math.sin(a) * (top - bottom) / 2))
+        rings.append(pts)
+        x += 1.5
+    loft(bm, rings)
+    z0, z1 = WR_CASEMATE_Z
+    for name in WR_GUN_ORDER:
+        n, u = _wr_gun_axis(name)
+        mid = n * ((WR_CASEMATE_R_BACK + WR_CASEMATE_R_OUT) / 2.0)
+        run = (WR_CASEMATE_R_OUT - WR_CASEMATE_R_BACK) / 2.0
+        box(bm, tuple(mid + Vector((0, 0, (z0 + z1) / 2))),
+            (run * 2.0, WR_CASEMATE_HW * 2.0, z1 - z0),
+            Matrix.Rotation(math.radians(WR_GUN_BEARING[name]), 3, "Z"))
+    return _wr_finish("Wrack_HullCollider", bm, WR_TIMBER, "M_Wrack_AdmTimber")
 
 
 def build_wr_muzzleflare():
@@ -3929,6 +4107,16 @@ def build_wr_mast(rng):
     return _wr_finish("Wrack_Mast", bm, WR_SPAR, "M_Wrack_AdmSpar")
 
 
+# THE BOBSTAY'S FOOT. It used to land at (19.0, 0, WR_KEEL_Z + 1.6), which is
+# 1.34 studs INSIDE the figurehead's hips - and she detaches, so the rope
+# would have been left hanging through the space where her waist was. No
+# anchor on the centreline can both clear her and show daylight under the
+# bowsprit (the frontier is empty: she occupies exactly the wedge a bobstay
+# lives in), so it goes to the STEM HEAD, where gammoning belongs. Clears
+# her by 3.38.
+WR_BOBSTAY_FOOT = (18.0, 0.0, 13.25)
+
+
 def build_wr_rigging(rng):
     """Shrouds, stays and tackle, hanging where they fell. This is the piece
     that keeps the plan view from being solid: a lattice over the hull breaks
@@ -3952,7 +4140,7 @@ def build_wr_rigging(rng):
     # tie the three silhouette masses into one shape.
     _wr_tube(bm, head, Vector(WR_BOWSPRIT[0]).lerp(Vector(WR_BOWSPRIT[1]), 0.55), 0.16, 0.16, 4)
     _wr_tube(bm, head, Vector((-21.0, 0.0, 13.4)), 0.16, 0.16, 4)
-    _wr_tube(bm, Vector(WR_BOWSPRIT[1]), (19.0, 0.0, WR_KEEL_Z + 1.6), 0.14, 0.14, 4)
+    _wr_tube(bm, Vector(WR_BOWSPRIT[1]), WR_BOBSTAY_FOOT, 0.14, 0.14, 4)
     # Lifts and braces off the yard's arms, and rope simply hanging.
     for end in WR_YARD:
         _wr_tube(bm, head, Vector(end), 0.12, 0.12, 4)
@@ -3986,6 +4174,715 @@ def build_wr_sail(rng):
     # One larger sheet, half torn away and hanging off the stay.
     blade(bm, (-6.5, -3.0, 20.0), (-6.5, -9.0, 10.0), 4.4, 1.5, 0.16, roll=0.3)
     return _wr_finish("Wrack_Sail", bm, WR_CANVAS, "M_Wrack_AdmCanvas")
+
+
+# --- the attack pieces ------------------------------------------------------
+#
+# Three things on this ship MOVE, and none of them is the ship. Wrack is still
+# a static gun platform - the redesign's whole point - so every new attack has
+# to come from a piece of HIS SHIP coming loose at him, which is the only way
+# a bullet-hell boss gains a melee-range threat without taking a step.
+#
+# EACH PUBLISHES ITS PIVOT AS A CONSTANT, because the Blender object origin is
+# consumed by NOBODY: Studio's glTF import gives every MeshPart an origin at
+# its own bounding-box centre, and WrackBodyController places each piece by its
+# offset from `Wrack_Base`. The shell plates already work this way (`HINGE` in
+# the controller, `_wr_hinge` here); these follow them.
+
+WR_FIGUREHEAD_SPINE = (
+    (20.2, 0.0, 6.4),    # her hips, bolted into the stem - the mounting point
+    (22.4, 0.0, 7.8),    # waist
+    (24.4, 0.0, 9.4),    # breast - the lantern-heart is here
+    (26.0, 0.0, 10.9),   # shoulders, where the arms sweep back
+    (27.2, 0.0, 12.2),   # head
+)
+WR_FIGUREHEAD_GIRTH = (1.20, 1.08, 1.15, 0.98, 0.85)
+WR_FIGUREHEAD_AT = WR_FIGUREHEAD_SPINE[0]
+
+
+def _wr_fh_axis():
+    """(unit launch direction, length) - she leaves along her own spine.
+
+    A figurehead points where the ship was going, so "she comes off the bow"
+    and "she flies along her own axis" are one direction, and the client needs
+    one number for both.
+    """
+    a, b = Vector(WR_FIGUREHEAD_SPINE[0]), Vector(WR_FIGUREHEAD_SPINE[-1])
+    return (b - a).normalized(), (b - a).length
+
+
+def build_wr_figurehead(rng):
+    """THE LADY BELOW - the figurehead, and the only part of this ship that
+    leaves it. She tears off her bolts and flies at the party: a bone-pale
+    woman with her drapery streaming behind her, which from 60 studs is a
+    comet with a figure in its head.
+
+    SHE STANDS SQUARE ON THE CENTRELINE. An earlier pass had her canted 2.1
+    studs to starboard to dodge the old bow chaser; the corner rework took the
+    chaser away, and a figurehead out of true on a ship whose bow is otherwise
+    symmetrical read as a modelling slip rather than as damage. Square, she is
+    also 5.8 studs of vertical rise against 3.9, which is what makes her
+    silhouette legible at the range this fight is played at.
+    """
+    bm = bmesh.new()
+    spine = [Vector(p) for p in WR_FIGUREHEAD_SPINE]
+    girth = WR_FIGUREHEAD_GIRTH
+    forward, _ = _wr_fh_axis()
+    up = Vector((-forward.z, 0.0, forward.x))
+    side = Vector((0.0, 1.0, 0.0))
+    for i in range(len(spine) - 1):
+        _wr_tube(bm, spine[i], spine[i + 1], girth[i], girth[i + 1], 9)
+    ellipsoid(bm, tuple(spine[4] + forward * 0.10), (0.84, 0.66, 0.78), subdiv=2)
+    ellipsoid(bm, tuple(spine[4] + forward * 0.64 - up * 0.24), (0.46, 0.42, 0.36), subdiv=1)
+    # THE ARMS, swept back along the hull - what makes the silhouette an
+    # arrowhead instead of a cross, and so what makes her read in flight.
+    for s in (-1, 1):
+        shoulder = spine[3] + side * (s * 0.74)
+        elbow = Vector((23.6, s * 2.3, 8.6))
+        hand = Vector((20.9, s * 3.8, 6.9))
+        _wr_tube(bm, shoulder, elbow, 0.46, 0.34, 6)
+        _wr_tube(bm, elbow, hand, 0.34, 0.22, 6)
+        ellipsoid(bm, tuple(hand), (0.30, 0.26, 0.24), subdiv=1)
+    # THE HAIR, streaming aft - the near half of the comet tail, and the part
+    # that reads at 60 studs because it is beside the one bright thing on her.
+    for i in range(7):
+        t = (i / 6.0) - 0.5
+        root = spine[4] + side * (t * 0.70) + up * 0.44
+        tip = Vector((24.5 + rng.uniform(-0.5, 0.5), t * 3.1 + rng.uniform(-0.3, 0.3),
+                      10.0 + rng.uniform(-0.5, 0.4)))
+        _wr_tube(bm, root, tip, 0.26, 0.10, 5)
+    # THE DRAPERY - the far half of the tail. Blades, not tubes: flat cloth
+    # catches light on one face and goes dark on the next, which is what sells
+    # motion on a piece with no animation of its own. It stops at x 17.2
+    # because the topside strake's gunport frame is at 17.8, and cloth
+    # threaded through a gunport is the kind of thing only the shipped render
+    # ever shows you.
+    for i in range(9):
+        t = (i / 8.0) - 0.5
+        root = spine[0].lerp(spine[1], 0.35) + side * (t * 1.5)
+        tip = Vector((17.2 + rng.uniform(0.0, 1.4), t * 8.8 + rng.uniform(-0.4, 0.4),
+                      4.4 + rng.uniform(-0.4, 0.9)))
+        blade(bm, tuple(root), tuple(tip), rng.uniform(1.3, 2.1), rng.uniform(0.5, 1.1), 0.16,
+              roll=rng.uniform(-0.6, 0.6))
+    for s in (-1, 1):
+        blade(bm, tuple(spine[0] + side * (s * 0.9)), (16.4, s * 5.6, 5.0), 1.4, 0.3, 0.14, roll=s * 0.4)
+    return _wr_finish("Wrack_Figurehead", bm, WR_LADY, "M_Wrack_AdmLady")
+
+
+def build_wr_figurehead_glow():
+    """Her eyes and the lantern-heart at her breast.
+
+    ONE object for both, reusing `M_Wrack_AdmLamp` - the heart-lantern's own
+    amber. She burns with the same fire that burns in the hold, which is the
+    reading the fight wants: she is not a separate ghost, she is a piece of
+    HIM. It also costs no new material and one MeshColors row instead of two.
+    `Glow` rides the OBJECT name, the only place the marker survives import.
+    """
+    bm = bmesh.new()
+    spine = [Vector(p) for p in WR_FIGUREHEAD_SPINE]
+    forward, _ = _wr_fh_axis()
+    up = Vector((-forward.z, 0.0, forward.x))
+    ellipsoid(bm, tuple(spine[3] + up * 1.05 - forward * 0.5), (0.54, 0.48, 0.52), subdiv=2)
+    _wr_tube(bm, tuple(spine[3] + up * 0.74 - forward * 0.5), tuple(spine[2] + up * 0.52), 0.20, 0.14, 5)
+    for s in (-1, 1):
+        ellipsoid(bm, tuple(spine[4] + forward * 0.64 + Vector((0.0, s * 0.28, 0.0)) + up * 0.10),
+                  (0.17, 0.15, 0.19), subdiv=1)
+    return _wr_finish("Wrack_FigureheadGlow", bm, WR_LAMP, "M_Wrack_AdmLamp")
+
+
+# THE MAIN BOOM - a 30-stud spar that swings out and comes down like a scythe.
+# The one attack that threatens the ground a melee player is standing on.
+#
+# WHERE IT IS STEPPED, AND WHY IT IS NOT ON A MAST. `_wr_boom_envelope` solves,
+# for every bearing, the lowest angle a 30-stud spar can be depressed to while
+# staying clear of everything already on this ship. Against a MAINMAST pivot at
+# four heights (13.6 / 15.4 / 18.2 / 20.6) it returns the same answer at all
+# four: there is NO bearing at which the outer end can get below z 8. The sheer
+# rail is the fence - a spar pivoting on the centreline must clear a rail 6.3
+# out and 11.5 up before it is over open sand, so depressing it drives the
+# spar's middle into the ship's own side. A boom on the mast can only wave.
+#
+# Pivoting it on the RAIL removes the fence, because the spar is outboard from
+# its first stud. It is stepped ABAFT the waist, the same rule the mainmast
+# obeys: a spar socketed in a shell plate flies apart when the hold opens.
+WR_BOOM_PIVOT = (-6.50, 5.24, 12.57)
+WR_BOOM_LENGTH = 30.0
+WR_BOOM_ROOT = 2.2
+WR_BOOM_R = (0.86, 0.48)
+# (yaw, peak) in degrees. Yaw is plan angle from +X toward +Y; peak is
+# elevation. STOWED it is cocked up over the starboard bow - which is where
+# the free lane is, and which telegraphs the swing; SWEPT it has come round to
+# the beam and down to sand level.
+WR_BOOM_STOWED = (62.0, 15.0)
+WR_BOOM_SWEPT = (108.0, -24.0)
+WR_BOOM_TACKLE_AT = 0.72
+
+
+def _wr_boom_dir(yaw, peak):
+    p, y = math.radians(peak), math.radians(yaw)
+    return Vector((math.cos(p) * math.cos(y), math.cos(p) * math.sin(y), math.sin(p)))
+
+
+def _wr_boom_at(yaw, peak, along):
+    return Vector(WR_BOOM_PIVOT) + _wr_boom_dir(yaw, peak) * along
+
+
+def build_wr_boom(rng):
+    """The main boom, authored in its STOWED pose - posed rather than at the
+    origin for the same reason the shell plates are: `_place_wrack` puts every
+    piece down at identity, so the docked model must be right with no
+    transform, and the arc is published as constants."""
+    bm = bmesh.new()
+    yaw, peak = WR_BOOM_STOWED
+    n = _wr_boom_dir(yaw, peak)
+    pivot = Vector(WR_BOOM_PIVOT)
+    side = n.cross(Vector((0.0, 0.0, 1.0))).normalized()
+    up = side.cross(n).normalized()
+    heel = pivot + n * WR_BOOM_ROOT
+    head = pivot + n * WR_BOOM_LENGTH
+    for t0, t1, r0, r1 in ((0.0, 0.34, WR_BOOM_R[0], 0.76), (0.34, 0.70, 0.76, 0.62),
+                           (0.70, 1.0, 0.62, WR_BOOM_R[1])):
+        _wr_tube(bm, tuple(heel.lerp(head, t0)), tuple(heel.lerp(head, t1)), r0, r1, 8)
+    # The jaws that straddle the socket in the rail, and the collar over the
+    # pin - the half that says the spar is RIGGED to her, not leaning on her.
+    for s in (-1, 1):
+        _wr_tube(bm, tuple(heel + side * (s * 0.30)), tuple(pivot + side * (s * 0.86) - n * 0.5), 0.42, 0.30, 5)
+    _wr_tube(bm, tuple(heel - n * 0.35), tuple(heel + n * 1.10), 1.05, 0.98, 8)
+    _wr_tube(bm, tuple(pivot - Vector((0.0, 0.0, 1.1))), tuple(pivot + Vector((0.0, 0.0, 0.9))), 0.44, 0.44, 6)
+    for t in (0.14, 0.30, 0.46, 0.62, 0.80, 0.92):
+        r = WR_BOOM_R[0] + (WR_BOOM_R[1] - WR_BOOM_R[0]) * t
+        at = heel.lerp(head, t)
+        _wr_tube(bm, tuple(at - n * 0.16), tuple(at + n * 0.16), r + 0.14, r + 0.14, 8)
+        if t in (0.30, 0.62):
+            for s in (-1, 1):
+                box(bm, tuple(at + side * (s * (r + 0.28)) - up * 0.1), (1.1, 0.5, 0.34),
+                    Matrix.Rotation(math.atan2(n.y, n.x), 3, "Z"))
+    _wr_tube(bm, tuple(head - n * 1.2 - side * 0.5), tuple(head - n * 1.2 + side * 0.5), 0.34, 0.34, 8)
+    for i in range(5):
+        a = (i / 5) * TAU
+        spike(bm, tuple(head + side * (math.cos(a) * 0.34) + up * (math.sin(a) * 0.34)),
+              tuple(head + n * rng.uniform(0.7, 1.7) + side * (math.cos(a) * 0.5) + up * (math.sin(a) * 0.5)), 0.17)
+    return _wr_finish("Wrack_Boom", bm, WR_SPAR, "M_Wrack_AdmSpar")
+
+
+def build_wr_boom_tackle(rng):
+    """The block and tackle at the boom's outer third - THE SNAP TARGET.
+
+    It is BRASS, and that is a legibility call rather than a joiner's one:
+    every shootable thing on this boss is brass (the one saturated warm on a
+    cold ship), so brass reads as "shoot this" from the drop ring with no
+    tutorial line, and it pops off a slate spar besides. Built 3.6 studs tall
+    because stowed it hangs ~64 studs from the r 88 ring, where 3.6 subtends a
+    comfortable angle and 1.5 would not.
+    """
+    bm = bmesh.new()
+    yaw, peak = WR_BOOM_STOWED
+    n = _wr_boom_dir(yaw, peak)
+    side = n.cross(Vector((0.0, 0.0, 1.0))).normalized()
+    on_spar = _wr_boom_at(yaw, peak, WR_BOOM_LENGTH * WR_BOOM_TACKLE_AT)
+    spar_r = WR_BOOM_R[0] + (WR_BOOM_R[1] - WR_BOOM_R[0]) * WR_BOOM_TACKLE_AT
+    top = on_spar - Vector((0.0, 0.0, spar_r - 0.1))
+    _wr_tube(bm, tuple(on_spar - side * 0.62), tuple(on_spar + side * 0.62), spar_r + 0.16, spar_r + 0.16, 8)
+    _wr_tube(bm, tuple(top), tuple(top - Vector((0.0, 0.0, 0.9))), 0.20, 0.24, 6)
+    shell = top - Vector((0.0, 0.0, 1.8))
+    box(bm, tuple(shell), (1.5, 0.95, 1.9))
+    for s in (-1, 1):
+        c = shell + side * (s * 0.30)
+        _wr_tube(bm, tuple(c - side * 0.16), tuple(c + side * 0.16), 0.62, 0.62, 10)
+    _wr_tube(bm, tuple(shell - side * 0.75), tuple(shell + side * 0.75), 0.16, 0.16, 6)
+    for dz in (-1, 1):
+        _wr_tube(bm, tuple(shell + Vector((0.0, 0.0, dz * 0.98)) - side * 0.55),
+                 tuple(shell + Vector((0.0, 0.0, dz * 0.98)) + side * 0.55), 0.20, 0.20, 6)
+    lower = shell - Vector((0.0, 0.0, 2.3))
+    box(bm, tuple(lower), (1.1, 0.8, 1.35))
+    _wr_tube(bm, tuple(lower + side * 0.20), tuple(lower - side * 0.20), 0.46, 0.46, 9)
+    for i in range(5):
+        a = math.pi * (0.2 + i * 0.18)
+        _wr_tube(bm, tuple(lower + Vector((math.sin(a) * 0.5, 0.0, -0.8 - math.cos(a) * 0.5))),
+                 tuple(lower + Vector((math.sin(a + 0.2) * 0.5, 0.0, -0.8 - math.cos(a + 0.2) * 0.5))), 0.17, 0.17, 5)
+    for s in (-1, 1):
+        _wr_tube(bm, tuple(shell + side * (s * 0.5) + Vector((0.0, 0.0, 0.9))),
+                 tuple(lower + side * (s * 0.42) + Vector((0.0, 0.0, 0.6))), 0.11, 0.11, 4)
+    _wr_tube(bm, tuple(shell + Vector((0.0, 0.0, 0.9))),
+             tuple(_wr_boom_at(yaw, peak, WR_BOOM_LENGTH * WR_BOOM_TACKLE_AT - 4.4) - Vector((0.0, 0.0, spar_r))),
+             0.12, 0.12, 4)
+    return _wr_finish("Wrack_BoomTackle", bm, WR_BRASS, "M_Wrack_AdmGun")
+
+
+# THE BILGE VENTS - three grated hatches the client pops open, and the third
+# attack: what is burning in her hold comes UP through them.
+#
+# THE AXIS IS PER LID AND THE SIGN IS MEASURED. Hatch1/2 hinge about boss-local
+# Y, Hatch3 about boss-local X, so a client posing all three about one axis
+# swings two of them sideways out of the deck. Worse, the SENSE of each axis
+# was arbitrary until it was checked: rotating each lid's hinge-to-free-edge
+# vector by WR_HATCH_OPEN_DEG about the published axis and reading the sign of
+# the result is the only thing that distinguishes "opens" from "closes into the
+# planking". `_wr_assert_hatch_rise` does exactly that, on every build.
+#
+# (name, x, y, fore-and-aft length, athwartships width, hinge edge)
+#   "aft"     - hinged on the AFT edge, swinging open FORWARD, away from the
+#               Admiral at the stern so the lid never crosses him.
+#   "inboard" - hinged inboard, swinging open OUTBOARD toward the rail, the
+#               only direction with room at that station.
+WR_HATCHES = (
+    ("Wrack_Hatch1", -6.0, -3.2, 2.8, 1.8, "aft"),
+    ("Wrack_Hatch2", -9.0, -3.4, 2.4, 1.8, "aft"),
+    ("Wrack_Hatch3", -10.0, 3.8, 2.4, 1.8, "inboard"),
+)
+WR_HATCH_OPEN_DEG = 74.0
+
+
+def _wr_hatch_hinge(entry):
+    """(hinge point, hinge axis) in BLENDER space, signed so that a POSITIVE
+    turn about the axis lifts the lid. The sign is asserted, not asserted-in-
+    a-comment: see `_wr_assert_hatch_rise`."""
+    _name, x, y, lx, ly, kind = entry
+    z = _wr_deck_at(x, y)
+    if kind == "aft":
+        return Vector((x - lx / 2.0, y, z)), Vector((0.0, -1.0, 0.0))
+    inboard = math.copysign(abs(y) - ly / 2.0, y)
+    return Vector((x, inboard, z)), Vector((1.0, 0.0, 0.0))
+
+
+def _wr_hatch(entry, rng):
+    """One grated hatch: a kerbed lid with an iron grating in it.
+
+    THE KERB RIDES THE LID, not the deck. A coaming built into Wrack_Strakes
+    would be the joiner's answer, but it leaves the ember bed squeezed into the
+    0.2 studs between a flush grating and the deck skin, where nothing can see
+    it. On the lid, the grating stands 0.45 clear of the bed - so the fire
+    glimmers through the bars while the hatch is SHUT and blazes when it pops.
+    """
+    name, x, y, lx, ly, _kind = entry
+    bm = bmesh.new()
+    z = _wr_deck_at(x, y)
+    hx, hy = lx / 2.0, ly / 2.0
+    for dx in (-1, 1):
+        box(bm, (x + dx * hx, y, z + 0.24), (0.34, ly + 0.68, 0.48))
+    for dy in (-1, 1):
+        box(bm, (x, y + dy * hy, z + 0.24), (lx - 0.34, 0.34, 0.48))
+    for i in range(max(int(lx / 0.62), 3)):
+        bx = x - hx + (i + 0.5) * (lx / max(int(lx / 0.62), 3))
+        box(bm, (bx, y, z + 0.55), (0.20, ly * 2 - 0.2, 0.17))
+    for i in range(max(int(ly / 0.62), 3)):
+        by = y - hy + (i + 0.5) * (ly / max(int(ly / 0.62), 3))
+        box(bm, (x, by, z + 0.62), (lx - 0.3, 0.18, 0.15))
+    hinge, axis = _wr_hatch_hinge(entry)
+    across = Vector((abs(axis.x), abs(axis.y), 0.0))
+    for s in (-1, 1):
+        root = hinge + across * (s * (hy if axis.y else hx) * 0.55)
+        _wr_tube(bm, tuple(root + Vector((0.0, 0.0, 0.12))), tuple(root + Vector((0.0, 0.0, 0.5))), 0.22, 0.18, 6)
+        inward = (Vector((x, y, z + 0.45)) - hinge).normalized()
+        _wr_tube(bm, tuple(root + Vector((0.0, 0.0, 0.45))),
+                 tuple(root + inward * ((lx if axis.y else ly) * 0.55) + Vector((0.0, 0.0, 0.45))), 0.17, 0.13, 5)
+    free = Vector((x, y, z)) + (Vector((x, y, z)) - hinge)
+    _wr_tube(bm, tuple(free + Vector((0.0, 0.0, 0.5))), tuple(free + Vector((0.0, 0.0, 0.95))), 0.13, 0.13, 5)
+    ellipsoid(bm, tuple(free + Vector((0.0, 0.0, 1.05))), (0.34, 0.34, 0.12), subdiv=1)
+    for _ in range(2):
+        box(bm, (x + rng.uniform(-hx * 0.7, hx * 0.7), y + rng.uniform(-hy * 0.5, hy * 0.5), z + 0.70),
+            (0.6, 0.5, 0.16), Matrix.Rotation(rng.uniform(-0.35, 0.35), 3, "Y"))
+    return _wr_finish(name, bm, WR_KEELWOOD, "M_Wrack_AdmKeel")
+
+
+def build_wr_hatch1(rng):
+    return _wr_hatch(WR_HATCHES[0], rng)
+
+
+def build_wr_hatch2(rng):
+    return _wr_hatch(WR_HATCHES[1], rng)
+
+
+def build_wr_hatch3(rng):
+    return _wr_hatch(WR_HATCHES[2], rng)
+
+
+def build_wr_hatch_glow(rng):
+    """ONE object carrying all three ember beds, and the reason is what
+    CONSUMES them, not economy for its own sake.
+
+    The tempting alternative is one glow per lid, on the argument that a glow
+    should travel with its piece. It does not belong to the lid: the fire is in
+    the HOLD, and the lid is what stops you seeing it. A bed riding the lid
+    would swing up into the air when the hatch popped, which is backwards.
+    Once they do not move with the lids, three objects buy nothing and cost
+    three MeshColors rows of identical amber, three PIECES entries, three
+    AUTHORED boxes and three pairings for the client to keep straight.
+    """
+    bm = bmesh.new()
+    for entry in WR_HATCHES:
+        _name, x, y, lx, ly, _kind = entry
+        z = _wr_deck_at(x, y) + 0.14
+        box(bm, (x, y, z), (lx - 0.8, ly - 0.8, 0.12))
+        for _ in range(9):
+            r = rng.uniform(0.10, 0.23)
+            ellipsoid(bm, (x + rng.uniform(-lx * 0.34, lx * 0.34), y + rng.uniform(-ly * 0.30, ly * 0.30),
+                           z + rng.uniform(0.02, 0.20)), (r, r * rng.uniform(0.7, 1.2), r * 0.7), subdiv=1)
+    return _wr_finish("Wrack_HatchGlow", bm, WR_LAMP, "M_Wrack_AdmLamp")
+
+
+# THE DUEL KIT. Phase 3 takes the Admiral OFF his ship and onto the sand, so
+# he needs one thing his ship cannot hand him.
+WR_PISTOL_AT = (-25.4, 8.6, 33.0)   # admiral space: through the sash, left hip
+
+
+def build_wr_pistol(rng):
+    """A flintlock through the Admiral's sash - the duel's second weapon.
+
+    LEFT HIP, because the sabre is in his right hand: a pistol butt on the
+    same side as the sword is the one arrangement no portrait of a sea officer
+    has ever shown, and the duel camera squares him up so the viewer sees it.
+    Authored in ADMIRAL space and seated by the same single matrix as the rest
+    of him, so it scales and lands with the man rather than beside him.
+    """
+    bm = bmesh.new()
+    at = Vector(WR_PISTOL_AT)
+    fwd = Vector((0.86, 0.0, 0.51))     # butt down and aft, muzzle up and fore
+    side = Vector((0.0, 1.0, 0.0))
+    _wr_tube(bm, tuple(at + fwd * 1.1), tuple(at + fwd * 5.2), 0.46, 0.38, 7)   # the barrel
+    _wr_tube(bm, tuple(at + fwd * 5.2), tuple(at + fwd * 5.6), 0.52, 0.46, 7)   # the muzzle band
+    box(bm, tuple(at + fwd * 1.6), (2.6, 1.0, 1.1), Matrix.Rotation(math.radians(31), 3, "Y"))
+    # The butt, curling down and back, and the lock plate on the near cheek.
+    _wr_tube(bm, tuple(at - fwd * 0.4), tuple(at - fwd * 2.6 - Vector((0.0, 0.0, 1.5))), 0.62, 0.86, 7)
+    ellipsoid(bm, tuple(at - fwd * 2.9 - Vector((0.0, 0.0, 1.8))), (0.78, 0.62, 0.66), subdiv=1)
+    box(bm, tuple(at + fwd * 0.9 + side * 0.62), (1.5, 0.22, 1.0), Matrix.Rotation(math.radians(31), 3, "Y"))
+    # The cock and frizzen, which are the whole silhouette of a flintlock.
+    _wr_tube(bm, tuple(at + fwd * 0.7 + side * 0.5 + Vector((0.0, 0.0, 0.5))),
+             tuple(at + fwd * 0.2 + side * 0.5 + Vector((0.0, 0.0, 1.5))), 0.22, 0.16, 5)
+    _wr_tube(bm, tuple(at + fwd * 1.5 + side * 0.5 + Vector((0.0, 0.0, 0.5))),
+             tuple(at + fwd * 1.8 + side * 0.5 + Vector((0.0, 0.0, 1.4))), 0.20, 0.14, 5)
+    # The trigger guard.
+    for i in range(4):
+        a0 = math.pi * (0.15 + i * 0.22)
+        a1 = math.pi * (0.15 + (i + 1) * 0.22)
+        _wr_tube(bm, tuple(at + fwd * (0.4 + math.cos(a0) * 0.5) - Vector((0.0, 0.0, 0.7 + math.sin(a0) * 0.5))),
+                 tuple(at + fwd * (0.4 + math.cos(a1) * 0.5) - Vector((0.0, 0.0, 0.7 + math.sin(a1) * 0.5))),
+                 0.13, 0.13, 4)
+    _wr_admiral(bm)
+    return _wr_finish("Wrack_Pistol", bm, WR_STEEL, "M_Wrack_AdmSteel")
+
+
+# --- measuring the new pieces against the old ones ---------------------------
+#
+# Everything the three attack pieces and the four casemates claim is checked
+# HERE, at build time, against the geometry that was actually generated. This
+# instrument found, in order: a boom on the mainmast that can never reach the
+# ground at any bearing or height; a figurehead through the bow chaser; a
+# figurehead through the bobstay; two hatches buried in the Admiral's own
+# footprint; two hatch axes that would have swung their lids into the deck;
+# and three separate ways a player could shoot a far gun through the ship.
+#
+# WHAT IT KNOWS. `_wr_obstacles` derives from the constants wherever the ship
+# has them - WR_GUNS, WR_BOWSPRIT, WR_MAST_*, WR_YARD, WR_COAMINGS, WR_BITTS,
+# _wr_skin, _wr_deck - so moving a cannon moves the check with it. The few
+# things that exist only as literals inside a builder are restated, and that
+# is a second place remembering a first; it is written down rather than
+# hidden, and the assert is what tells you if you moved one and not the other.
+
+
+def _wr_gap(a, b, p, q):
+    """Closest distance between segment ab and segment pq."""
+    a, b, p, q = Vector(a), Vector(b), Vector(p), Vector(q)
+    d1, d2, r = b - a, q - p, a - p
+    A, E = d1.dot(d1), d2.dot(d2)
+    F, B, C = d2.dot(r), d1.dot(d2), d1.dot(r)
+    denom = A * E - B * B
+    s = 0.0 if denom < 1e-9 else max(0.0, min(1.0, (B * F - C * E) / denom))
+    t = max(0.0, min(1.0, (B * s + F) / E)) if E > 1e-9 else 0.0
+    s = max(0.0, min(1.0, (B * t - C) / A)) if A > 1e-9 else 0.0
+    return ((a + d1 * s) - (p + d2 * t)).length
+
+
+def _wr_obstacles():
+    """(label, point, point, radius) for everything a swinging piece can hit."""
+    obs = []
+    for name, guns in WR_GUNS.items():
+        for breech, muzzle, bore in guns:
+            obs.append(("cannon " + name, breech, muzzle, bore * 2.2))
+    obs.append(("bowsprit", WR_BOWSPRIT[0], WR_BOWSPRIT[1], 1.2))
+    obs.append(("mainmast", WR_MAST_STEP, WR_MAST_HEAD, 1.9))
+    obs.append(("maintop", (-6.5, 0.0, 22.9), (-6.5, 0.0, 24.1), 5.0))
+    obs.append(("yard", WR_YARD[0], WR_YARD[1], 1.0))
+    obs.append(("foremast", (11.0, 0.0, _wr_deck(11.0)), (11.0, 0.0, 18.5), 1.1))
+    head = (-6.5, 0.0, 25.6)
+    for index in (7, 15):
+        for x in (-10.0, -8.0, -6.0, -4.0):
+            obs.append(("shrouds", head, _wr_skin(x, index, out=1.8), 0.18))
+    obs.append(("forestay", head, Vector(WR_BOWSPRIT[0]).lerp(Vector(WR_BOWSPRIT[1]), 0.55), 0.16))
+    obs.append(("backstay", head, (-21.0, 0.0, 13.4), 0.16))
+    obs.append(("bobstay", WR_BOWSPRIT[1], WR_BOBSTAY_FOOT, 0.14))
+    for index in (3, 7):
+        x = WR_HULL[0][0]
+        while x < WR_HULL[-1][0] - 1.0:
+            obs.append(("sheer rail", _wr_skin(x, index), _wr_skin(x + 1.0, index), 0.5))
+            x += 1.0
+    obs.append(("the Admiral", WR_ADM_AT, (-14.9, 1.1, 29.0), 3.4))
+    for x, run, wide in WR_COAMINGS:
+        obs.append(("coaming", (x - run, 0.0, _wr_deck(x) + 1.05), (x + run, 0.0, _wr_deck(x) + 1.05), wide + 0.4))
+    obs.append(("capstan", (-9.8, 0.0, _wr_deck(-9.8)), (-9.8, 0.0, _wr_deck(-9.8) + 2.4), 1.6))
+    obs.append(("bitts", (-8.5, -2.0, _wr_deck(-8.5)), (-8.5, 2.0, _wr_deck(-8.5) + 1.8), 0.8))
+    obs.append(("sail sheet", (-6.5, -3.0, 20.0), (-6.5, -9.0, 10.0), 2.4))
+    z0, z1 = WR_CASEMATE_Z
+    for name in WR_GUN_ORDER:
+        n, u = _wr_gun_axis(name)
+        for s in (-1, 1):
+            for zz in (z0, z1):
+                obs.append(("casemate " + name,
+                            tuple(n * WR_CASEMATE_R_BACK + u * (s * WR_CASEMATE_HW) + Vector((0, 0, zz))),
+                            tuple(n * WR_CASEMATE_R_OUT + u * (s * WR_CASEMATE_HW) + Vector((0, 0, zz))), 0.36))
+    return obs
+
+
+def _wr_clearance(segments, ignore=(), obstacles=None):
+    """The worst (gap, label) between a piece's segments and the ship."""
+    worst, who = 1e9, "-"
+    for label, p, q, r in (obstacles if obstacles is not None else _wr_obstacles()):
+        if label in ignore:
+            continue
+        for a, b, rr in segments:
+            gap = _wr_gap(a, b, p, q) - r - rr
+            if gap < worst:
+                worst, who = gap, label
+    return worst, who
+
+
+def _wr_boom_segments(yaw, peak):
+    return [(_wr_boom_at(yaw, peak, WR_BOOM_ROOT), _wr_boom_at(yaw, peak, WR_BOOM_LENGTH), WR_BOOM_R[0])]
+
+
+def _wr_boom_envelope(step=5.0, margin=0.40):
+    """For every 5 degrees of yaw, the LOWEST peak that stays `margin` clear.
+
+    This is the boom's whole contract with the ship, and it is what the client
+    cannot be expected to rederive: an animator who sweeps the spar without it
+    drives 30 studs of timber through the sheer rail, and the render looks
+    almost right. Printed on the HANDOFF in the ROBLOX convention.
+    """
+    obstacles = _wr_obstacles()
+    out = []
+    lo_yaw = min(WR_BOOM_STOWED[0], WR_BOOM_SWEPT[0]) - 10.0
+    hi_yaw = max(WR_BOOM_STOWED[0], WR_BOOM_SWEPT[0]) + 10.0
+    yaw = lo_yaw
+    while yaw <= hi_yaw + 1e-6:
+        low = None
+        for j in range(121):
+            peak = 30.0 - j * 0.5
+            gap, _who = _wr_clearance(_wr_boom_segments(yaw, peak), obstacles=obstacles)
+            if gap < margin:
+                low = peak + 0.5 if j else None
+                break
+        else:
+            low = -30.0
+        out.append((yaw, low))
+        yaw += step
+    return out
+
+
+def _wr_casemate_measure(name, verts):
+    """(back r, out r, cheek half-width, z0, z1) of a BUILT casemate.
+
+    Measured by projecting the object's own vertices onto the gun's bearing,
+    NOT read back off the constants that generated them. A constant tells you
+    what was intended; a vertex tells you what was exported.
+    """
+    n, u = _wr_gun_axis(name)
+    rs = [v[0] * n.x + v[1] * n.y for v in verts]
+    us = [abs(v[0] * u.x + v[1] * u.y) for v in verts]
+    zs = [v[2] for v in verts]
+    return min(rs), max(rs), max(us), min(zs), max(zs)
+
+
+def _wr_capture_points(name, radius, grid=5):
+    """The player's shot is a SPHERE about the mount, not a ray at the barrel.
+
+    `Creatures.items.wrack_battery.shotRadius` is a proximity capture, so the
+    hittable volume is a ball centred on the mount. Sampling the BARREL
+    instead - which an earlier pass did - reports a gun shootable whenever any
+    part of its mesh peeks past a cheek, and the muzzle stands 0.5 studs proud
+    of the mouth, so it reported "always shootable" for free.
+    """
+    n, u = _wr_gun_axis(name)
+    centre = n * WR_GUN_R + Vector((0.0, 0.0, WR_GUN_Z[name]))
+    pts = []
+    for i in range(grid):
+        for j in range(grid):
+            for k in range(grid):
+                a = (i / (grid - 1.0) - 0.5) * 2 * radius
+                b = (j / (grid - 1.0) - 0.5) * 2 * radius
+                c = (k / (grid - 1.0) - 0.5) * 2 * radius
+                if a * a + b * b + c * c > radius * radius:
+                    continue
+                pts.append(tuple(centre + n * a + u * b + Vector((0.0, 0.0, c))))
+    return pts
+
+
+def _wr_occluder(measured):
+    """The collidable occluder, rebuilt from what was actually generated."""
+    plates = []
+    for name, (back_r, out_r, hw, z0, z1) in measured.items():
+        n, u = _wr_gun_axis(name)
+        plates.append((tuple(n * back_r), tuple(n), tuple(u), hw, z0, z1))
+        mid, run = (back_r + out_r) / 2.0, (out_r - back_r) / 2.0
+        for s in (-1, 1):
+            plates.append((tuple(n * mid + u * (s * hw)), tuple(u), tuple(n), run, z0, z1))
+    return plates
+
+
+def _wr_ray_blocked(a, b, plates):
+    for c, nrm, ax, ext, z0, z1 in plates:
+        da = sum((a[i] - c[i]) * nrm[i] for i in range(3))
+        db = sum((b[i] - c[i]) * nrm[i] for i in range(3))
+        if (da > 0) == (db > 0):
+            continue
+        t = da / (da - db)
+        p = tuple(a[i] + (b[i] - a[i]) * t for i in range(3))
+        if abs(sum((p[i] - c[i]) * ax[i] for i in range(3))) <= ext and z0 <= p[2] <= z1:
+            return True
+    if abs(b[0] - a[0]) < 1e-6:
+        return False
+    t0 = (WR_HULL[0][0] - 0.5 - a[0]) / (b[0] - a[0])
+    t1 = (WR_HULL[-1][0] + 0.5 - a[0]) / (b[0] - a[0])
+    lo, hi = max(0.0, min(t0, t1)), min(1.0, max(t0, t1))
+    if lo >= hi:
+        return False
+    for i in range(27):
+        t = lo + (hi - lo) * i / 26.0
+        p = tuple(a[j] + (b[j] - a[j]) * t for j in range(3))
+        half, _f, sheer = _wr_station(p[0])
+        if abs(p[1]) <= half + 0.30 and (WR_KEEL_Z - 0.4) <= p[2] <= (WR_KEEL_Z + sheer + 0.30):
+            return True
+    return False
+
+
+def _wr_sight_histogram(plates, eye_z, radius, bearings=72):
+    """(histogram of shootable-gun counts, times the NEAREST gun was eaten)."""
+    hist, eaten = {}, 0
+    for i in range(bearings):
+        deg = i * 360.0 / bearings
+        th = math.radians(deg)
+        for r in WR_SIGHT_RINGS:
+            eye = (r * math.cos(th), r * math.sin(th), eye_z)
+            live = [n for n in WR_GUN_ORDER
+                    if any(not _wr_ray_blocked(eye, p, plates) for p in _wr_capture_points(n, radius))]
+            hist[len(live)] = hist.get(len(live), 0) + 1
+            near = min(WR_GUN_ORDER, key=lambda g: abs(((WR_GUN_BEARING[g] - deg + 180) % 360) - 180))
+            if near not in live:
+                eaten += 1
+    return hist, eaten
+
+
+def _wr_assert_sponsons(measured):
+    """Abort the export if the built casemates left the window, or if the HARD
+    tier no longer holds against the geometry that was actually made."""
+    for name in WR_GUN_ORDER:
+        back_r, out_r, hw, z0, z1 = measured[name]
+        for label, value, (lo, hi) in (("back radius", back_r, WR_CASEMATE_WINDOW["back_r"]),
+                                       ("cheek half-width", hw, WR_CASEMATE_WINDOW["cheek_hw"]),
+                                       ("cheek projection", out_r, WR_CASEMATE_WINDOW["out_r"])):
+            # THE MEASUREMENT IS OF THE PLATE'S OUTER SURFACE, which stands
+            # one tube radius (<= 0.36) proud of the centreline the search
+            # solved on - so the tolerance is 0.5, not zero. It is still far
+            # tighter than the failure it exists to catch: the projection
+            # breaks the property at +-2 studs, and both breaks are silent.
+            assert lo - 0.5 <= value <= hi + 0.5, (
+                "SPONSON WINDOW: %s's %s measured %.2f, outside the %.1f..%.1f that was solved for. "
+                "Projection 21 leaks a third gun on 44 of 144 samples; 25 blinds 2 and eats 2. "
+                "Fix the geometry or re-run the search - do NOT widen this bound." % (name, label, value, lo, hi))
+        assert z1 >= WR_CASEMATE_Z[1] - 0.2, (
+            "SPONSON WINDOW: %s's casemate tops out at z %.2f. The capture sphere reaches z %.2f, so a "
+            "lower plate lets a third gun be shot straight over its own casemate." % (name, z1, WR_GUN_Z[name] + WR_BATTERY_SHOT_RADIUS))
+    plates = _wr_occluder(measured)
+    shot, eaten = _wr_sight_histogram(plates, WR_SHOT_Z, WR_BATTERY_SHOT_RADIUS)
+    bad = shot.get(3, 0) + shot.get(4, 0)
+    assert bad == 0, (
+        "SPONSON HARD TIER: %d of %d shot-origin samples can hit THREE OR MORE guns - the player can "
+        "shoot through the ship. Histogram %s" % (bad, sum(shot.values()), dict(sorted(shot.items()))))
+    assert shot.get(0, 0) == 0, (
+        "SPONSON HARD TIER: %d samples can hit NO gun - the casemates have grown over their own muzzles. "
+        "Histogram %s" % (shot.get(0, 0), dict(sorted(shot.items()))))
+    assert eaten == 0, (
+        "SPONSON HARD TIER: the NEAREST gun's ray is eaten on %d samples - the player is aiming at a gun "
+        "their shot cannot reach." % eaten)
+    eye, _ = _wr_sight_histogram(plates, WR_EYE_Z, WR_BATTERY_SHOT_RADIUS)
+    return shot, eye
+
+
+def _wr_assert_hatch_rise():
+    """Every lid must OPEN. A positive turn about each published axis has to
+    lift the free edge; swung the other way it closes into the planking.
+
+    This is the check SHELL_SWING's own comment records having had to
+    re-derive, and the one that caught two of these three axes pointing the
+    wrong way: the axis VECTOR was converted correctly from Blender, but the
+    Blender axis's SENSE had never been checked against the geometry.
+    """
+    for entry in WR_HATCHES:
+        name, x, y, _lx, _ly, _kind = entry
+        hinge, axis = _wr_hatch_hinge(entry)
+        free = Vector((x, y, _wr_deck_at(x, y))) + (Vector((x, y, _wr_deck_at(x, y))) - hinge)
+        v = free - hinge
+        turned = Matrix.Rotation(math.radians(WR_HATCH_OPEN_DEG), 4, axis) @ v
+        assert turned.z > 0.3, (
+            "HATCH SIGN: %s turned +%.0f about its stored axis %s drops its free edge %.2f studs - it "
+            "opens INTO the deck. Flip the axis." % (name, WR_HATCH_OPEN_DEG, tuple(axis), turned.z))
+
+
+def _wr_assert_fits():
+    """Every clearance the new pieces claim, checked, at build time."""
+    obstacles = _wr_obstacles()
+    spine = [Vector(p) for p in WR_FIGUREHEAD_SPINE]
+    girth = WR_FIGUREHEAD_GIRTH
+    segs = [(spine[i], spine[i + 1], max(girth[i], girth[i + 1])) for i in range(len(spine) - 1)]
+    for s in (-1, 1):
+        elbow, hand = Vector((23.6, s * 2.3, 8.6)), Vector((20.9, s * 3.8, 6.9))
+        segs += [(spine[3], elbow, 0.46), (elbow, hand, 0.42),
+                 (spine[0].lerp(spine[1], 0.35), Vector((17.2, s * 4.4, 4.4)), 0.58)]
+    gap, who = _wr_clearance(segs, ignore=("sheer rail",), obstacles=obstacles)
+    assert gap > 0.0, "Wrack_Figurehead fouls %s by %.2f studs" % (who, -gap)
+
+    for label, (yaw, peak) in (("stowed", WR_BOOM_STOWED), ("swept", WR_BOOM_SWEPT)):
+        gap, who = _wr_clearance(_wr_boom_segments(yaw, peak), obstacles=obstacles)
+        assert gap > 0.35, "Wrack_Boom %s fouls %s (gap %.2f)" % (label, who, gap)
+    worst, worst_who, worst_at = 1e9, "-", (0.0, 0.0)
+    for i in range(61):
+        t = i / 60.0
+        yaw = WR_BOOM_STOWED[0] + (WR_BOOM_SWEPT[0] - WR_BOOM_STOWED[0]) * t
+        peak = WR_BOOM_STOWED[1] + (WR_BOOM_SWEPT[1] - WR_BOOM_STOWED[1]) * t
+        gap, who = _wr_clearance(_wr_boom_segments(yaw, peak), obstacles=obstacles)
+        if gap < worst:
+            worst, worst_who, worst_at = gap, who, (yaw, peak)
+    assert worst > 0.35, ("Wrack_Boom's sweep drives through %s at yaw %.1f peak %.1f (gap %.2f)"
+                          % (worst_who, worst_at[0], worst_at[1], worst))
+    hat_top = _wr_adm_at(WR_ADM_HEAD).z + 3.1
+    boom_top = max(_wr_boom_at(WR_BOOM_STOWED[0] + (WR_BOOM_SWEPT[0] - WR_BOOM_STOWED[0]) * i / 60.0,
+                               WR_BOOM_STOWED[1] + (WR_BOOM_SWEPT[1] - WR_BOOM_STOWED[1]) * i / 60.0,
+                               WR_BOOM_LENGTH).z for i in range(61)) + WR_BOOM_R[1]
+    assert boom_top < WR_MAST_HEAD[2] and boom_top < hat_top, (
+        "the boom tops out at %.2f - above the masthead (%.2f) or the Admiral's hat (%.2f); the silhouette's "
+        "high point is the man, and the mast was cut down to keep it that way" % (boom_top, WR_MAST_HEAD[2], hat_top))
+    assert not (WR_WAIST[0] - 1.0 < WR_BOOM_PIVOT[0] < WR_WAIST[1] + 1.0), (
+        "the boom is socketed in the waist at x %.1f - it would fly apart with the shell plates" % WR_BOOM_PIVOT[0])
+
+    footprints = []
+    for x, run, wide in WR_COAMINGS:
+        footprints.append(("coaming %+.1f" % x, (x - run - 0.3, x + run + 0.3), (-wide - 0.3, wide + 0.3)))
+    for x, y in WR_BITTS:
+        footprints.append(("bitts", (x - 0.4, x + 0.4), (y - 0.4, y + 0.4)))
+    footprints += [("capstan", (-11.4, -8.2), (-1.7, 1.7)), ("mainmast", (-8.4, -4.6), (-2.0, 2.0)),
+                   ("the Admiral", (-16.9, -10.9), (-2.6, 2.6)),
+                   ("boom socket", (WR_BOOM_PIVOT[0] - 1.4, WR_BOOM_PIVOT[0] + 1.4),
+                    (WR_BOOM_PIVOT[1] - 1.4, WR_BOOM_PIVOT[1] + 1.4))]
+    for entry in WR_HATCHES:
+        name, x, y, lx, ly, _kind = entry
+        hx, hy = (x - lx / 2, x + lx / 2), (y - ly / 2, y + ly / 2)
+        assert not (hx[1] > WR_WAIST[0] - 1.5 and hx[0] < WR_WAIST[1] + 1.5), (
+            "%s is over the waist - a hatch in a door" % name)
+        outer = max(abs(v) for v in hy)
+        assert outer / _wr_station(x)[0] < 0.840, "%s reaches y %.2f, outboard of the rail cap" % (name, outer)
+        for label, fx, fy in footprints:
+            assert not (hx[1] > fx[0] and hx[0] < fx[1] and hy[1] > fy[0] and hy[0] < fy[1]), (
+                "%s at (%.1f, %.1f) is buried in %s" % (name, x, y, label))
+    _wr_assert_hatch_rise()
 
 
 # --- the Admiral ------------------------------------------------------------
@@ -4233,7 +5130,11 @@ def build_wr_hat(rng):
 # `parts.mounts` derivation, the per-cannon render sheet. Bearing order round
 # the ship from the bow, which is also the order they are easiest to check
 # a render against.
-WR_CANNONS = ("Bow", "Starboard", "Stern", "Port")
+# The order the four cannons are reported in, everywhere: the HANDOFF, the
+# `parts.mounts` derivation, the per-cannon render sheet. Corner order from
+# the starboard bow, which is also the order they are easiest to check a
+# render against.
+WR_CANNONS = WR_GUN_ORDER
 
 
 def build_wrack():
@@ -4249,14 +5150,24 @@ def build_wrack():
         build_wr_shell_lower(rng),
         build_wr_heart(),
         build_wr_heart_cage(rng),
-        build_wr_cannon_bow(rng),
-        build_wr_cannon_starboard(rng),
-        build_wr_cannon_stern(rng),
-        build_wr_cannon_port(rng),
+        build_wr_cannon_bowstbd(rng),
+        build_wr_cannon_bowport(rng),
+        build_wr_cannon_sternstbd(rng),
+        build_wr_cannon_sternport(rng),
+        build_wr_sponsons(rng),
+        build_wr_hull_collider(rng),
         build_wr_muzzleflare(),
         build_wr_mast(rng),
         build_wr_rigging(rng),
         build_wr_sail(rng),
+        build_wr_figurehead(rng),
+        build_wr_figurehead_glow(),
+        build_wr_boom(rng),
+        build_wr_boom_tackle(rng),
+        build_wr_hatch1(rng),
+        build_wr_hatch2(rng),
+        build_wr_hatch3(rng),
+        build_wr_hatch_glow(rng),
         build_wr_coat(rng),
         build_wr_arm(rng),
         build_wr_sabre(),
@@ -4264,14 +5175,19 @@ def build_wrack():
         build_wr_skull(rng),
         build_wr_eyes(),
         build_wr_hat(rng),
+        build_wr_pistol(rng),
     ]
+    _wr_assert_fits()
+    shot_hist, eye_hist = _wr_assert_sponsons(WR_CASEMATE_MEASURED)
     hinge = Vector((0.0, 0.0, WR_KEEL_Z))
     head = _wr_adm_at(WR_ADM_HEAD)
     tip = _wr_adm_at(WR_SABRE_TIP)
     print("HANDOFF wrack: STATIC. One CFrame for the whole model - he never moves, never turns. Wrack_Base is the anchor; its centre is the boss origin at sand level (z=0 = the shoal).")
     print("HANDOFF wrack: UPRIGHT (the 48-deg careen is GONE, 2026-09-08). Bow at +X, stern at -X, keel bedded at z %.1f, masts up." % WR_KEEL_Z)
-    print("HANDOFF wrack: SIZE - %.0f studs bow-to-stern (stern-chaser muzzle to bow-chaser muzzle), %.1f to the masthead, %.1f to the Admiral's hat, %.1f to the sabre tip. Was 87 / 72." % (
-        WR_GUNS["Bow"][0][1][0] - WR_GUNS["Stern"][0][1][0], WR_MAST_HEAD[2], head.z + 3.1, tip.z))
+    print("HANDOFF wrack: SIZE - %.0f studs stem to sternpost, %.0f across the sponsons (the corner guns stand outboard now, so the widest thing on her is her own ordnance), %.1f to the masthead, %.1f to the Admiral's hat, %.1f to the sabre tip." % (
+        WR_HULL[-1][0] - WR_HULL[0][0],
+        2.0 * max(abs(WR_GUNS[n][0][1][1]) for n in WR_GUN_ORDER),
+        WR_MAST_HEAD[2], head.z + 3.1, tip.z))
     print("HANDOFF wrack: CAMERA - from the r 88 drop ring the birdseye eye (boom pinned -20) is 142.5 studs out and 27.3 up, so the top of frame is z = 27.3 + 142.5*tan(35 + aim): 29.8 at the -34 rest pitch, 40.1 at -30, 65.5 at the -20 boom pin. The whole model needs aim >= -30.4 (the OLD one needed -17.6, inside 4 deg of the +14 ceiling).")
     print("HANDOFF wrack: FOUR CANNONS - one gun each, integral to the hull, addressable by object name -")
     for name in WR_CANNONS:
@@ -4304,7 +5220,28 @@ def build_wrack():
         heart.x, heart.y, heart.z, heart.x, heart.z, -heart.y))
     print("HANDOFF wrack: EMISSIVE parts carry `Glow` in the OBJECT name (Wrack_HeartGlow, Wrack_EyeGlow, Wrack_MuzzleGlow).")
     print("HANDOFF wrack: WARNING - that marker is honoured by BossArenaService.placeAuthored (ARENA meshes only). The boss path (<Boss>BodyController clones pack parts) has NO Neon-by-name rule, so these three import FLAT unless the Wrack body controller sets Material.Neon on them. Same defect as 5edfbce, one layer over - Kraken_Eyes/Kraken_Pupil are already affected.")
-    print("HANDOFF wrack: RENAMED OBJECTS - Wrack_BatteryDeck/Keel/Stern/Top are GONE. The four targets are Wrack_CannonBow / Wrack_CannonStarboard / Wrack_CannonStern / Wrack_CannonPort. MeshColors rows, WrackBodyController PIECES/AUTHORED and import-checklist row 7p all key on these names.")
+    launch, _ = _wr_fh_axis()
+    print("HANDOFF wrack: THE FIGUREHEAD - Wrack_Figurehead + Wrack_FigureheadGlow ride one CFrame. Dock/mount ROBLOX (%.2f, %.2f, %.2f); she flies along her own spine, ROBLOX dir (%.2f, %.2f, %.2f); head tops out at %.2f." % (
+        WR_FIGUREHEAD_AT[0], WR_FIGUREHEAD_AT[2], -WR_FIGUREHEAD_AT[1],
+        launch.x, launch.z, -launch.y, WR_FIGUREHEAD_SPINE[-1][2] + WR_FIGUREHEAD_GIRTH[-1]))
+    print("HANDOFF wrack: THE BOOM - pivot ROBLOX (%.2f, %.2f, %.2f), yaw axis (0,1,0), length %.1f, tackle at %.2f of it. ROBLOX yaw = -(the Blender yaw here). Stowed yaw %.1f peak %.1f; swept yaw %.1f peak %.1f." % (
+        WR_BOOM_PIVOT[0], WR_BOOM_PIVOT[2], -WR_BOOM_PIVOT[1], WR_BOOM_LENGTH, WR_BOOM_TACKLE_AT,
+        -WR_BOOM_STOWED[0], WR_BOOM_STOWED[1], -WR_BOOM_SWEPT[0], WR_BOOM_SWEPT[1]))
+    print("HANDOFF wrack:   PEAK ENVELOPE (ROBLOX yaw: lowest legal peak). Outside this the spar goes through the ship - the client MUST clamp to it, and the server sends yaw only:")
+    print("HANDOFF wrack:   " + "  ".join("%+.0f:%+.0f" % (-y, p) for y, p in _wr_boom_envelope() if p is not None))
+    print("HANDOFF wrack: THE HATCHES - three lids, per-piece hinge AND per-piece axis; a single-axis pose swings two of them into the deck. A POSITIVE turn about the stored axis opens the lid (asserted every build).")
+    for entry in WR_HATCHES:
+        nm, hx, hy, lx, ly, kind = entry
+        hp, ax = _wr_hatch_hinge(entry)
+        print("HANDOFF wrack:   %-13s ROBLOX at (%.2f, %.2f, %.2f) size %.1f x %.1f, hinge (%.2f, %.2f, %.2f) axis (%.0f, %.0f, %.0f), opens %.0f deg (%s edge)" % (
+            nm, hx, _wr_deck_at(hx, hy), -hy, lx, ly, hp.x, hp.z, -hp.y, ax.x, ax.z, -ax.y, WR_HATCH_OPEN_DEG, kind))
+    print("HANDOFF wrack: THE ADMIRAL is a self-contained assembly - Coat/Arm/Sabre/Facings/Skull/EyeGlow/Hat/Pistol. Foot origin ROBLOX (%.2f, %.2f, %.2f), %.2f BELOW the deck it stands on, height %.1f, facing ROBLOX (1, 0, 0) (measured off the coat shoulder ring: half-width %.2f across Y beats half-depth 4.10 across X, and the tails hang aft)." % (
+        WR_ADM_AT[0], WR_ADM_AT[2], -WR_ADM_AT[1], _wr_deck(WR_ADM_AT[0]) - WR_ADM_AT[2],
+        _wr_adm_at(WR_ADM_HEAD).z + 3.1 - WR_ADM_AT[2], WR_ADM_SHOULDER))
+    print("HANDOFF wrack: Wrack_HullCollider is INVISIBLE - Transparency 1, CanCollide/CanQuery true. It is the shot blocker, and it carries the four casemate boxes, so what the player sees shielding a far gun is what stops the shot. It has NO MeshColors row on purpose.")
+    print("HANDOFF wrack: SHOT OCCLUSION - wrack_battery.shotRadius MUST equal %.1f (this file bakes it as WR_BATTERY_SHOT_RADIUS). At 5.0, %s of samples could hit three or more guns THROUGH the ship. Shootable histogram from the shot origin %s; from the birdseye eye %s." % (
+        WR_BATTERY_SHOT_RADIUS, "80/144", dict(sorted(shot_hist.items())), dict(sorted(eye_hist.items()))))
+    print("HANDOFF wrack: RENAMED OBJECTS - Wrack_BatteryDeck/Keel/Stern/Top are GONE. The four targets are now the CORNER guns - Wrack_CannonBowStbd / Wrack_CannonBowPort / Wrack_CannonSternStbd / Wrack_CannonSternPort, outboard on sponsons at bearings +-30 / +-150. MeshColors rows, WrackBodyController PIECES/AUTHORED and import-checklist row 7p all key on these names.")
     return objects
 
 
@@ -4348,8 +5285,8 @@ def _place_wrack(objects, opened=0.0, silenced=()):
     swing = {"ShellUpper": WR_OPEN_UPPER_DEG, "ShellLower": WR_OPEN_LOWER_DEG}
     made = []
     for name, obj in parts.items():
-        if name == "MuzzleGlow":
-            continue
+        if name in ("MuzzleGlow", "HullCollider"):
+            continue          # a module, and an invisible blocker
         made.append(_wr_copy(obj, _wr_hinge(swing[name] * opened) if name in swing else Matrix.Identity(4)))
     flare = parts["MuzzleGlow"]
     lit = 0
