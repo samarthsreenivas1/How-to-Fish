@@ -196,41 +196,15 @@ end
 
 -- ---------------------------------------------------------------- per frame
 
--- The server's welded rod must not draw for the owner IN FIRST PERSON: Roblox
--- hides it anyway there, but a transparency override makes that explicit and
--- covers the frames before the camera settles.
---
--- In THIRD person it is the opposite - the viewmodel is gone (the boss arena
--- takes the camera out; Viewmodel.setHidden) and this welded rod is the only
--- rod there is, so hiding it would leave the character holding nothing.
-local currentWorldRod: Model? = nil
-local worldRodHidden: boolean? = nil
-
-local function applyWorldRod(worldRod: Model, hidden: boolean)
-	for _, part in worldRod:GetDescendants() do
-		if part:IsA("BasePart") then
-			part.LocalTransparencyModifier = if hidden then 1 else 0
-		end
-	end
-end
-
+-- THE WELDED ROD'S TRANSPARENCY IS NOT THIS FILE'S ANY MORE (2026-09-08). It
+-- used to be: this controller traded the server's welded rod against its own
+-- viewmodel here, hiding one whenever the other drew. The weapon never got the
+-- same trade, and the Maelstrom playtest found the arena with an empty pair of
+-- hands - so the trade now lives in CameraController.applyWeldedTools, stated
+-- once for EquippedRod and EquippedWeapon together, where the mode that decides
+-- it is owned. Two owners of one property is how the two tools drifted apart in
+-- the first place; there is one now.
 local function onRenderStep(dt: number)
-	-- The world rod trades places with the viewmodel: whichever one is not
-	-- drawing, the other is. Cheap to re-check, and it has to be checked
-	-- outside the `rig` guard below - in third person there IS no rig.
-	if currentWorldRod then
-		if currentWorldRod.Parent == nil then
-			currentWorldRod = nil
-			worldRodHidden = nil
-		else
-			local hidden = not Viewmodel.isHidden()
-			if hidden ~= worldRodHidden then
-				worldRodHidden = hidden
-				applyWorldRod(currentWorldRod, hidden)
-			end
-		end
-	end
-
 	if not rig then
 		return
 	end
@@ -323,10 +297,6 @@ local function watchCharacter(character: Model)
 		if worldRod.Name ~= EQUIPPED_NAME or not worldRod:IsA("Model") then
 			return
 		end
-		currentWorldRod = worldRod
-		worldRodHidden = not Viewmodel.isHidden()
-		applyWorldRod(worldRod, worldRodHidden)
-
 		local rodId = worldRod:GetAttribute("RodId")
 		local rodData = rodId and Rods.items[rodId]
 		if not rodData then

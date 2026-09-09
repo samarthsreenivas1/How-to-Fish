@@ -54,6 +54,12 @@ local bobPhase = 0
 local bobWeight = 0
 local idleTime = 0
 
+-- Hide EVERY viewmodel at once; see setHidden below for who flips it and why.
+-- Declared up here rather than beside its setter because pinFrame reads it -
+-- that is what makes it one gate for every rig instead of one for the rigs
+-- that happen to pose through Rig:pin.
+local hidden = false
+
 -- The pin is computed at most once per frame no matter how many rigs ask
 -- for it, so two rigs alive during a swap don't advance the bob twice.
 local frameId = 0
@@ -121,6 +127,25 @@ function Viewmodel.pinFrame(dt: number, character: Model): CFrame?
 		return pinnedValue
 	end
 	pinnedFrame = frameId
+
+	-- THE THIRD-PERSON GATE, and the reason it is here and not only in Rig:pin
+	-- (2026-09-08). Rig:pin was written as "one choke point... so this catches
+	-- the rod, the fists and the crafted weapons" - but the fists do not pose
+	-- through it at all: FistsViewmodelController places its two arms directly
+	-- (Viewmodel.placeArm), by design, so a rig that never calls pin never took
+	-- the hide. The distance test below is not a substitute for it either. It
+	-- only reports what the camera has ALREADY done, and the camera leaves the
+	-- head over several frames (CameraController eases every arena orbit in),
+	-- so on the frame the mode flips the fists were still drawn pinned to a lens
+	-- that was about to be thirty studs away.
+	--
+	-- Every viewmodel asks for this pin every frame, whatever it does with it,
+	-- so gating it here is the gate that cannot be missed - and a nil pin is
+	-- already every controller's cue to hide its rig.
+	if hidden then
+		pinnedValue = nil
+		return nil
+	end
 
 	if not Viewmodel.isFirstPerson(character) then
 		pinnedValue = nil
@@ -280,9 +305,8 @@ end
 -- so in third person it would hang in front of the lens with the real
 -- character visible behind it. CameraController flips this when the boss
 -- arena takes the camera out to third (2026-08-29); the rigs come straight
--- back when it hands the camera back.
-local hidden = false
-
+-- back when it hands the camera back. The flag itself is declared at the top
+-- of the file, because pinFrame reads it too.
 function Viewmodel.setHidden(value: boolean)
 	hidden = value
 end
