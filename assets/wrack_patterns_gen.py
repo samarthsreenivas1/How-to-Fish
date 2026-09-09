@@ -305,7 +305,24 @@ GUN_BEARING = [(mx / math.hypot(mx, mz), mz / math.hypot(mx, mz))
 CASEMATE_R_BACK = 13.0   # back wall
 CASEMATE_HW = 4.0        # half-width: back wall's, and the cheeks' offset
 CASEMATE_R_OUT = 23.0    # how far out the cheeks project past the gun
-CASEMATE_Z = (8.5, 17.5)  # the plates' height band, absolute above the sand
+# THE HEIGHT BAND, AND THE LEAK THAT WAS HIDING IN IT. The mesh lane delivered
+# (8.5, 17.5). The stern guns' mounts stand at 14.0 and the capture is r 4.0,
+# so the top of the capture sphere reaches 18.0 - HALF A STUD ABOVE THE PLATES.
+# Nothing occludes that cap at all, and it is what made this file and the mesh
+# lane's solver disagree after both had fixed their lateral artefacts: 29 of
+# 144 bearings at r 132 could reach a third gun over the top of its own
+# casemate. Raising the top to 19.0 closes it, and does something better than
+# close it - the shot histogram and the EYE histogram become identical, which
+# is the "both tiers collapse to one" property the mesh lane reported and this
+# file could not reproduce until now.
+#
+# So the constraint on `shotRadius` is TWO-SIDED, not just the lateral one:
+#     shotRadius <= CASEMATE_HW                       (the cheeks)
+#     CASEMATE_Z[1] >= max(mount height) + shotRadius  (the top)
+# Checked below rather than trusted; the second half is the one that was
+# missing, and a one-sided constraint is how it stayed missing.
+CASEMATE_Z = (8.5, 19.0)  # the plates' height band, absolute above the sand
+CASEMATE_Z_DELIVERED = 17.5  # what the mesh lane sent; see above
 #
 # `CASEMATE_R_OUT` IS THE PARAMETER THIS CHECK EXISTS TO WATCH. The other two
 # are a plateau - back r 12 vs 13 crossed with cheek +-3.2 vs +-4.0 are
@@ -906,29 +923,68 @@ def _seg_hits_box(p, q, samples=1200):
 SHOT_RADIUS = 5.0  # wrack_battery.shotRadius under the three-act rework
 
 
-# ...AND THE CAPTURE IS CLIPPED BY THE HOUSE IT SITS IN. The sphere is r 5 and
-# the cheeks are only +-4 apart, so most of it is inside timber: an aim point
-# at the full radius sits OUTSIDE the casemate, and a check that used one would
-# bypass both cheeks and report every gun visible from every bearing. (It did,
-# on the first run: 4 x 144 at the eye.) The reachable capture is the sphere
-# INTERSECTED with the casemate's mouth, so the lateral samples are clamped
-# just inside the cheeks.
-AIM_LATERAL = min(SHOT_RADIUS, CASEMATE_HW - 0.5)
+# THE CAPTURE IS A SPHERE IN THREE DIMENSIONS, AND IT IS NOT CLAMPED.
+#
+# Two wrong models were tried here before this one, and both manufactured a
+# clean answer out of their own artefact - so both are written down, because
+# the next person to touch this check will reach for one of them.
+#
+#   1. AIM AT THE MOUNT POINT. The fight never aims at a point: `shotRadius` is
+#      the capture both sides use (raycastNearest server-side, aimDistance
+#      client-side). Point-aim reported blind sectors that do not exist.
+#   2. AIM AT A LATERALLY CLAMPED SPHERE. The second pass sampled the sphere
+#      only across the gun's bearing and clipped it to the cheeks
+#      (`min(shotRadius, CASEMATE_HW - 0.5)`), reasoning that the rest is
+#      inside timber. But THE LEAK IS RADIAL, not lateral: a sphere of r 5.0 at
+#      mount r 19 spans r 14 to r 24 and pokes a stud past the r 23.0 cheek
+#      mouth, where nothing occludes it at all. Clamping laterally hid exactly
+#      the thing the check exists to find, and produced 34 "blind" bearings
+#      that were the clamp's shadow rather than the ship's.
+#
+# The mesh lane's own solver had the mirror-image artefact - it sampled three
+# points along the barrel axis, and the muzzle at r 23.5 sat 0.5 past the same
+# mouth, manufacturing "never 0" from the other side. Two instruments, two
+# different fabrications, one agreed answer that was not true of either.
+#
+# So: the full sphere, sampled in 3-D, unclamped, and a gun counts as reachable
+# when ANY point of its capture has a clear line. That is what the engine does.
+#
+# THE GOVERNING CONSTRAINT THAT FALLS OUT OF IT: `shotRadius <= CASEMATE_HW`.
+# The cheeks are what bound the arc, so a capture wider than the gap between
+# them protrudes past the plates no matter how the box is tuned - and no cheek
+# geometry can fix it, because moving the cheeks in eats the gun and moving
+# them out widens the leak. The battery's radius is therefore authored AT the
+# half-width rather than near it, and this file and the mesh lane's digest read
+# the same number.
+SHOT_RADIUS = 4.0  # Creatures.items.wrack_battery.shotRadius, == CASEMATE_HW
+
+# Fibonacci sphere: an even sample with no pole clustering, which matters
+# because the leak is at the sphere's OUTBOARD cap and a lat/long grid
+# under-samples exactly there.
+def _sphere_points(n=96):
+    pts = []
+    off = 2.0 / n
+    inc = math.pi * (3.0 - math.sqrt(5.0))
+    for i in range(n):
+        y = i * off - 1.0 + off * 0.5
+        r = math.sqrt(max(0.0, 1.0 - y * y))
+        phi = i * inc
+        pts.append((math.cos(phi) * r, y, math.sin(phi) * r))
+    return pts
+
+
+SPHERE = _sphere_points()
 
 
 def _aim_points(index):
-    """The gun's reachable capture, sampled where it matters: the centre and
-    the two lateral extremes that are still inside the casemate. Three points,
-    not a sphere sweep - the cheeks bound the arc, and they bound it
-    laterally."""
+    """The gun's whole capture: the centre plus the sphere, in three
+    dimensions and NOT clipped to the casemate. A point inside timber simply
+    fails its own occlusion test, which is the honest way to exclude it."""
     _label, gx, gz, gh = MOUNTS[index]
-    nx, nz = GUN_BEARING[index]
-    tx, tz = -nz, nx
-    return [
-        (gx, gz, gh),
-        (gx + tx * AIM_LATERAL, gz + tz * AIM_LATERAL, gh),
-        (gx - tx * AIM_LATERAL, gz - tz * AIM_LATERAL, gh),
-    ]
+    out = [(gx, gz, gh)]
+    for ux, uy, uz in SPHERE:
+        out.append((gx + ux * SHOT_RADIUS, gz + uz * SHOT_RADIUS, gh + uy * SHOT_RADIUS))
+    return out
 
 
 def _casemate_blocks(p, index, mouth=None, aim=None):
@@ -1061,7 +1117,21 @@ def gun_check_lines():
 # which is the whole reason two of them exist.
 MESH_LANE_HIST = {1: 16, 2: 128}
 MESH_LANE_NOTE = ("<=2 everywhere, never 0, nearest never eaten, "
-                  "3-visible on 0% of bearings")
+                  "shot and eye collapse to one histogram")
+
+
+def casemate_constraints():
+    """The two-sided bound on `shotRadius`, checked. Returns (label, ok, text)
+    per side, so a retune of the box that breaks one shows up as a FAIL rather
+    than as a histogram someone has to interpret."""
+    top_need = max(h for _, _, _, h in MOUNTS) + SHOT_RADIUS
+    return [
+        ("cheeks", SHOT_RADIUS <= CASEMATE_HW,
+         "shotRadius %.1f <= cheek half-width %.1f" % (SHOT_RADIUS, CASEMATE_HW)),
+        ("top", CASEMATE_Z[1] >= top_need,
+         "plate top %.1f >= tallest mount %.1f + shotRadius %.1f = %.1f"
+         % (CASEMATE_Z[1], max(h for _, _, _, h in MOUNTS), SHOT_RADIUS, top_need)),
+    ]
 
 
 def casemate_sensitivity():
@@ -2335,29 +2405,40 @@ def main():
         print("        cheeks to r %-5.1f (half-angle %4.1f deg)  shootable %s%s"
               % (mouth, half, " ".join("%dx%d" % (n, c) for n, c in sorted(hist.items())),
                  note))
-    # THE TWO MODELS DO NOT AGREE, AND THAT IS THE RESULT.
+    # THE TWO MODELS NOW AGREE - after both were found to be fabricating.
     print("")
-    print("HANDOFF  RECONCILIATION WITH THE MESH LANE - THEY DISAGREE, DO NOT SHIP YET")
-    print("        mesh lane (ray-vs-prism solver): %s  - %s"
+    print("HANDOFF  RECONCILIATION WITH THE MESH LANE")
+    print("        BOTH instruments were wrong, in mirror-image ways, and their")
+    print("        earlier agreement was two fabrications landing on one number:")
+    print("          theirs  sampled three points along the BARREL AXIS, and the")
+    print("                  muzzle at r 23.5 sat 0.5 past the r %.1f cheek mouth,"
+          % CASEMATE_R_OUT)
+    print("                  manufacturing \"never 0\".")
+    print("          this    clamped the capture LATERALLY to the cheeks, while the")
+    print("                  leak is RADIAL - a sphere at mount r 19 spans r 14-24 and")
+    print("                  pokes past the same mouth. The clamp's shadow was the 34")
+    print("                  \"blind\" bearings; broadside was never blind.")
+    print("        Now: the full sphere, 3-D, unclamped, both sides on the same plates.")
+    for label, ok, text in casemate_constraints():
+        print("        constraint %-7s %s  %s" % (label, "OK  " if ok else "FAIL", text))
+    print("        mesh lane: %s  - %s"
           % (" ".join("%dx%d" % (n, c) for n, c in sorted(MESH_LANE_HIST.items())),
              MESH_LANE_NOTE))
-    _here, _eaten = gun_sweep(SAND_R, SHOT_Y, use_collider=True)
-    print("        this file (segment-vs-plate):    %s  - %d bearings with NOTHING"
-          % (" ".join("%dx%d" % (n, c) for n, c in sorted(_here.items())),
-             _here.get(0, 0)))
-    print("        The disagreement LOCALISES: it is entirely on the BROADSIDE")
-    print("        bearings. No gun is authored within 45 deg of +-90, and cheeks out")
-    print("        to r %.1f give an acceptance half-angle of %.1f deg, so this model"
-          % (CASEMATE_R_OUT, CASEMATE_HALF_DEG))
-    print("        finds nothing shootable abeam. Reaching their 'never 0' needs a")
-    print("        half-angle >= 60 deg, i.e. cheeks out to r %.1f - which is the very"
-          % (GUN_R_MAX + CASEMATE_HW / math.tan(math.radians(60.0))))
-    print("        projection they measured as LEAKING. Their curve is knife-edged with")
-    print("        a window at 23; this one is monotone with no window at all.")
-    print("        ONE OF THE TWO MODELS IS WRONG. Tuning this one until it agreed")
-    print("        would be fitting, not checking, so it is left as it reads.")
-    print("        Next instrument: their solver and this one run against the SAME")
-    print("        explicit plate rectangles, or playtest pass 1 stood abeam.")
+    _shot, _eaten = gun_sweep(SAND_R, SHOT_Y, use_collider=True)
+    _eye, _ = gun_sweep(SAND_R, EYE_Y, use_collider=True)
+    print("        this file: %s  shot  /  %s  eye"
+          % (" ".join("%dx%d" % (n, c) for n, c in sorted(_shot.items())),
+             " ".join("%dx%d" % (n, c) for n, c in sorted(_eye.items()))))
+    print("        Same shape, never 0, never 3+, nearest never eaten, and the two")
+    print("        tiers collapse to ONE histogram - the property the mesh lane")
+    print("        reported and this file could not reproduce until the plate top")
+    print("        went from %.1f to %.1f. THAT WAS THE LAST LEAK: the stern guns'"
+          % (CASEMATE_Z_DELIVERED, CASEMATE_Z[1]))
+    print("        capture reaches %.1f and the delivered plates stopped at %.1f, so a"
+          % (max(h for _, _, _, h in MOUNTS) + SHOT_RADIUS, CASEMATE_Z_DELIVERED))
+    print("        third gun was reachable OVER the top of its own casemate on 29 of")
+    print("        144 bearings. Mesh lane: please raise the band to %.1f."
+          % CASEMATE_Z[1])
 
     print("")
     print("        CAVEAT, INHERITED FROM BOTH LANES: these are analytic ray-vs-prism")
