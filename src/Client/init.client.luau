@@ -29,6 +29,7 @@ local ORDER = {
 	"WrackBodyController", -- no dependencies; places the wreck island's careened flagship as ONE static assembly (no rig, no path module - he never moves)
 	"CreatureVfxController", -- no dependencies; splashes / drips / puffs driven by creature attributes
 	"EquipController", -- no dependencies; 1/2 hotkeys that ask the server to swap hands
+	"ToolHoldController", -- after CameraController (reads isThirdPerson): poses every player's arms around the welded rod/weapon so it stops swinging with the walk
 	"CombatController", -- after both melee viewmodels: click/tap swings the equipped weapon (and asks the server to resolve the hit)
 	"RangedController", -- after WeaponViewmodelController (kick + muzzle): the trigger for any `ranged` weapon row; CombatController stands down for those
 	"RangedFxController", -- after WeaponViewmodelController: pooled tracers + muzzle flashes off the ShotFired remote
