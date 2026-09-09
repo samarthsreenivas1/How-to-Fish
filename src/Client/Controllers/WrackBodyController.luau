@@ -51,6 +51,13 @@ local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local MeshColors = require(Shared.Config.MeshColors)
+-- The client event stream. Subscribed to HERE rather than routed through
+-- ProjectileFxController, because `CreatureEvent` is a broadcast every
+-- interested controller connects to on its own (that file's own header says
+-- so: "which this file subscribes to alongside CreatureEventController; kinds
+-- it does not own are ignored in silence"). A second connection costs one
+-- table lookup per event and keeps the two lanes from owning each other.
+local Remotes = require(Shared.Net.Remotes)
 
 local WrackBodyController = {}
 
@@ -216,6 +223,23 @@ local AUTHORED = {
 		color = Color3.fromRGB(255, 204, 92),
 	},
 	Hat = { at = Vector3.new(-14.9, 27.9, 1.1), size = Vector3.new(3.7, 2.1, 7.8), color = Color3.fromRGB(22, 22, 27) },
+	-- THE 25TH OBJECT, and the one row here that is not a placement.
+	--
+	-- `Wrack_MuzzleGlow` is a MODULE: boss_gen authors it at the ORIGIN with +X
+	-- as the bore and it is instanced once per muzzle (see MODULES below), so
+	-- `at` is not where it goes - it is where its own bounding box sits inside
+	-- its own authored space, which is what a clone's CFrame means and what the
+	-- stand-in block has to reproduce. FLARE_CENTRE below is this row's `at.X`
+	-- and the two must move together.
+	--
+	-- Measured off assets/boss_wrack.glb by the same per-object bounding box
+	-- pass as every row above, not typed: the flare runs from -0.5 to 2.0 along
+	-- the bore with five spikes to +-1.2 across it.
+	MuzzleGlow = {
+		at = Vector3.new(0.78, 0, -0.1),
+		size = Vector3.new(2.44, 2.03, 1.93),
+		color = Color3.fromRGB(255, 241, 199),
+	},
 }
 
 -- The pieces that must burn, by the marker boss_gen puts in the OBJECT name
@@ -301,6 +325,755 @@ local SHELL_SWING = {
 -- true silence `staggerFor` buys, so the plates finish moving while the guns
 -- are still quiet and the opening is legible before the burst window starts.
 local OPEN_RATE = 2.6
+
+-- ============================================================================
+-- THE CHANNEL LAYER
+-- ============================================================================
+--
+-- The header above says the shell scalar "is the only thing in this file that
+-- is interpolated, and it should stay the only one". That held while the ship
+-- was the whole boss. It stopped holding the moment the player asked for
+-- attacks that read as PERFORMED rather than emitted: the hull is still dead
+-- still - no rig, no path module, no per-frame limb maths on the SHIP - but
+-- the man on the quarterdeck and the brass he fires are not.
+--
+-- So the shell mechanism is not replaced, it is GENERALISED, and the shell is
+-- now one row in the table below with exactly the behaviour it always had.
+--
+-- WHAT A CHANNEL IS. A named pose applied to a named set of pieces, computed
+-- per frame from one driver, and layered onto whatever the channels before it
+-- did. Nothing here uses TweenService: a tween writes CFrames on its own clock
+-- and the draw loop writes them on ours, and the two would fight for the same
+-- property every frame. Every value in this layer is eased by hand, in the
+-- existing RenderStepped pass, from state this file owns.
+--
+-- HOW A PIECE IS POSED. Each channel supplies a `pivot` (a point in BOSS
+-- space) and a `pose` returning a CFrame in that pivot's frame. The layer
+-- composes
+--
+--     offset = offset * (pivotCF * pose * pivotCF:Inverse())
+--
+-- and finally draws `part.CFrame = base * offset * relative`. The composition
+-- is a RIGHT-multiply on purpose: a channel later in the list acts in the
+-- frame the earlier ones have already established, so the sabre's wrist flick
+-- turns about the wrist WHERE THE SHOULDER JUST PUT IT rather than about the
+-- wrist's rest position. That is what makes "body sway, then shoulder, then
+-- wrist" work as a chain without this file growing a rig. THE LIST ORDER IS
+-- THE LAYERING ORDER, outermost first.
+--
+-- THE ONE RULE A `pose` MUST OBEY: `pose` at value 0 is the identity. The
+-- layer skips channels that have eased to zero, so a pose that did something
+-- at rest would flicker on and off at the epsilon.
+--
+-- THE DRIVERS, and why each is the shape it is:
+--
+--   level   goal(ctx) -> 0 or 1, eased at `rate`. Model attributes live here.
+--           LEVEL-TRIGGERED and POLLED, like `Exposed` and `Weakpoint` above
+--           and for the same reason: a client that adopts the boss mid-state
+--           has no edge to have missed, and a dropped update costs a frame of
+--           easing instead of a stuck pose.
+--   hold    a client event opens a window `duration` long (plus `tail`);
+--           value is 1 inside it, eased at `rate`. This is how a WINDUP is
+--           drawn: the wire already carries how long it lasts.
+--   pulse   a client event fires a one-shot envelope: linear to 1 over
+--           `attack`, then a squared fall over `release`. Sharp out, slow
+--           back - a recoil, a muzzle flash, a sabre stroke.
+--   free    always 1; the pose reads the clock itself. Idles.
+--
+-- ADDING A PIECE, OR A DRIVER, IS A TABLE ENTRY. Three sibling contracts are
+-- inbound (a figurehead that flies, a boom that sweeps, deck hatches that
+-- pop); their stubs are the last three rows of CHANNELS and each lands in at
+-- most two one-line edits - the piece name into PIECES/AUTHORED, and the wire
+-- kind into adaptSignal. A channel naming a piece that does not exist yet is
+-- DROPPED at adopt rather than erroring, which is what makes an unlanded stub
+-- inert instead of dangerous.
+
+-- ------------------------------------------------------------- the guns
+--
+-- WHERE EACH CANNON ACTUALLY POINTS. Derived from `WR_GUNS` in
+-- assets/boss_gen.py - the mesh's single source of truth for the art AND for
+-- the Bosses mount handoff - converted from Blender (x, y, z) to Roblox
+-- (x, z, -y), which is the same conversion every constant in this file uses:
+--
+--   Bow        breech (14.5, -1.4, 12.2) muzzle (23.6, -1.4, 12.6)
+--   Starboard  breech (12.5,  2.8,  9.0) muzzle (12.5, 11.8,  9.0)
+--   Stern      breech (-15.5, 1.3,  9.5) muzzle (-24.4, 1.3,  9.2)
+--   Port       breech (-11.0,-3.4,  9.2) muzzle (-11.0,-12.4, 9.2)
+--
+-- `at` IS THE SPAN CENTROID, and it is not decoration: it is exactly the
+-- number boss_gen prints into `Bosses.items.admiral_wrack.parts.mounts`, so it
+-- is where the SERVER stands the battery creature this cannon is drawn under.
+-- That is what lets a volley's world origin be matched back to a gun, and what
+-- lets a live weakpoint model be matched to the brass it belongs to. The bow
+-- and stern chasers are laid with a slight rise, so their bores are not
+-- axis-aligned and are carried at full precision rather than rounded to +-X -
+-- the muzzle flare is placed along this vector and a rounded bore would sit it
+-- visibly off the barrel.
+local GUNS = {
+	CannonBow = {
+		at = Vector3.new(19.05, 12.4, 1.4),
+		muzzle = Vector3.new(23.6, 12.6, 1.4),
+		bore = Vector3.new(0.999, 0.044, 0),
+	},
+	CannonStarboard = {
+		at = Vector3.new(12.5, 9, -7.3),
+		muzzle = Vector3.new(12.5, 9, -11.8),
+		bore = Vector3.new(0, 0, -1),
+	},
+	CannonStern = {
+		at = Vector3.new(-19.95, 9.35, -1.3),
+		muzzle = Vector3.new(-24.4, 9.2, -1.3),
+		bore = Vector3.new(-0.999, -0.034, 0),
+	},
+	CannonPort = {
+		at = Vector3.new(-11, 9.2, 7.9),
+		muzzle = Vector3.new(-11, 9.2, 12.4),
+		bore = Vector3.new(0, 0, 1),
+	},
+}
+
+-- The instanced modules: one `Wrack_MuzzleGlow` per gun, built by the same
+-- makePiece() the 24 placed pieces go through - which the import checklist
+-- says is all that module needs ("routing it through makePiece() below is all
+-- it needs to come out Neon"). They are pieces in every other respect, so
+-- every channel below can name them.
+local MODULES = {
+	{ name = "MuzzleBow", module = "MuzzleGlow", gun = "CannonBow" },
+	{ name = "MuzzleStarboard", module = "MuzzleGlow", gun = "CannonStarboard" },
+	{ name = "MuzzleStern", module = "MuzzleGlow", gun = "CannonStern" },
+	{ name = "MuzzlePort", module = "MuzzleGlow", gun = "CannonPort" },
+}
+
+-- The flare's own bounding-box centre along its bore (AUTHORED.MuzzleGlow.at).
+-- A cloned MeshPart's CFrame is its bbox centre, so the part has to stand this
+-- far PAST the muzzle for the mesh's authored origin - the end that belongs in
+-- the barrel - to land on it.
+local FLARE_CENTRE = 0.78
+
+-- HOW A VOLLEY FINDS ITS GUN. `wrackVolley`'s position is CreatureService's
+-- `origin`: for an aimed pattern that is the latched battery's own world
+-- position lifted 5 studs (`flash = gun + Vector3.new(0, WRACK_MUZZLE_LIFT,
+-- 0)`), and for every radial one it is the model pivot lifted the same 5. So
+-- the flat distance from the origin to a gun centroid answers "which deck fired
+-- this" and "did any single deck fire this" in one number.
+--
+-- 8 studs is chosen against the geometry rather than by feel: an aimed origin
+-- lands ON a centroid (error 0, both numbers come from the same table), the
+-- closest two centroids are 10.89 studs apart, and the hull pivot is 13.5
+-- studs from the nearest of them (Port, r 13.54).
+--
+-- The band's lower end is not zero, because the prowl loop breathes him on a
+-- +-3 degree sway while the mounts were resolved ONCE against `creature.yaw0`:
+-- at the stern chaser's r 20.0 that is 1.05 studs of disagreement between
+-- where the battery is and where this file draws its gun. So the two cases are
+-- separated by everything in [1.05, 13.5], and 8 sits in the middle of it.
+-- 1.05 is also well under half the 10.89 centroid spacing, so nearest-wins can
+-- never claim the wrong gun. The comparison is FLAT because the 5-stud muzzle
+-- lift and the battery's own half-height are both height, and neither is
+-- identity.
+local MUZZLE_MATCH = 8
+
+-- Recoil: how far the gun rides back down its own bore, and the shape of it.
+-- 1.6 studs on a barrel 9 long is a stroke you read at 60 studs without the
+-- gun leaving its port.
+local RECOIL_STUDS = 1.6
+local RECOIL_ATTACK = 0.035
+local RECOIL_RELEASE = 0.55
+
+-- The flash. Short enough that two volleys 0.35s apart (grapeshot's burst gap)
+-- read as two flashes and not one glow.
+local FLASH_ATTACK = 0.02
+local FLASH_RELEASE = 0.18
+local FLASH_SCALE = 0.45 -- the flare's size at the instant it is born
+
+-- A silenced deck. `Weakpoint` is present on a battery that is standing and
+-- the model is gone when it is not, so 15 degrees of muzzle-down and a few of
+-- list is the gun hanging dead in its port until the ring regrows.
+local DROOP_ANGLE = math.rad(15)
+local DROOP_LIST = math.rad(7)
+local DROOP_RATE = 3
+
+-- ---------------------------------------------------------- the Admiral
+--
+-- HE IS THE ONLY THING ALIVE ON THIS BOSS, and that is the read: a ship that
+-- does not move at all, and a man on her quarterdeck who never stops. Every
+-- point below is one of boss_gen's admiral-space landmarks pushed through its
+-- own seating transform - `WR_ADM` = translate(WR_ADM_AT) * scale(0.5) *
+-- translate(-WR_ADM_ROOT) - and then Blender (x, y, z) -> Roblox (x, z, -y).
+-- Worked once here so nothing downstream re-derives it:
+--
+--   plant     WR_ADM_AT           (-14.0,  0.0, 12.4) -> (-14.00, 12.40,  0.00)
+--   shoulder  (-25.5, 9.6, 41.5)  right, from build_wr_arm
+--                                                     -> (-14.75, 23.65, -1.80)
+--   wrist     (-20.5, 11.8, 51.5) from build_wr_sabre -> (-12.25, 28.65, -2.90)
+--   tip       WR_SABRE_TIP        (-17.5, 9.0, 63.0)  -> (-10.75, 34.40, -1.50)
+--   head      WR_ADM_HEAD         (-25.8, 3.8, 47.2)  -> (-14.90, 26.50,  1.10)
+--
+-- Two of those are checkable against the measured bounding boxes at the top of
+-- this file and both agree: the head lands on Wrack_Skull's centre
+-- (-14.54, 26.00, 1.10) and the tip reproduces boss_gen's own printed
+-- "34.4 to the sabre tip".
+local ADM_PLANT = Vector3.new(-14, 12.4, 0)
+local ADM_SHOULDER = Vector3.new(-14.75, 23.65, -1.8)
+local ADM_WRIST = Vector3.new(-12.25, 28.65, -2.9)
+local ADM_TIP = Vector3.new(-10.75, 34.4, -1.5)
+-- The neck, a shade under the skull's bounding box (bottom 23.7) so the head
+-- turns in place instead of orbiting.
+local ADM_NECK = Vector3.new(-14.6, 24.2, 1)
+
+-- Everything above the deck that is HIM. `Wrack_Coat` is the torso, not a
+-- cape - build_wr_coat lofts hips, waist, chest and collar into one object -
+-- so there is no separate garment to sway against the body, and the coat tails
+-- ride the man. Said out loud because "coat sway" reads as a cloth channel and
+-- there is no cloth to give it.
+local ADMIRAL = { "Coat", "Arm", "Sabre", "Facings", "Skull", "EyeGlow", "Hat" }
+
+-- The arm's rest bearing, shoulder to sabre tip: (4.00, 10.75, 0.30), which is
+-- 69.6 degrees above horizontal - the sabre held high, which is how he is
+-- authored and where he returns between attacks.
+local ARM_REST = (ADM_TIP - ADM_SHOULDER).Unit
+
+-- The plane a stroke falls in: the vertical plane containing the arm. Derived
+-- rather than typed as "about Z", so a re-export that moves his shoulder moves
+-- the stroke with it.
+local ARM_SWEEP_AXIS = ARM_REST:Cross(Vector3.yAxis).Unit
+
+-- The idle. Two periods that do not divide each other, so the loop never
+-- announces itself, and amplitudes measured at the hat rather than at the
+-- pivot: 2.4 degrees about a plant 15.5 studs below the bicorne is 0.65 studs
+-- of sway up there, which is a man breathing on a ship that is not.
+local IDLE_SWAY = math.rad(2.4)
+local IDLE_ROLL = math.rad(1.5)
+local IDLE_SWAY_PERIOD = 5.9
+local IDLE_ROLL_PERIOD = 4.3
+local IDLE_BOB = 0.22
+local IDLE_BOB_PERIOD = 3.4
+-- The bicorne, a beat behind the head that carries it.
+local HAT_LAG = 0.35
+local HAT_LAG_ANGLE = math.rad(1.8)
+
+-- The windup: the sabre goes a little higher still and shivers there. The
+-- quiver is fast and TINY - 1.1 degrees at 6 Hz on a blade 6 studs long is
+-- about a tenth of a stud at the tip, which reads as strain rather than as a
+-- glitch.
+local HIGH_ANGLE = math.rad(11)
+local QUIVER_ANGLE = math.rad(1.1)
+local QUIVER_RATE = 38
+local HIGH_RATE = 10
+
+-- The point: arm and sabre swing onto the attack's bearing. `POINT_RISE` is
+-- how far above flat the blade finishes (0.38 -> 21 degrees up), and the turn
+-- is clamped because a bearing off his own stern would otherwise fold the arm
+-- through the coat.
+local POINT_RISE = 0.38
+local POINT_MAX = math.rad(78)
+local POINT_RATE = 7
+local POINT_TAIL = 0.12
+local LOOK_MAX = math.rad(52)
+local LOOK_RATE = 6
+local LOOK_TAIL = 0.5
+
+-- The stroke, when the guns actually go off: the arm falls through the sweep
+-- plane and the blade whips a little further on the wrist and trails home.
+local SWEEP_ANGLE = math.rad(40)
+local SWEEP_ATTACK = 0.05
+local SWEEP_RELEASE = 0.6
+local FLICK_ANGLE = math.rad(22)
+local FLICK_RELEASE = 0.78
+
+-- ------------------------------------------------------------ the signals
+--
+-- THE ONE PLUG, and deliberately the same shape as ProjectileFxController's
+-- `adaptEvent`: every wire field name this file reads lives in the function
+-- below and nowhere else, so a contract move is one edit here.
+--
+-- WHAT THE CLIENT ACTUALLY GETS TODAY, having traced it rather than assumed
+-- it (CreatureService's Wrack section, and ProjectileFxController's contract
+-- header):
+--
+--   wrackVolley  fires the instant a volley is emitted, with `position` =
+--                `origin` - the muzzle for an aimed pattern, the hull pivot
+--                for a radial one. This is the only "the guns just went off"
+--                edge on the wire and it is exact.
+--   wrackTell    the windup, once per pattern, carrying `duration` (the row's
+--                `windup`) and, for shape = "lane", `aim`.
+--   telegraph    with one of Wrack's skins: `coneTell` carries `facing`, the
+--                ringed ones carry only a radius.
+--
+-- SO THE BEARING IS AVAILABLE, BUT NOT FOR EVERY ATTACK, and that is a
+-- property of the fight rather than a gap to paper over. The aimed patterns
+-- (grapeshot, chainshot, anchorsweep - `K.WRACK_AIMED`) announce themselves
+-- with a cone or lane tell and those carry the bearing the shot will take. The
+-- radial ones (broadside, slewfire, wisps) announce themselves with a RING and
+-- carry no bearing, because they do not have one: they fire at every azimuth
+-- at once. Pointing on those would be a lie, so the Admiral does not point on
+-- those - he holds the sabre high and quivers, which is bearing-free. No wire
+-- was invented for this and none is needed.
+--
+-- No event on this channel names its creature, so a signal is delivered to an
+-- adopted body only if it happened near it (SIGNAL_RANGE). Everything Wrack
+-- fires originates within ~25 studs of his own hull, and two Wracks cannot be
+-- within 220 studs of each other - they are one per island.
+local SIGNAL_RANGE = 220
+
+-- Wrack's skins, mirroring ProjectileFxController's WRACK_SKINS: the skin is
+-- how a generic `telegraph` is known to be his.
+local SIGNAL_SKINS = {
+	cannon = true,
+	grape = true,
+	chain = true,
+	wisp = true,
+	anchor = true,
+	ember = true,
+	wreck = true,
+}
+
+-- Chainshot's cone arrives as SEVERAL `coneTell` events in one frame, one per
+-- wedge, fanned across the arc: taking any single one points him at the edge
+-- of his own fan. Tells landing this close together are averaged into one
+-- bearing instead.
+local WEDGE_COALESCE = 0.15
+
+local function flatAim(value): Vector3?
+	if typeof(value) ~= "Vector3" then
+		return nil
+	end
+	local flat = Vector3.new(value.X, 0, value.Z)
+	return if flat.Magnitude > 1e-3 then flat.Unit else nil
+end
+
+local function adaptSignal(kind: string, position: Vector3, extra): any?
+	if kind == "wrackVolley" then
+		-- A volley with no shots in it drew nothing and fired nothing; the
+		-- brass should not jump for it either.
+		local shots = extra.shots
+		if type(shots) ~= "table" or #shots == 0 then
+			return nil
+		end
+		return { what = "fire", at = position, now = os.clock() }
+	elseif kind == "wrackTell" then
+		return {
+			what = "windup",
+			at = position,
+			-- A ring tell carries no aim and must not be given one.
+			aim = if tostring(extra.shape) == "ring" then nil else flatAim(extra.aim),
+			duration = tonumber(extra.duration) or 0.9,
+			now = os.clock(),
+		}
+	elseif kind == "telegraph" and SIGNAL_SKINS[tostring(extra.skin)] then
+		local sub = tostring(extra.kind)
+		local aim = if sub == "coneTell" then flatAim(extra.facing) else nil
+		if not aim and sub ~= "mark" and sub ~= "ringTell" and sub ~= "slam" then
+			return nil
+		end
+		return {
+			what = "windup",
+			at = position,
+			aim = aim,
+			duration = tonumber(extra.duration) or 0.9,
+			now = os.clock(),
+		}
+	end
+	return nil
+end
+
+-- ------------------------------------------------------------- the channels
+
+-- Turns `from` onto `to` by `amount` of the way, both unit. Returns identity
+-- when they are already parallel, which is also what makes it safe to call
+-- with a degenerate bearing.
+local function turnBetween(from: Vector3, to: Vector3, amount: number, maxAngle: number?): CFrame
+	local axis = from:Cross(to)
+	local length = axis.Magnitude
+	if length < 1e-4 then
+		return CFrame.identity
+	end
+	local angle = math.atan2(length, from:Dot(to))
+	if maxAngle then
+		angle = math.min(angle, maxAngle)
+	end
+	return CFrame.fromAxisAngle(axis / length, angle * amount)
+end
+
+-- The pulse envelope: straight up over `attack`, squared fall over `release`.
+local function envelope(age: number, attack: number, release: number): number
+	if age < 0 then
+		return 0
+	elseif age < attack then
+		return age / attack
+	end
+	local t = (age - attack) / release
+	if t >= 1 then
+		return 0
+	end
+	return (1 - t) * (1 - t)
+end
+
+-- The bearing an aimed windup latched, in BOSS space, or nil for a windup that
+-- carried none (every radial pattern).
+local function signalAim(ctx): Vector3?
+	local sig = ctx.sig
+	if not sig or not sig.aim then
+		return nil
+	end
+	return ctx.base:VectorToObjectSpace(sig.aim)
+end
+
+-- EVERY ANIMATED THING ON THIS BOSS, in layering order. See the essay at the
+-- top of this section for what a row means; a row is the whole of what it
+-- takes to bind a piece to a driver.
+local CHANNELS = {
+	-- THE MELEE WINDOW, unchanged in every observable way - same attribute,
+	-- same hinge, same rate, same two angles, same adopt-at-state. It is a
+	-- channel now only because it was always the pattern the rest copy.
+	{
+		name = "shellSplit",
+		pieces = { "ShellUpper", "ShellLower" },
+		pivot = HINGE,
+		driver = {
+			kind = "level",
+			rate = OPEN_RATE,
+			goal = function(ctx): number
+				return if ctx.model:GetAttribute(ATTR_EXPOSED) then 1 else 0
+			end,
+		},
+		pose = function(ctx): CFrame
+			return CFrame.Angles(SHELL_SWING[ctx.piece.name] * ctx.value, 0, 0)
+		end,
+	},
+
+	-- A SILENCED DECK HANGS. Keyed off the same liveness the outlines are -
+	-- `entry.gunLive`, which is built from the very `marks` table the
+	-- weakpoint highlights walk - so the gun that stops being shootable and
+	-- the gun that stops looking alive are one fact read twice, not two.
+	{
+		name = "gunDroop",
+		pieces = {
+			"CannonBow",
+			"CannonStarboard",
+			"CannonStern",
+			"CannonPort",
+			"MuzzleBow",
+			"MuzzleStarboard",
+			"MuzzleStern",
+			"MuzzlePort",
+		},
+		pivot = function(ctx): Vector3
+			return GUNS[ctx.piece.gun].at
+		end,
+		driver = {
+			kind = "level",
+			rate = DROOP_RATE,
+			goal = function(ctx): number
+				return if ctx.entry.gunLive[ctx.piece.gun] then 0 else 1
+			end,
+		},
+		pose = function(ctx): CFrame
+			local bore = GUNS[ctx.piece.gun].bore
+			local side = bore:Cross(Vector3.yAxis)
+			if side.Magnitude < 1e-3 then
+				return CFrame.identity
+			end
+			-- Negative about (bore x up) drops the muzzle: for the bow chaser
+			-- that axis is +Z and a negative turn about +Z takes +X toward -Y.
+			return CFrame.fromAxisAngle(side.Unit, -DROOP_ANGLE * ctx.value)
+				* CFrame.fromAxisAngle(bore, DROOP_LIST * ctx.value)
+		end,
+	},
+
+	-- RECOIL. Straight back down the bore, sharp out and slow home. A pure
+	-- translation, so its pivot never matters - stated because the row still
+	-- has to name one and a reader will look for the significance.
+	{
+		name = "gunRecoil",
+		pieces = {
+			"CannonBow",
+			"CannonStarboard",
+			"CannonStern",
+			"CannonPort",
+			"MuzzleBow",
+			"MuzzleStarboard",
+			"MuzzleStern",
+			"MuzzlePort",
+		},
+		pivot = Vector3.zero,
+		driver = {
+			kind = "pulse",
+			signal = "fire",
+			attack = RECOIL_ATTACK,
+			release = RECOIL_RELEASE,
+			pick = function(sig, piece, entry): boolean
+				-- An aimed volley left ONE deck and only that one kicks; a
+				-- radial volley left the hull pivot, which is every deck still
+				-- standing firing at once.
+				if sig.gun then
+					return piece.gun == sig.gun
+				end
+				return entry.gunLive[piece.gun] == true
+			end,
+		},
+		pose = function(ctx): CFrame
+			return CFrame.new(GUNS[ctx.piece.gun].bore * -RECOIL_STUDS * ctx.value)
+		end,
+	},
+
+	-- THE FLASH. `Wrack_MuzzleGlow` instanced at each muzzle, dark until its
+	-- gun speaks. It grows from FLASH_SCALE, and the pose walks it back along
+	-- the bore by exactly the scaling error that introduces: a MeshPart scales
+	-- about its own centre, the flare's centre is FLARE_CENTRE past the muzzle,
+	-- so at scale s the mesh's authored origin has crept FLARE_CENTRE * (1 - s)
+	-- forward of the barrel unless it is pulled back.
+	{
+		name = "muzzleFlash",
+		pieces = { "MuzzleBow", "MuzzleStarboard", "MuzzleStern", "MuzzlePort" },
+		pivot = Vector3.zero,
+		driver = {
+			kind = "pulse",
+			signal = "fire",
+			attack = FLASH_ATTACK,
+			release = FLASH_RELEASE,
+			pick = function(sig, piece, entry): boolean
+				if sig.gun then
+					return piece.gun == sig.gun
+				end
+				return entry.gunLive[piece.gun] == true
+			end,
+		},
+		pose = function(ctx): CFrame
+			local scale = FLASH_SCALE + (1 - FLASH_SCALE) * ctx.value
+			return CFrame.new(GUNS[ctx.piece.gun].bore * (FLARE_CENTRE * (scale - 1)))
+		end,
+		-- Transparency and size are not CFrames, so they come through the
+		-- optional second hook rather than through `pose`. It runs every frame,
+		-- including the ones at rest, which is what puts the flare away again.
+		paint = function(ctx)
+			local value = ctx.value
+			local part = ctx.piece.part
+			local transparency = 1 - value ^ 0.6
+			-- Guarded, because this runs on every frame of a fight that is
+			-- mostly not firing, and a property write is not free even when
+			-- the value it writes is the one already there.
+			if part.Transparency ~= transparency then
+				part.Transparency = transparency
+				part.Size = ctx.piece.size * (FLASH_SCALE + (1 - FLASH_SCALE) * value)
+			end
+		end,
+	},
+
+	-- THE IDLE. The ship is dead still; he is not. Sway and roll about the
+	-- plant where his coat goes into the timber, and a slow bob on top, at
+	-- three periods that do not line up.
+	{
+		name = "admIdle",
+		pieces = ADMIRAL,
+		pivot = ADM_PLANT,
+		driver = { kind = "free" },
+		pose = function(ctx): CFrame
+			local now = ctx.now
+			local sway = math.sin(now * (math.pi * 2 / IDLE_SWAY_PERIOD))
+			local roll = math.sin(now * (math.pi * 2 / IDLE_ROLL_PERIOD) + 1.1)
+			local bob = math.sin(now * (math.pi * 2 / IDLE_BOB_PERIOD))
+			return CFrame.new(0, IDLE_BOB * bob, 0) * CFrame.Angles(IDLE_ROLL * roll, 0, IDLE_SWAY * sway)
+		end,
+	},
+
+	-- HE LOOKS WHERE HE IS ABOUT TO SHOOT. Held for the windup, then let go
+	-- slowly (LOOK_TAIL) so the head is still on the bearing when the shot
+	-- leaves rather than snapping back at the tell's last frame.
+	{
+		name = "admLook",
+		pieces = { "Skull", "EyeGlow", "Hat" },
+		pivot = ADM_NECK,
+		driver = {
+			kind = "hold",
+			signal = "windup",
+			rate = LOOK_RATE,
+			tail = LOOK_TAIL,
+			accept = function(sig): boolean
+				return sig.aim ~= nil
+			end,
+			merge = true,
+		},
+		pose = function(ctx): CFrame
+			local aim = signalAim(ctx)
+			if not aim then
+				return CFrame.identity
+			end
+			return turnBetween(Vector3.xAxis, aim, ctx.value, LOOK_MAX)
+		end,
+	},
+
+	-- The bicorne, trailing the head by a beat.
+	{
+		name = "admHatLag",
+		pieces = { "Hat" },
+		pivot = ADM_NECK,
+		driver = { kind = "free" },
+		pose = function(ctx): CFrame
+			local lag = math.sin((ctx.now - HAT_LAG) * (math.pi * 2 / IDLE_SWAY_PERIOD))
+			return CFrame.Angles(0, 0, HAT_LAG_ANGLE * lag)
+		end,
+	},
+
+	-- THE POINT. Arm and sabre swing onto the bearing an aimed windup latched
+	-- - and only an aimed one; see the signals essay above for why the radial
+	-- patterns get no bearing and must not be given a pretend one.
+	--
+	-- WHAT THIS CANNOT TAKE WITH IT: his right CUFF. build_wr_facings welds
+	-- lapels, sash, buttons, both epaulettes, both cuffs and the bicorne's lace
+	-- into ONE object, so there is no way to move the wrist's gold without
+	-- dragging the hat's. The epaulette sits on the pivot and does not care;
+	-- the cuff is a ring 0.8 studs across that stays behind. Named rather than
+	-- hidden, because the fix is a mesh split and belongs to boss_gen, not to a
+	-- clamp here that would cost the gesture to save a ring.
+	{
+		name = "admPoint",
+		pieces = { "Arm", "Sabre" },
+		pivot = ADM_SHOULDER,
+		driver = {
+			kind = "hold",
+			signal = "windup",
+			rate = POINT_RATE,
+			tail = POINT_TAIL,
+			accept = function(sig): boolean
+				return sig.aim ~= nil
+			end,
+			merge = true,
+		},
+		pose = function(ctx): CFrame
+			local aim = signalAim(ctx)
+			if not aim then
+				return CFrame.identity
+			end
+			return turnBetween(ARM_REST, (aim + Vector3.new(0, POINT_RISE, 0)).Unit, ctx.value, POINT_MAX)
+		end,
+	},
+
+	-- THE STROKE. The one edge on the wire that means "the guns just went
+	-- off", spent on the one gesture the whole silhouette is built around.
+	{
+		name = "admSweep",
+		pieces = { "Arm", "Sabre" },
+		pivot = ADM_SHOULDER,
+		driver = { kind = "pulse", signal = "fire", attack = SWEEP_ATTACK, release = SWEEP_RELEASE },
+		pose = function(ctx): CFrame
+			return CFrame.fromAxisAngle(ARM_SWEEP_AXIS, -SWEEP_ANGLE * ctx.value)
+		end,
+	},
+
+	-- THE SABRE HELD HIGH, through any windup at all - this one is deliberately
+	-- bearing-free, so the radial patterns still get a tell on the man.
+	{
+		name = "admHigh",
+		pieces = { "Sabre" },
+		pivot = ADM_WRIST,
+		driver = { kind = "hold", signal = "windup", rate = HIGH_RATE },
+		pose = function(ctx): CFrame
+			local quiver = math.sin(ctx.now * QUIVER_RATE)
+			return CFrame.fromAxisAngle(ARM_SWEEP_AXIS, (HIGH_ANGLE + QUIVER_ANGLE * quiver) * ctx.value)
+		end,
+	},
+
+	-- ...and the blade whips past the arm and trails home behind it. On the
+	-- WRIST, so the hilt stays in his hand while it does.
+	{
+		name = "admFlick",
+		pieces = { "Sabre" },
+		pivot = ADM_WRIST,
+		driver = { kind = "pulse", signal = "fire", attack = SWEEP_ATTACK, release = FLICK_RELEASE },
+		pose = function(ctx): CFrame
+			return CFrame.fromAxisAngle(ARM_SWEEP_AXIS, -FLICK_ANGLE * ctx.value)
+		end,
+	},
+
+	-- ========================================================================
+	-- ADAPTER STUBS - THREE INBOUND CONTRACTS, WIRED TO NOTHING
+	-- ========================================================================
+	-- Each of these is a COMPLETE channel that is inert for exactly two
+	-- reasons, both of which are one-line landings:
+	--
+	--   1. its pieces are not in PIECES/AUTHORED yet, so buildChannels drops
+	--      the row at adopt and nothing here runs at all;
+	--   2. its driver names a signal adaptSignal does not produce yet.
+	--
+	-- Do NOT delete a stub to "clean up": deleting it is how the next lane
+	-- lands a mesh piece that draws in its authored pose forever and reads as
+	-- "the animation isn't hooked up yet". Fill it in instead.
+
+	-- (1) FIGUREHEAD FLIGHT. Contract expected: a position stream while she is
+	-- off the stem. The pose here is the SHAPE of the answer, not the answer -
+	-- it banks into the direction of travel about her own root and returns to
+	-- the authored dock at value 0, which is what the layer requires.
+	--
+	-- TO LAND IT: add "Figurehead" to PIECES and AUTHORED; add the wire kind to
+	-- adaptSignal returning { what = "figurehead", at = <world point>, aim =
+	-- <flight bearing>, duration = <time aloft> }.
+	{
+		name = "figureheadFlight",
+		pieces = { "Figurehead" },
+		pivot = Vector3.zero, -- REPLACE with her root once the mesh names one
+		driver = { kind = "hold", signal = "figurehead", rate = 6 },
+		pose = function(ctx): CFrame
+			local sig = ctx.sig
+			if not sig or ctx.value <= 0 then
+				return CFrame.identity
+			end
+			-- Detach along the flight line and bank into it. `at` is a WORLD
+			-- point and this frame is boss-local, hence the transform.
+			local to = ctx.base:PointToObjectSpace(sig.at) - ctx.piece.relative.Position
+			return CFrame.new(to * ctx.value) * CFrame.Angles(0, 0, math.rad(20) * ctx.value)
+		end,
+	},
+
+	-- (2) BOOM SWEEP. Contract expected: an ANGLE, level-triggered, on the boss
+	-- model - the house style, and the right one for a spar that has a current
+	-- position rather than an event.
+	--
+	-- TO LAND IT: add "Boom" to PIECES and AUTHORED, set `pivot` to the boom's
+	-- gooseneck, and name the attribute the server writes below. The goal is
+	-- read as a 0..1 fraction of BOOM_ARC so the driver stays a plain level.
+	{
+		name = "boomSweep",
+		pieces = { "Boom" },
+		pivot = Vector3.zero, -- REPLACE with the gooseneck
+		driver = {
+			kind = "level",
+			rate = 3.5,
+			goal = function(ctx): number
+				return math.clamp(tonumber(ctx.model:GetAttribute("WrackBoom")) or 0, 0, 1)
+			end,
+		},
+		pose = function(ctx): CFrame
+			return CFrame.Angles(0, math.rad(70) * ctx.value, 0)
+		end,
+	},
+
+	-- (3) HATCH POPS. Contract expected: one event naming WHICH hatch. The
+	-- `pick` below is the whole of the wiring - it matches the hatch index the
+	-- signal names against the index parsed off the piece name at adopt, the
+	-- same way `pick` matches a volley to a gun above.
+	--
+	-- TO LAND IT: add "Hatch1".."Hatch4" to PIECES and AUTHORED, and add the
+	-- wire kind to adaptSignal returning { what = "hatch", at = <world point>,
+	-- index = <1..4> }.
+	{
+		name = "hatchPops",
+		pieces = { "Hatch1", "Hatch2", "Hatch3", "Hatch4" },
+		pivot = Vector3.zero, -- REPLACE with each hatch's hinge (a pivot fn)
+		driver = {
+			kind = "pulse",
+			signal = "hatch",
+			attack = 0.08,
+			release = 0.9,
+			pick = function(sig, piece): boolean
+				return sig.index == nil or piece.name == "Hatch" .. tostring(sig.index)
+			end,
+		},
+		pose = function(ctx): CFrame
+			return CFrame.Angles(math.rad(75) * ctx.value, 0, 0)
+		end,
+	},
+}
 
 -- ------------------------------------------------------------ the weakpoints
 --
@@ -542,6 +1315,189 @@ local function hideServerModel(model: Model)
 	end
 end
 
+-- ----------------------------------------------------- the channel runtime
+
+-- WHICH GUN A WORLD POINT BELONGS TO, or nil for a point that belongs to none.
+-- Used for two different questions with the same answer: which deck a volley
+-- left, and which cannon a live battery model is standing on. Flat, because
+-- the volley's 5-stud muzzle lift and the battery's own half-height are both
+-- height and neither is identity.
+local function gunAt(entry, at: Vector3): string?
+	local point = entry.base:PointToObjectSpace(at)
+	local best, bestSq = nil, MUZZLE_MATCH * MUZZLE_MATCH
+	for name, gun in GUNS do
+		local offset = (gun.at - AUTHORED_ANCHOR) - point
+		local sq = offset.X * offset.X + offset.Z * offset.Z
+		if sq < bestSq then
+			best, bestSq = name, sq
+		end
+	end
+	return best
+end
+
+-- WHICH DECKS ARE STILL STANDING, rebuilt each frame from `marks` - the very
+-- table the weakpoint outlines are drawn from. One fact, read twice: a gun
+-- stops being shootable and stops looking alive at the same instant, because
+-- both are the same lookup.
+--
+-- ABSENCE IS THE ONLY EVIDENCE OF DEATH HERE (the server DESTROYS a destroyed
+-- battery model), and absence is also what an un-replicated ring looks like
+-- from a client that has just adopted the boss. So nothing droops until this
+-- client has seen at least one battery alive: `sawGuns`. Without that latch,
+-- every Wrack would arrive with four dead guns and ease them back up, which
+-- reads as a bug in the regrow rather than as a missing table.
+local function stepGuns(entry)
+	local live = entry.gunLive
+	local seen = false
+	for name in GUNS do
+		live[name] = false
+	end
+	for model in marks do
+		if model.Parent then
+			local name = gunAt(entry, model:GetPivot().Position)
+			if name then
+				live[name] = true
+				seen = true
+			end
+		end
+	end
+	if seen then
+		entry.sawGuns = true
+	elseif not entry.sawGuns then
+		for name in GUNS do
+			live[name] = true
+		end
+	end
+end
+
+-- One channel's worth of a frame. `entry.adopting` is true only on the very
+-- first drawn frame and makes every eased driver arrive AT its goal instead of
+-- easing in from rest - the same argument the shell's `open` made when it read
+-- `Exposed` at adopt: easing in would animate an event that happened before
+-- this client was watching, which is the same lie as missing it.
+local function stepChannel(channel, ctx)
+	local def = channel.def
+	local driver = def.driver
+	local kind = driver.kind
+	for _, piece in channel.pieces do
+		local state = channel.state[piece.name]
+		local value
+		if kind == "pulse" then
+			value = envelope(ctx.now - state.firedAt, driver.attack, driver.release)
+		elseif kind == "free" then
+			value = 1
+		else
+			local goal
+			if kind == "hold" then
+				goal = if ctx.now < state.holdUntil then 1 else 0
+			else
+				ctx.piece, ctx.value, ctx.sig = piece, state.value, state.sig
+				goal = driver.goal(ctx)
+			end
+			if ctx.entry.adopting then
+				state.value = goal
+			else
+				state.value += (goal - state.value) * math.clamp(driver.rate * ctx.dt, 0, 1)
+			end
+			value = state.value
+		end
+		ctx.piece, ctx.value, ctx.sig = piece, value, state.sig
+		-- A pose is identity at zero by contract, so skipping it there is a
+		-- true no-op and not a dropped frame of animation.
+		if value > 1e-4 or kind == "free" then
+			local pivot = def.pivot
+			if type(pivot) == "function" then
+				pivot = pivot(ctx)
+			end
+			local pose = def.pose(ctx)
+			local at = CFrame.new(pivot - AUTHORED_ANCHOR)
+			piece.offset = (piece.offset or CFrame.identity) * at * pose * at:Inverse()
+		end
+		-- ...but `paint` always runs, because it is what puts a thing away.
+		if def.paint then
+			def.paint(ctx)
+		end
+	end
+end
+
+-- Deliver one normalised signal to one adopted body. Every field the drivers
+-- read is set here, so a driver never reaches past its own channel.
+local function deliverSignal(entry, sig)
+	if (sig.at - entry.base.Position).Magnitude > SIGNAL_RANGE then
+		return
+	end
+	-- Resolved once per body rather than per channel: two channels ask which
+	-- gun fired and they must not be able to disagree.
+	sig.gun = if sig.what == "fire" then gunAt(entry, sig.at) else nil
+	for _, channel in entry.channels do
+		local driver = channel.def.driver
+		if driver.signal ~= sig.what then
+			continue
+		end
+		if driver.accept and not driver.accept(sig) then
+			continue
+		end
+		for _, piece in channel.pieces do
+			if driver.pick and not driver.pick(sig, piece, entry) then
+				continue
+			end
+			local state = channel.state[piece.name]
+			local carried = sig
+			if
+				driver.merge
+				and state.sig
+				and sig.aim
+				and state.sig.aim
+				and sig.now - state.sig.now < WEDGE_COALESCE
+			then
+				-- One cone, several wedge tells, one frame: average them into
+				-- the bearing the fan is actually centred on.
+				local count = (state.sig.count or 1) + 1
+				local mean = state.sig.aim * (count - 1) + sig.aim
+				carried = {
+					what = sig.what,
+					at = sig.at,
+					aim = if mean.Magnitude > 1e-3 then mean.Unit else sig.aim,
+					duration = sig.duration,
+					now = sig.now,
+					count = count,
+				}
+			end
+			state.sig = carried
+			if driver.kind == "pulse" then
+				state.firedAt = carried.now
+			else
+				state.holdUntil = carried.now + (carried.duration or 0.8) + (driver.tail or 0)
+			end
+		end
+	end
+end
+
+-- The channels this body actually has. A row naming a piece the mesh has not
+-- got yet contributes nothing and is DROPPED rather than kept with an empty
+-- piece list, so an unlanded adapter stub costs zero per frame and cannot
+-- half-run.
+local function buildChannels(entry)
+	local out = {}
+	for _, def in CHANNELS do
+		local pieces = {}
+		for _, name in def.pieces do
+			local piece = entry.byName[name]
+			if piece then
+				table.insert(pieces, piece)
+			end
+		end
+		if #pieces > 0 then
+			local state = {}
+			for _, piece in pieces do
+				state[piece.name] = { value = 0, firedAt = -1e9, holdUntil = 0, sig = nil }
+			end
+			table.insert(out, { def = def, pieces = pieces, state = state })
+		end
+	end
+	return out
+end
+
 local function adoptBoss(model: Model)
 	if bodies[model] or model:GetAttribute("CreatureId") ~= CREATURE_ID then
 		return
@@ -572,6 +1528,7 @@ local function adoptBoss(model: Model)
 	-- whole ship then moves as one CFrame forever after.
 	local anchor = packAnchor()
 	local pieces = {}
+	local byName = {}
 	for index, name in PIECES do
 		local part = makePiece(name, folder)
 		local authored = AUTHORED[name]
@@ -581,61 +1538,112 @@ local function adoptBoss(model: Model)
 		else
 			relative = CFrame.new((if authored then authored.at else Vector3.zero) - AUTHORED_ANCHOR)
 		end
-		-- A shell plate carries the angle it reaches at full open; every other
-		-- piece carries nil and is placed straight off `relative`.
-		pieces[index] = { part = part, relative = relative, swing = SHELL_SWING[name] }
+		pieces[index] = { name = name, part = part, relative = relative, size = part.Size }
+		byName[name] = pieces[index]
 	end
 
-	bodies[model] = {
+	-- THE INSTANCED MODULES, after the placed pieces so they draw over them.
+	-- `Wrack_MuzzleGlow` is authored at the origin with +X as the bore, so its
+	-- place is BUILT rather than measured: stand the mesh's authored origin on
+	-- the gun's muzzle, aim its +X down the bore, and push the part forward by
+	-- the flare's own bounding-box centre so the mesh - not the part - is what
+	-- lands on the barrel.
+	for _, module in MODULES do
+		local gun = GUNS[module.gun]
+		local part = makePiece(module.module, folder)
+		local bore = CFrame.fromMatrix(gun.muzzle - AUTHORED_ANCHOR, gun.bore.Unit, Vector3.yAxis)
+		local piece = {
+			name = module.name,
+			part = part,
+			relative = bore * CFrame.new(AUTHORED.MuzzleGlow.at),
+			size = part.Size,
+			gun = module.gun,
+		}
+		-- Dark until its gun speaks; the flash channel owns it from here.
+		part.Transparency = 1
+		table.insert(pieces, piece)
+		byName[module.name] = piece
+	end
+
+	-- The gun a cannon piece IS, so the recoil and droop channels can pick by
+	-- it without re-deriving anything from the name at draw time.
+	for name in GUNS do
+		local piece = byName[name]
+		if piece then
+			piece.gun = name
+		end
+	end
+
+	local entry = {
 		folder = folder,
 		pieces = pieces,
+		byName = byName,
 		groundDrop = groundDrop,
-		-- ADOPTED AT THE STATE THE FIGHT IS ALREADY IN, not at closed.
+		-- Known before the first draw, because a signal can arrive between
+		-- adopt and the first RenderStepped and `deliverSignal` measures
+		-- against it.
+		base = CFrame.new(pivot.Position + Vector3.new(0, groundDrop, 0)) * pivot.Rotation,
+		gunLive = {},
+		sawGuns = false,
+		-- ADOPTED AT THE STATE THE FIGHT IS ALREADY IN, not at rest.
 		--
-		-- This is the case the level-triggered attribute exists for. A player
+		-- This is the case the level-triggered attributes exist for. A player
 		-- who joins mid-window - or whose controller adopts the boss a frame
 		-- after the last battery fell, or who walks into streaming range with
-		-- the hull already split - has no edge to have missed, so the window
-		-- is read here and the plates START there rather than easing open from
-		-- shut. Easing in on adopt would animate an event that happened before
-		-- this client was watching, which is the same lie as missing it.
-		open = if model:GetAttribute(ATTR_EXPOSED) then 1 else 0,
-		-- Local, so a plate can never be left mid-swing by a dropped update:
-		-- the attribute is the truth and this only ever chases it.
-		hinge = CFrame.new(HINGE - AUTHORED_ANCHOR),
+		-- the hull already split - has no edge to have missed, so every eased
+		-- driver arrives AT its goal on the first drawn frame rather than
+		-- easing in from rest. Easing in on adopt would animate an event that
+		-- happened before this client was watching, which is the same lie as
+		-- missing it.
+		adopting = true,
+		-- One context table for the life of the body: the draw loop fills it
+		-- and hands it to every pose, so a frame of animation allocates
+		-- nothing.
+		ctx = { model = model },
 	}
+	entry.channels = buildChannels(entry)
+	entry.ctx.entry = entry
+	bodies[model] = entry
 end
 
 -- ---------------------------------------------------------------- the draw
 
--- The entire per-frame cost of this boss: one CFrame for the ship, and one
--- number for how far the hull has split. The pivot says where the hull is and
--- which way the guns point, and every piece is a fixed offset from it.
+-- THE SHIP IS STILL ONE CFRAME. The pivot says where the hull is and which way
+-- the guns point, and every piece is a fixed offset from it; what the channel
+-- layer adds is one more CFrame between the two, and only for the pieces some
+-- channel is currently posing.
 --
 -- No yaw correction is applied and none is needed. The engine's creature
 -- convention puts a body's +X along its heading (yawToward swings "the
 -- flat-laid long axis (+X)" onto the bearing), and boss_gen authors Wrack
 -- "facing +X (bow at +X, stern at -X)". The two already agree.
+--
+-- Attributes are POLLED here rather than bound to changed-signals, and that is
+-- what makes the close as reliable as the open: the hull follows whatever the
+-- server currently says, so a missed signal costs a few frames of easing and
+-- never a plate stuck open. The drivers that read events cannot poll and so
+-- carry their own decay instead - every one of them returns home on its own
+-- clock, and none can be left latched by a packet that never arrived.
 local function drawBody(model: Model, entry, dt: number)
 	local pivot = model:GetPivot()
 	local base = CFrame.new(pivot.Position + Vector3.new(0, entry.groundDrop, 0)) * pivot.Rotation
+	entry.base = base
 
-	-- Chase the window. Reading the attribute every frame rather than binding
-	-- a changed-signal is what makes the close as reliable as the open: the
-	-- hull follows whatever the server currently says, so a missed signal
-	-- costs a few frames of easing and never a plate stuck open.
-	local goal = if model:GetAttribute(ATTR_EXPOSED) then 1 else 0
-	entry.open += (goal - entry.open) * math.clamp(OPEN_RATE * dt, 0, 1)
+	stepGuns(entry)
+
+	local ctx = entry.ctx
+	ctx.now, ctx.dt, ctx.base = os.clock(), dt, base
+	for _, piece in entry.pieces do
+		piece.offset = nil
+	end
+	for _, channel in entry.channels do
+		stepChannel(channel, ctx)
+	end
+	entry.adopting = false
 
 	for _, piece in entry.pieces do
-		local relative = piece.relative
-		if piece.swing then
-			-- Turn about boss-local X through the keel hinge, then place as
-			-- usual. Written out rather than folded into `relative` because
-			-- the angle changes every frame while `relative` never does.
-			relative = entry.hinge * CFrame.Angles(piece.swing * entry.open, 0, 0) * entry.hinge:Inverse() * relative
-		end
-		piece.part.CFrame = base * relative
+		local offset = piece.offset
+		piece.part.CFrame = if offset then base * offset * piece.relative else base * piece.relative
 	end
 end
 
@@ -687,6 +1695,22 @@ function WrackBodyController.init()
 end
 
 function WrackBodyController.start()
+	-- The event drivers' one entry point. Kinds this file does not own are
+	-- ignored in silence, exactly as ProjectileFxController ignores the ones
+	-- it does not - the remote is a broadcast and every listener filters.
+	Remotes.CreatureEvent.OnClientEvent:Connect(function(kind, position, extra)
+		if type(kind) ~= "string" or typeof(position) ~= "Vector3" then
+			return
+		end
+		local sig = adaptSignal(kind, position, if type(extra) == "table" then extra else {})
+		if not sig then
+			return
+		end
+		for _, entry in bodies do
+			deliverSignal(entry, sig)
+		end
+	end)
+
 	RunService.RenderStepped:Connect(function(dt)
 		for model, entry in bodies do
 			if model.Parent then

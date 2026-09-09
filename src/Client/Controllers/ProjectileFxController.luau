@@ -87,6 +87,24 @@
 -- keyed on it would fire once per fight and then go quiet - a fix that
 -- belongs to CreatureService, not to a client workaround that would hide it.
 --
+-- THERE IS A SECOND READER OF THESE THREE KINDS. WrackBodyController now
+-- subscribes to the same broadcast and adapts `wrackVolley`, `wrackTell` and
+-- Wrack-skinned `telegraph` into its own two signals - "fire" and "windup" -
+-- to drive the boss's animation channels (the Admiral's sabre, the cannons'
+-- recoil and muzzle flash). It has its own `adaptSignal`, deliberately: the
+-- two files want different fields out of the same wire and sharing one record
+-- would couple a renderer to a rig. What that DOES mean is that a change to
+-- these three kinds now costs two edits, not one - and that a field this file
+-- stops needing may still be load-bearing over there:
+--
+--   wrackVolley  its `position` is the ONLY "the guns just fired" edge on the
+--                wire, and its identity as a MUZZLE is what picks which cannon
+--                recoils. A volley re-sourced at the hull pivot would silently
+--                turn every aimed shot into a full broadside animation.
+--   wrackTell    `duration` is how long the sabre is held high, and `aim`
+--                (lane shape only) is the bearing he points along.
+--   telegraph    `facing` on a `coneTell`, same job as `aim`.
+--
 -- Ballistic balls are dead-reckoned (position = p0 + v^ * distance, with the
 -- speed ramp `accel` integrated exactly the way the server integrates it,
 -- floor and all). `sync` volleys - homing wisps, spinning chain pairs - are
