@@ -134,11 +134,11 @@ ORDER = [
     "anchorsweep",
     "broadsideHeavy",
 ]
-PHASE_OF = {
-    "grapeshot": 1, "broadside": 1, "wisps": 1,
-    "anchorsweep": 2,
-    "broadsideHeavy": 3,
-}
+# `PHASE_OF` is GONE, not merely unused. The fight no longer has three health
+# phases: it has three ACTS that advance on events, and the drawn rows are
+# labelled off `ACT_OF` (derived from ACT_PHASES below) instead. A stale table
+# saying "broadsideHeavy is phase 3" beside an act-gated fight is exactly the
+# number the next reader would believe.
 
 # ---- the arena (assets/arena_gen.py, WK_* constants) -----------------------
 #
@@ -178,16 +178,28 @@ PLAN_SPAN = 152.0
 # straight translation, so a mount's boss-local (X, Z) IS its world offset.
 BOSS_YAW0 = 0.0
 # THE UPRIGHT REBUILD (mesh 7673cd1, 2026-09-08). She stands instead of lying
-# careened, at less than half the size, with four INTEGRAL cannons 90 degrees
-# apart. Transcribed from `parts.mounts` in Bosses.luau, where the entry is
-# Vector3(X, Y, Z) and Y is the height: the columns below are (label, X, Z, Y).
-# Flat radii 13.5-20.0 against the careened wreck's 22-40, which is why the
-# muzzle locus in every diagram below sits twenty studs tighter than it used to.
+# careened, at less than half the size, with four INTEGRAL cannons. Transcribed
+# from `parts.mounts` in Bosses.luau, where the entry is Vector3(X, Y, Z) and Y
+# is the height: the columns below are (label, X, Z, Y).
+#
+# THE THREE-ACT REWORK (2026-09-09) MOVED ALL FOUR AGAIN. The user's mandate:
+# "the 4 cannons ... should be visible to the user and they should have to move
+# around the map to shoot all 4, they shouldnt be able to shoot through the
+# boss. it should be all 4 corners of the main ship should be the 4 cannons."
+# The mesh lane answered with SPONSONS at +-30 / +-150 degrees, centroid radius
+# 19, wholly OUTBOARD of the hull - corners of the ship rather than four
+# bearings 90 degrees apart. Canonical order is the mesh's:
+# BowStbd, BowPort, SternStbd, SternPort.
+#
+# AND THEY ARE PERMANENT. `parts.regrow` is DELETED for this rework, so the
+# fourth kill is the act-1 -> act-2 transition rather than the top of another
+# cycle. Nothing here regrows them either: ACT_ONE_STEPS below walks the count
+# down 4 -> 0 once.
 MOUNTS = [  # (label, local X, local Z, height above the sand)
-    ("Bow", 19.05, 1.40, 12.40),
-    ("Starboard", 12.50, -7.30, 9.00),
-    ("Stern", -19.95, -1.30, 9.35),
-    ("Port", -11.00, 7.90, 9.20),
+    ("BowStbd", 16.45, -9.50, 13.20),
+    ("BowPort", 16.45, 9.50, 13.20),
+    ("SternStbd", -16.45, -9.50, 14.00),
+    ("SternPort", -16.45, 9.50, 14.00),
 ]
 # THE GUNS, AS EMITTERS. Since 2026-09-06 every ball leaves a LIVE BATTERY,
 # not a circle round the arena centre - `ctx.muzzle` / `ctx.decks` in
@@ -205,7 +217,10 @@ MOUNT_MIN_GAP = min(math.hypot(a[1] - b[1], a[2] - b[2])
                     for i, a in enumerate(MOUNTS) for b in MOUNTS[i + 1:])
 # Creatures.items.wrack_battery.health - what `jam` and `repair` are fractions
 # of, and the one number those two rows cannot be read without.
-BATTERY_HP = 2800
+#
+# 3600, not 2800: with `regrow` gone the four guns ARE act one, so their bar is
+# the act's whole length rather than one cycle of a loop. See ACT_HP below.
+BATTERY_HP = 3600
 
 # Every battery alive. `wrackDecks` in CreatureService hands ProjectileService
 # exactly this list, minus whatever the party has broken.
@@ -221,6 +236,153 @@ DECKS_ALIVE = [0, 1, 2, 3]
 # between an ellipse and a fair curve is under a pixel. Her bed of spoil is
 # gone with the careening: she stands on the sand.
 HULL_BBOX = (48.0, 12.6)
+
+# ---- the shot occluder (three-act rework, 2026-09-09) ----------------------
+#
+# "they shouldnt be able to shoot through the boss." The server builds an
+# invisible anchored part at spawn - a clone of the mesh lane's
+# `Wrack_HullCollider` (closed loft over the hull stations, +0.3 margin, no
+# waist gap), Transparency 1, CanQuery AND CanCollide true, parented to
+# Workspace.World.
+#
+# THE FOLDER IS THE MECHANISM, not a detail. ShotAim.terrainLimit builds
+# `FilterType = Include` over the World folder ALONE, so a collider parented
+# anywhere else - the Creatures folder, the BossArenas folder, bare Workspace -
+# is invisible to every server-side shot and the whole thing silently does
+# nothing. RespectCanCollide is true there, which is why CanCollide must be set
+# and CanQuery alone is not enough. The client's half
+# (RangedController.aimDistance) excludes the character and the four FX folders
+# with RespectCanCollide, so the same part stops the same ray there.
+#
+# Extents are the mesh lane's, boss space (x, y, height), converted to the
+# (X, Z, height) columns this file uses everywhere else.
+# Restated by the mesh lane in this file's (X, height, Z) convention,
+# 2026-09-09 (WR_HULLCOLLIDER). Not hand-converted here - a transform applied
+# twice, once by each lane, is a number nobody owns.
+COLLIDER_X = (-21.5, 20.5)
+COLLIDER_H = (0.70, 15.00)
+COLLIDER_Z = (-6.60, 6.60)
+
+# THE TWO ORIGINS, and they are NOT interchangeable - this is the whole reason
+# the check below runs twice.
+#
+#   * the EYE is the raised Careenage orbit's camera (BIRDSEYE 27.3 up,
+#     142.5 out). It decides what the player can SEE.
+#   * the SHOT leaves the CHARACTER, not the lens - RangedController resolves
+#     the crosshair's depth down the camera ray and then fires from the
+#     shooter's root + ORIGIN_LIFT. It decides what the player can HIT.
+#
+# The mesh lane traced the eye and found that a 13.7-stud hull cannot occlude
+# anything from 27.3 studs up: hull occlusion FAILS at camera height, and the
+# "only two at a time" property has to come from each sponson's own inboard
+# BULKHEAD instead. That is mesh-side. This file's job is the other origin -
+# the shot, from ground level, where the hull does block - plus the check that
+# the two answers agree.
+EYE_Y = 27.3
+SHOT_Y = 4.5  # HumanoidRootPart (~3 up) + RangedController's ORIGIN_LIFT 1.5
+
+GUN_BEARING = [(mx / math.hypot(mx, mz), mz / math.hypot(mx, mz))
+               for _label, mx, mz, _h in MOUNTS]
+
+# ---- the casemates, and why the flat bulkhead was the wrong model ----------
+#
+# The first pass here modelled each sponson's shielding as ONE inboard plate -
+# a half-plane through the gun with the gun's own bearing as its normal. It
+# flattered the geometry, and the mesh lane then proved there is NO working
+# half-width for a flat plate: under 20 studs it still leaks three guns, over
+# 26 it eats the sponson's OWN gun on 56 of 144 samples. No window exists, and
+# a central superstructure changes nothing, because the leaks run AROUND the
+# hull's ends rather than over her middle.
+#
+# So the sponsons are three-sided CASEMATES: a back wall and two cheeks,
+# collidable, bounded by the gun's own box - which by construction cannot
+# swallow the gun it houses. Modelling only the back face reports a leak the
+# real geometry does not have, which is what the earlier revision of this file
+# did.
+#
+# The mesh lane's solved dimensions (2026-09-09), per gun, in its own bearing
+# frame, with `r` measured from the ship's centre along that bearing:
+CASEMATE_R_BACK = 13.0   # back wall
+CASEMATE_HW = 4.0        # half-width: back wall's, and the cheeks' offset
+CASEMATE_R_OUT = 23.0    # how far out the cheeks project past the gun
+CASEMATE_Z = (8.5, 17.5)  # the plates' height band, absolute above the sand
+#
+# `CASEMATE_R_OUT` IS THE PARAMETER THIS CHECK EXISTS TO WATCH. The other two
+# are a plateau - back r 12 vs 13 crossed with cheek +-3.2 vs +-4.0 are
+# byte-identical - but the projection is KNIFE-EDGED at +-2 studs and fails in
+# both directions: r 21 leaks the far gun on 28 of 72 bearings, r 25 eats the
+# sponson's own on 4. Only r 23 is inside the window. A model that cannot
+# express this parameter cannot see the cliff, and will report the flat
+# plate's "no window" result forever - which is why `mouth` is threaded all
+# the way through `guns_clear` and `gun_sweep` rather than being a constant.
+#
+# The acceptance half-angle the box implies, derived rather than stated so a
+# retune shows up as a changed angle instead of a changed histogram nobody can
+# explain. Measured at the gun, which stands `GUN_R_MAX` out.
+CASEMATE_HALF_DEG = math.degrees(math.atan2(CASEMATE_HW, CASEMATE_R_OUT - GUN_R_MAX))
+
+# ---- the three acts (2026-09-09) ------------------------------------------
+#
+# ACT 1 THE GUNS   hull IMMUNE and a physical occluder; the four permanent
+#                  sponson cannons are the fight. Cannon-native rows only.
+# ACT 2 THE SHIP   hull VULNERABLE and now the emitter; the ship-body rows.
+# ACT 3 THE DUEL   a SECOND creature (`wrack_admiral`, Bosses row `wrack_duel`)
+#                  on the sand, mobile, hittable by melee and guns alike.
+#
+# Acts advance by EVENTS, not by health fractions: act 1 ends on the fourth
+# permanent gun kill, act 2 on the hull reaching zero. Within an act the health
+# fraction still sub-phases. `Fn.bossPhaseAttacks` only speaks health
+# fractions, so acts 1-2 ride ONE synthetic dial (`creature.actFraction`,
+# read through `Fn.bossPhaseFraction`) that is monotonic across both:
+#
+#     act 1:  0.60 + 0.40 * (gunsAlive / 4)     4:1.00 3:0.90 2:0.80 1:0.70
+#     act 2:  0.60 * (hullHp / hullMax)         full:0.60  dead:0.00
+#
+# Act 3 is a different creature with its own row, so it keeps the ordinary
+# health fraction and needs no dial.
+ACT_HP = {1: 4 * BATTERY_HP, 2: 24000, 3: 20000}
+
+# The two classes a phase may run, and no more (Bosses.luau's rule):
+#   (a) READ AND WALK - a pattern with a shape and a hole in it
+#   (b) BREAK A CLOCK - something you must damage before its timer runs out
+CLASS_OF = {
+    "grapeshot": "a", "broadside": "a", "broadsideHeavy": "a", "wisps": "a",
+    "anchorsweep": "a", "anchorline": "a", "bilgeblow": "a",
+    "powderrun": "b", "powderrunTwin": "b", "ghostbraziers": "b",
+    "cannonoverload": "b", "longboat": "b", "ladybelow": "b",
+    "ladybelowTriple": "b", "boomsweep": "b",
+    # the duel: everything is (a) except the stance, which is (b) inverted -
+    # the clock you must NOT put damage into.
+    "sabrelunge": "a", "cleave": "a", "cleaveDouble": "a", "flintlock": "a",
+    "lastbroadside": "a", "ripostestance": "b",
+}
+
+# The phase table as it will be authored, band by band, with the act each band
+# belongs to and the dial value that opens it.
+ACT_PHASES = [
+    (1, 1.00, ["grapeshot", "broadside", "powderrun", "cannonoverload"]),
+    (1, 0.80, ["grapeshot", "broadsideHeavy", "powderrun", "cannonoverload", "anchorline"]),
+    (2, 0.60, ["broadside", "wisps", "ladybelow", "bilgeblow"]),
+    (2, 0.40, ["broadside", "wisps", "ladybelow", "boomsweep", "ghostbraziers", "longboat"]),
+    (2, 0.20, ["broadsideHeavy", "wisps", "ladybelowTriple", "boomsweep",
+               "ghostbraziers", "longboat", "bilgeblow", "anchorsweep"]),
+]
+# Act 3's own table, on `wrack_duel`'s ordinary health fraction.
+DUEL_PHASES = [
+    (1.00, ["sabrelunge", "cleave", "flintlock"]),
+    (0.66, ["sabrelunge", "cleave", "flintlock", "ripostestance"]),
+    (0.33, ["sabrelunge", "cleaveDouble", "flintlock", "ripostestance", "lastbroadside"]),
+]
+# Which act each DRAWN ball row is live in, for the diagrams' labels. A row can
+# be live in both acts (broadside is the signature and never leaves).
+ACT_OF = {}
+for _act, _below, _rows in ACT_PHASES:
+    for _row in _rows:
+        ACT_OF.setdefault(_row, _act)
+
+# Act one walks the gun count down ONCE - no regrow. The scale each step emits
+# at is Fn.wrackScale's `0.4 + 0.6 * (alive / count)`, unchanged.
+ACT_ONE_STEPS = [4, 3, 2, 1, 0]
 
 PLAYER_SPEED = 16.0  # Roblox default; nothing in src/ sets Humanoid.WalkSpeed.
 PLAYER_DOT_R = 1.0   # the root part is 2x2x1; the hit test is a POINT vs the ball radius.
@@ -695,6 +857,228 @@ def seg_dist(pt, a, b):
     if l2 > 1e-6:
         tt = max(0.0, min(1.0, ((pt[0] - a[0]) * abx + (pt[1] - a[1]) * abz) / l2))
     return math.hypot(pt[0] - (a[0] + abx * tt), pt[1] - (a[1] + abz * tt))
+
+
+# ============================================================ the two-origin gun check
+#
+# "they should have to move around the map to shoot all 4, they shouldnt be
+# able to shoot through the boss." That is TWO claims about two different rays,
+# and running one check for both is how this would silently pass:
+#
+#   SEE  - from the raised orbit's EYE, 27.3 studs up. Answered by the sponson
+#          bulkheads (the hull is too short to occlude from up there).
+#   HIT  - from the SHOT origin, 4.5 studs up at the character. Answered by the
+#          hull collider AND the bulkheads together.
+#
+# Same grid, opposite question. A checker that took the eye's answer for the
+# shot's would report the fight working while every far gun was shootable
+# through the ship, and one that took the shot's answer for the eye's would
+# report an occlusion the camera never sees.
+
+
+def _seg_hits_box(p, q, samples=1200):
+    """Does the segment p->q pass through the hull collider? p, q are
+    (x, z, height) in boss space, which is world space here (yaw0 = 0)."""
+    for i in range(1, samples):
+        t = i / samples
+        x = p[0] + (q[0] - p[0]) * t
+        z = p[1] + (q[1] - p[1]) * t
+        h = p[2] + (q[2] - p[2]) * t
+        if (COLLIDER_X[0] < x < COLLIDER_X[1]
+                and COLLIDER_Z[0] < z < COLLIDER_Z[1]
+                and COLLIDER_H[0] < h < COLLIDER_H[1]):
+            return True
+    return False
+
+
+# WHAT A SHOT IS ACTUALLY AIMED AT, and the first version of this check had it
+# wrong. A gun is not a point: `Creatures.items.wrack_battery.shotRadius` is
+# published to both sides and IS the capture both of them use - server-side by
+# CreatureService.raycastNearest to decide what a shot hit, client-side by
+# RangedController.aimDistance to resolve how far down the cursor ray the
+# target is. So a ray that clips the sphere's outboard edge hits the gun even
+# when a ray to its centre is stopped by the casemate's own cheek.
+#
+# Testing the CENTRE ONLY is what produced this file's first disagreement with
+# the mesh lane's solver: 26% of bearings with nothing shootable at all,
+# against their "never zero". The blind sectors were an artefact of aiming at a
+# point that the fight never aims at.
+SHOT_RADIUS = 5.0  # wrack_battery.shotRadius under the three-act rework
+
+
+# ...AND THE CAPTURE IS CLIPPED BY THE HOUSE IT SITS IN. The sphere is r 5 and
+# the cheeks are only +-4 apart, so most of it is inside timber: an aim point
+# at the full radius sits OUTSIDE the casemate, and a check that used one would
+# bypass both cheeks and report every gun visible from every bearing. (It did,
+# on the first run: 4 x 144 at the eye.) The reachable capture is the sphere
+# INTERSECTED with the casemate's mouth, so the lateral samples are clamped
+# just inside the cheeks.
+AIM_LATERAL = min(SHOT_RADIUS, CASEMATE_HW - 0.5)
+
+
+def _aim_points(index):
+    """The gun's reachable capture, sampled where it matters: the centre and
+    the two lateral extremes that are still inside the casemate. Three points,
+    not a sphere sweep - the cheeks bound the arc, and they bound it
+    laterally."""
+    _label, gx, gz, gh = MOUNTS[index]
+    nx, nz = GUN_BEARING[index]
+    tx, tz = -nz, nx
+    return [
+        (gx, gz, gh),
+        (gx + tx * AIM_LATERAL, gz + tz * AIM_LATERAL, gh),
+        (gx - tx * AIM_LATERAL, gz - tz * AIM_LATERAL, gh),
+    ]
+
+
+def _casemate_blocks(p, index, mouth=None, aim=None):
+    """Does gun `index`'s own casemate stop a ray from `p` reaching it?
+
+    Exact, not sampled: three rectangles in the gun's bearing frame, each hit
+    by solving for the one coordinate that crosses it. `u` is radius from the
+    ship's centre ALONG the gun's bearing (the gun stands at u = GUN_R[index]),
+    `v` runs across it, `h` is height above the sand.
+
+      back wall  u = CASEMATE_R_BACK,  |v| <= CASEMATE_HW
+      cheeks     v = +-CASEMATE_HW,    CASEMATE_R_BACK <= u <= `mouth`
+
+    The gun sits at v = 0 and u > CASEMATE_R_BACK, so no plate can contain it.
+    That is the property the flat bulkhead did not have, and the whole reason
+    for the shape.
+    """
+    if mouth is None:
+        mouth = CASEMATE_R_OUT
+    _label, gx, gz, gh = MOUNTS[index]
+    if aim is None:
+        aim = (gx, gz, gh)
+    nx, nz = GUN_BEARING[index]
+    tx, tz = -nz, nx
+    pu, pv, ph = p[0] * nx + p[1] * nz, p[0] * tx + p[1] * tz, p[2]
+    gu, gv, gh = aim[0] * nx + aim[1] * nz, aim[0] * tx + aim[1] * tz, aim[2]
+
+    def at(t):
+        return (pu + (gu - pu) * t, pv + (gv - pv) * t, ph + (gh - ph) * t)
+
+    # THE BACK WALL.
+    if abs(gu - pu) > 1e-9:
+        t = (CASEMATE_R_BACK - pu) / (gu - pu)
+        if 0.0 < t < 1.0:
+            _u, v, h = at(t)
+            if abs(v) <= CASEMATE_HW and CASEMATE_Z[0] <= h <= CASEMATE_Z[1]:
+                return True
+    # THE CHEEKS.
+    if abs(gv - pv) > 1e-9:
+        for side in (CASEMATE_HW, -CASEMATE_HW):
+            t = (side - pv) / (gv - pv)
+            if 0.0 < t < 1.0:
+                u, _v, h = at(t)
+                if CASEMATE_R_BACK <= u <= mouth and CASEMATE_Z[0] <= h <= CASEMATE_Z[1]:
+                    return True
+    return False
+
+
+def guns_clear(origin, use_collider=True, use_bulkheads=True, mouth=None):
+    """Which guns this origin has an unoccluded line to. `origin` is
+    (x, z, height)."""
+    clear = []
+    for i, (_label, gx, gz, gh) in enumerate(MOUNTS):
+        ok = False
+        for ax, az, ah in _aim_points(i):
+            if use_bulkheads and _casemate_blocks(origin, i, mouth=mouth, aim=(ax, az, ah)):
+                continue
+            if use_collider and _seg_hits_box(origin, (ax, az, ah)):
+                continue
+            ok = True
+            break
+        if ok:
+            clear.append(i)
+    return clear
+
+
+def gun_sweep(ring, height, bearings=144, **kw):
+    """The visible-gun count at every bearing on a ring: a histogram
+    {count: bearings} plus the worst case and the nearest-gun result."""
+    hist = {}
+    eaten = []
+    for k in range(bearings):
+        deg = k * 360.0 / bearings
+        rad = math.radians(deg)
+        p = (math.cos(rad) * ring, math.sin(rad) * ring, height)
+        n = len(guns_clear(p, **kw))
+        hist[n] = hist.get(n, 0) + 1
+        # The other half of the promise: the gun you are STANDING next to must
+        # never be eaten by the ship you are standing beside.
+        near = min(range(len(MOUNTS)),
+                   key=lambda i: (p[0] - MOUNTS[i][1]) ** 2 + (p[1] - MOUNTS[i][2]) ** 2)
+        if near not in guns_clear(p, **kw):
+            eaten.append((round(deg), MOUNT_LABEL[near]))
+    return hist, eaten
+
+
+# THE TARGET IS TWO-TIERED, and the tiers are not the same promise:
+#
+#   HARD  what you can HIT, from root+1.5 at both rings: never more than two,
+#         and the gun you are standing beside is never eaten. This is the
+#         mandate ("they shouldnt be able to shoot through the boss") and a
+#         failure here is a broken fight.
+#   SOFT  what you can SEE, from the raised orbit's eye: two on most bearings.
+#         Three VISIBLE-but-unshootable on the axial bearings is tolerable -
+#         seeing a gun you cannot yet hit is a reason to walk, which is the
+#         loop the acts are built on.
+#
+# Written down because the two were one check for one revision of this file,
+# and one check for two promises always ends up enforcing the easier one.
+def gun_check_lines():
+    """The check, per (ring, origin), with the histogram the mesh lane sizes
+    its casemates against - and the collider-only column beside it, which is
+    the evidence for why the casemates have to exist at all."""
+    lines = []
+    for ring, ring_label in ((PARTY_R, "drop ring r%.0f" % PARTY_R),
+                             (SAND_R, "sand edge r%.0f" % SAND_R)):
+        for height, origin_label, collider, tier in (
+                (EYE_Y, "eye  %.1f" % EYE_Y, False, "SOFT"),
+                (SHOT_Y, "shot %.1f" % SHOT_Y, True, "HARD")):
+            bare, _ = gun_sweep(ring, height, use_bulkheads=False, use_collider=True)
+            full, eaten = gun_sweep(ring, height, use_collider=collider, use_bulkheads=True)
+            total = sum(full.values())
+            over = sum(c for n, c in full.items() if n > 2)
+            if tier == "HARD":
+                ok = over == 0 and not eaten
+            else:
+                ok = over <= total * 0.25
+            lines.append((
+                "%-18s %-10s %s %-4s  %s   collider alone: %s"
+                % (ring_label, origin_label, "OK  " if ok else "FAIL", tier,
+                   " ".join("%dx%d" % (n, c) for n, c in sorted(full.items())),
+                   " ".join("%dx%d" % (n, c) for n, c in sorted(bare.items()))),
+                eaten))
+    return lines
+
+
+# THE MESH LANE'S PUBLISHED RESULT for the same casemate, same two origins,
+# same rings (2026-09-09), from their analytic ray-vs-prism solver. Recorded
+# here so the two independent implementations are DIFFED rather than trusted,
+# which is the whole reason two of them exist.
+MESH_LANE_HIST = {1: 16, 2: 128}
+MESH_LANE_NOTE = ("<=2 everywhere, never 0, nearest never eaten, "
+                  "3-visible on 0% of bearings")
+
+
+def casemate_sensitivity():
+    """How the shootable histogram moves with the casemate's mouth - the one
+    dimension the sight lines can feel. Printed so this lane and the mesh lane
+    are comparing a CURVE rather than trading single numbers."""
+    rows = []
+    for mouth in (21.0, 23.0, 25.0):
+        half = math.degrees(math.atan2(CASEMATE_HW, max(mouth - GUN_R_MAX, 1e-6)))
+        merged, eaten_n = {}, 0
+        for ring in (PARTY_R, SAND_R):
+            hist, eaten = gun_sweep(ring, SHOT_Y, use_collider=True, mouth=mouth)
+            for n, c in hist.items():
+                merged[n] = merged.get(n, 0) + c
+            eaten_n += len(eaten)
+        rows.append((mouth, half, merged, eaten_n))
+    return rows
 
 
 # ============================================================ derived numbers
@@ -1480,8 +1864,8 @@ def render_pattern(name, out_dir):
 
     fig.text(0.026, 0.975, name, color=colour, fontsize=27, fontweight="bold",
              ha="left", va="top")
-    fig.text(0.026, 0.930, "Admiral Wrack  ·  phase %d  ·  handler \"%s\"  ·  skin \"%s\""
-             % (PHASE_OF[name], p["handler"], p["skin"]),
+    fig.text(0.026, 0.930, "Admiral Wrack  ·  act %d  ·  handler \"%s\"  ·  skin \"%s\""
+             % (ACT_OF.get(name, 0), p["handler"], p["skin"]),
              color=INK_DIM, fontsize=9.5, ha="left", va="top")
     fig.text(0.975, 0.975, ANSWER[name], color=GHOST, fontsize=14.0, ha="right", va="top",
              style="italic")
@@ -1590,7 +1974,7 @@ def render_sheet(out_dir):
         p = ATTACKS[name]
         fig.text(x0, row_top, name, color=SKIN[p["skin"]], fontsize=16,
                  fontweight="bold", ha="left", va="top")
-        fig.text(x0 + tile_w, row_top, "phase %d" % PHASE_OF[name],
+        fig.text(x0 + tile_w, row_top, "act %d" % ACT_OF.get(name, 0),
                  color=INK_FAINT, fontsize=9.5, ha="right", va="top")
         fig.text(x0, y0 - 0.008, ANSWER[name], color=GHOST, fontsize=9.6,
                  ha="left", va="top")
@@ -1707,6 +2091,110 @@ NEW_MECHANICS = {
             ("snap budget", "%d hp inside %g s = %.0f dps" % (r["hp"], r["drag"], r["hp"] / r["drag"])),
         ],
     ),
+    # ---------------------------------------------------------------- the
+    # SHIP'S OWN THREE (2026-09-09). The five above are things the Admiral puts
+    # on the sand; these take a piece of the hull and swing it.
+    #
+    # ON THE ESCAPE ROSE, since two of the three ARE walking problems and the
+    # note under this table says none of them is. The judgement, per mechanic:
+    #
+    #   ladybelow  NOT rose-able, and not by omission. The rose walks a player
+    #              72 ways against a hazard whose geometry is fixed; the Lady
+    #              RE-LATCHES between passes, so a spoke that "escapes" pass one
+    #              is simply where pass two is drawn. The honest instrument is
+    #              the sideways clearance against the lead, which is derived
+    #              below and is exact.
+    #   boomsweep  rose-able in principle - it is a rotating line over a fixed
+    #              band - and deliberately NOT rosed anyway, because the answer
+    #              has a closed form. Whether a walk escapes is one comparison
+    #              (radial distance to the band's edge against the time before
+    #              the spar arrives) and one more that settles the tangential
+    #              case for every radius at once. A 72-spoke sample of an exact
+    #              answer is a worse instrument than the answer, and it would
+    #              read as evidence rather than as arithmetic.
+    #   bilgeblow  same shape: three radials from fixed points, so "can I get
+    #              out of this column" is a step off a line whose width is
+    #              authored. Derived below.
+    "ladybelow": dict(
+        row=dict(windup=1.1, duration=8.4, recover=0.9, cooldown=19.0,
+                 dives=2, lead=1.1, rearm=1.1, redock=0.8, speed=54,
+                 approach=56, pastBy=56, lane=12, fly=7,
+                 damage=(62, 84), hp=900),
+        verb="SHOOT HER and she is off the board a dive early - or step off the lane",
+        derive=lambda r: [
+            ("pass length", "%g studs (%g short + %g past), crossing you at its middle"
+             % (r["approach"] + r["pastBy"], r["approach"], r["pastBy"])),
+            ("a pass takes", "%.1f s at %g studs/s" % ((r["approach"] + r["pastBy"]) / r["speed"],
+                                                       r["speed"])),
+            ("sideways clearance", "%g studs to leave a %g-wide lane, %.2f s at %g studs/s"
+             % (r["lane"] / 2, r["lane"], (r["lane"] / 2) / PLAYER_SPEED, PLAYER_SPEED)),
+            ("...against a lead of", "%g s - the dodge costs %.0f%% of the warning"
+             % (r["lead"], 100.0 * ((r["lane"] / 2) / PLAYER_SPEED) / r["lead"])),
+            ("whole flight", "%.1f s = %d x (lead %g + pass %.1f + re-arm %g) - lead + redock %g"
+             % (r["dives"] * (r["lead"] + (r["approach"] + r["pastBy"]) / r["speed"] + r["rearm"])
+                - r["lead"] + r["redock"], r["dives"], r["lead"],
+                (r["approach"] + r["pastBy"]) / r["speed"], r["rearm"], r["redock"])),
+            ("...against the row's duration", "%g s - MUST cover it, or finish despawns her mid-air"
+             % r["duration"]),
+            ("end her a dive early", "%d hp inside the first %.1f s = %.0f dps"
+             % (r["hp"],
+                (r["dives"] - 1) * (r["lead"] + (r["approach"] + r["pastBy"]) / r["speed"] + r["rearm"]),
+                r["hp"] / ((r["dives"] - 1) * (r["lead"] + (r["approach"] + r["pastBy"]) / r["speed"]
+                                              + r["rearm"])))),
+            ("eating every pass", "%d-%d damage over the move" % (r["dives"] * r["damage"][0],
+                                                                  r["dives"] * r["damage"][1])),
+        ],
+    ),
+    "boomsweep": dict(
+        row=dict(windup=2.2, duration=3.2, recover=1.0, cooldown=21.0,
+                 arc=140, sweep=3.0, inner=24, outer=34, width=10,
+                 boomLen=30, tackleFly=6, damage=(66, 88), hp=700),
+        verb="THERE IS NO TANGENTIAL ESCAPE - leave radially, or drop the spar",
+        derive=lambda r: [
+            ("sweep rate", "%g deg over %g s = %.1f deg/s" % (r["arc"], r["sweep"],
+                                                              r["arc"] / r["sweep"])),
+            ("tip speed at the band's edge", "%.1f studs/s at r %g - vs a %g-stud walk: NO ESCAPE"
+             % (math.radians(r["arc"] / r["sweep"]) * r["outer"], r["outer"], PLAYER_SPEED)),
+            ("...and at the band's inner edge", "%.1f studs/s at r %g - still losing"
+             % (math.radians(r["arc"] / r["sweep"]) * r["inner"], r["inner"])),
+            ("radial escape from mid-band", "%.0f studs, %.2f s at %g studs/s"
+             % ((r["outer"] - r["inner"]) / 2, ((r["outer"] - r["inner"]) / 2) / PLAYER_SPEED,
+                PLAYER_SPEED)),
+            ("...against the warning", "windup %g s + half the sweep %.1f s = %.1f s"
+             % (r["windup"], r["sweep"] / 2, r["windup"] + r["sweep"] / 2)),
+            ("band vs the hull box", "r %g-%g against a hull %g x %g (half-length %g)"
+             % (r["inner"], r["outer"], HULL_BBOX[0], HULL_BBOX[1], HULL_BBOX[0] / 2)),
+            ("spar width", "%g studs PERPENDICULAR - the same at every radius, not a wedge"
+             % r["width"]),
+            ("drop budget", "%d hp inside windup + sweep %.1f s = %.0f dps"
+             % (r["hp"], r["windup"] + r["sweep"], r["hp"] / (r["windup"] + r["sweep"]))),
+            ("reach vs the guns", "outer %g against mounts at %.1f-%.1f - it sweeps PAST the brass"
+             % (r["outer"], GUN_R_MIN, GUN_R_MAX)),
+        ],
+    ),
+    "bilgeblow": dict(
+        row=dict(windup=1.3, duration=4.6, recover=0.9, cooldown=24.0,
+                 hatches=3, hatchGap=0.9, steps=6, spacing=9, startAt=26,
+                 interval=0.30, arm=0.85, radius=7, damage=(46, 62)),
+        verb="NOTHING TO SHOOT - the ground between the hull and the drop ring, taken away",
+        derive=lambda r: [
+            ("a column runs", "r %g to r %g (%d steps, %g apart)"
+             % (r["startAt"], r["startAt"] + (r["steps"] - 1) * r["spacing"], r["steps"],
+                r["spacing"])),
+            ("...against the drop ring", "r %g - it stops %g studs short, so the rim is the answer"
+             % (PARTY_R, PARTY_R - (r["startAt"] + (r["steps"] - 1) * r["spacing"]))),
+            ("column speed outward", "%.0f studs/s (%g studs every %g s) - outrunning it LOSES"
+             % (r["spacing"] / r["interval"], r["spacing"], r["interval"])),
+            ("step off the radial", "%g studs, %.2f s at %g studs/s - inside the %g arm window"
+             % (r["radius"], r["radius"] / PLAYER_SPEED, PLAYER_SPEED, r["arm"])),
+            ("last eruption lands", "%.2f s after the first hatch pops"
+             % ((r["hatches"] - 1) * r["hatchGap"] + r["arm"] + (r["steps"] - 1) * r["interval"])),
+            ("...against the row's duration", "%g s - the LIDS shut with finish, so this must fit"
+             % r["duration"]),
+            ("discs on the floor", "%d of r %g, in %d lines" % (r["hatches"] * r["steps"],
+                                                                r["radius"], r["hatches"])),
+        ],
+    ),
     "longboat": dict(
         row=dict(windup=1.4, duration=0.6, recover=0.8, cooldown=26.0,
                  count=3, beachAt=46, spread=11, speed=9.5, reach=20,
@@ -1741,16 +2229,26 @@ def main():
 
     # The handoff: the numbers the pictures are drawn from, printed so they
     # can be diffed against the Luau without opening an image viewer.
+    # BY ACT, because a rose is only meaningful beside the other rows that can
+    # be live with it. Sorting these five by act is what makes it visible that
+    # act 1 is a two-row walking problem and act 2 is a four-row one.
     print("")
-    for name in ORDER:
-        p = ATTACKS[name]
-        n = ring_numbers(name)
-        rose = escape_rose(name, REF_POS)
-        ok = sum(1 for _, s in rose if s)
-        print("HANDOFF %-15s live at t=%.2f: %3d balls  ·  escape rose %2d/72  ·  %s"
-              % (name, MOMENTS[name][0], len(live_balls(name, MOMENTS[name][0])[0])
-                 + 2 * len(live_balls(name, MOMENTS[name][0])[1]), ok,
-                 "; ".join("%s %.1f" % (k, v) for k, v in sorted(n.items()))))
+    for act in (1, 2):
+        for name in ORDER:
+            if ACT_OF.get(name) != act:
+                continue
+            p = ATTACKS[name]
+            n = ring_numbers(name)
+            rose = escape_rose(name, REF_POS)
+            ok = sum(1 for _, s in rose if s)
+            print("HANDOFF act %d %-15s live at t=%.2f: %3d balls  ·  escape rose %2d/72  ·  %s"
+                  % (act, name, MOMENTS[name][0], len(live_balls(name, MOMENTS[name][0])[0])
+                     + 2 * len(live_balls(name, MOMENTS[name][0])[1]), ok,
+                     "; ".join("%s %.1f" % (k, v) for k, v in sorted(n.items()))))
+    unplaced = [name for name in ORDER if name not in ACT_OF]
+    if unplaced:
+        print("HANDOFF  WARNING: drawn rows in no act's phase list: %s"
+              % ", ".join(unplaced))
 
     # ...and the five that are not drawn. Not an escape rose - none of these is
     # a walking problem - but the numbers the design is actually about, so a
@@ -1760,6 +2258,114 @@ def main():
           "%.1f-%.1f studs up" % (GUN_R_MIN, GUN_R_MAX, MOUNT_MIN_GAP,
                                   min(h for _, _, _, h in MOUNTS),
                                   max(h for _, _, _, h in MOUNTS)))
+    print("HANDOFF  %s" % ", ".join(
+        "%s at %.0f deg" % (label, math.degrees(math.atan2(mz, mx)) % 360.0)
+        for label, mx, mz, _h in MOUNTS))
+
+    # ---- the three acts ---------------------------------------------------
+    print("")
+    print("HANDOFF  THE THREE ACTS - %d hp total, party mult rides all three"
+          % sum(ACT_HP.values()))
+    print("        act 1 THE GUNS   %6d = 4 x %d, PERMANENT (no regrow); "
+          "hull immune + occluder" % (ACT_HP[1], BATTERY_HP))
+    print("        act 2 THE SHIP   %6d  hull vulnerable and now the emitter; "
+          "cracks open every 20%%" % ACT_HP[2])
+    print("        act 3 THE DUEL   %6d  wrack_admiral, mobile, melee AND guns"
+          % ACT_HP[3])
+    print("        transitions are EVENTS: 4th permanent gun kill, then hull zero")
+
+    # The synthetic dial, printed as the table it will be authored as, so a
+    # band that stops being monotonic is visible in a diff of this output.
+    print("")
+    print("HANDOFF  actFraction dial (Fn.bossPhaseFraction; acts 1-2 share one creature)")
+    for alive in ACT_ONE_STEPS:
+        print("        act 1  %d gun%s alive -> dial %.2f   emitter scale %.2f"
+              % (alive, " " if alive == 1 else "s", 0.60 + 0.40 * (alive / 4.0),
+                 (0.4 + 0.6 * (alive / 4.0)) if alive else 0.0))
+    for frac in (1.0, 0.66, 0.33, 0.0):
+        print("        act 2  hull %3.0f%%      -> dial %.2f"
+              % (frac * 100, 0.60 * frac))
+
+    # The two-class cap, checked rather than asserted in a comment.
+    print("")
+    print("HANDOFF  the phase table, and the two-class cap")
+    for act, below, rows in ACT_PHASES:
+        classes = sorted({CLASS_OF[r] for r in rows})
+        print("        act %d  below %.2f  %s  [%s]  %s"
+              % (act, below, "OK  " if len(classes) <= 2 else "FAIL",
+                 "".join(classes), ", ".join(rows)))
+    for below, rows in DUEL_PHASES:
+        classes = sorted({CLASS_OF[r] for r in rows})
+        print("        act 3  below %.2f  %s  [%s]  %s"
+              % (below, "OK  " if len(classes) <= 2 else "FAIL",
+                 "".join(classes), ", ".join(rows)))
+
+    # ---- the gun check ----------------------------------------------------
+    print("")
+    print("HANDOFF  CAN YOU SEE / HIT ALL FOUR AT ONCE?  (must never be 4, "
+          "and the answer is two different rays)")
+    for line, eaten in gun_check_lines():
+        print("        %s" % line)
+        if eaten:
+            print("        %-18s NEAREST GUN EATEN BY THE COLLIDER at %s"
+                  % ("", ", ".join("%s@%ddeg" % (lab, d) for d, lab in eaten[:6])))
+    print("        The hull collider ALONE leaks - the sponsons stand at |z| 9.5 and it")
+    print("        is only |z| %.1f, so an axial ray crosses her near face OUTSIDE the"
+          % COLLIDER_Z[1])
+    print("        hull and runs down her side. The casemate plates are therefore")
+    print("        COLLIDABLE geometry, folded into Wrack_HullCollider - so the clone")
+    print("        is still exactly ONE object and there are no per-sponson colliders.")
+    print("        THE FALLBACK BOX (pack absent) CANNOT REPRODUCE CHEEKS and leaks 3+")
+    print("        on the axial bearings. Acceptable until the pack imports, not after.")
+
+    # The cliff. Printed as a curve rather than a number, because the number is
+    # what two lanes trade and the curve is what either of them can check.
+    print("")
+    print("HANDOFF  casemate: back r %.1f, half-width %.1f, cheeks out to r %.1f, z %.1f-%.1f"
+          % (CASEMATE_R_BACK, CASEMATE_HW, CASEMATE_R_OUT, CASEMATE_Z[0], CASEMATE_Z[1]))
+    print("        acceptance half-angle at the gun: %.1f deg" % CASEMATE_HALF_DEG)
+    print("        CHEEK PROJECTION IS THE KNIFE EDGE - the other two dimensions are a")
+    print("        plateau, this one fails BOTH ways within two studs:")
+    for mouth, half, hist, eaten_n in casemate_sensitivity():
+        note = ""
+        if any(n > 2 for n in hist):
+            note = "  LEAKS the far gun"
+        elif eaten_n or 0 in hist:
+            note = "  EATS its own gun"
+        print("        cheeks to r %-5.1f (half-angle %4.1f deg)  shootable %s%s"
+              % (mouth, half, " ".join("%dx%d" % (n, c) for n, c in sorted(hist.items())),
+                 note))
+    # THE TWO MODELS DO NOT AGREE, AND THAT IS THE RESULT.
+    print("")
+    print("HANDOFF  RECONCILIATION WITH THE MESH LANE - THEY DISAGREE, DO NOT SHIP YET")
+    print("        mesh lane (ray-vs-prism solver): %s  - %s"
+          % (" ".join("%dx%d" % (n, c) for n, c in sorted(MESH_LANE_HIST.items())),
+             MESH_LANE_NOTE))
+    _here, _eaten = gun_sweep(SAND_R, SHOT_Y, use_collider=True)
+    print("        this file (segment-vs-plate):    %s  - %d bearings with NOTHING"
+          % (" ".join("%dx%d" % (n, c) for n, c in sorted(_here.items())),
+             _here.get(0, 0)))
+    print("        The disagreement LOCALISES: it is entirely on the BROADSIDE")
+    print("        bearings. No gun is authored within 45 deg of +-90, and cheeks out")
+    print("        to r %.1f give an acceptance half-angle of %.1f deg, so this model"
+          % (CASEMATE_R_OUT, CASEMATE_HALF_DEG))
+    print("        finds nothing shootable abeam. Reaching their 'never 0' needs a")
+    print("        half-angle >= 60 deg, i.e. cheeks out to r %.1f - which is the very"
+          % (GUN_R_MAX + CASEMATE_HW / math.tan(math.radians(60.0))))
+    print("        projection they measured as LEAKING. Their curve is knife-edged with")
+    print("        a window at 23; this one is monotone with no window at all.")
+    print("        ONE OF THE TWO MODELS IS WRONG. Tuning this one until it agreed")
+    print("        would be fitting, not checking, so it is left as it reads.")
+    print("        Next instrument: their solver and this one run against the SAME")
+    print("        explicit plate rectangles, or playtest pass 1 stood abeam.")
+
+    print("")
+    print("        CAVEAT, INHERITED FROM BOTH LANES: these are analytic ray-vs-prism")
+    print("        results, not Roblox's raycaster, and the hull prism slightly")
+    print("        over-occludes at the section corners. This says the shape CAN work;")
+    print("        it does not say it ships correct. There is no headless Workspace to")
+    print("        call the real Raycast against, so the confirming instrument is")
+    print("        playtest pass 1 - stand at the axial bearings and try the far gun.")
     for name, spec in NEW_MECHANICS.items():
         r = spec["row"]
         print("")
