@@ -3938,6 +3938,46 @@ def build_wr_cannon_sternport(rng):
     return _wr_corner_gun("SternPort", rng)
 
 
+def _wr_plank_panel(bm, centre, size, yaw, thick_axis, rows=6, skin=0.08):
+    """A casemate panel faced with plank strips, at the SAME outer extent.
+
+    There is no boolean operator here, so the grooves are made by laying
+    planks on a THINNED CORE rather than by cutting a full-thickness slab:
+    core + 2 * skin equals the original thickness exactly, so the plate
+    rectangle `_wr_casemate_measure` reads off these verts does not move by a
+    thousandth. That is the whole constraint on this pass - the casemate
+    window is 22.5..24.0 and knife-edged on projection, and decoration is not
+    allowed to shift it. The planks are also inset from every edge, so the
+    silhouette is the panel's, not theirs.
+
+    Butts are staggered row to row, because a wall of planks all breaking on
+    the same line reads as a printed texture rather than as carpentry - which
+    at 58 studs is the entire difference this pass exists to make.
+    """
+    size = list(size)
+    thick = size[thick_axis]
+    core = thick - 2.0 * skin
+    inner = list(size)
+    inner[thick_axis] = core
+    box(bm, centre, tuple(inner), yaw)
+    long_axis = 1 if thick_axis == 0 else 0
+    span = size[2]
+    for i in range(rows):
+        h = span / rows
+        z = centre[2] - span / 2.0 + (i + 0.5) * h
+        shrink = 0.34 if i % 2 else 0.0
+        plank = [0.0, 0.0, 0.0]
+        plank[thick_axis] = skin
+        plank[long_axis] = size[long_axis] - 0.16 - shrink
+        plank[2] = h - 0.14
+        for side in (-1, 1):
+            off = [0.0, 0.0, 0.0]
+            off[thick_axis] = side * (core + skin) / 2.0
+            off[long_axis] = (shrink / 2.0) * (1.0 if i % 4 == 1 else -1.0)
+            world = yaw @ Vector(off)
+            box(bm, (centre[0] + world.x, centre[1] + world.y, z), tuple(plank), yaw)
+
+
 def build_wr_sponsons(rng):
     """The four corner CASEMATES: back wall, two cheeks, and the platform.
 
@@ -3969,12 +4009,12 @@ def build_wr_sponsons(rng):
         # worse than no shield - it makes the fight look broken rather than
         # hard. The visible mesh and Wrack_HullCollider are now the same
         # shape, which is the whole claim this layout rests on.
-        box(plate, tuple(back + Vector((0, 0, mid_z))),
-            (0.55, WR_CASEMATE_HW * 2.0, span_z), yaw)
+        _wr_plank_panel(plate, tuple(back + Vector((0, 0, mid_z))),
+                        (0.55, WR_CASEMATE_HW * 2.0, span_z), yaw, 0, rows=6)
         for s_side in (-1, 1):
             centre = back.lerp(out, 0.5) + u * (s_side * WR_CASEMATE_HW)
-            box(plate, tuple(centre + Vector((0, 0, mid_z))),
-                (WR_CASEMATE_R_OUT - WR_CASEMATE_R_BACK, 0.55, span_z), yaw)
+            _wr_plank_panel(plate, tuple(centre + Vector((0, 0, mid_z))),
+                            (WR_CASEMATE_R_OUT - WR_CASEMATE_R_BACK, 0.55, span_z), yaw, 1, rows=6)
         # A capping rail along each cheek's top edge and a lintel over the
         # mouth, so the box reads as built timber rather than as a slab.
         for s_side in (-1, 1):
