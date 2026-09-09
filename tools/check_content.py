@@ -373,6 +373,45 @@ for sid, block in shops.items():
         elif iid not in domain[0]:
             problem(f"shop {sid}: {kind} slot '{iid}' not in {domain[1]}")
 
+# ---------------------------------------------------------------- the mesh mirror
+#
+# ONE NUMBER, TWO FILES, TWO LANGUAGES. `wrack_battery.shotRadius` is the
+# capture the fight's primary target is hit with, and the mesh lane's casemate
+# geometry is SOLVED against it - the cheeks are sized so the capture cannot
+# protrude past them (`shotRadius <= cheek half-width`) and the plates are
+# topped so it cannot protrude over them. So the same number is baked into
+# assets/boss_gen.py as `WR_BATTERY_SHOT_RADIUS` and asserted by the mesh
+# guard there.
+#
+# WHICH MEANS A STALE VALUE ON EITHER SIDE IS INVISIBLE. Raise the Luau row to
+# 5.0 and the mesh guard stays green - it is checking its own constant - while
+# the capture pokes a stud past the casemate mouth and a third gun becomes
+# shootable through the ship from the far sand. The fight breaks and every
+# gate passes, which is this repo's signature failure: a value that exists in
+# one place and is needed in another, where the second place remembers it
+# instead of reading it.
+#
+# So it is read, here, from both sides. FAIL rather than warn: a warning about
+# a number nobody looks at is the same as no check.
+#
+# Both regexes are deliberately anchored to a SINGLE FLAT LINE. Wrack's row
+# carries nested tables (`body = { ... }`), and a non-greedy `{(.*?)}` sweep
+# over a Luau row silently truncates at the first inner brace - it has already
+# returned a confident wrong answer about this exact row once.
+mesh_gen = (ROOT / "assets" / "boss_gen.py").read_text()
+m_mesh = re.search(r"^WR_BATTERY_SHOT_RADIUS\s*=\s*([0-9.]+)", mesh_gen, re.M)
+m_row = re.search(r"^\tshotRadius = ([0-9.]+),", creatures.get("wrack_battery", ""), re.M)
+if not m_mesh:
+    problem("assets/boss_gen.py has no WR_BATTERY_SHOT_RADIUS - the casemate guard's own constant is gone")
+if not m_row:
+    problem("Creatures.items.wrack_battery has no shotRadius - the fight's primary target falls back to a derived capture")
+if m_mesh and m_row and float(m_mesh.group(1)) != float(m_row.group(1)):
+    problem(
+        f"wrack_battery.shotRadius is {m_row.group(1)} in Creatures.luau but "
+        f"WR_BATTERY_SHOT_RADIUS is {m_mesh.group(1)} in assets/boss_gen.py - "
+        "the casemates are solved against that number; a mismatch leaves the boss shootable through"
+    )
+
 # ---------------------------------------------------------------- report
 if problems:
     print(f"CONTENT CHECK: {len(problems)} problem(s)")
