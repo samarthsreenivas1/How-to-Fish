@@ -302,6 +302,58 @@ local SHELL_SWING = {
 -- are still quiet and the opening is legible before the burst window starts.
 local OPEN_RATE = 2.6
 
+-- ------------------------------------------------------------ the weakpoints
+--
+-- "MAKE SURE THEY ARE VISIBLE AND THE USER ACTUALLY KNOWS WHERE TO SHOOT"
+-- (user, live playtest, 2026-09-08). The four gun-deck batteries ARE the
+-- fight - Wrack refuses damage while `partsAlive > 0` - and they are cannons
+-- built into a dark hull, half-swallowed by the very ship this controller
+-- draws over the top of them. A player looking at that hull has no way to
+-- tell which brass is the door.
+--
+-- WHAT IS DRAWN, and why two states rather than one. A live weakpoint carries
+-- a permanent OUTLINE - drawn AlwaysOnTop, so the hull this file assembles
+-- cannot bury the thing the hull is gated on - with the fill kept nearly
+-- clear, because it is a pointer and not a paint job. The one battery winding
+-- up a Cannon Overload pulses hot and hard instead: that move is a "shoot THIS
+-- one, now" and the fight already tells you so twice on the ground (a disc on
+-- the gun and a wedge along the bearing) - this is the third telling, on the
+-- gun itself, where the shot has to go.
+--
+-- IT IS KEYED OFF THE SERVER'S CONTRACT, NOT OFF A LIST OF ROW IDS.
+-- CreatureService stamps `Weakpoint` on every part of a `vulnerableWhen =
+-- "partsDown"` boss and `WeakpointHot` on the battery currently charging; both
+-- are level-triggered, so a client that adopts a model mid-windup reads the
+-- true state rather than having missed an edge. That is why this polls the
+-- attributes in the draw loop instead of binding to changed signals - the same
+-- argument the hull's own `Exposed` chase makes twelve lines up, and for the
+-- same payoff: a dropped signal costs a frame, never a stuck outline.
+--
+-- WHY IT LIVES IN WRACK'S FILE. `Weakpoint` is a general contract - the
+-- Kraken's arm ring carries it too - so this is not, strictly, Wrack-only
+-- code, and honesty demands the note: it is here because Wrack's fight is what
+-- demanded it and because a controller of its own would have to be registered
+-- in init.client.luau, which other lanes hold. If a second fight ever wants to
+-- style its weakpoints differently, lift this section into its own controller
+-- rather than growing a switch here.
+local ATTR_WEAKPOINT = "Weakpoint"
+local ATTR_WEAKPOINT_HOT = "WeakpointHot"
+
+-- The resting mark: the batteries' own muzzle glow (`Creatures.wrack_battery`
+-- body.markColor is 255/190/120), pushed a little hotter so an outline of it
+-- separates from the pale shoal sand as well as from the hull.
+local MARK_COLOR = Color3.fromRGB(255, 178, 74)
+local MARK_FILL = 0.87
+local MARK_OUTLINE = 0.1
+
+-- ...and the overload. Red, because nothing else in this fight's palette is,
+-- and pulsed rather than merely brighter - a steady colour change is a thing
+-- you notice once and a pulse is a thing that keeps asking.
+local HOT_COLOR = Color3.fromRGB(255, 88, 56)
+local HOT_RATE = 13 -- radians per second: a touch over two pulses a second
+local HOT_FILL = 0.6
+local HOT_FILL_SWING = 0.3
+
 local warnedMissingPack = false
 
 -- ---------------------------------------------------------------- pieces
@@ -396,6 +448,63 @@ end
 -- ---------------------------------------------------------------- lifecycle
 
 local bodies: { [Model]: any } = {}
+
+-- Every weakpoint model we are currently outlining -> its Highlight. The
+-- Highlight is parented to the model it marks, so a battery that is destroyed
+-- or streams out takes its own outline with it; this table exists so the draw
+-- loop has something to walk and so a model that merely STOPS being a
+-- weakpoint (the attribute cleared without the model dying) loses the mark
+-- too. Both exits go through unmarkWeakpoint.
+local marks: { [Model]: Highlight } = {}
+
+local function unmarkWeakpoint(model: Model)
+	local mark = marks[model]
+	if not mark then
+		return
+	end
+	marks[model] = nil
+	mark:Destroy()
+end
+
+local function markWeakpoint(model: Model)
+	if marks[model] or model:GetAttribute(ATTR_WEAKPOINT) ~= true then
+		return
+	end
+	local mark = Instance.new("Highlight")
+	mark.Name = "WeakpointMark"
+	mark.Adornee = model
+	-- Through the hull. This controller draws twenty-odd pieces of flagship
+	-- over the top of these cannons; an occluded outline would be an outline
+	-- that answers the question only when you already know the answer.
+	mark.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+	mark.FillColor = MARK_COLOR
+	mark.FillTransparency = MARK_FILL
+	mark.OutlineColor = MARK_COLOR
+	mark.OutlineTransparency = MARK_OUTLINE
+	mark.Parent = model
+	marks[model] = mark
+end
+
+-- One frame of every outline. Cheap: four properties on at most a handful of
+-- Highlights, and only the hot one changes from frame to frame.
+local function drawMarks()
+	local pulse = 0.5 + 0.5 * math.sin(os.clock() * HOT_RATE)
+	for model, mark in marks do
+		if not model.Parent or model:GetAttribute(ATTR_WEAKPOINT) ~= true then
+			unmarkWeakpoint(model)
+		elseif model:GetAttribute(ATTR_WEAKPOINT_HOT) == true then
+			mark.FillColor = HOT_COLOR
+			mark.OutlineColor = HOT_COLOR
+			mark.FillTransparency = HOT_FILL - HOT_FILL_SWING * pulse
+			mark.OutlineTransparency = 0
+		else
+			mark.FillColor = MARK_COLOR
+			mark.OutlineColor = MARK_COLOR
+			mark.FillTransparency = MARK_FILL
+			mark.OutlineTransparency = MARK_OUTLINE
+		end
+	end
+end
 
 local function destroyBody(model: Model)
 	local entry = bodies[model]
@@ -537,15 +646,23 @@ local function watch(child: Instance)
 		return
 	end
 	adoptBoss(child)
+	markWeakpoint(child)
 	-- CreatureService stamps CreatureId as the model is built, so it is
 	-- normally already there; this covers a model that replicates to us a
 	-- frame before its attributes do.
 	child:GetAttributeChangedSignal("CreatureId"):Connect(function()
 		adoptBoss(child)
 	end)
+	-- Same race for the weakpoint stamp, and the same answer. A REGROWN ring
+	-- arrives as fresh models through ChildAdded, so this covers the regrow
+	-- too; the destroyed ones lost their outline with themselves.
+	child:GetAttributeChangedSignal(ATTR_WEAKPOINT):Connect(function()
+		markWeakpoint(child)
+	end)
 	child.AncestryChanged:Connect(function()
 		if not child:IsDescendantOf(Workspace) then
 			destroyBody(child)
+			unmarkWeakpoint(child)
 		end
 	end)
 end
@@ -563,6 +680,7 @@ function WrackBodyController.init()
 		folder.ChildRemoved:Connect(function(child)
 			if child:IsA("Model") then
 				destroyBody(child)
+				unmarkWeakpoint(child)
 			end
 		end)
 	end)
@@ -577,6 +695,7 @@ function WrackBodyController.start()
 				destroyBody(model)
 			end
 		end
+		drawMarks()
 	end)
 end
 

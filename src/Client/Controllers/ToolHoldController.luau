@@ -7,15 +7,46 @@
 -- the RIGHT HAND part (server-side, so it replicates - see the header of
 -- either service). That weld is rigid, so whatever the hand does, the tool
 -- does. With the default Animate script running, the hand swings through the
--- whole walk cycle, and the gun/rod swings and rotates with it. That reads as
--- "attached to the arm", which is exactly the complaint. The hold offsets in
--- RodModel.HOLD_OFFSET / WeaponModel.HOLD_OFFSET_RANGED were authored for a
--- HANGING hand ("a hanging hand's forward is -Z"), so they are only correct
--- at one instant of the swing and wrong for the rest of it.
+-- whole walk cycle, and the gun/rod swings and rotates with it.
 --
--- The fix, in one sentence: hold the RIGHT HAND'S ORIENTATION fixed relative
--- to the torso, and get there by posing the arm joints - never by touching
--- the legs, the root or the waist, which keep the stock walk.
+-- ROUND ONE fixed the ROTATION half of that and shipped: the arm was posed
+-- with fixed joint angles and the wrist was SOLVED so the hand's rotation
+-- relative to the torso stayed at the rest pose the hold offsets were
+-- authored against. The player played it and still said it did not feel held,
+-- which was correct, and the reason is that fixed joint angles say nothing
+-- about WHERE the hand ends up:
+--
+--   * the round-one gun pose (shoulder back 22 degrees, elbow bent 50) leaves
+--     the hand hanging at hip height on a nearly straight arm, so the gun rode
+--     the hip pointing forward - a one-handed hip carry, not a hold, and low
+--     enough to graze the leg at walk amplitude;
+--   * the LEFT arm was posed with fixed angles too, so where it ended up had
+--     nothing to do with where the gun was. It waved in the air a few studs
+--     off the fore-end. Nothing reads as "not holding it" faster than a
+--     support hand that is not touching the weapon.
+--
+-- Neither is fixable by nudging angles, because the angles cannot know the
+-- rig's limb lengths or where the other hand is. So ROUND TWO inverts the
+-- problem: this file now states WHERE THE HANDS GO in torso space and solves
+-- the joints for it.
+--
+-- WHAT IS SOLVED, PER ARM
+--
+--   1. a two-bone IK puts the HAND'S ORIGIN on a target point. The hand's
+--      origin is exactly where the grip is welded (WeaponService puts the
+--      grip at `hand.CFrame * holdOffset`, so grip origin == hand origin), so
+--      targeting the hand IS targeting the grip;
+--   2. the WRIST is then solved for rotation, exactly as round one did, so
+--      the hand's rotation relative to the torso comes out at the pose's
+--      `handRot` no matter what the two joints above it had to do to reach.
+--      `handRot` therefore aims the tool directly: the hold offsets map the
+--      weapon's authored +Y onto the hand's -Z, so a gun's BORE is
+--      `handRot * -Z` and that is what the support-hand target is measured
+--      along.
+--
+-- With both hands solved, the support hand can be placed a fore-end's length
+-- down the bore from the grip - so it is ON the gun, by construction, for any
+-- rig scale and any weapon length.
 --
 -- WHY IT IS SHAPED THIS WAY
 --
@@ -28,25 +59,21 @@
 --
 -- Only the arm chain is written. The Animator still drives the legs, the
 -- root, the waist and the neck, so walking, running, jumping and swimming all
--- look exactly as they did - and because the waist still moves, the tool
--- keeps a subtle torso bob instead of being dead in space.
+-- look exactly as they did. And because every target is stated in UPPER TORSO
+-- space, the walk's own chest bob and lean carry the weapon with them for
+-- free - the gun breathes with the body instead of being pinned in the world.
 --
--- THE WRIST SOLVE
+-- NO RIG CONSTANTS. Every length and axis the solve needs is read off the
+-- joints' real C0/C1 (bone lengths, the shoulder pivot, the elbow's hinge
+-- axis), and the targets are expressed as fractions of the arm's own reach.
+-- A scaled avatar, or a rig whose attachments are not the stock ones, still
+-- comes out with its hands in the right place relative to its own chest.
 --
--- If you simply rotate the shoulder and elbow into a nice carry, the hand -
--- and therefore the welded tool - inherits the whole rotation, and the gun
--- points at the sky. So the LAST joint of the right chain is not posed, it is
--- SOLVED: given the poses on the joints above it, it is set to whatever makes
--- the hand's rotation relative to the torso come out at the pose's `hand`
--- target. `hand = identity` reproduces the rest-pose hand the hold offsets
--- were authored against, so the tool sits exactly the way its offset says,
--- every frame, while the arm above it is in a carry.
---
--- The solve reads the joints' real C0/C1 rather than assuming the standard
--- rig's identity attachments, which is also what makes R6 fall out for free:
--- an R6 arm has ONE joint (Right Shoulder) and no wrist, so that one joint is
--- the solved one and the arm ends up frozen at the hanging rest pose with the
--- tool level. Not a carry, but the swing - the actual defect - is gone.
+-- R6 has no elbow and no wrist - one joint for the whole arm - so there is
+-- nothing to solve a position with. It keeps round one's behaviour: that one
+-- joint is solved for ROTATION, which freezes the arm at the hanging rest
+-- pose with the tool level. Not a carry, but the swing - the original defect
+-- - is gone.
 --
 -- REPLICATION
 --
@@ -90,67 +117,75 @@ local BLEND_OUT = 12
 -- to the Animator cleanly rather than leaving it a hair off.
 local WEIGHT_EPSILON = 0.004
 
--- ============================================================ the poses
-
 local function angles(x: number, y: number, z: number): CFrame
 	return CFrame.Angles(math.rad(x), math.rad(y), math.rad(z))
 end
 
--- R15 joint axes, at the rest pose, are the torso's: an arm hangs along -Y,
--- the character faces -Z. So on a shoulder, +X pitches the arm FORWARD and
--- -X swings it back; on the right side -Z lifts the elbow out from the ribs.
--- On an elbow, +X bends the forearm forward. Those are the only three knobs
--- used below.
+-- ============================================================ the poses
 --
--- `right` poses the joints ABOVE the solved one, in order from the torso
--- out: on R15 that is { shoulder, elbow } and the wrist is solved; on R6 the
--- shoulder is the solved one and nothing here is read. Extra entries are
--- ignored, so one table serves both rigs.
+-- Upper-torso space, R15 convention: +X is the character's RIGHT, +Y up, -Z
+-- the way it faces. `at` is the hand target as a fraction of that arm's own
+-- reach (shoulder->elbow + elbow->wrist), measured FROM THE SHOULDER PIVOT,
+-- so it scales with the avatar. `rot` is the hand's rotation relative to the
+-- torso, which is what aims the tool.
 --
--- `hand` is the hand's target rotation relative to the torso. Identity =
--- exactly the hanging-hand rotation that RodModel.HOLD_OFFSET and
--- WeaponModel.holdOffsetFor were authored against, which is what keeps the
--- bore level and the blade up. Change it only if you also want the tool
--- itself tilted, and expect the wrist to pay for it.
---
--- `left` poses the support arm outright (no solve - it holds nothing). Omit
--- it and the left arm keeps the ordinary walk swing.
---
--- The angles are eyeballed, not measured off a rig. They are the intended
--- tuning surface: nudge these, nothing else.
+-- These numbers, and only these numbers, are the tuning surface.
 local POSES = {
-	-- A gun rides a relaxed low-ready: upper arm back off the ribs, elbow
-	-- bent so the grip sits forward of the hip, bore level and forward. The
-	-- left hand comes across and down to where a fore-end would be.
+	-- A two-hand rifle carry at low ready. The trigger hand sits just in
+	-- front of the right pec at mid-chest height - high enough that the
+	-- weapon cannot reach the legs at any walk amplitude, which is what
+	-- killed the round-one hip carry - and the weapon lies ACROSS the body:
+	-- yawed 14 degrees to the left and muzzled 9 degrees down, the angle that
+	-- both reads as "ready, not aiming" and brings the fore-end within the
+	-- support arm's reach.
 	gun = {
-		hand = angles(0, 0, 0),
-		right = { angles(-22, 0, -10), angles(50, 0, 0) },
-		left = { angles(30, 6, 22), angles(55, 0, 0), angles(-12, 0, 0) },
+		rot = angles(0, 14, 0) * angles(-9, 0, 0),
+		at = Vector3.new(-0.24, -0.26, -0.32),
+		-- The support hand rides the bore this far past the grip - see
+		-- `foreReach` below, which takes it from the weapon's own length -
+		-- and a touch under it, where a fore-end is.
+		support = true,
+		supportDrop = 0.06,
 	},
 
-	-- A rod carries a little higher and looser than a gun - the authored
-	-- offset already points it forward and up, so the arm only has to get
-	-- the butt in front of the hip. Left hand near where the reel sits.
+	-- A rod is carried one-handed, the way an angler actually walks with one:
+	-- the butt forward of the hip, the blank pointing forward and up (the
+	-- authored HOLD_OFFSET already does the pointing). No support hand, so
+	-- the off arm keeps the ordinary walk swing.
 	rod = {
-		hand = angles(0, 0, 0),
-		right = { angles(-15, 0, -8), angles(45, 0, 0) },
-		left = { angles(22, 6, 18), angles(50, 0, 0), angles(-10, 0, 0) },
+		rot = angles(0, 0, 0),
+		at = Vector3.new(0.06, -0.40, -0.30),
 	},
 
-	-- Melee is one-handed: blade-up carry at the side, and NO `left`, so the
-	-- off hand keeps swinging with the walk the way a real free arm does.
-	-- Posing it would only make the character look like it is carrying an
-	-- invisible second weapon.
+	-- Melee is one-handed too: blade-up carry out at the side, clear of the
+	-- thigh, and no support hand for the same reason - posing it would only
+	-- make the character look like it is carrying an invisible second weapon.
 	melee = {
-		hand = angles(0, 0, 0),
-		right = { angles(-12, 0, -12), angles(38, 0, 0) },
+		rot = angles(0, 0, 0),
+		at = Vector3.new(0.14, -0.52, -0.22),
 	},
 }
+
+-- Where the elbow is pushed while the IK swings the arm: down, a little back
+-- and a little out from the ribs. Any direction off the shoulder->hand line
+-- would reach the target; this is the one that looks like an arm.
+local RIGHT_POLE = Vector3.new(0.45, -1, 0.35).Unit
+local LEFT_POLE = Vector3.new(-0.45, -1, 0.35).Unit
+
+-- How far down the bore the support hand sits, from the weapon row's own
+-- geometry: `length - grip` is grip-to-muzzle (the same span
+-- WeaponViewmodelController calls gripLength), and a fore-end grip is around
+-- half of it. Clamped so a stubby pistol does not put both hands in the same
+-- place and a boat-anchor rifle does not tear the arm off.
+local function foreReach(weaponData): number
+	local m = weaponData and weaponData.model
+	local span = if m and m.length and m.grip then m.length - m.grip else 1.4
+	return math.clamp(span * 0.5, 0.45, 1.35)
+end
 
 -- ============================================================ the chains
 
 -- Each entry is { part name, Motor6D name }, ordered from the torso outward.
--- The LAST joint of a right-hand chain is the solved one.
 local R15_RIGHT = {
 	{ "RightUpperArm", "RightShoulder" },
 	{ "RightLowerArm", "RightElbow" },
@@ -187,34 +222,145 @@ local function chainAlive(joints: { Motor6D }): boolean
 	return true
 end
 
--- ============================================================ posing
-
--- Writes one arm chain at `weight`, lerping from whatever the Animator just
--- put in Transform toward the pose, so a partial weight is a real blend
--- between the walk swing and the hold rather than a jump.
+-- ============================================================ the solve
 --
--- With `target`, the last joint is solved instead of posed (see the header):
--- the hand's rotation relative to the chain's root part comes out at
--- `target` regardless of what the joints above it were set to.
-local function applyChain(joints: { Motor6D }, poses, target: CFrame?, weight: number)
-	local count = #joints
-	local accumulated = CFrame.identity
+-- Motor6D geometry, once, because everything below is an application of it:
+--
+--     Part1frame = Part0frame * C0 * Transform * C1:Inverse()
+--
+-- With a rotation-only Transform the point `Part0frame * C0.Position` does
+-- not move, so that IS the joint's pivot, and the bone's length - the pivot
+-- of the joint below, measured in the same part's space - is fixed no matter
+-- what we write. That is what lets every length here be read rather than
+-- assumed.
 
-	for index, joint in joints do
-		local desired
-		if target and index == count then
-			-- Motor6D: Part1 = Part0 * C0 * Transform * C1:Inverse(). Walk
-			-- the product down the chain, then invert what is left so the
-			-- composed rotation lands on `target`.
-			local reached = (accumulated * joint.C0).Rotation
-			desired = reached:Inverse() * target * joint.C1.Rotation
-		else
-			desired = (poses and poses[index]) or CFrame.identity
-			if target then
-				accumulated = accumulated * joint.C0 * desired * joint.C1:Inverse()
-			end
+-- A rotation whose columns are the given (already orthogonal, unit) axes.
+local function basis(f1: Vector3, f2: Vector3): CFrame?
+	local along = f1.Magnitude
+	if along < 1e-5 then
+		return nil
+	end
+	local x = f1 / along
+	local perp = f2 - x * f2:Dot(x)
+	if perp.Magnitude < 1e-5 then
+		return nil
+	end
+	local y = perp.Unit
+	return CFrame.fromMatrix(Vector3.zero, x, y, x:Cross(y))
+end
+
+-- Rotation-only part of a CFrame applied to a vector.
+local function rot(cf: CFrame, v: Vector3): Vector3
+	return cf.Rotation * v
+end
+
+-- Solves a three-joint arm so the HAND'S ORIGIN lands on `targetPos` and the
+-- hand's rotation comes out at `targetRot`, both in the chain root's space
+-- (UpperTorso for either R15 arm). `pole` is the direction the elbow is
+-- pushed toward. Returns the three Transforms, or nil if the rig is degenerate
+-- - the caller then leaves that arm to the Animator rather than writing
+-- garbage into it.
+local function solveArm(joints: { Motor6D }, targetPos: Vector3, targetRot: CFrame, pole: Vector3)
+	local shoulder, elbow, wrist = joints[1], joints[2], joints[3]
+
+	-- Bones, from the joints themselves.
+	local upperVec = elbow.C0.Position - shoulder.C1.Position -- in upper-arm space
+	local lowerVec = wrist.C0.Position - elbow.C1.Position -- in lower-arm space
+	local l1, l2 = upperVec.Magnitude, lowerVec.Magnitude
+	if l1 < 1e-3 or l2 < 1e-3 then
+		return nil
+	end
+
+	-- The shoulder pivot, and the wrist pivot the hand target implies. The
+	-- hand's origin is `wristPivot - handRotation * wrist.C1.Position`, so
+	-- read backwards: the pivot the hand must hang off to put its origin on
+	-- the target.
+	local s = shoulder.C0.Position
+	local w = targetPos + rot(targetRot, wrist.C1.Position)
+
+	local reach = w - s
+	local span = reach.Magnitude
+	if span < 1e-4 then
+		return nil
+	end
+	local forward = reach / span
+	-- Never fully straight (the IK degenerates and the elbow pops) and never
+	-- folded past what the two bones can do.
+	span = math.clamp(span, math.abs(l1 - l2) + 1e-3, (l1 + l2) * 0.995)
+	w = s + forward * span
+
+	-- The arm's plane: `forward` and the pole, with the elbow swinging toward
+	-- the pole side.
+	local sideRaw = pole - forward * pole:Dot(forward)
+	if sideRaw.Magnitude < 1e-4 then
+		-- Reaching straight along the pole. Any perpendicular will do.
+		sideRaw = forward:Cross(Vector3.yAxis)
+		if sideRaw.Magnitude < 1e-4 then
+			sideRaw = forward:Cross(Vector3.xAxis)
 		end
-		joint.Transform = joint.Transform:Lerp(desired, weight)
+	end
+	local side = sideRaw.Unit
+	local hinge = forward:Cross(side)
+
+	-- Law of cosines: how far off the shoulder->wrist line the upper arm sits.
+	local cosA = math.clamp((l1 * l1 + span * span - l2 * l2) / (2 * l1 * span), -1, 1)
+	local a = math.acos(cosA)
+	local upperDir = forward * math.cos(a) + side * math.sin(a)
+	local elbowAt = s + upperDir * l1
+
+	-- The upper arm's rotation is pinned by two of its own axes: the bone
+	-- must lie along `upperDir`, and the elbow's hinge must lie along
+	-- `hinge`, which is what keeps the forearm in the plane we just built.
+	local boneAxis = rot(shoulder.C1, upperVec.Unit)
+	local hingeAxis = rot(elbow.C0, Vector3.xAxis)
+	local from = basis(boneAxis, hingeAxis)
+	local to = basis(upperDir, hinge)
+	if not from or not to then
+		return nil
+	end
+	local upperCF = (to :: CFrame) * (from :: CFrame):Inverse()
+	local t1 = shoulder.C0.Rotation:Inverse() * upperCF * shoulder.C1.Rotation
+
+	-- The elbow is a hinge, so its angle is not guessed either: measure the
+	-- signed turn about the real hinge axis from where the forearm would
+	-- point unbent to where it has to point. Sign falls out of the atan2, so
+	-- no rig-handedness assumption is made anywhere.
+	local axis = rot(upperCF, hingeAxis)
+	local rest = upperCF * elbow.C0.Rotation * elbow.C1.Rotation:Inverse()
+	local unbent = rot(rest, lowerVec.Unit)
+	local wanted = (w - elbowAt)
+	if wanted.Magnitude < 1e-4 then
+		return nil
+	end
+	wanted = wanted.Unit
+	local theta = math.atan2(unbent:Cross(wanted):Dot(axis), unbent:Dot(wanted))
+	local t2 = CFrame.Angles(theta, 0, 0)
+
+	-- ...and the wrist takes whatever is left, so the tool comes out aimed.
+	local lowerCF = upperCF * elbow.C0.Rotation * t2 * elbow.C1.Rotation:Inverse()
+	local t3 = (lowerCF * wrist.C0.Rotation):Inverse() * targetRot * wrist.C1.Rotation
+
+	return t1, t2, t3
+end
+
+-- The R6 fallback, and the R15 path's own last step in spirit: with one joint
+-- there is no position to solve, so the joint is set to whatever holds the
+-- hand's rotation at `targetRot` and the arm hangs at rest with the tool
+-- level.
+local function solveRotationOnly(joint: Motor6D, targetRot: CFrame): CFrame
+	return joint.C0.Rotation:Inverse() * targetRot * joint.C1.Rotation
+end
+
+-- Blends the solved transforms in over `weight`, lerping from whatever the
+-- Animator just wrote, so a partial weight is a real blend between the walk
+-- swing and the hold rather than a jump.
+local function writeChain(joints: { Motor6D }, t1: CFrame, t2: CFrame?, t3: CFrame?, weight: number)
+	joints[1].Transform = joints[1].Transform:Lerp(t1, weight)
+	if t2 and joints[2] then
+		joints[2].Transform = joints[2].Transform:Lerp(t2, weight)
+	end
+	if t3 and joints[3] then
+		joints[3].Transform = joints[3].Transform:Lerp(t3, weight)
 	end
 end
 
@@ -224,25 +370,26 @@ end
 -- joints are cached, so a frame is a handful of CFrame multiplies per player.
 local states: { [Player]: any } = {}
 
--- Which pose a character's hands call for, or nil for empty hands. Keyed off
--- the welded model the SERVER put there, so it is the same answer on every
--- client - which is the whole replication story.
-local function heldClass(character: Model): string?
+-- Which pose a character's hands call for, plus the weapon row behind it (the
+-- support hand needs the weapon's length). Keyed off the welded model the
+-- SERVER put there, so it is the same answer on every client - which is the
+-- whole replication story.
+local function heldClass(character: Model): (string?, any)
 	if character:FindFirstChild(ROD_NAME) then
-		return "rod"
+		return "rod", nil
 	end
 	local weapon = character:FindFirstChild(WEAPON_NAME)
 	if not weapon then
 		-- Bare fists weld nothing, so there is no model here and no hold -
 		-- the arms swing normally, which is right for fists.
-		return nil
+		return nil, nil
 	end
 	local weaponId = weapon:GetAttribute("WeaponId")
 	local row = weaponId and Weapons.items[weaponId]
 	if row and row.ranged then
-		return "gun"
+		return "gun", row
 	end
-	return "melee"
+	return "melee", row
 end
 
 local function stateFor(player: Player)
@@ -259,7 +406,13 @@ local function stateFor(player: Player)
 
 	-- R15 first, R6 as the fallback - the same order RodService and
 	-- WeaponService use when they look for a hand to weld to.
-	local right = findChain(character, R15_RIGHT) or findChain(character, R6_RIGHT)
+	local right = findChain(character, R15_RIGHT)
+	local left = findChain(character, R15_LEFT)
+	local jointed = right ~= nil
+	if not right then
+		right = findChain(character, R6_RIGHT)
+		left = findChain(character, R6_LEFT)
+	end
 	if not right then
 		-- Rig still streaming in. Cache nothing; try again next frame.
 		return nil
@@ -268,32 +421,79 @@ local function stateFor(player: Player)
 	state = {
 		character = character,
 		right = right,
-		left = findChain(character, R15_LEFT) or findChain(character, R6_LEFT),
+		left = left,
+		jointed = jointed, -- R15: there is an elbow and a wrist to solve with
 		weight = 0,
 		pose = nil,
+		row = nil,
 	}
 	states[player] = state
 	return state
+end
+
+-- One character's arms for one frame.
+local function applyHold(state, weight: number)
+	local pose = state.pose
+	if not pose then
+		return
+	end
+
+	if not state.jointed then
+		-- R6: freeze the arm at rest with the tool level (see the header).
+		writeChain(state.right, solveRotationOnly(state.right[1], pose.rot), nil, nil, weight)
+		return
+	end
+
+	local right = state.right
+	local shoulder = right[1].C0.Position
+	local reach = (right[2].C0.Position - right[1].C1.Position).Magnitude
+		+ (right[3].C0.Position - right[2].C1.Position).Magnitude
+	local gripAt = shoulder + pose.at * reach
+
+	local r1, r2, r3 = solveArm(right, gripAt, pose.rot, RIGHT_POLE)
+	if not r1 then
+		return
+	end
+	writeChain(right, r1, r2, r3, weight)
+
+	-- The support hand, placed ON the weapon: a fore-end's distance down the
+	-- bore from the grip. The bore is the hold offset's mapping of the
+	-- weapon's authored +Y onto the hand's -Z, so in torso space it is simply
+	-- the pose rotation's -Z.
+	local left = state.left
+	if not (pose.support and left and chainAlive(left)) then
+		return
+	end
+	local bore = rot(pose.rot, -Vector3.zAxis)
+	local foreAt = gripAt + bore * foreReach(state.row) - Vector3.new(0, pose.supportDrop or 0, 0)
+	local l1, l2, l3 = solveArm(left, foreAt, pose.rot, LEFT_POLE)
+	if l1 then
+		writeChain(left, l1, l2, l3, weight)
+	end
 end
 
 local function step(deltaTime: number)
 	for _, player in Players:GetPlayers() do
 		local state = stateFor(player)
 		if state then
-			local class = heldClass(state.character)
+			local class, row = heldClass(state.character)
 
 			-- Our own character: only while the camera is actually out. In
 			-- first person Roblox hides it from us and the viewmodel
 			-- controllers draw the camera-pinned copy instead, so there is
-			-- nothing here to pose. Other players are always third person
-			-- from where we are sitting, so they are always posed - and
-			-- their own client is posing them the same way.
+			-- nothing here to pose. `isThirdPerson` is true in the birdseye
+			-- arenas and on the Throne as well - both are variants of it, and
+			-- CameraController's updateMode sets the flag for all three -
+			-- so a boss fight is covered by the same question. Other players
+			-- are always third person from where we are sitting, so they are
+			-- always posed - and their own client is posing them the same way.
 			if class and player == localPlayer and not CameraController.isThirdPerson() then
 				class = nil
 			end
 
 			if class then
 				state.pose = POSES[class]
+				state.row = row
 			end
 
 			local goal = if class then 1 else 0
@@ -303,11 +503,8 @@ local function step(deltaTime: number)
 				state.weight = 0
 			end
 
-			if state.weight > 0 and state.pose then
-				applyChain(state.right, state.pose.right, state.pose.hand, state.weight)
-				if state.left and state.pose.left then
-					applyChain(state.left, state.pose.left, nil, state.weight)
-				end
+			if state.weight > 0 then
+				applyHold(state, state.weight)
 			end
 		end
 	end
