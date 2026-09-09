@@ -55,9 +55,28 @@ USAGE
 -----
     python3 assets/wrack_patterns_gen.py [out_dir]
 
-Writes `wrack_pattern_<name>.png` for each of the nine rows plus
-`wrack_patterns_sheet.png`, the contact sheet. Default out_dir is the
+Writes `wrack_pattern_<name>.png` for each of the FIVE surviving ball rows
+plus `wrack_patterns_sheet.png`, the contact sheet. Default out_dir is the
 directory this script lives in.
+
+WHAT THIS FILE DOES *NOT* DRAW, AS OF THE 2026-09-08 ROSTER REWORK
+------------------------------------------------------------------
+Four of the nine ball rows were retired (chainshot, slewfire, slewfireFast,
+grapeshotTwin) and five mechanics took their place - a homing keg you shoot,
+three pillars you douse, a battery you jam, a chain you break, a boarding
+party you stop. They are gone from `ATTACKS` and `ORDER` here, so the escape
+roses below are re-measured over the surviving five and nothing else.
+
+The five NEW mechanics are deliberately not drawn. A plan view answers
+"where is the safe lane and how wide is it in studs", which is the whole
+question for a wall of cannonballs and almost none of the question for any of
+them: their answers are ranges, timings and target priorities, not geometry.
+A picture of a keg at one instant would say nothing true. What they get
+instead is the HANDOFF block at the bottom of a run - their key numbers,
+derived rather than transcribed where a derivation exists (the fuse budget
+against the closing speed, the march against the health bar, the jam against
+the battery), printed so they can be diffed against the Luau exactly the way
+the drawn rows' numbers are.
 """
 
 import math
@@ -71,7 +90,7 @@ matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib.patches import Arc, Circle, FancyArrow, Polygon, Rectangle, Wedge
+from matplotlib.patches import Arc, Circle, Ellipse, FancyArrow, Polygon, Rectangle, Wedge
 
 TAU = math.pi * 2
 
@@ -96,26 +115,6 @@ ATTACKS = {
         pellets=8, fanDeg=40, speed=66, spawnAt=22, radius=1.6, lifetime=1.8,
         bursts=1, burstGap=0.35, tellRange=110, damage=(40, 54),
     ),
-    "grapeshotTwin": dict(
-        handler="grapeshot", skin="grape", windup=0.7, duration=0.9, recover=0.45, cooldown=6.5,
-        pellets=9, fanDeg=56, speed=66, spawnAt=22, radius=1.6, lifetime=1.8,
-        bursts=2, burstGap=0.4, tellRange=110, damage=(42, 56),
-    ),
-    "chainshot": dict(
-        handler="chainshot", skin="chain", windup=1.0, duration=0.5, recover=0.7, cooldown=11.0,
-        pairs=4, fanDeg=130, chain=18, chainRadius=1.8, spinDeg=126, speed=28,
-        radius=2.4, spawnAt=14, lifetime=4.5, tellRange=110, damage=(54, 72),
-    ),
-    "slewfire": dict(
-        handler="slewfire", skin="cannon", windup=1.0, duration=5.0, recover=0.8, cooldown=13.0,
-        arms=2, every=0.13, spinDeg=78, speed=30, radius=2.6, spawnAt=14,
-        lifetime=4.2, damage=(32, 42),
-    ),
-    "slewfireFast": dict(
-        handler="slewfire", skin="cannon", windup=0.9, duration=5.6, recover=0.8, cooldown=14.0,
-        arms=3, every=0.13, spinDeg=-96, speed=32, radius=2.6, spawnAt=14,
-        lifetime=3.95, damage=(34, 46),
-    ),
     "anchorsweep": dict(
         handler="anchorsweep", skin="anchor", windup=3.2, duration=0.6, recover=1.1, cooldown=16.0,
         count=23, arcDeg=180, speed=26, radius=4.2, spawnAt=16, lifetime=4.8,
@@ -132,13 +131,13 @@ ATTACKS = {
 # additions, then the phase-3 swaps. `phases` in Bosses.luau.
 ORDER = [
     "grapeshot", "broadside", "wisps",
-    "chainshot", "slewfire", "anchorsweep",
-    "grapeshotTwin", "broadsideHeavy", "slewfireFast",
+    "anchorsweep",
+    "broadsideHeavy",
 ]
 PHASE_OF = {
     "grapeshot": 1, "broadside": 1, "wisps": 1,
-    "chainshot": 2, "slewfire": 2, "anchorsweep": 2,
-    "grapeshotTwin": 3, "broadsideHeavy": 3, "slewfireFast": 3,
+    "anchorsweep": 2,
+    "broadsideHeavy": 3,
 }
 
 # ---- the arena (assets/arena_gen.py, WK_* constants) -----------------------
@@ -178,11 +177,17 @@ PLAN_SPAN = 152.0
 # POINTS ALONG +X. spawnBossParts' mount transform therefore reduces to a
 # straight translation, so a mount's boss-local (X, Z) IS its world offset.
 BOSS_YAW0 = 0.0
+# THE UPRIGHT REBUILD (mesh 7673cd1, 2026-09-08). She stands instead of lying
+# careened, at less than half the size, with four INTEGRAL cannons 90 degrees
+# apart. Transcribed from `parts.mounts` in Bosses.luau, where the entry is
+# Vector3(X, Y, Z) and Y is the height: the columns below are (label, X, Z, Y).
+# Flat radii 13.5-20.0 against the careened wreck's 22-40, which is why the
+# muzzle locus in every diagram below sits twenty studs tighter than it used to.
 MOUNTS = [  # (label, local X, local Z, height above the sand)
-    ("Deck", -19.50, -10.34, 35.70),
-    ("Keel", 19.38, 18.91, 10.55),
-    ("Stern", -34.62, -14.37, 29.08),
-    ("Top", 38.40, -11.99, 27.71),
+    ("Bow", 19.05, 1.40, 12.40),
+    ("Starboard", 12.50, -7.30, 9.00),
+    ("Stern", -19.95, -1.30, 9.35),
+    ("Port", -11.00, 7.90, 9.20),
 ]
 # THE GUNS, AS EMITTERS. Since 2026-09-06 every ball leaves a LIVE BATTERY,
 # not a circle round the arena centre - `ctx.muzzle` / `ctx.decks` in
@@ -190,21 +195,32 @@ MOUNTS = [  # (label, local X, local Z, height above the sand)
 # (the balls fly in one plane; the heights above only place the muzzle flash).
 MOUNT_XZ = [(mx, mz) for _label, mx, mz, _h in MOUNTS]
 MOUNT_LABEL = [label for label, _x, _z, _h in MOUNTS]
+# Flat radii of the four cannons, and the closest pair's spacing. Derived here
+# rather than remembered, because three of the new mechanics are tuned against
+# them (the keg's spawn, the boarders' `reach`, the overload's marker size) and
+# all three moved when the mesh did.
+GUN_R = [math.hypot(mx, mz) for _label, mx, mz, _h in MOUNTS]
+GUN_R_MIN, GUN_R_MAX = min(GUN_R), max(GUN_R)
+MOUNT_MIN_GAP = min(math.hypot(a[1] - b[1], a[2] - b[2])
+                    for i, a in enumerate(MOUNTS) for b in MOUNTS[i + 1:])
+# Creatures.items.wrack_battery.health - what `jam` and `repair` are fractions
+# of, and the one number those two rows cannot be read without.
+BATTERY_HP = 2800
+
 # Every battery alive. `wrackDecks` in CreatureService hands ProjectileService
 # exactly this list, minus whatever the party has broken.
 DECKS_ALIVE = [0, 1, 2, 3]
-# WR_HULL stations (boss_gen.py): (ship-space x, half-beam, ...). Only the
-# first two columns matter for a footprint.
-WR_STATIONS = [
-    (-34.0, 5.0), (-30.0, 9.0), (-24.0, 11.8), (-17.0, 13.0), (-8.0, 13.6),
-    (2.0, 13.4), (11.0, 12.0), (19.0, 9.6), (26.0, 6.4), (33.0, 2.0),
-]
-# WrackBodyController.AUTHORED, measured off the exported glb: the Hull piece
-# is 67 long x 44.8 across, the Base (her bed of spoil) 87.1 x 47. The
-# stations above are 67 long too, so they are scaled across the beam to the
-# measured 44.8 and used as the footprint's outline.
-HULL_BBOX = (67.0, 44.8)
-BASE_BBOX = (87.1, 47.0)
+# THE FOOTPRINT, AND WHAT IT IS NOT. The careened wreck was drawn here from
+# `WR_HULL`'s ten stations, scaled across to the measured beam - a real
+# waterline profile. The upright rebuild's stations are the mesh lane's to
+# publish and this file does not have them, so it draws the MEASURED BOUNDING
+# BOX instead: 48 studs bow to stern, 12.6 in the beam (mesh HANDOFF, 7673cd1),
+# as a plain ellipse. That is honest about being an outline rather than a hull,
+# and it is the right call for these diagrams anyway - nothing here is a
+# question about the ship's shape, and at a 152-stud half-span the difference
+# between an ellipse and a fair curve is under a pixel. Her bed of spoil is
+# gone with the careening: she stands on the sand.
+HULL_BBOX = (48.0, 12.6)
 
 PLAYER_SPEED = 16.0  # Roblox default; nothing in src/ sets Humanoid.WalkSpeed.
 PLAYER_DOT_R = 1.0   # the root part is 2x2x1; the hit test is a POINT vs the ball radius.
@@ -820,24 +836,19 @@ def draw_arena(ax, small=False):
         ax.text(0, -PARTY_R + 3.5, "the party drops here — r %g" % PARTY_R, color="#5e7d86",
                 fontsize=7.0, ha="center", va="bottom", zorder=20)
 
-    # the hull footprint, from the WR_HULL stations scaled across to the
-    # measured Hull bbox (44.8 studs in the beam), bow at +X.
-    kmax = max(h for _, h in WR_STATIONS)
-    scale = (HULL_BBOX[1] / 2.0) / kmax
-    top = [(x, -h * scale) for x, h in WR_STATIONS]
-    bot = [(x, h * scale) for x, h in reversed(WR_STATIONS)]
-    ax.add_patch(Polygon(top + bot, closed=True, facecolor=HULL, edgecolor=HULL_EDGE,
-                         lw=1.2, zorder=6))
-    # her bed of spoil (the Base piece, 87.1 x 47)
-    ax.add_patch(Rectangle((2.8 - BASE_BBOX[0] / 2, 0.6 - BASE_BBOX[1] / 2), *BASE_BBOX,
-                           facecolor="none", edgecolor="#2c343b", lw=0.8, zorder=5))
+    # the hull footprint: the measured bounding box of the upright ship, bow at
+    # +X (see HULL_BBOX for why this is an ellipse and not a station curve).
+    ax.add_patch(Ellipse((0, 0), HULL_BBOX[0], HULL_BBOX[1], facecolor=HULL,
+                         edgecolor=HULL_EDGE, lw=1.2, zorder=6))
 
     # the four gun decks
     for label, mx, mz, height in MOUNTS:
-        ax.add_patch(Rectangle((mx - 2.6, mz - 2.6), 5.2, 5.2, facecolor=BRASS,
+        # 3.6 studs across, not the wreck's 5.2: the four cannons are only
+        # 10.9-13.5 studs apart now and two 5.2-stud squares would touch.
+        ax.add_patch(Rectangle((mx - 1.8, mz - 1.8), 3.6, 3.6, facecolor=BRASS,
                                edgecolor="#3a2a10", lw=0.7, zorder=8))
         if not small:
-            ax.text(mx, mz - 4.2, label, color=BRASS, fontsize=6.6, ha="center",
+            ax.text(mx, mz - 3.4, label, color=BRASS, fontsize=6.6, ha="center",
                     va="bottom", zorder=20,
                     bbox=dict(boxstyle="round,pad=0.12", fc=BG, ec="none", alpha=0.75))
 
@@ -991,10 +1002,6 @@ MOMENTS = {
     "broadside": (3.00, (1.00, 2.20, 3.40)),
     "broadsideHeavy": (3.00, (0.90, 2.00, 3.20)),
     "grapeshot": (0.85, (0.30, 0.85, 1.40)),
-    "grapeshotTwin": (1.00, (0.35, 1.00, 1.55)),
-    "chainshot": (2.60, (0.90, 2.60, 4.00)),
-    "slewfire": (3.40, (1.20, 3.40, 5.00)),
-    "slewfireFast": (3.40, (1.20, 3.40, 5.00)),
     "anchorsweep": (2.40, (0.80, 2.40, 4.00)),
     "wisps": (3.00, (1.00, 3.00, 5.20)),
 }
@@ -1004,10 +1011,6 @@ ANSWER = {
     "broadside": "walk to the gap - and keep walking, it steps 46° every volley",
     "broadsideHeavy": "four rings, a gap two thirds as wide moving further and faster",
     "grapeshot": "step out of the cone DURING the tell, not after it",
-    "grapeshotTwin": "two waves, the second offset half a pellet - break to the SHORT edge",
-    "chainshot": "the gap inside a pair is the hitbox; the lane is BETWEEN pairs",
-    "slewfire": "read the rotation and walk against it - cross the arms the short way",
-    "slewfireFast": "same spiral, REVERSED - the way you learned to walk is now wrong",
     "anchorsweep": "you do not thread it, you leave - and the long windup is the walk",
     "wisps": "run a circle tighter than their turn radius — any bare sand will do",
 }
@@ -1610,6 +1613,121 @@ def render_sheet(out_dir):
     return path
 
 
+# ============================================================ the five new verbs
+#
+# Transcribed from the new rows in `Bosses.items.admiral_wrack.attacks` the
+# same way `ATTACKS` above is, and printed rather than drawn (see the module
+# docstring for why). `derive` is where the number the DESIGN is actually
+# about gets computed from the row - the fuse budget, the march, the jam - so
+# that a retune which breaks the intent shows up here instead of only in play.
+NEW_MECHANICS = {
+    "powderrun": dict(
+        row=dict(windup=1.0, duration=0.5, recover=0.6, cooldown=12.0,
+                 count=1, fuse=8.0, speed=18, spawnAt=28, blast=15,
+                 blastFuse=20, chainAt=12, damage=(58, 80), hp=900),
+        verb="SHOOT THE CHASER - and where you shoot it is the move",
+        derive=lambda r: [
+            ("closing speed", "%.0f studs/s (keg %g - walk %g)" % (r["speed"] - PLAYER_SPEED,
+                                                                  r["speed"], PLAYER_SPEED)),
+            ("fuse reach", "%.0f studs of closing over %g s" % ((r["speed"] - PLAYER_SPEED) * r["fuse"],
+                                                               r["fuse"])),
+            ("lands short of you by", "%g studs (lobbed, not rolled)" % r["spawnAt"]),
+            ("a perfect runner ends the fuse", "%.0f studs away - inside blastFuse %g, so RUNNING LOSES"
+             % (r["spawnAt"] - (r["speed"] - PLAYER_SPEED) * r["fuse"], r["blastFuse"])),
+            ("if it were born at its gun", "%.0f studs out, %.0f s to arrive - IGNORABLE"
+             % (PARTY_R - GUN_R_MAX,
+                (PARTY_R - GUN_R_MAX) / max(r["speed"] - PLAYER_SPEED, 1e-6))),
+            ("safe kill range", "beyond %g studs (blast %g), so a shot on landing is free"
+             % (r["blast"], r["blast"])),
+        ],
+    ),
+    "powderrunTwin": dict(
+        row=dict(windup=0.9, duration=0.5, recover=0.6, cooldown=13.0,
+                 count=2, fuse=7.0, speed=18, spawnAt=28, blast=15,
+                 blastFuse=20, chainAt=12, damage=(60, 84), hp=900),
+        verb="phase 3: two kegs, two bearings, and they set each other off",
+        derive=lambda r: [
+            ("a perfect runner ends the fuse", "%.0f studs away (blastFuse %g)"
+             % (r["spawnAt"] - (r["speed"] - PLAYER_SPEED) * r["fuse"], r["blastFuse"])),
+            ("chain radius", "%g studs - kill them apart" % r["chainAt"]),
+        ],
+    ),
+    "ghostbraziers": dict(
+        row=dict(windup=1.2, duration=6.8, recover=0.9, cooldown=22.0,
+                 count=3, ring=70, charge=6.0, safeDeg=100, behindAt=8,
+                 damage=(72, 96), hp=1400),
+        verb="SHOOT THE PILLAR - each one doused opens the sector behind it",
+        derive=lambda r: [
+            ("pillars", "%d on r %g, %.0f deg apart" % (r["count"], r["ring"], 360.0 / r["count"])),
+            ("safe arc at the ring", "%.0f studs" % (math.radians(r["safeDeg"]) * r["ring"])),
+            ("safe arc at the drop ring", "%.0f studs" % (math.radians(r["safeDeg"]) * PARTY_R)),
+            ("walk to a sector edge", "%.0f studs, %.1f s at %g studs/s"
+             % (math.radians(180.0 / r["count"]) * PARTY_R,
+                math.radians(180.0 / r["count"]) * PARTY_R / PLAYER_SPEED, PLAYER_SPEED)),
+            ("douse budget", "%d hp in %g s = %.0f dps per pillar" % (r["hp"], r["charge"],
+                                                                     r["hp"] / r["charge"])),
+            ("douse nothing", "the wave takes the whole floor - r %g" % BOUND_R),
+        ],
+    ),
+    "cannonoverload": dict(
+        row=dict(windup=3.0, duration=0.6, recover=0.9, cooldown=20.0,
+                 jam=0.15, bonus=0.10, markAt=5, speed=22, radius=7,
+                 spawnAt=20, lifetime=5.4, damage=(70, 92),
+                 burst=dict(count=16, speed=34, radius=2.6, spawnAt=3, lifetime=2.4, mult=0.6)),
+        verb="SHOOT THE GUN THAT IS WINDING UP - 15% of its bar jams it",
+        derive=lambda r: [
+            ("jam threshold", "%.0f damage in %g s = %.0f dps" % (r["jam"] * BATTERY_HP, r["windup"],
+                                                                 r["jam"] * BATTERY_HP / r["windup"])),
+            ("jam bonus", "%.0f damage (%.0f%% of the battery)" % (r["bonus"] * BATTERY_HP,
+                                                                  r["bonus"] * 100)),
+            ("mega-shot reach", "%.0f studs (bound %g)" % (r["spawnAt"] + r["speed"] * r["lifetime"],
+                                                           BOUND_R)),
+            ("time to cross the beach", "%.1f s at %g studs/s" % (SAND_R / r["speed"], r["speed"])),
+            ("burst solid to", "r %.0f (16 balls of r %g)"
+             % (2 * r["burst"]["radius"] / math.radians(360.0 / r["burst"]["count"]),
+                r["burst"]["radius"])),
+            ("marker vs mount spacing", "%g studs against %.1f - it names ONE gun"
+             % (r["markAt"], MOUNT_MIN_GAP)),
+        ],
+    ),
+    "anchorline": dict(
+        row=dict(windup=1.6, duration=4.6, recover=0.8, cooldown=17.0,
+                 overshoot=25, drag=4.2, stopAt=18, chain=34, chainRadius=4.0,
+                 radius=3.0, lifetime=4.2, damage=(56, 74), hp=700),
+        verb="LEAVE BY ITS END, or break the midlink and it dies that frame",
+        derive=lambda r: [
+            ("lands at", "r %.0f from a player on the drop ring" % min(PARTY_R + r["overshoot"],
+                                                                      BOUND_R - 8)),
+            ("drag speed", "%.1f studs/s (span %.0f over %g s)"
+             % ((min(PARTY_R + r["overshoot"], BOUND_R - 8) - r["stopAt"]) / r["drag"],
+                min(PARTY_R + r["overshoot"], BOUND_R - 8) - r["stopAt"], r["drag"])),
+            ("walk to clear its end", "%.0f studs, %.1f s" % (r["chain"] / 2 + r["chainRadius"],
+                                                              (r["chain"] / 2 + r["chainRadius"]) / PLAYER_SPEED)),
+            ("lifetime vs drag", "%g / %g - MUST match" % (r["lifetime"], r["drag"])),
+            ("snap budget", "%d hp inside %g s = %.0f dps" % (r["hp"], r["drag"], r["hp"] / r["drag"])),
+        ],
+    ),
+    "longboat": dict(
+        row=dict(windup=1.4, duration=0.6, recover=0.8, cooldown=26.0,
+                 count=3, beachAt=46, spread=11, speed=9.5, reach=20,
+                 march=26, repair=0.25, hp=1300),
+        verb="STOP THE ONES RUNNING THE OTHER WAY - each arrival repairs a gun",
+        derive=lambda r: [
+            ("beach at", "r %.0f" % (PARTY_R - 8 + r["beachAt"])),
+            ("march", "%.0f studs at %g studs/s = %.1f s"
+             % (PARTY_R - 8 + r["beachAt"] - r["reach"], r["speed"],
+                (PARTY_R - 8 + r["beachAt"] - r["reach"]) / r["speed"])),
+            ("kill budget", "%d hp in %.1f s = %.0f dps"
+             % (r["count"] * r["hp"], (PARTY_R - 8 + r["beachAt"] - r["reach"]) / r["speed"],
+                r["count"] * r["hp"] / ((PARTY_R - 8 + r["beachAt"] - r["reach"]) / r["speed"]))),
+            ("cost of letting them through", "%.0f hp per boarder, %.0f for all %d"
+             % (r["repair"] * BATTERY_HP, r["count"] * r["repair"] * BATTERY_HP, r["count"])),
+            ("reach vs the hull", "%g studs against mounts at %.1f-%.1f" % (r["reach"], GUN_R_MIN, GUN_R_MAX)),
+        ],
+    ),
+}
+
+
 def main():
     out_dir = sys.argv[1] if len(sys.argv) > 1 else os.path.dirname(os.path.abspath(__file__))
     os.makedirs(out_dir, exist_ok=True)
@@ -1633,6 +1751,23 @@ def main():
               % (name, MOMENTS[name][0], len(live_balls(name, MOMENTS[name][0])[0])
                  + 2 * len(live_balls(name, MOMENTS[name][0])[1]), ok,
                  "; ".join("%s %.1f" % (k, v) for k, v in sorted(n.items()))))
+
+    # ...and the five that are not drawn. Not an escape rose - none of these is
+    # a walking problem - but the numbers the design is actually about, so a
+    # retune that breaks the intent is visible in a diff of this output.
+    print("")
+    print("HANDOFF  the four cannons: r %.1f-%.1f, closest pair %.1f studs apart, "
+          "%.1f-%.1f studs up" % (GUN_R_MIN, GUN_R_MAX, MOUNT_MIN_GAP,
+                                  min(h for _, _, _, h in MOUNTS),
+                                  max(h for _, _, _, h in MOUNTS)))
+    for name, spec in NEW_MECHANICS.items():
+        r = spec["row"]
+        print("")
+        print("HANDOFF %-15s %s" % (name, spec["verb"]))
+        print("        %-26s windup %.1f · strike %.1f · recover %.1f · cooldown %.1f"
+              % ("", r["windup"], r["duration"], r["recover"], r["cooldown"]))
+        for label, value in spec["derive"](r):
+            print("        %-26s %s" % (label, value))
 
 
 if __name__ == "__main__":
