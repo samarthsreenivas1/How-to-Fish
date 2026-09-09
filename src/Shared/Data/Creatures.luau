@@ -2461,6 +2461,14 @@ Creatures.items.wrack_battery = {
 	-- `parts.mounts`, re-cut for the 2026-09-08 mesh), so melee target-picking
 	-- must not select one it can never reach.
 	rangedOnly = true,
+	-- THE FIGHT'S PRIMARY TARGET, and it was inheriting the derived ~3.6-stud
+	-- capture off a 0.5-scale model standing 9-12 studs up a hull. Same
+	-- treatment as the four props below it (see their class note): 4.5, so the
+	-- thing the whole fight asks you to shoot is a thing you can reliably shoot.
+	-- The four mounts are 10.9 studs apart at their closest, so overlapping
+	-- captures are still resolved correctly - raycastNearest keeps the nearest
+	-- ALONG the ray, which is the cannon you are actually looking at.
+	shotRadius = 4.5,
 	rewards = { coins = { 120, 200 }, xp = 350 },
 	-- Authority only, like the tentacles: a chunk of the flagship at gun-deck
 	-- scale, so it reads as part of the hull it is bolted to.
@@ -2506,6 +2514,30 @@ Creatures.items.wrack_battery = {
 -- Health is the real tuning knob on all four, and it is set against the SECONDS
 -- the mechanic gives you rather than against any hostile's bar: a brazier you
 -- cannot douse inside its charge is not a puzzle, it is a cutscene.
+--
+-- AND ALL FOUR CARRY `shotRadius`, WHICH IS NOT DECORATION (user, 2026-09-08,
+-- playing this build: "when i point my crosshair at something and shoot, it
+-- doesnt work it doesnt hit the enemy properly, especially the little black
+-- thing that follows me around"). Without it a creature's capture is derived,
+-- twice and independently, as `max(1.4, boundingBox.Magnitude * 0.3)` - once by
+-- CreatureService.raycastNearest to select what a shot hit, and once by
+-- RangedController.aimDistance to decide how far down the cursor ray the target
+-- is. For a keg-sized model that is about 1.8 studs, and the two estimates
+-- compose badly rather than independently: when the client's sweep misses, the
+-- aim depth falls through to the SAND BEHIND the target, and because the shot
+-- leaves the shooter's root rather than the camera, that wrong depth bends the
+-- fired direction by the rig's whole parallax. The server is then asked about a
+-- ray that genuinely does miss. Nobody's arithmetic is wrong anywhere.
+--
+-- So the number is authored here, once, and both sides read it (the server off
+-- the row, the client off the published `ShotRadius` attribute). The values are
+-- deliberately GENEROUS - four to five and a half studs against models of two
+-- to five - for three reasons, in order of weight: two of these move while you
+-- shoot at them and a 100-200 ms round trip is 2-4 studs of travel at the keg's
+-- 18 studs/s; they sit low on open sand, which is the exact geometry that makes
+-- the depth fall through; and a hazard the fight is TELLING you to shoot should
+-- be forgiving to shoot. Anything the player is meant to hunt down rather than
+-- destroy on sight keeps the derived formula.
 -- ---------------------------------------------------------------------------
 
 -- THE CHASER. A fuse-lit powder keg that rolls off a live gun deck and homes
@@ -2522,6 +2554,8 @@ Creatures.items.wrack_powder_keg = {
 	archetype = "choirstalk",
 	health = 900,
 	waters = "wreck",
+	-- See the class note above: the one the complaint was about: ~2 studs of model, moving at 18 studs/s.
+	shotRadius = 5.5,
 	-- NOT `rangedOnly`, and unlike the battery that is not an oversight: the
 	-- keg rolls on the sand at head height, so melee can reach it - and melee
 	-- reaching it means detonating it inside your own blast radius. That is a
@@ -2552,6 +2586,8 @@ Creatures.items.wrack_ghost_brazier = {
 	archetype = "choirstalk",
 	health = 1400,
 	waters = "wreck",
+	-- See the class note above: static, but a 6-second window to find and break three of them.
+	shotRadius = 5.0,
 	rewards = { coins = { 90, 150 }, xp = 300 },
 	body = {
 		model = "CreaturePack",
@@ -2577,6 +2613,8 @@ Creatures.items.wrack_chain_link = {
 	archetype = "choirstalk",
 	health = 700,
 	waters = "wreck",
+	-- See the class note above: moving with its own chain, and the only way to end that hazard.
+	shotRadius = 5.0,
 	rewards = { coins = { 50, 90 }, xp = 180 },
 	body = {
 		model = "CreaturePack",
@@ -2603,6 +2641,8 @@ Creatures.items.wrack_boarder = {
 	archetype = "choirstalk",
 	health = 1300,
 	waters = "wreck",
+	-- See the class note above: man-sized and walking; the derived number was close, this is honest.
+	shotRadius = 4.5,
 	rewards = { coins = { 110, 180 }, xp = 340 },
 	body = {
 		model = "CreaturePack",
