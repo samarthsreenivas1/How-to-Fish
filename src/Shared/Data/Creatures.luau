@@ -2456,9 +2456,10 @@ Creatures.items.wrack_battery = {
 	archetype = "choirstalk",
 	health = 2800,
 	waters = "wreck",
-	-- Same reason as `choir_stalk`'s: the batteries are bolted to the hull
-	-- 10.6 to 35.7 studs up (Bosses.admiral_wrack `parts.mounts`), so melee
-	-- target-picking must not select one it can never reach.
+	-- Same reason as `choir_stalk`'s: the batteries are the ship's own cannons,
+	-- 9.0 to 12.4 studs up on the upright hull (Bosses.admiral_wrack
+	-- `parts.mounts`, re-cut for the 2026-09-08 mesh), so melee target-picking
+	-- must not select one it can never reach.
 	rangedOnly = true,
 	rewards = { coins = { 120, 200 }, xp = 350 },
 	-- Authority only, like the tentacles: a chunk of the flagship at gun-deck
@@ -2472,6 +2473,146 @@ Creatures.items.wrack_battery = {
 		color = Color3.fromRGB(96, 116, 108),
 		finColor = Color3.fromRGB(70, 86, 82),
 		markColor = Color3.fromRGB(255, 190, 120), -- the muzzle glow, lit until it is broken
+	},
+}
+
+-- ---------------------------------------------------------------------------
+-- ADMIRAL WRACK'S FOUR SHOOTABLE PROPS (roster rework, 2026-09-08)
+--
+-- The redesign's premise is that a bullet hell whose only verb is "walk left"
+-- runs out of things to say: four of the five new mechanics answer that by
+-- putting something on the sand that SHOOTING is the answer to, and a shootable
+-- thing in this engine is a creature row. So these four are rows, not a new
+-- kind of object - they inherit targeting, the hit test, the damage numbers
+-- floating off them and the health bar for free, and the fight's new verbs cost
+-- the combat code nothing.
+--
+-- ALL FOUR SHARE THREE DECISIONS, each of which is load-bearing:
+--
+--  1. `archetype = "choirstalk"`, the no-op updater. Every one of them is
+--     placed and moved by the Wrack handlers in CreatureService (the keg homes
+--     on its target, the boarders march at the hull, the midlink rides its own
+--     chain), so any archetype with a will of its own would fight the handler
+--     for the same position. The generic flop would be worse still: a powder
+--     keg hopping about on its own is not a fuse burning down.
+--  2. `rarity = "Boss"`, so nothing ever casts one out of the water. They exist
+--     only for the seconds their move owns them, and every one is spawned with
+--     a `lifetime` backstop so a fight that ends underneath them - the boss
+--     killed mid-charge, the party wiping - cannot strand one on the beach.
+--  3. NO `drops`. They are hazards wearing a health bar, not catches: the
+--     fight's loot is the Admiral's. The small `rewards` are there because
+--     breaking one IS a correct play and the game should say so.
+--
+-- Health is the real tuning knob on all four, and it is set against the SECONDS
+-- the mechanic gives you rather than against any hostile's bar: a brazier you
+-- cannot douse inside its charge is not a puzzle, it is a cutscene.
+-- ---------------------------------------------------------------------------
+
+-- THE CHASER. A fuse-lit powder keg that rolls off a live gun deck and homes
+-- on one player at a walk plus two - it cannot be outrun, only answered. Shoot
+-- it and it goes off WHERE IT IS, which is the whole mechanic: kill it early
+-- across the beach and the blast is a firework, panic and kill it at your own
+-- feet and you have thrown the Admiral's grenade for him. 900 is two or three
+-- seconds of one player's fire, so a solo can always take it and a party can
+-- always take it EARLY, which is the difference the move is about.
+Creatures.items.wrack_powder_keg = {
+	id = "wrack_powder_keg",
+	name = "Powder Runner",
+	rarity = "Boss",
+	archetype = "choirstalk",
+	health = 900,
+	waters = "wreck",
+	-- NOT `rangedOnly`, and unlike the battery that is not an oversight: the
+	-- keg rolls on the sand at head height, so melee can reach it - and melee
+	-- reaching it means detonating it inside your own blast radius. That is a
+	-- real choice with a real cost, which is better than a rule forbidding it.
+	rewards = { coins = { 60, 110 }, xp = 220 },
+	body = {
+		model = "CreaturePack",
+		species = "AdmiralWrack",
+		shape = "leviathan",
+		stance = "upright",
+		scale = 0.22,
+		color = Color3.fromRGB(78, 62, 46),
+		finColor = Color3.fromRGB(52, 42, 32),
+		markColor = Color3.fromRGB(255, 168, 70), -- the fuse, burning down
+	},
+}
+
+-- THE PILLAR. Ghost-fire rises out of the sand at three ring bearings and
+-- charges for six seconds; the wave that follows covers the whole arena EXCEPT
+-- the sector behind any brazier that has been doused, and dousing one is
+-- shooting it. 1400 against a six-second charge is one player's full attention
+-- or two players' half of it - the move asks the party to split, which is the
+-- one thing a wall of cannonballs never asks.
+Creatures.items.wrack_ghost_brazier = {
+	id = "wrack_ghost_brazier",
+	name = "Ghost Brazier",
+	rarity = "Boss",
+	archetype = "choirstalk",
+	health = 1400,
+	waters = "wreck",
+	rewards = { coins = { 90, 150 }, xp = 300 },
+	body = {
+		model = "CreaturePack",
+		species = "AdmiralWrack",
+		shape = "leviathan",
+		stance = "upright",
+		scale = 0.5,
+		color = Color3.fromRGB(64, 88, 82),
+		finColor = Color3.fromRGB(44, 62, 58),
+		markColor = Color3.fromRGB(160, 255, 210), -- his own ghost-fire, on a stick
+	},
+}
+
+-- THE OFF SWITCH. The glowing midlink of the anchor chain being dragged back
+-- across the sand: break it and the whole hazard dies on that frame
+-- (ProjectileService.retireTag). Deliberately the lowest bar of the four - it
+-- is a four-second hazard and the shot has to be worth taking inside it, so
+-- 700 is about one clean burst.
+Creatures.items.wrack_chain_link = {
+	id = "wrack_chain_link",
+	name = "Anchor Midlink",
+	rarity = "Boss",
+	archetype = "choirstalk",
+	health = 700,
+	waters = "wreck",
+	rewards = { coins = { 50, 90 }, xp = 180 },
+	body = {
+		model = "CreaturePack",
+		species = "AdmiralWrack",
+		shape = "leviathan",
+		stance = "upright",
+		scale = 0.24,
+		color = Color3.fromRGB(120, 128, 136),
+		finColor = Color3.fromRGB(86, 92, 98),
+		markColor = Color3.fromRGB(255, 96, 60), -- the link glowing where it is straining
+	},
+}
+
+-- THE RACE. A skeleton boarding party beaches at the palisade and marches at
+-- the hull; every one that arrives repairs a gun deck. They carry no attack at
+-- all - the threat is not what they do to you, it is what they undo - so the
+-- move inverts the fight for eleven seconds: the boss's own health gate is the
+-- thing you are now defending. 1300 x 3 against a ten-second march is a party
+-- that has to stop shooting the Admiral, which is exactly the cost intended.
+Creatures.items.wrack_boarder = {
+	id = "wrack_boarder",
+	name = "Drowned Boarder",
+	rarity = "Boss",
+	archetype = "choirstalk",
+	health = 1300,
+	waters = "wreck",
+	rewards = { coins = { 110, 180 }, xp = 340 },
+	body = {
+		model = "CreaturePack",
+		species = "DrownedBoatswain",
+		shape = "zombie",
+		stance = "upright",
+		scale = 0.95,
+		color = Color3.fromRGB(96, 116, 108),
+		finColor = Color3.fromRGB(70, 86, 82),
+		markColor = Color3.fromRGB(160, 255, 210),
 	},
 }
 

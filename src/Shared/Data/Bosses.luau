@@ -1518,21 +1518,60 @@ Bosses.items.noctyss = {
 -- its cooldown, silenced or not. A silenced volley emits nothing and changes
 -- nothing else, so the window cannot be farmed.
 --
--- THE PATTERNS, and the answer to each:
+-- THE ROSTER REWORK (2026-09-08), and the reason for it. The fight shipped as
+-- nine rows of BALLS, and nine rows of balls is one verb: read the shape, walk
+-- to the hole. Excellent for a minute and then finished, however many shapes
+-- there are - a player who has learned to walk has learned all of it. The
+-- answer is not more balls, it is more VERBS, so five of the nine ball rows
+-- were retired and five mechanics that ask for something other than walking
+-- took their place. What survives is the punctuation between them.
+--
+-- THE FOUR BALL ROWS THAT SURVIVE, and the answer to each:
 --   broadside   a ring of slow cannonballs with ONE gap - walk to the gap,
---               and keep walking, because it rotates every volley.
---   grapeshot   a fast aimed fan - step out of the cone DURING the tell.
---   chainshot   spinning linked pairs - the gap inside a pair is the hitbox
---               and a trap; the lane is between pairs, on the spin's beat.
---   slewfire    a spiral off the turning deck - read the rotation, walk
---               against it, cross the arms the short way.
+--               and keep walking, because it rotates every volley. The
+--               signature: the one shape the whole fight is read through.
+--   grapeshot   a fast aimed fan - step out of the cone DURING the tell. The
+--               shortest cooldown, so it is also the fallback pick.
 --   wisps       slow homing lights - keep moving, and run a circle tighter
---               than their 15.6-stud turn radius. Any bare sand will do; the
---               breakwater hulks this used to name are gone and were never
---               the mechanism.
+--               than their 15.6-stud turn radius. It is the row that COMPOSES
+--               with the new mechanics: it taxes standing still, and every one
+--               of the five below wants you to stand somewhere specific.
 --   anchorsweep the one big telegraph - a wall across half the arena. The
 --               answer is the other half, and the long windup is the time to
 --               get there.
+-- (broadsideHeavy is the phase-3 re-read of the signature and is counted with
+-- it.) RETIRED: chainshot, slewfire, slewfireFast, grapeshotTwin. The first
+-- three are all "read a rotation and cross it", which is the same cognitive
+-- slot the braziers and the runner now occupy and which they held for 5-5.6
+-- CONTINUOUS seconds each - there was no room in the fight's clock for a new
+-- verb while they ran. grapeshotTwin was a denser copy of a row that stays.
+--
+-- THE FIVE NEW MECHANICS, and the verb each one adds:
+--   powderrun     SHOOT THE CHASER. A fuse-lit keg homes on you at walk+2 for
+--                 eight seconds. Shooting it detonates it WHERE IT IS, so the
+--                 answer is a range decision, not a dodge: kill it across the
+--                 beach, or eat your own grenade. Phase 3 sends two, and one
+--                 blast sets off the other within twelve studs.
+--   ghostbraziers SHOOT THE PILLAR. Three ghost-fires charge for six seconds
+--                 and then sweep the WHOLE arena except the sector behind any
+--                 brazier you doused. Nothing was doused: nowhere is safe.
+--                 It is the one move that asks a party to split up.
+--   cannonoverload SHOOT THE GUN THAT IS WINDING UP. One named battery glows
+--                 for three seconds toward a mega-shot that bursts into a ring
+--                 where it lands; fifteen percent of that battery's health
+--                 during the windup JAMS it - no shot at all, and the gun
+--                 takes a further ten percent for the trouble. The fight's
+--                 two halves (dodge the screen / break the brass) finally
+--                 point at each other.
+--   anchorline    SHOOT THE CHAIN. An anchor lands twenty-five studs past you
+--                 and drags a chain back at the hull across four seconds - a
+--                 moving LINE, not a circle, so the answer is to leave by its
+--                 end. Or break the glowing midlink and it dies on that frame.
+--   longboat      SHOOT THE ONES RUNNING THE OTHER WAY. A boarding party
+--                 beaches at the palisade and marches at the hull; each one
+--                 that arrives repairs a gun deck by a quarter. For eleven
+--                 seconds the fight is inverted and his health gate is yours
+--                 to defend.
 Bosses.items.admiral_wrack = {
 	id = "admiral_wrack",
 	name = "Admiral Wrack, the Fleet-Eater",
@@ -1576,22 +1615,39 @@ Bosses.items.admiral_wrack = {
 	-- these re-applied every frame, and until that exists a turning boss must
 	-- not use this mode. Do not restore his slew without taking these out.
 	--
-	-- The numbers are gun-span centroids - the mean of each gun's breech-muzzle
-	-- midpoint - computed from `WR_GUNS` in assets/boss_gen.py, which is that
-	-- mesh's single source of truth for both the art and the muzzle handoff.
-	-- Blender (x, y, z) maps to Roblox (x, z, -y). NO HEEL IS APPLIED and none
-	-- is owed: boss_gen authors WR_GUNS in BOSS space, not ship space, precisely
-	-- because guns re-mounted on a hove-down deck are the things that are no
-	-- longer square to the ship (boss_gen.py:2984), and the four battery
-	-- builders are the only ship parts that never call `_wr_heel`. Cross-checked
-	-- against the exported glb's own battery bounding-box centres
-	-- (WrackBodyController.AUTHORED): every one agrees within 2.6 studs.
+	-- THE UPRIGHT REBUILD (mesh commit 7673cd1, 2026-09-08) REPLACED ALL FOUR.
+	-- The ship no longer lies careened on her bilge: she stands, and she is
+	-- less than half the size she was - hull 41 x 12.6 against 87 x 45, 48
+	-- studs bow to stern - with four INTEGRAL cannons instead of four batteries
+	-- bolted onto a hove-down deck. The numbers below come from `WR_CANNONS` in
+	-- assets/boss_gen.py, the mesh's single source of truth for both the art
+	-- and the muzzle handoff, and are in the same convention as the old ones:
+	-- Roblox space, BOSS-local, Y the piece's centre measured from the drawn
+	-- hull's sand. No heel term survives because there is no heel any more.
 	--
-	-- Order is the authored one - Deck, Keel, Stern, Top - matching WR_GUNS, the
-	-- mesh HANDOFF, import-checklist row 7p and WrackBodyController's PIECES
-	-- list. Nothing in HIS fight keys on the index (only the Kraken's livingArms
-	-- and Noctyss's updateChoir read `socketIndex`; his patterns read the COUNT,
-	-- `partsAlive`), so the order is for the reader.
+	-- WHAT MOVED, AND WHAT THAT COST. The mounts used to stand at flat radii of
+	-- 22-40 studs and heights of 10.6-35.7; they now stand at 13.5-20.0 and
+	-- 9.0-12.4. Two consequences, both handled rather than inherited:
+	--   * `Fn.wrackDeckReach` is now ~20 instead of ~40, so every tell measured
+	--     from it (broadside's mark ring, slewfire's annulus, wisps' mark)
+	--     draws twenty studs tighter on its own. That is correct - it tracks
+	--     the guns, which is what it was rewritten to do - and needs no edit.
+	--   * Anything authored as "near the hull" had to shrink WITH the hull, or
+	--     it would name open sand. Two rows carry such a number and both were
+	--     re-cut for this mesh: `longboat.reach` (where a boarder counts as
+	--     having reached the ship) and `anchorline.stopAt` (where the chain's
+	--     drag ends). Their comments carry the arithmetic.
+	--   * The four mounts are only 10.9-13.5 studs apart from each other now,
+	--     against 30-70 before. `cannonoverload.markAt` - the disc that says
+	--     WHICH cannon is winding up - is sized against that gap, not against
+	--     the old hull.
+	--
+	-- Order is the authored one - Bow, Starboard, Stern, Port - matching
+	-- WR_CANNONS, the mesh HANDOFF and WrackBodyController's PIECES list.
+	-- Nothing in HIS fight keys on the index (only the Kraken's livingArms and
+	-- Noctyss's updateChoir read `socketIndex`; his patterns read the COUNT,
+	-- `partsAlive`, and `cannonoverload` picks its gun by BEARING), so the
+	-- order is for the reader.
 	--
 	-- `ring` IS GONE, not merely unused. It placed nothing (that is `mounts`),
 	-- and its last two readers - wrackEmit's ProjectileService.watch radius and
@@ -1614,11 +1670,14 @@ Bosses.items.admiral_wrack = {
 		-- pivot (which floats `submerge` studs above the ship the player sees).
 		-- spawnBossParts applies both corrections at the consumption site; do
 		-- not pre-apply either here.
+		-- Order matches WR_CANNONS / WrackBodyController.PIECES; four bearings
+		-- 90 degrees apart, so no position on the shoal shows more than two of
+		-- them and repositioning to reach the far pair is still the loop.
 		mounts = {
-			Vector3.new(-19.50, 35.70, -10.34), -- Deck:  +Y high, mortars on the canted quarterdeck
-			Vector3.new(19.38, 10.55, 18.91), -- Keel:  -Y low, punched out through the bottom planking
-			Vector3.new(-34.62, 29.08, -14.37), -- Stern: -X high, the chase guns under his own boots
-			Vector3.new(38.40, 27.71, -11.99), -- Top:   +X high, the swivel nest on the bowsprit
+			Vector3.new(19.05, 12.40, 1.40), -- Bow:       +X, r 19.1
+			Vector3.new(12.50, 9.00, -7.30), -- Starboard: -Z, r 14.5
+			Vector3.new(-19.95, 9.35, -1.30), -- Stern:     -X, r 20.0
+			Vector3.new(-11.00, 9.20, 7.90), -- Port:      +Z, r 13.5
 		},
 		regrow = 20,
 	},
@@ -1662,26 +1721,46 @@ Bosses.items.admiral_wrack = {
 	-- small hits rather than a few big AoEs, and a multiplier on a stream
 	-- compounds far harder than one on a 10-second slam.
 	enrageDamageMult = 1.15,
-	-- THE FIGHT BUILDS. Phase 1 teaches the three readable shapes; phase 2
-	-- layers the trap, the spiral and the big telegraph on top; phase 3 swaps
-	-- three of them for denser variants - more balls, a narrower gap, a
-	-- REVERSED spiral, so the answer you learned has to be re-read.
+	-- THE FIGHT BUILDS, AND IT BUILDS IN VERBS. Phase 1 teaches the two
+	-- readable ball shapes, the movement tax, and ONE thing to shoot that is
+	-- not a battery. Phase 2 adds the two mechanics that ask you to stand
+	-- somewhere specific - the braziers' safe sector and the anchor line's open
+	-- end - plus the big telegraph, so phase 2 is where "walk" and "shoot"
+	-- first have to be spent against each other. Phase 3 adds the interplay
+	-- move and the inverted one, and re-reads the signature.
+	--
+	-- PHASE 3 IS ALSO WHERE THE TIMERS TIGHTEN, and that is not authored here:
+	-- `enrageBelow` is 0.30 and `enrageCooldownMult` 0.60, so every row in this
+	-- book comes off cooldown 40% sooner across almost exactly the phase-3
+	-- band, and the list itself is nine moves deep instead of four. Duplicating
+	-- the whole roster as "-Fast" rows would say the same thing a second time
+	-- in numbers that could then disagree with each other.
 	phases = {
-		{ below = 1.0, attacks = { "grapeshot", "broadside", "wisps" } },
+		{ below = 1.0, attacks = { "grapeshot", "broadside", "wisps", "powderrun" } },
 		{
 			below = 0.66,
-			attacks = { "grapeshot", "broadside", "chainshot", "slewfire", "wisps", "anchorsweep" },
+			attacks = {
+				"grapeshot",
+				"broadside",
+				"wisps",
+				"powderrun",
+				"ghostbraziers",
+				"anchorline",
+				"anchorsweep",
+			},
 		},
 		{
 			below = 0.33,
 			attacks = {
-				"grapeshotTwin",
+				"grapeshot",
 				"broadsideHeavy",
-				"chainshot",
-				"slewfireFast",
 				"wisps",
+				"powderrunTwin",
+				"ghostbraziers",
+				"anchorline",
 				"anchorsweep",
-				"chainshot",
+				"cannonoverload",
+				"longboat",
 			},
 		},
 	},
@@ -1742,33 +1821,6 @@ Bosses.items.admiral_wrack = {
 			lifetime = 1.8,
 			tellRange = 110,
 			damage = { 40, 54 },
-		},
-		-- Phase 3: wider, and a second burst offset half a pellet so the
-		-- lanes of the first one are exactly where the second one lands.
-		-- TELL: one "coneTell" wedge along the latched bearing, at the gun.
-		grapeshotTwin = {
-			handler = "grapeshot",
-			tell = false,
-			skin = "grape",
-			windup = 0.7,
-			duration = 0.9,
-			recover = 0.45,
-			cooldown = 6.5,
-			-- Nine across 56 degrees at a 22-stud muzzle: 2.7 studs between
-			-- centres, the same readable floor, and 5.6 studs clear out at the
-			-- party ring. The second burst is offset half a step - 4.4 studs
-			-- at that range, dead centre of the first burst's lane - and lands
-			-- 0.4 s later: two waves you can read, not one wall you cannot.
-			pellets = 9,
-			fanDeg = 56,
-			speed = 66,
-			spawnAt = 22,
-			radius = 1.6,
-			lifetime = 1.8, -- reach 141
-			bursts = 2,
-			burstGap = 0.4,
-			tellRange = 110,
-			damage = { 42, 56 },
 		},
 		-- The signature. Three rings, one gap, the gap walking 46 degrees
 		-- between each - never a divisor of 360, so it never returns to where
@@ -1841,90 +1893,6 @@ Bosses.items.admiral_wrack = {
 			volleys = 4,
 			interval = 0.85,
 			damage = { 48, 64 },
-		},
-		-- The trap. Four pairs across a 130-degree fan, each pair chained
-		-- eighteen studs apart and spinning at 126 deg/s - a full turn every
-		-- 2.9 seconds, slow enough to count.
-		-- TELL: three "coneTell" wedges across the fan (three, not one per
-		-- pair - each wedge is another bossTell one-shot and three is the
-		-- ceiling), DRAWN AT THE GUN DECK THE PAIRS LEAVE, so the lanes
-		-- BETWEEN the wedges read as the lanes they actually are.
-		chainshot = {
-			handler = "chainshot",
-			tell = false,
-			skin = "chain",
-			windup = 1.0,
-			duration = 0.5,
-			recover = 0.7,
-			cooldown = 11.0,
-			-- FOUR pairs across 130 degrees, not three across 120: the fan now
-			-- leaves one gun deck ~70 studs from the party ring, where a
-			-- 60-degree step is 75 studs of open water between pairs. Four
-			-- pairs bring that to 54, which is still a lane you can see from
-			-- across the beach and no longer a corridor. The chain goes to 18
-			-- with them, so the fake lane inside a pair scales with everything
-			-- else - it is the trap, and a trap that shrank while the arena
-			-- grew stops being one.
-			pairs = 4,
-			fanDeg = 130,
-			chain = 18,
-			chainRadius = 1.8,
-			spinDeg = 126,
-			speed = 28,
-			radius = 2.4,
-			spawnAt = 14,
-			lifetime = 4.5, -- reach 140
-			tellRange = 110,
-			damage = { 54, 72 },
-		},
-		-- The sustained one: five seconds of two arms laying spiral lanes.
-		-- TELL: a "ringTell" annulus over the whole muzzle locus the spiral
-		-- streams from - `spawnAt` out to `spawnAt` + the furthest live deck's
-		-- range, which is the origin and is not the pivot.
-		slewfire = {
-			handler = "slewfire",
-			tell = false,
-			skin = "cannon",
-			windup = 1.0,
-			duration = 5.0,
-			recover = 0.8,
-			cooldown = 13.0,
-			-- `arms` IS THIS ROW'S BALL COUNT, and it scales with the gun
-			-- decks like every other row's does since 2026-09-06 -
-			-- PATTERNS.slewfire used to read it raw. Two arms with four decks
-			-- standing, two with three, one with two or one.
-			arms = 2,
-			-- A tick every 0.13 s at 78 deg/s steps the deck 10.1 degrees,
-			-- which at the new party ring is a 10.9-stud hole along one arm -
-			-- the same hole-to-radius ratio as the old 0.15 s at r 48. The
-			-- spiral reads as arms rather than as dots because of this number.
-			every = 0.13,
-			spinDeg = 78,
-			speed = 30,
-			radius = 2.6,
-			spawnAt = 14,
-			lifetime = 4.2, -- reach 140
-			damage = { 32, 42 },
-		},
-		-- Phase 3: three arms, tighter cadence, and the spin REVERSED - the
-		-- direction you learned to walk is now the wrong one.
-		-- TELL: a "ringTell" annulus on the deck radius, as above.
-		slewfireFast = {
-			handler = "slewfire",
-			tell = false,
-			skin = "cannon",
-			windup = 0.9,
-			duration = 5.6,
-			recover = 0.8,
-			cooldown = 14.0,
-			arms = 3,
-			every = 0.13,
-			spinDeg = -96,
-			speed = 32,
-			radius = 2.6,
-			spawnAt = 14,
-			lifetime = 3.95, -- reach 140.4
-			damage = { 34, 46 },
 		},
 		-- The one big telegraph. Twenty-three heavy balls overlapping across
 		-- 180 degrees: a wall, not a pattern - you do not thread it, you
@@ -2013,6 +1981,298 @@ Bosses.items.admiral_wrack = {
 			lifetime = 6,
 			spreadDeg = 360,
 			damage = { 24, 32 },
+		},
+		-- ================================================== THE FIVE NEW VERBS
+		-- Everything below this line was added by the 2026-09-08 roster rework
+		-- (see the header). None of them is a projectile pattern in the sense
+		-- the four rows above are: each one puts a SHOOTABLE OBJECT or an AREA
+		-- RULE on the sand and asks a question walking cannot answer. Their
+		-- rows still carry `tell = false` and still draw their own telegraphs
+		-- from the handler, for the same reason every row above does, and every
+		-- one of those telegraphs is gated on `wrackWillFire` so the burst
+		-- window stays the silence it is supposed to be.
+		--
+		-- `rows` NAMES THE CREATURE ROW EACH ONE SPAWNS, in the brood handler's
+		-- idiom and deliberately in the plural form even where it is one row:
+		-- tools/check_content.py validates `rows = { ... }` against
+		-- Creatures.items and does not look at a singular `row =`. A row id
+		-- typo'd here would otherwise spawn nothing at all, silently, and read
+		-- in play as "the mechanic didn't trigger".
+
+		-- THE CHASER. A keg with a lit fuse rolls off a live gun deck and comes
+		-- for one player at 18 studs/s against a 16-stud walk: 2 studs/s of
+		-- closing speed, so it is not outrun and not outmanoeuvred either (it
+		-- turns instantly - there is no wisp-style turn radius to exploit).
+		-- Shooting it is the answer, and WHERE you shoot it is the move.
+		--
+		-- THE EIGHT-SECOND FUSE IS THE BUDGET. From a gun deck to the party
+		-- ring is ~70 studs and it closes at 2, so a keg that spawns on you
+		-- never reaches you inside its fuse from the drop ring - it reaches
+		-- whoever has closed to melee, and it reaches anybody who ignored it
+		-- while being herded by a broadside. Ignoring it entirely is survivable
+		-- once and not twice, which is the pressure wanted.
+		-- TELL: a "mark" disc at the gun deck it rolls off (the keg itself is a
+		-- visible model with a lit fuse from that point on, so the telegraph
+		-- only has to say WHERE, not what).
+		powderrun = {
+			handler = "powderrun",
+			tell = false,
+			skin = "ember",
+			windup = 1.0,
+			duration = 0.5,
+			recover = 0.6,
+			cooldown = 12.0,
+			rows = { "wrack_powder_keg" },
+			count = 1,
+			-- Eight seconds of fuse; 18 studs/s against the 16-stud walk.
+			fuse = 8.0,
+			speed = 18,
+			-- HOW FAR SHORT OF YOU IT LANDS, and this number is the move.
+			-- The keg is LOBBED from the gun and comes down between you and the
+			-- ship - it does not roll the whole way across the beach, and the
+			-- difference is not flavour. It closes at 2 studs/s (18 against a
+			-- 16-stud walk) for 8 seconds, so it gains SIXTEEN STUDS in its
+			-- entire life: born at its own gun it would be 68 studs from the
+			-- party ring and would need thirty-four seconds to arrive, which is
+			-- a mechanic anybody could ignore forever. At 28 it ends its fuse 12
+			-- studs from a player who ran flat out the whole time - inside
+			-- `blastFuse` - so running does not beat it, and the answer to this
+			-- one is the gun rather than the feet. It is also comfortably
+			-- outside `blast`, so shooting it the moment it lands is free.
+			spawnAt = 28,
+			-- TWO RADII, ONE DAMAGE BAND, and this is the whole risk curve.
+			-- `blast` is what a SHOT keg does - 15 studs, so anyone who killed
+			-- it at any sensible range is untouched and anyone who let it get
+			-- to arm's length is not. `blastFuse` is what the fuse running out
+			-- does: 20 studs centred on the player it was chasing, which is not
+			-- dodgeable at that point because the dodge was the eight seconds
+			-- you just spent. Same damage either way - it is the same powder.
+			blast = 15,
+			blastFuse = 20,
+			-- Chain radius: one keg's blast lights another within twelve studs.
+			-- Inert in phase 1 (there is only ever one), so this number exists
+			-- for `powderrunTwin` and is authored on both for one meaning.
+			chainAt = 12,
+			damage = { 58, 80 },
+		},
+		-- Phase 3: two at once, off two different decks, on a shorter fuse -
+		-- and now `chainAt` is live, so a keg killed next to its partner sets
+		-- the partner off as well. Killing them apart is worth doing.
+		-- TELL: a "mark" disc at each gun deck, as above.
+		powderrunTwin = {
+			handler = "powderrun",
+			tell = false,
+			skin = "ember",
+			windup = 0.9,
+			duration = 0.5,
+			recover = 0.6,
+			cooldown = 13.0,
+			rows = { "wrack_powder_keg" },
+			count = 2,
+			fuse = 7.0,
+			speed = 18,
+			spawnAt = 28,
+			blast = 15,
+			blastFuse = 20,
+			chainAt = 12,
+			damage = { 60, 84 },
+		},
+		-- THE PILLAR. Three ghost-fires rise on a 70-stud ring - just inside
+		-- the party's 88-stud drop ring, so getting BEHIND one is a walk
+		-- outward rather than a sprint across the arena - and charge for six
+		-- seconds. Then a wave takes the whole floor except a 100-degree sector
+		-- behind each brazier that has been doused.
+		--
+		-- 100 DEGREES AT r 70 IS 122 STUDS OF ARC, and the sector widens with
+		-- radius, so the safe ground is a real place several people fit in and
+		-- not a pixel to stand on. `behindAt` is the other half of "behind":
+		-- the sector only counts from 8 studs inside the brazier ring outward,
+		-- because standing between a doused brazier and the ship is not behind
+		-- it in any sense the player would accept.
+		--
+		-- DOUSE NOTHING AND THERE IS NOWHERE. That is the point of the move and
+		-- it is deliberately not a wipe: 72-96 is a hard hit and about a third
+		-- of a healthy player, so a party that ignores one charge is punished
+		-- and a party that ignores two is dead.
+		-- TELL: a "ringTell" annulus over the brazier ring during the windup,
+		-- then a "mark" disc on each brazier for its own charge - and, the
+		-- moment one is doused, a "mark" out in the sector it just opened, so
+		-- the reward for shooting it is drawn where the answer is.
+		ghostbraziers = {
+			handler = "ghostbraziers",
+			tell = false,
+			skin = "anchor",
+			windup = 1.2,
+			-- The strike has to outlast the charge with room for the wave to
+			-- land inside it: 6.0 + 0.8. A wave that had to fire from `finish`
+			-- would be a move whose damage lands after its own recover began.
+			duration = 6.8,
+			recover = 0.9,
+			cooldown = 22.0,
+			rows = { "wrack_ghost_brazier" },
+			count = 3,
+			ring = 70,
+			charge = 6.0,
+			safeDeg = 100,
+			behindAt = 8,
+			damage = { 72, 96 },
+		},
+		-- THE INTERPLAY. One LIVE battery lights up and winds for three seconds
+		-- toward a mega-shot; putting 15% of THAT battery's health into it
+		-- during the windup jams the gun - no shot at all - and cracks it for a
+		-- further 10%. It is the first move in the fight where the two things
+		-- the player is doing (dodging the screen, breaking the brass) are the
+		-- same action.
+		--
+		-- THE NUMBERS ARE A DPS TEST, ON PURPOSE. 15% of 2800 is 420 damage
+		-- inside three seconds, which is one player's committed burst or two
+		-- players' incidental fire - so the jam is available to a solo who
+		-- chooses it and free to a party that was already shooting that gun.
+		-- The 10% bonus (280) is the reward for choosing it: the jam is not
+		-- just defence, it is the fastest way to break that battery.
+		--
+		-- THE SHOT ITSELF IS SLOW AND HUGE, and outrunning it is trivial and
+		-- not the question - the ring it bursts into where it stops is. So the
+		-- answer to a shot you failed to jam is to not be near where it ends,
+		-- and `lifetime` is authored so where it ends is the arena's far edge:
+		-- 20 + 22 x 5.4 = 139, against `bound` at r 140.
+		-- TELL: a "mark" disc ON the winding battery's own mount - which
+		-- cannon is the entire question - plus one "coneTell" wedge along the
+		-- shot's bearing from that gun.
+		cannonoverload = {
+			handler = "cannonoverload",
+			tell = false,
+			skin = "cannon",
+			windup = 3.0,
+			duration = 0.6,
+			recover = 0.9,
+			cooldown = 20.0,
+			jam = 0.15,
+			bonus = 0.10,
+			-- THE DISC THAT NAMES THE CANNON, and its size is set by the
+			-- upright hull rather than by legibility alone: the four mounts are
+			-- 10.9-13.5 studs apart (Bow to Starboard is the closest pair), so
+			-- a marker wider than half that stops naming ONE gun and starts
+			-- covering two. 5 studs is comfortably inside that and still reads
+			-- from the party ring, and it is not the only cue - the coneTell
+			-- leaves the same gun along the shot's own bearing.
+			markAt = 5,
+			speed = 22,
+			radius = 7,
+			spawnAt = 20,
+			lifetime = 5.4, -- reach 139
+			tellRange = 120,
+			damage = { 70, 92 },
+			-- The second stage, handed straight to ProjectileService's
+			-- `burstring` by the retiring mega-shot. 16 balls at 34 studs/s
+			-- from a 3-stud ring is solid out to r 9 and has 13-stud lanes at
+			-- r 30 - a burst you leave, not a wall you thread. `mult` cuts the
+			-- parent's damage band: shrapnel off a shot you already failed to
+			-- avoid, not sixteen more cannonballs.
+			burst = {
+				skin = "cannon",
+				count = 16,
+				speed = 34,
+				radius = 2.6,
+				spawnAt = 3,
+				lifetime = 2.4,
+				mult = 0.6,
+			},
+		},
+		-- THE LINE. An anchor is lobbed over the target and lands 25 studs
+		-- PAST them, and then its chain drags back at the hull over four
+		-- seconds. A moving line segment is a shape this fight has never had:
+		-- every other hazard is a disc or a ring, all of which are answered by
+		-- walking sideways, and a 34-stud bar sweeping toward you is answered
+		-- only by leaving past its END - or by breaking it.
+		--
+		-- THE CHAIN IS THE HITBOX, exactly as chainshot's is (same `link`
+		-- machinery, same segment test), and `chainRadius` 4.0 is drawn on the
+		-- client from the wire, so what you see is what hits you.
+		--
+		-- `stopAt` is where the drag ends - 18 studs from the arena centre,
+		-- which is ON the upright hull (48 studs bow to stern, so its own
+		-- extent is 24) rather than through it and out the other side. It was
+		-- 22 against the careened wreck and had to come in with the mesh.
+		-- The drag SPEED is not
+		-- authored: the handler computes it from where the anchor actually
+		-- landed so the sweep always takes `drag` seconds regardless of how far
+		-- out the player was standing. A fixed speed would make the move a
+		-- formality against someone standing at the rim and unsurvivable
+		-- against someone hugging the hull.
+		-- TELL: a "mark" disc where the anchor is about to land, then a "lane"
+		-- wrackTell from there back to the ship - the corridor it will drag
+		-- through, drawn before it exists.
+		anchorline = {
+			handler = "anchorline",
+			tell = false,
+			skin = "chain",
+			windup = 1.6,
+			duration = 4.6,
+			recover = 0.8,
+			cooldown = 17.0,
+			rows = { "wrack_chain_link" },
+			overshoot = 25,
+			drag = 4.2,
+			stopAt = 18,
+			chain = 34,
+			chainRadius = 4.0,
+			radius = 3.0,
+			-- LIFETIME EQUALS `drag`, and it has to: the pair travels at a
+			-- speed computed to cover the whole distance in exactly `drag`
+			-- seconds, so a longer lifetime is the chain carrying on THROUGH
+			-- the ship and out the far side, dragging a hitbox over ground the
+			-- lane tell never named. Change one of these two and change both.
+			lifetime = 4.2,
+			tellWidth = 40,
+			tellRange = 120,
+			damage = { 56, 74 },
+		},
+		-- THE INVERSION. A boarding party beaches at the palisade and marches
+		-- at the hull at 9.5 studs/s. Every one that arrives repairs a gun deck
+		-- by a quarter of its bar. They have no attack: the threat is not what
+		-- they do to you, it is what they undo, and for the length of the march
+		-- the fight's premise is upside down - his health gate is now yours to
+		-- defend.
+		--
+		-- THE MARCH IS THE TIMER. They land at r 126 (arena radius 80 +
+		-- `beachAt` 46, on the palisade's inner face at 141 minus the boat) and
+		-- stop at `reach` 20, so the walk is 106 studs at 9.5 = 11.2 seconds,
+		-- against 3 x 1300 health. `reach` IS THE UPRIGHT HULL, not a guess:
+		-- the rebuilt ship's four cannons stand at flat radii 13.5-20.0, so 20
+		-- is the outermost brass - a boarder that gets there is standing at a
+		-- gun. It was 26 against the careened wreck whose mounts reached 40,
+		-- and a number like that left unretuned would have had boarders
+		-- "reaching the hull" six studs out in open sand.
+		-- That is a party that has to STOP shooting
+		-- the Admiral and spend a full move's worth of damage elsewhere, or
+		-- give back 700 per boarder that lands.
+		--
+		-- ARRIVALS DURING THE BURST WINDOW DO NOTHING, deliberately. With every
+		-- battery down there is nothing to repair, and letting a boarder stand
+		-- one back up would end the one beat of the fight the party earned by
+		-- silencing all four. The window silences the spawn as well, so this
+		-- only ever applies to a party that opened the window mid-march.
+		-- TELL: a "mark" disc on the sand where the longboat beaches.
+		longboat = {
+			handler = "longboat",
+			tell = false,
+			skin = "wreck",
+			windup = 1.4,
+			duration = 0.6,
+			recover = 0.8,
+			cooldown = 26.0,
+			rows = { "wrack_boarder" },
+			count = 3,
+			beachAt = 46,
+			spread = 11,
+			speed = 9.5,
+			reach = 20,
+			-- A hard cap on the march, so a boarder that somehow cannot make
+			-- progress (wedged on the palisade's lip) still leaves. It is also
+			-- the creature row's spawn `lifetime`, from one number.
+			march = 26,
+			repair = 0.25,
 		},
 	},
 }
