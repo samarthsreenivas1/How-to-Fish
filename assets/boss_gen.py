@@ -3960,25 +3960,28 @@ def build_wr_sponsons(rng):
         # occluder and nothing else. The platform's knees run inboard to r 7.15
         # and would otherwise read as a back wall half the distance out.
         plate = bmesh.new()
-        # the back wall
-        for i in range(4):
-            t = i / 3.0
-            _wr_tube(plate, tuple(back + u * (-WR_CASEMATE_HW + t * 2 * WR_CASEMATE_HW) + Vector((0, 0, z0))),
-                     tuple(back + u * (-WR_CASEMATE_HW + t * 2 * WR_CASEMATE_HW) + Vector((0, 0, z1))),
-                     0.34, 0.30, 5)
-        for zz in (z0, z1, (z0 + z1) / 2):
-            _wr_tube(plate, tuple(back - u * WR_CASEMATE_HW + Vector((0, 0, zz))),
-                     tuple(back + u * WR_CASEMATE_HW + Vector((0, 0, zz))), 0.36, 0.36, 5)
-        # the two cheeks
-        for s in (-1, 1):
-            for zz in (z0, z1):
-                _wr_tube(plate, tuple(back + u * (s * WR_CASEMATE_HW) + Vector((0, 0, zz))),
-                         tuple(out + u * (s * WR_CASEMATE_HW) + Vector((0, 0, zz))), 0.36, 0.30, 5)
-            steps = 5
-            for i in range(steps):
-                t = i / (steps - 1.0)
-                at = back.lerp(out, t) + u * (s * WR_CASEMATE_HW)
-                _wr_tube(plate, tuple(at + Vector((0, 0, z0))), tuple(at + Vector((0, 0, z1))), 0.30, 0.26, 5)
+        yaw = Matrix.Rotation(math.radians(WR_GUN_BEARING[name]), 3, "Z")
+        mid_z, span_z = (z0 + z1) / 2.0, z1 - z0
+        # SOLID PANELS, not a lattice of tubes. The first pass built these as
+        # railings and the staged sheet showed the defect immediately: you
+        # could see a far gun straight THROUGH its own casemate while the
+        # collider stopped your shot on it. A shield you can see through is
+        # worse than no shield - it makes the fight look broken rather than
+        # hard. The visible mesh and Wrack_HullCollider are now the same
+        # shape, which is the whole claim this layout rests on.
+        box(plate, tuple(back + Vector((0, 0, mid_z))),
+            (0.55, WR_CASEMATE_HW * 2.0, span_z), yaw)
+        for s_side in (-1, 1):
+            centre = back.lerp(out, 0.5) + u * (s_side * WR_CASEMATE_HW)
+            box(plate, tuple(centre + Vector((0, 0, mid_z))),
+                (WR_CASEMATE_R_OUT - WR_CASEMATE_R_BACK, 0.55, span_z), yaw)
+        # A capping rail along each cheek's top edge and a lintel over the
+        # mouth, so the box reads as built timber rather than as a slab.
+        for s_side in (-1, 1):
+            _wr_tube(plate, tuple(back + u * (s_side * WR_CASEMATE_HW) + Vector((0, 0, z1))),
+                     tuple(out + u * (s_side * WR_CASEMATE_HW) + Vector((0, 0, z1))), 0.42, 0.36, 5)
+        _wr_tube(plate, tuple(out - u * WR_CASEMATE_HW + Vector((0, 0, z1))),
+                 tuple(out + u * WR_CASEMATE_HW + Vector((0, 0, z1))), 0.42, 0.42, 5)
         WR_CASEMATE_MEASURED[name] = _wr_casemate_measure(name, [tuple(v.co) for v in plate.verts])
         scratch = bpy.data.meshes.new("_casemate")
         plate.to_mesh(scratch)
@@ -5389,10 +5392,15 @@ WR_SHOTS = [
     # to survive that is the OUTLINE: a hull teardrop, a bowsprit spear off
     # the bow, a mast and yard crossing it, a bicorne at the stern.
     ("_plan", (6.0, -16.0, 124.0), (0.0, 0.0, 10.0), 40, "THE PLAN - what the fight camera actually looks down at"),
-    ("_gun_bow", (74.0, -22.0, 34.0), (19.0, -1.4, 12.4), 42, "CANNON 1/4 Bow (+X) - and NOT the other three"),
-    ("_gun_starboard", (26.0, 74.0, 36.0), (12.5, 7.3, 9.0), 42, "CANNON 2/4 Starboard (+Y) - and NOT the other three"),
-    ("_gun_stern", (-76.0, 16.0, 36.0), (-20.0, 1.3, 9.4), 42, "CANNON 3/4 Stern (-X) - and NOT the other three"),
-    ("_gun_port", (-22.0, -74.0, 34.0), (-11.0, -7.9, 9.2), 42, "CANNON 4/4 Port (-Y) - and NOT the other three"),
+    ("_gun_bowstbd", (70.0, 40.0, 30.0), (16.5, 9.5, 13.2), 42, "CANNON 1/4 BowStbd - and the casemate backs of the far pair"),
+    ("_gun_bowport", (70.0, -40.0, 30.0), (16.5, -9.5, 13.2), 42, "CANNON 2/4 BowPort"),
+    ("_gun_sternstbd", (-70.0, 40.0, 30.0), (-16.5, 9.5, 14.0), 42, "CANNON 3/4 SternStbd"),
+    ("_gun_sternport", (-70.0, -40.0, 30.0), (-16.5, -9.5, 14.0), 42, "CANNON 4/4 SternPort"),
+    # THE COUNTING SHOT. Straight down, so all four corners and all four
+    # casemate mouths are in one frame - the only view that lets someone check
+    # the claim the whole layout rests on (exactly two guns face any bearing)
+    # without walking the camera round the ship themselves.
+    ("_corners", (0.0, 0.0, 150.0), (0.0, 0.0, 12.0), 45, "THE CORNERS - four sponsons, four mouths, two facing any bearing"),
 ]
 
 
