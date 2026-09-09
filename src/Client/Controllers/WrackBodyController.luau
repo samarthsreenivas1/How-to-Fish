@@ -51,6 +51,16 @@
 -- reason. The shell mechanism was not replaced to do it, it was generalised:
 -- the melee window is now one row of CHANNELS with byte-identical behaviour.
 --
+-- THIS FILE HAS ONE PUBLIC ENTRY BEYOND init/start: `WrackBodyController.cue
+-- (model, signal, extra)`, the boss intro's contract. The cutscene lane runs a
+-- client-side stand-in model carrying `CreatureId = "admiral_wrack"` - which
+-- this controller adopts exactly like the server's - drives its pivot itself,
+-- and calls `cue` to fire the Admiral's channels on beats of its own choosing
+-- with no wire event in sight. `cue` enters at the same point a real event
+-- does, so a cued gesture and a fought one are the same code; it cannot adopt
+-- a model, only conduct one already adopted. Signals, fields and the
+-- attributes a cutscene sets directly instead: see "the cutscene" below.
+--
 -- Pieces come from ReplicatedStorage/Assets/WrackPack (assets/boss_wrack.glb,
 -- see docs/import-checklist.md row 7p). Until that import lands this draws
 -- correctly-placed, correctly-sized stand-ins rather than nothing, exactly
@@ -689,6 +699,54 @@ local function adaptSignal(kind: string, position: Vector3, extra): any?
 	return nil
 end
 
+-- ------------------------------------ the server's own animation attributes
+--
+-- Written by CreatureService's Wrack section, LEVEL-TRIGGERED every one of
+-- them, and named here exactly as its ATTR table names them (verified against
+-- the worktree, 2026-09-09):
+--
+--   ATTR.WRACK_DIVE     "WrackDive"     on the FIGUREHEAD's own model
+--   ATTR.WRACK_BOOM     "WrackBoom"     on the boss model
+--   ATTR.WRACK_HATCHES  "WrackHatches"  on the boss model
+--
+-- ...and two the three-act rewrite has not published yet. Naming them now
+-- costs nothing and is how the wreck rows below stay a table entry rather than
+-- a merge: an attribute that is never set reads nil, which every driver here
+-- already handles as its rest state.
+local ATTR_WRACK_DIVE = "WrackDive"
+local ATTR_WRACK_BOOM = "WrackBoom"
+local ATTR_WRACK_HATCHES = "WrackHatches"
+local ATTR_WRACK_WRECK = "WrackWreck"
+
+-- How far the Lady heels into a damaging pass, how far a hatch throws open,
+-- and how far the hull lists and the mast falls once she is a wreck. The two
+-- wreck numbers are large on purpose: this is the fight's last beat and it has
+-- to read from the birdseye camera as a shape change, not as a nudge.
+local LADY_BANK = math.rad(38)
+local HATCH_ANGLE = math.rad(75)
+local WRECK_LIST = math.rad(16)
+local WRECK_MAST_FALL = math.rad(64)
+
+-- The boom's authored bearing in BOSS space, as a direction: what `pose` turns
+-- off. +X (stowed fore-and-aft along the keel) until the mesh says otherwise,
+-- and the one number in this block that a mesh landing must revisit.
+local BOOM_REST = Vector3.xAxis
+
+-- EVERY DRAWN PIECE, which is what "the hull lists" has to mean. Built rather
+-- than typed, so a piece added to PIECES or MODULES tomorrow lists with the
+-- ship instead of hanging in the air where it was.
+--
+-- The brief for the wreck beat named four pieces (Hull, Mast, Sail, Rigging).
+-- Listing those four ALONE would leave the strakes, the keel, the crust, the
+-- ribs, the guns and the Admiral standing upright inside a hull that had rolled
+-- out from under them - the ship visibly coming apart along the seams of this
+-- file's piece list, which is the one seam the player must never see. A list is
+-- a rigid-body roll; it takes everything.
+local WRECK_PIECES = table.clone(PIECES)
+for _, module in MODULES do
+	table.insert(WRECK_PIECES, module.name)
+end
+
 -- ------------------------------------------------------------- the channels
 
 -- Turns `from` onto `to` by `amount` of the way, both unit. Returns identity
@@ -735,6 +793,64 @@ end
 -- top of this section for what a row means; a row is the whole of what it
 -- takes to bind a piece to a driver.
 local CHANNELS = {
+	-- ========================================================================
+	-- THE WRECK - BOUND, AND INERT UNTIL THE ATTRIBUTE EXISTS
+	-- ========================================================================
+	-- These two are the other shape of pending: their PIECES all exist today,
+	-- so unlike the three above they are built and stepped every frame. What
+	-- does not exist yet is `WrackWreck`, which the three-act rewrite will set
+	-- when the hull dies (alongside `WrackAct`, 1/2/3, which nothing here reads
+	-- - an act number is a state for the fight, not a pose, and inventing one
+	-- for it would be exactly the guess the boom stub just had to unlearn).
+	--
+	-- INERT-SAFE BY CONSTRUCTION, not by a guard: an attribute that never
+	-- appears makes `goal` 0, a level driver at 0 makes `value` 0, and the
+	-- layer skips a zero-valued pose outright. The cost of carrying them until
+	-- the server publishes is one GetAttribute per piece per frame, and the
+	-- benefit is that the transition beat is already drawn the day it does.
+	{
+		name = "wreckList",
+		pieces = WRECK_PIECES,
+		-- The keel rabbet: she lists about the spine she is bedded on, which is
+		-- the same hinge the shell plates swing off.
+		pivot = HINGE,
+		driver = {
+			kind = "level",
+			rate = 0.55,
+			goal = function(ctx): number
+				return if ctx.model:GetAttribute(ATTR_WRACK_WRECK) then 1 else 0
+			end,
+		},
+		pose = function(ctx): CFrame
+			return CFrame.Angles(WRECK_LIST * ctx.value, 0, 0)
+		end,
+	},
+	{
+		name = "wreckMastFall",
+		pieces = { "Mast", "Rigging", "Sail" },
+		-- WR_MAST_STEP, Blender (-6.5, 0, WR_KEEL_Z 1.1) -> Roblox: where the
+		-- mast is stepped, and the only point it can fall about without the
+		-- heel coming out of the deck.
+		pivot = Vector3.new(-6.5, 1.1, 0),
+		driver = {
+			kind = "level",
+			-- Slower than the list, so she leans first and the rig comes down
+			-- after - a mast that falls with the hull reads as one rigid object
+			-- tipping over rather than as a ship breaking up.
+			rate = 0.35,
+			goal = function(ctx): number
+				return if ctx.model:GetAttribute(ATTR_WRACK_WRECK) then 1 else 0
+			end,
+		},
+		pose = function(ctx): CFrame
+			-- Positive about boss-local X carries the masthead toward +Z, which
+			-- is the side the yard already dips to (WR_YARD runs to -13/+10.5 in
+			-- Blender y, so she is heavier to port) - she falls the way she is
+			-- already leaning.
+			return CFrame.Angles(WRECK_MAST_FALL * ctx.value, 0, 0)
+		end,
+	},
+
 	-- THE MELEE WINDOW, unchanged in every observable way - same attribute,
 	-- same hinge, same rate, same two angles, same adopt-at-state. It is a
 	-- channel now only because it was always the pattern the rest copy.
@@ -999,51 +1115,112 @@ local CHANNELS = {
 	},
 
 	-- ========================================================================
-	-- ADAPTER STUBS - THREE INBOUND CONTRACTS, WIRED TO NOTHING
+	-- THE INBOUND CONTRACTS - WIRE BOUND, MESH PENDING
 	-- ========================================================================
-	-- Each of these is a COMPLETE channel that is inert for exactly two
-	-- reasons, both of which are one-line landings:
+	-- These three landed their SERVER half on 2026-09-09 and are bound to it
+	-- below. Each is now inert for exactly ONE reason: its pieces are not in
+	-- PIECES/AUTHORED yet, so buildChannels drops the row at adopt and nothing
+	-- runs. Adding the piece name is the whole of what is left.
 	--
-	--   1. its pieces are not in PIECES/AUTHORED yet, so buildChannels drops
-	--      the row at adopt and nothing here runs at all;
-	--   2. its driver names a signal adaptSignal does not produce yet.
+	-- Do NOT delete one to "clean up": deleting it is how the next lane lands a
+	-- mesh piece that draws in its authored pose forever and reads as "the
+	-- animation isn't hooked up yet".
 	--
-	-- Do NOT delete a stub to "clean up": deleting it is how the next lane
-	-- lands a mesh piece that draws in its authored pose forever and reads as
-	-- "the animation isn't hooked up yet". Fill it in instead.
+	-- ALL THREE ARE LEVEL DRIVERS, and none of them is an event - which is not
+	-- a coincidence and is worth stating once, because the first draft of this
+	-- block guessed events for all three. A boom has a BEARING, a hatch is OPEN
+	-- or SHUT, and a figurehead is either on her stem or somewhere else: those
+	-- are states, and a client that adopts the hull mid-move must be able to
+	-- read the state it is actually in rather than having missed an edge. The
+	-- server lane's own note says it in the same words the melee window's does.
 
-	-- (1) FIGUREHEAD FLIGHT. Contract expected: a position stream while she is
-	-- off the stem. The pose here is the SHAPE of the answer, not the answer -
-	-- it banks into the direction of travel about her own root and returns to
-	-- the authored dock at value 0, which is what the layer requires.
+	-- (1) THE LADY BELOW. Her POSITION IS NOT ON THE WIRE, deliberately: she is
+	-- a creature model the server PivotTos every frame, so her CFrame
+	-- replicates natively, and a per-frame attribute copy of a position the
+	-- engine already replicates is "a second, slower, lossier truth about the
+	-- same thing" (CreatureService's ATTR.WRACK_DIVE note). So this channel
+	-- reads her MODEL, and `WrackDive` carries only what her model cannot say:
+	-- 0 while she swings out or re-arms, `n` on the n-th damaging pass, and
+	-- gone the instant she re-docks or is shot down.
 	--
-	-- TO LAND IT: add "Figurehead" to PIECES and AUTHORED; add the wire kind to
-	-- adaptSignal returning { what = "figurehead", at = <world point>, aim =
-	-- <flight bearing>, duration = <time aloft> }.
+	-- SHE IS FOUND BY THE ATTRIBUTE ITSELF, not by a creature-row id. Nothing
+	-- else in the game carries `WrackDive`, the attribute is the contract the
+	-- server lane published, and keying on it means this file never has to
+	-- agree with `Bosses` about a row name it cannot see change. `entry.lady`
+	-- is the nearest live one, resolved once a frame in drawBody.
+	--
+	-- WHAT THE POSE DOES: rides her model exactly, easing on and off so the
+	-- unshipping and the redock are travelled rather than cut, and banking into
+	-- the pass. AN ASSUMPTION IS BURIED HERE AND IS BEING SAID OUT LOUD: this
+	-- draws the figurehead ON her hitbox, which leaves the stem bare while she
+	-- is out - the "docked piece hides" half of the brief - and assumes her
+	-- server prop is either invisible or is meant to BE this mesh. If she turns
+	-- out to need her own visible body, the change is to hide the prop the way
+	-- hideServerModel hides the boss, not to change this pose.
+	--
+	-- TO LAND IT: add "Figurehead" to PIECES and AUTHORED. Nothing else.
 	{
 		name = "figureheadFlight",
 		pieces = { "Figurehead" },
-		pivot = Vector3.zero, -- REPLACE with her root once the mesh names one
-		driver = { kind = "hold", signal = "figurehead", rate = 6 },
+		-- The layer conjugates every pose by CFrame.new(pivot - AUTHORED_ANCHOR);
+		-- naming the anchor itself makes that the identity, which is what lets
+		-- this row place the piece ABSOLUTELY rather than as an offset from
+		-- where it is docked. The only row that does; see the pose.
+		pivot = AUTHORED_ANCHOR,
+		driver = {
+			kind = "level",
+			rate = 5,
+			goal = function(ctx): number
+				return if ctx.entry.lady then 1 else 0
+			end,
+		},
 		pose = function(ctx): CFrame
-			local sig = ctx.sig
-			if not sig or ctx.value <= 0 then
+			local lady = ctx.entry.lady
+			if not lady then
 				return CFrame.identity
 			end
-			-- Detach along the flight line and bank into it. `at` is a WORLD
-			-- point and this frame is boss-local, hence the transform.
-			local to = ctx.base:PointToObjectSpace(sig.at) - ctx.piece.relative.Position
-			return CFrame.new(to * ctx.value) * CFrame.Angles(0, 0, math.rad(20) * ctx.value)
+			-- Bank hard on a damaging pass (`WrackDive` >= 1) and barely at all
+			-- while she is swinging out or re-arming (0), which is the whole
+			-- difference the attribute exists to carry.
+			local bank = if (ctx.entry.ladyDive or 0) >= 1 then LADY_BANK else LADY_BANK * 0.25
+			-- The offset that puts this piece exactly on her model: solve
+			-- `base * prior * mine * relative = ladyCF * bank` for `mine`.
+			-- `prior` is what the channels ahead of this one have already done
+			-- to the piece THIS frame - the wreck roll, today - and dividing it
+			-- out is what keeps an absolute placement absolute no matter what
+			-- gets layered outside it later. Lerped from the identity, so value
+			-- 0 is the authored dock (which the layer requires) and the trip
+			-- between is travelled rather than cut.
+			local prior = ctx.piece.offset or CFrame.identity
+			local onHer = prior:Inverse()
+				* ctx.base:Inverse()
+				* lady:GetPivot()
+				* CFrame.Angles(bank, 0, 0)
+				* ctx.piece.relative:Inverse()
+			return CFrame.new():Lerp(onHer, ctx.value)
 		end,
 	},
 
-	-- (2) BOOM SWEEP. Contract expected: an ANGLE, level-triggered, on the boss
-	-- model - the house style, and the right one for a spar that has a current
-	-- position rather than an event.
+	-- (2) THE BOOM. `WrackBoom` is the spar's live WORLD bearing in radians in
+	-- Fn.wrackAngle's convention - `math.atan2(dir.Z, dir.X)`, so 0 is +X - and
+	-- it is nil the instant the boom is stowed OR its tackle is shot away. Nil
+	-- is therefore "no boom out", which is a state this has to be able to reach
+	-- from a dropped tackle as well as from a finished sweep: hence a level on
+	-- the attribute's PRESENCE, with the bearing read fresh inside the pose.
 	--
-	-- TO LAND IT: add "Boom" to PIECES and AUTHORED, set `pivot` to the boom's
-	-- gooseneck, and name the attribute the server writes below. The goal is
-	-- read as a 0..1 fraction of BOOM_ARC so the driver stays a plain level.
+	-- The bearing is turned into a DIRECTION and handed to turnBetween rather
+	-- than differenced as an angle. That is deliberate: an angle subtraction
+	-- has to get the boss's own yaw, the sign of a Y rotation and the wrap at
+	-- +-pi all right at once, and every one of those is a coin flip a reader
+	-- cannot check. A direction through VectorToObjectSpace is correct by
+	-- construction and uses the same helper the Admiral's point does.
+	--
+	-- The last bearing is latched in the channel's own scratch so a stowed boom
+	-- eases home FROM where it was rather than snapping to the rest bearing on
+	-- the frame the attribute clears.
+	--
+	-- TO LAND IT: add "Boom" to PIECES and AUTHORED, and set `pivot` to the
+	-- gooseneck and BOOM_REST to the spar's authored bearing.
 	{
 		name = "boomSweep",
 		pieces = { "Boom" },
@@ -1052,37 +1229,56 @@ local CHANNELS = {
 			kind = "level",
 			rate = 3.5,
 			goal = function(ctx): number
-				return math.clamp(tonumber(ctx.model:GetAttribute("WrackBoom")) or 0, 0, 1)
+				return if tonumber(ctx.model:GetAttribute(ATTR_WRACK_BOOM)) then 1 else 0
 			end,
 		},
 		pose = function(ctx): CFrame
-			return CFrame.Angles(0, math.rad(70) * ctx.value, 0)
+			local bearing = tonumber(ctx.model:GetAttribute(ATTR_WRACK_BOOM))
+			if bearing then
+				ctx.state.bearing = bearing
+			end
+			bearing = ctx.state.bearing
+			if not bearing then
+				return CFrame.identity
+			end
+			local world = Vector3.new(math.cos(bearing), 0, math.sin(bearing))
+			return turnBetween(BOOM_REST, ctx.base:VectorToObjectSpace(world), ctx.value)
 		end,
 	},
 
-	-- (3) HATCH POPS. Contract expected: one event naming WHICH hatch. The
-	-- `pick` below is the whole of the wiring - it matches the hatch index the
-	-- signal names against the index parsed off the piece name at adopt, the
-	-- same way `pick` matches a volley to a gun above.
+	-- (3) THE HATCHES. `WrackHatches` is a BITMASK - bit (i-1) set means hatch
+	-- `i` of the boss row's `hatches` list is open, in that list's authored
+	-- order, the same convention `parts.mounts` lives under - and nil when
+	-- every hatch is shut.
 	--
-	-- TO LAND IT: add "Hatch1".."Hatch4" to PIECES and AUTHORED, and add the
-	-- wire kind to adaptSignal returning { what = "hatch", at = <world point>,
-	-- index = <1..4> }.
+	-- LEVEL, NOT PULSE, and this is the correction the server lane asked for:
+	-- an open hatch STAYS open, so a pulse would have popped it and let it fall
+	-- shut again underneath a mask that still said open. The index comes off
+	-- the piece name (`Hatch3` -> 3), parsed once at adopt, so the client never
+	-- keeps its own list of which hatch is which - which is the shape of bug
+	-- the one-attribute-not-three-booleans decision exists to prevent, and it
+	-- would be silly to reintroduce it on this side of the wire.
+	--
+	-- TO LAND IT: add "Hatch1".."Hatch<n>" to PIECES and AUTHORED - as many as
+	-- the boss row's `hatches` list has - and give `pivot` each hatch's hinge.
 	{
 		name = "hatchPops",
 		pieces = { "Hatch1", "Hatch2", "Hatch3", "Hatch4" },
 		pivot = Vector3.zero, -- REPLACE with each hatch's hinge (a pivot fn)
 		driver = {
-			kind = "pulse",
-			signal = "hatch",
-			attack = 0.08,
-			release = 0.9,
-			pick = function(sig, piece): boolean
-				return sig.index == nil or piece.name == "Hatch" .. tostring(sig.index)
+			kind = "level",
+			rate = 7,
+			goal = function(ctx): number
+				local mask = tonumber(ctx.model:GetAttribute(ATTR_WRACK_HATCHES))
+				local index = ctx.piece.index
+				if not mask or not index then
+					return 0
+				end
+				return if bit32.band(mask, bit32.lshift(1, index - 1)) ~= 0 then 1 else 0
 			end,
 		},
 		pose = function(ctx): CFrame
-			return CFrame.Angles(math.rad(75) * ctx.value, 0, 0)
+			return CFrame.Angles(HATCH_ANGLE * ctx.value, 0, 0)
 		end,
 	},
 }
@@ -1242,6 +1438,21 @@ local bodies: { [Model]: any } = {}
 -- too. Both exits go through unmarkWeakpoint.
 local marks: { [Model]: Highlight } = {}
 
+-- THE LADY BELOW, by the only thing that identifies her: `WrackDive`. She is a
+-- creature model like any other in this folder and nothing about her shape says
+-- what she is, so she is tracked by the attribute the server publishes for
+-- exactly this purpose - the same argument the weakpoints are tracked by
+-- `Weakpoint` rather than by a list of row ids, one section up.
+--
+-- Membership here means LIVE: the attribute is cleared the instant she re-docks
+-- or is shot down (and her model is despawned a beat later), so a row leaving
+-- this table is the redock cue as well as the "she's gone" one.
+local ladies: { [Model]: boolean } = {}
+
+local function watchLady(model: Model)
+	ladies[model] = if model:GetAttribute(ATTR_WRACK_DIVE) ~= nil then true else nil
+end
+
 local function unmarkWeakpoint(model: Model)
 	local mark = marks[model]
 	if not mark then
@@ -1382,6 +1593,26 @@ local function stepGuns(entry)
 	end
 end
 
+-- The Lady this hull is currently flying, and which pass she is on. Resolved
+-- once a frame rather than inside the channel, so the two things that read her
+-- - the driver's goal and the pose - cannot disagree about whether she exists.
+--
+-- Ranged against the hull for the same reason a signal is: nothing on her model
+-- names her boss, and everything Wrack throws stays inside his own shoal.
+local function stepLady(entry)
+	entry.lady, entry.ladyDive = nil, nil
+	for model in ladies do
+		if not model.Parent then
+			ladies[model] = nil
+		elseif (model:GetPivot().Position - entry.base.Position).Magnitude <= SIGNAL_RANGE then
+			entry.lady = model
+			-- 0 while she swings out or re-arms, n on the n-th damaging pass.
+			entry.ladyDive = tonumber(model:GetAttribute(ATTR_WRACK_DIVE))
+			return
+		end
+	end
+end
+
 -- One channel's worth of a frame. `entry.adopting` is true only on the very
 -- first drawn frame and makes every eased driver arrive AT its goal instead of
 -- easing in from rest - the same argument the shell's `open` made when it read
@@ -1403,7 +1634,7 @@ local function stepChannel(channel, ctx)
 			if kind == "hold" then
 				goal = if ctx.now < state.holdUntil then 1 else 0
 			else
-				ctx.piece, ctx.value, ctx.sig = piece, state.value, state.sig
+				ctx.piece, ctx.value, ctx.sig, ctx.state = piece, state.value, state.sig, state
 				goal = driver.goal(ctx)
 			end
 			if ctx.entry.adopting then
@@ -1413,7 +1644,7 @@ local function stepChannel(channel, ctx)
 			end
 			value = state.value
 		end
-		ctx.piece, ctx.value, ctx.sig = piece, value, state.sig
+		ctx.piece, ctx.value, ctx.sig, ctx.state = piece, value, state.sig, state
 		-- A pose is identity at zero by contract, so skipping it there is a
 		-- true no-op and not a dropped frame of animation.
 		if value > 1e-4 or kind == "free" then
@@ -1432,12 +1663,13 @@ local function stepChannel(channel, ctx)
 	end
 end
 
--- Deliver one normalised signal to one adopted body. Every field the drivers
+-- Apply one normalised signal to one adopted body. Every field the drivers
 -- read is set here, so a driver never reaches past its own channel.
-local function deliverSignal(entry, sig)
-	if (sig.at - entry.base.Position).Magnitude > SIGNAL_RANGE then
-		return
-	end
+--
+-- Split from the range gate below because `cue` names its model outright: a
+-- caller that has an entry in its hand has already answered "which boss", and
+-- re-asking by distance would only give it a way to be wrong.
+local function applySignal(entry, sig)
 	-- Resolved once per body rather than per channel: two channels ask which
 	-- gun fired and they must not be able to disagree.
 	sig.gun = if sig.what == "fire" then gunAt(entry, sig.at) else nil
@@ -1483,6 +1715,16 @@ local function deliverSignal(entry, sig)
 			end
 		end
 	end
+end
+
+-- ...and the wire's own way in: the same apply, gated on the signal having
+-- happened near this hull. Nothing on the CreatureEvent channel names its
+-- creature, so distance is the only thing that can answer "whose was that".
+local function deliverSignal(entry, sig)
+	if (sig.at - entry.base.Position).Magnitude > SIGNAL_RANGE then
+		return
+	end
+	applySignal(entry, sig)
 end
 
 -- The channels this body actually has. A row naming a piece the mesh has not
@@ -1550,7 +1792,18 @@ local function adoptBoss(model: Model)
 		else
 			relative = CFrame.new((if authored then authored.at else Vector3.zero) - AUTHORED_ANCHOR)
 		end
-		pieces[index] = { name = name, part = part, relative = relative, size = part.Size }
+		pieces[index] = {
+			name = name,
+			part = part,
+			relative = relative,
+			size = part.Size,
+			-- A piece whose name ends in a number carries it (`Hatch3` -> 3),
+			-- so a channel can address one of a numbered set without keeping
+			-- its own list of which is which. Parsed once here rather than in a
+			-- driver, because a driver runs every frame. No piece drawn today
+			-- ends in a digit, so this is nil for all of them.
+			index = tonumber(string.match(name, "%d+$")),
+		}
 		byName[name] = pieces[index]
 	end
 
@@ -1642,6 +1895,7 @@ local function drawBody(model: Model, entry, dt: number)
 	entry.base = base
 
 	stepGuns(entry)
+	stepLady(entry)
 
 	local ctx = entry.ctx
 	ctx.now, ctx.dt, ctx.base = os.clock(), dt, base
@@ -1667,6 +1921,7 @@ local function watch(child: Instance)
 	end
 	adoptBoss(child)
 	markWeakpoint(child)
+	watchLady(child)
 	-- CreatureService stamps CreatureId as the model is built, so it is
 	-- normally already there; this covers a model that replicates to us a
 	-- frame before its attributes do.
@@ -1679,12 +1934,93 @@ local function watch(child: Instance)
 	child:GetAttributeChangedSignal(ATTR_WEAKPOINT):Connect(function()
 		markWeakpoint(child)
 	end)
+	-- Both edges of the Lady, in one handler because `WrackDive` going nil is
+	-- the redock and `WrackDive` appearing is the launch. Polled state would
+	-- have done too, but she is one model among a folder of them and this way
+	-- the per-frame walk is over the few that are her rather than over all of
+	-- them.
+	child:GetAttributeChangedSignal(ATTR_WRACK_DIVE):Connect(function()
+		watchLady(child)
+	end)
 	child.AncestryChanged:Connect(function()
 		if not child:IsDescendantOf(Workspace) then
 			destroyBody(child)
 			unmarkWeakpoint(child)
+			ladies[child] = nil
 		end
 	end)
+end
+
+-- ------------------------------------------------------------ the cutscene
+--
+-- FIRE ONE OF THIS BOSS'S ANIMATION CHANNELS WITHOUT A WIRE EVENT, for a
+-- caller that owns the model itself - the boss intro, which runs a client-side
+-- stand-in carrying `CreatureId = "admiral_wrack"` (which this controller
+-- adopts like any other) and drives its pivot by hand.
+--
+-- It goes in at exactly the point a wire event does, past adaptSignal and into
+-- applySignal, so a cued windup and a real one are the same object taking the
+-- same path and there is no second behaviour to keep in step. What it does NOT
+-- do is bypass adoption: a model this controller has not adopted has no
+-- channels to fire and this returns false rather than building any. That is
+-- the whole of its safety - the cutscene cannot conjure a body, only conduct
+-- one that is already standing.
+--
+-- THE SIGNALS THAT EXIST TODAY, and every field each honours:
+--
+--   "windup"  the Admiral's tell. Sabre up and quivering for the duration
+--             (admHigh); if an `aim` is given, he and his head also turn onto
+--             it (admPoint, admLook).
+--             extra = { duration = seconds (default 0.9),
+--                       aim = Vector3 (optional, flattened; omit for a
+--                             bearing-free tell, which is what the radial
+--                             patterns send),
+--                       at = Vector3 (optional, unused by these channels) }
+--
+--   "fire"    the guns speak. Sabre sweeps down and the blade flicks
+--             (admSweep, admFlick); the firing deck recoils and flashes
+--             (gunRecoil, muzzleFlash).
+--             extra = { at = Vector3, the MUZZLE (optional) }
+--             With `at` within 8 studs of one gun, that gun alone kicks. With
+--             no `at`, the origin defaults to the hull's own base point, which
+--             is 13.3 studs from the nearest gun centroid and so matches none -
+--             and matching none is precisely how the wire says "a broadside":
+--             every live deck fires at once. The default is not a special case,
+--             it is the radial case, reached by the same arithmetic.
+--
+-- THERE IS NO "RUN OUT THE GUNS" SIGNAL and none is invented here. The three
+-- state-shaped channels are levels, not events, so a cutscene drives them by
+-- setting the attribute on its OWN stand-in model and this function is not
+-- involved: `Exposed` splits the hull, `WrackHatches` (a bitmask) opens the
+-- hatches, `WrackBoom` (a world bearing in radians) swings the boom, and
+-- `WrackWreck` lists her and brings the mast down. That is a feature for a
+-- cutscene rather than a gap: an attribute can be held, and a beat that has to
+-- stay open for eight seconds of dialogue cannot be an event.
+--
+-- Returns true if the signal reached a body.
+function WrackBodyController.cue(model: Model, signal: string, extra): boolean
+	local entry = if typeof(model) == "Instance" then bodies[model] else nil
+	if not entry or type(signal) ~= "string" then
+		return false
+	end
+	local fields = if type(extra) == "table" then extra else {}
+	local at = if typeof(fields.at) == "Vector3" then fields.at else entry.base.Position
+	local sig
+	if signal == "fire" then
+		sig = { what = "fire", at = at, now = os.clock() }
+	elseif signal == "windup" then
+		sig = {
+			what = "windup",
+			at = at,
+			aim = flatAim(fields.aim),
+			duration = tonumber(fields.duration) or 0.9,
+			now = os.clock(),
+		}
+	else
+		return false
+	end
+	applySignal(entry, sig)
+	return true
 end
 
 function WrackBodyController.init()
@@ -1701,6 +2037,7 @@ function WrackBodyController.init()
 			if child:IsA("Model") then
 				destroyBody(child)
 				unmarkWeakpoint(child)
+				ladies[child] = nil
 			end
 		end)
 	end)
