@@ -23,6 +23,7 @@ local Remotes = require(Shared.Net.Remotes)
 
 local Theme = require(script.Parent.Parent.UI.Theme)
 local Kit = require(script.Parent.Parent.UI.Kit)
+local Sfx = require(script.Parent.Parent.Modules.Sfx)
 
 local player = Players.LocalPlayer
 
@@ -166,9 +167,13 @@ end
 -- ============================================================ cycle hotkey
 
 local function cycle()
+	-- The cue rides the two places a selection is actually REQUESTED, not the
+	-- Q press: owning no bait at all (and none already on the hook) makes Q a
+	-- no-op, and a chip that clicks without changing is a lie.
 	local owned = ownedOrder()
 	if #owned == 0 then
 		if selectedId() ~= "" then
+			Sfx.play("baitCycle")
 			Remotes.RequestSelectBait:FireServer("")
 		end
 		return
@@ -183,6 +188,7 @@ local function cycle()
 			break
 		end
 	end
+	Sfx.play("baitCycle")
 	Remotes.RequestSelectBait:FireServer(seq[(index % #seq) + 1])
 end
 

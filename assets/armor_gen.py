@@ -6,19 +6,33 @@
 #   blender --background --python assets/armor_gen.py -- assets/armor.glb
 #   blender --background --python assets/armor_gen.py -- assets/armor.glb preview
 #
-# The second form also writes assets/armor_preview.png (the sets laid out) for
-# design review without importing.
+# The second form also writes the MANNEQUIN PREVIEW: one PNG per set
+# (assets/armor_preview_<set>.png, three views, worn on an R15 block
+# mannequin) plus the ten-set line-up at assets/armor_preview.png. An optional
+# third argument gives the preview base path, so previews can be re-rendered
+# without rewriting the .glb.
 #
-# One pack, many sets: each set exports THREE objects, all overlapping at the
-# origin -
+# TWO NAME SHAPES live in this pack, both exported, both worn:
 #
-#   <SetPrefix>_Helm    worn on the Head
-#   <SetPrefix>_Chest   worn on the UpperTorso
-#   <SetPrefix>_Legs    a hip skirt / greaves ring worn on the LowerTorso
+#   1. THE FOUR-FIELD NAME (the redesign - see "spec layer" below):
 #
-# where <SetPrefix> is Armor.sets[<setId>].modelPrefix ("Chitin", "Boneplate").
-# ArmorService clones a piece out of the pack by that name and welds it onto
-# the wearer, so the names here ARE the contract.
+#        <SetPrefix>_<Slot>_<Target>_<Role>[<n>]
+#
+#      One piece dresses a whole REGION of the body. Colour and
+#      Enum.Material come from the object's ROLE via assets/armor_palette.py,
+#      so a set is no longer one flat tint.
+#
+#   2. THE LEGACY SINGLE PART, which is what the shipped 30 objects still use:
+#
+#        <SetPrefix>_Helm    worn on the Head
+#        <SetPrefix>_Chest   worn on the UpperTorso
+#        <SetPrefix>_Legs    a hip skirt / greaves ring worn on the LowerTorso
+#
+# where <SetPrefix> is Armor.sets[<setId>].modelPrefix ("Chitin",
+# "Boneplate"). ArmorModel prefers shape 1 and falls back to shape 2 per SLOT,
+# which is what lets the redesign land one set at a time instead of as a flag
+# day. The names here ARE the contract; tools/check_armor_palette.py parses
+# them out of this file and fails on any field that names nothing real.
 #
 # Authoring contract (ArmorService relies on these, keep them true):
 #   - 1 Blender unit = 1 Roblox stud. Exported Y-up (Blender +Z -> Roblox +Y).
@@ -53,24 +67,93 @@
 #     prints and does not throw, so a work-in-progress set still exports.
 #   - Flat shading everywhere, matching the island and the other packs.
 #
-# Colours here are only for the preview; in game ArmorService recolours per
-# the set row (Armor.sets palette). Adding a set (all ten are in - the
-# skeleton's four-lane build closed 2026-08-28): add a FRAME entry and a build_<set>() returning the three
-# objects, then register it in SETS - splice-safe, one set per block.
+# COLOUR. For a LEGACY object the colour here is preview-only - in game
+# ArmorService paints it the set row's single Color3. For a SPEC-LAYER object
+# the colour comes from assets/armor_palette.py, the same table
+# tools/gen_armor_palette.py emits into src/Shared/Config/ArmorPalette.luau,
+# so the render and the game agree by construction rather than by somebody
+# remembering to update two files.
+#
+# THREE BUILD-TIME GATES, all of which print and never throw so a
+# work-in-progress set still exports: check_faces() (the FACE BOX, skipping
+# the three declared full masks), check_fit() (bulk and standoff - the
+# mechanical answer to "it should not be so bulky and spiky") and
+# check_coverage() (a limb nobody dressed, which is invisible in a static
+# render and obvious in play).
+#
+# Rebuilding a set: fill in its SET_SPEC block. Until then its legacy
+# build_<set>_*() functions keep exporting exactly as they do today.
 
 import math
+import os
 import sys
 
 import bmesh
 import bpy
 from mathutils import Matrix, Vector
 
+# The palette lives in ONE place, and it is not this file: assets/
+# armor_palette.py is pure Python (no bpy), read BOTH here for the preview
+# materials and by tools/gen_armor_palette.py for src/Shared/Config/
+# ArmorPalette.luau. The render and the game therefore agree on colour by
+# construction rather than by somebody remembering. Blender does not put the
+# script's own directory on sys.path, hence the insert.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import armor_palette  # noqa: E402
+
 TAU = math.tau
 
 # Reference body-part boxes the pieces are authored around (blocky R15).
+# These THREE are the trusted numbers - every one of the 30 shipped pieces is
+# authored against them - and FIT below keeps them as its source of truth for
+# Head, UpperTorso and the hip width.
 HEAD = Vector((1.2, 1.2, 1.2))  # w, d, h
 UPPER_TORSO = Vector((2.0, 1.0, 1.6))
 HIP_W = 2.0
+
+# ---------------------------------------------------------------- the R15 fit
+#
+# FIT, SLOT_TARGETS, STANDOFF and SHOULDER_CLEAR all live in
+# assets/armor_palette.py, NOT here - because ArmorModel needs the same
+# numbers at equip time (it scales each sub-part to the rig's real
+# `character[Target].Size`), and a fit table typed once in Python and once in
+# Luau is the failure gen_mesh_colors.py's header documents. Read that file
+# for what each field means and for the PROVISIONAL warning on the six limb
+# rows.
+#
+# Head / UpperTorso / the hip width in FIT are exactly the three constants
+# above - the ones all 30 shipped pieces are authored against.
+FIT = armor_palette.FIT
+SLOT_TARGETS = armor_palette.SLOT_TARGETS
+STANDOFF = armor_palette.STANDOFF
+MAX_STANDOFF = armor_palette.MAX_STANDOFF
+SHOULDER_CLEAR = armor_palette.SHOULDER_CLEAR
+
+def _same(a, b):
+    # Vector() is single-precision, so an == against a Python float fails at
+    # the seventh decimal. This assertion is here to catch a TYPO, not a
+    # rounding difference.
+    return all(abs(p - q) < 1e-4 for p, q in zip(a, b))
+
+
+assert _same(FIT["Head"]["size"], HEAD), "FIT Head drifted from HEAD"
+assert _same(FIT["UpperTorso"]["size"], UPPER_TORSO), "FIT drifted from UPPER_TORSO"
+assert abs(FIT["LowerTorso"]["size"][0] - HIP_W) < 1e-4, "FIT LowerTorso drifted from HIP_W"
+
+
+def fit_size(target):
+    return Vector(FIT[target]["size"])
+
+
+def fit_center(target):
+    return Vector(FIT[target]["center"])
+
+
+def shell_size(target, standoff):
+    """The target's box grown uniformly by a standoff - the one expression
+    every garment builder starts from."""
+    s = fit_size(target)
+    return Vector((s.x + 2 * standoff, s.y + 2 * standoff, s.z + 2 * standoff))
 
 # ---------------------------------------------------------------- scene / io
 
@@ -1079,12 +1162,1473 @@ def build_duskveil_legs():
     return finish("Duskveil_Legs", bm, DUSK_SILK)
 
 
+# ================================================================ spec layer
+#
+# THE NAMING CONTRACT (new, and it is the whole redesign)
+#
+#     <Prefix>_<Slot>_<Target>_<Role>[<n>]
+#
+#   <Prefix>  Armor.sets[id].modelPrefix - "Chitin", "CorsairsRest", ...
+#   <Slot>    Helm | Chest | Legs, the equip slot that owns the object
+#   <Target>  the EXACT R15 part name the object welds to. No lookup table is
+#             needed at runtime - ArmorModel welds to `character[Target]`. No
+#             R15 part name contains an underscore, so the split is
+#             unambiguous.
+#   <Role>    Under | Plate | Trim | Accent | Glow. The role supplies the
+#             object's COLOUR and its Enum.Material, from armor_palette.
+#   [<n>]     an optional trailing digit when one target+role needs several
+#             objects; the runtime strips it before the role lookup.
+#
+# e.g. `Cindershell_Chest_LeftUpperArm_Plate`, `Stormcaller_Helm_Head_Glow2`.
+#
+# It is the same idea WeaponModel.assembleVariant / MESH_COLOR_KEY already
+# ship (WeaponModel.luau:209-255): the mesh's own name carries its role, the
+# runtime maps role -> colour + material, the pack stays one flat import.
+# tools/check_armor_palette.py parses these four fields out of this file and
+# fails on any field that is not a real set / slot / FIT target / palette row.
+#
+# WHY A SPEC LAYER. Each of the 30 legacy pieces is 35-80 lines of hand-placed
+# primitives. Rebuilding at per-limb coverage the same way would be ~4x that.
+# So: the SILHOUETTE lives in SET_SPEC, the FIT lives in FIT, and the GEOMETRY
+# lives in the shared garment builders below. A set becomes ~40 lines of
+# declaration instead of ~600 lines of boxes.
+#
+# ZERO SPIKES. No builder below calls cone(). cone() stays in this file for
+# the legacy path only, and the spec layer does not expose it. Where a set
+# needs a hard read it gets it from a PLANE - a brow shelf, a chamfered ridge,
+# a raked pauldron edge, a halo ring - never from a taper to a point. That is
+# not a style note, it is the user's instruction, and check_fit() below is the
+# mechanical half of it.
+
+
+def obj_name(prefix, slot, target, role, n=None):
+    """The four-field pack name. The ONE place it is assembled."""
+    return "%s_%s_%s_%s%s" % (prefix, slot, target, role, "" if n is None else str(n))
+
+
+def emit(prefix, slot, target, role, bm, n=None):
+    """finish() for a spec-layer object: the colour comes from the palette, so
+    the preview and the game cannot disagree."""
+    return finish(obj_name(prefix, slot, target, role, n), bm, armor_palette.rgb01(prefix, role))
+
+
+def mirror_object(obj, name):
+    """The right-side twin of a left-side object: negate X, flip the normals
+    back (a mirror inverts winding), rename Left -> Right. Authoring one side
+    halves the work AND guarantees symmetry."""
+    mesh = obj.data.copy()
+    bm = bmesh.new()
+    bm.from_mesh(mesh)
+    bmesh.ops.scale(bm, vec=Vector((-1.0, 1.0, 1.0)), verts=bm.verts)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    bm.to_mesh(mesh)
+    bm.free()
+    twin = bpy.data.objects.new(name, mesh)
+    bpy.context.collection.objects.link(twin)
+    for mat in obj.data.materials:
+        twin.data.materials.append(mat)
+    for poly in mesh.polygons:
+        poly.use_smooth = False
+    return twin
+
+
+# ------------------------------------------------------- garment builders
+#
+# Every one takes (bm, target, ...) and reads FIT, so none of them knows
+# anything about a particular set. They write into a caller-owned bmesh, which
+# is what lets one (target, role) object carry several garment pieces.
+#
+# The standoff argument defaults to the role's budgeted standoff; passing
+# something bigger is how a declared fit exception is authored, and check_fit()
+# will name it unless the spec declares it.
+
+
+def plate_offset(role, standoff, thickness):
+    """The standoff a plate of this thickness may actually use.
+
+    STANDOFF is measured to the plate's INNER face, MAX_STANDOFF to its outer
+    surface - so a 0.22 plate 0.12 thick would stick out 0.34 and check_fit
+    would (correctly) call it. Clamping here means a builder cannot author a
+    violation by accident, and the gate is left to catch the things that are
+    genuinely a decision: hems, ruffs, capes, halos."""
+    off = STANDOFF[role] if standoff is None else standoff
+    return min(off, MAX_STANDOFF - thickness)
+
+
+def build_glove(bm, target, standoff=None):
+    """The Under shell: the target's own box, grown uniformly. THIS is what
+    gives full coverage for free - one call per target, and the body part
+    underneath goes invisible at equip."""
+    off = STANDOFF["Under"] if standoff is None else standoff
+    box(bm, (0, 0, 0), shell_size(target, off))
+
+
+def build_shell_plate(bm, target, face="front", wrap=0.70, thickness=0.12, standoff=None, height=1.0):
+    """A flat plate standing off ONE face of the target - the primary Plate
+    idiom. `wrap` is the fraction of the target's width it covers, `height`
+    the fraction of its height. A plane, not a dome: this is where the sets'
+    hard read comes from now that the spikes are gone."""
+    off = plate_offset("Plate", standoff, thickness)
+    s = fit_size(target)
+    depth = s.y / 2 + off + thickness / 2
+    width = s.x * wrap
+    tall = s.z * height
+    y = -depth if face == "front" else depth
+    box(bm, (0, y, 0), (width, thickness, tall))
+
+
+def build_pauldron(bm, target, span=1.25, drop=0.55, thickness=0.14, standoff=None, rake=12.0):
+    """A raked cap over the top of an upper arm. Sits on the shoulder line and
+    slopes outward - the shoulder half of the silhouette contract, and the
+    single feature most likely to foul SHOULDER_CLEAR, so it is measured."""
+    off = plate_offset("Plate", standoff, thickness)
+    s = fit_size(target)
+    top = s.z / 2 + off
+    box(
+        bm,
+        (0, 0, top - drop / 2),
+        (s.x * span + 2 * off, s.y + 2 * off, thickness),
+        Matrix.Rotation(math.radians(rake), 3, "Y"),
+    )
+    box(bm, (0, 0, top - drop), (s.x * span * 0.86 + 2 * off, s.y * 0.9 + 2 * off, thickness))
+
+
+def build_bracer(bm, target, height=0.72, thickness=0.10, standoff=None):
+    """A forearm/shin wrap: an open-topped band around the limb."""
+    off = plate_offset("Plate", standoff, thickness)
+    s = fit_size(target)
+    tall = s.z * height
+    outer = shell_size(target, off)
+    box(bm, (0, 0, -s.z / 2 + tall / 2), (outer.x, thickness, tall))
+    box(bm, (0, 0, -s.z / 2 + tall / 2), (thickness, outer.y, tall))
+
+
+def build_greave(bm, target, height=0.80, thickness=0.12, standoff=None):
+    """A shin plate: the front face only, leaving the calf soft."""
+    off = plate_offset("Plate", standoff, thickness)
+    s = fit_size(target)
+    box(bm, (0, -(s.y / 2 + off + thickness / 2), -s.z * 0.05), (s.x * 0.86, thickness, s.z * height))
+
+
+def build_boot_cap(bm, target, thickness=0.12, standoff=None, toe=0.20):
+    """A foot's toe cap and sole lip."""
+    off = plate_offset("Plate", standoff, thickness)
+    s = fit_size(target)
+    box(bm, (0, -s.y * toe, 0), (s.x + 2 * off, s.y * (1 - toe), s.z + 2 * off))
+
+
+def build_band(bm, target, z=0.0, height=0.16, standoff=None, role="Trim"):
+    """A belt / cuff / hem band around the target at height z (a fraction of
+    the target's own height, -0.5 .. 0.5)."""
+    off = plate_offset(role if role in STANDOFF else "Trim", standoff, 0.0)
+    s = fit_size(target)
+    outer = shell_size(target, off)
+    box(bm, (0, 0, s.z * z), (outer.x, outer.y, s.z * height))
+
+
+def build_coif(bm, target="Head", standoff=None, aperture=0.44, brow=0.16):
+    """The helm Under: a head shell with a FACE APERTURE cut as open air -
+    four boxes (crown, back, two cheeks) rather than a box with a hole, so it
+    stays flat-shaded and cheap. Obeys the FACE BOX by construction: nothing
+    is placed in the central band in front of the face plane below the brow."""
+    off = STANDOFF["Under"] if standoff is None else standoff
+    s = fit_size(target)
+    outer = shell_size(target, off)
+    crown = s.z * 0.5 - s.z * brow
+    box(bm, (0, 0, (outer.z / 2 + crown) / 2), (outer.x, outer.y, outer.z / 2 - crown))
+    box(bm, (0, outer.y / 4, 0), (outer.x, outer.y / 2, outer.z))
+    for side in (-1, 1):
+        cheek = (outer.x - s.x * aperture) / 2
+        box(bm, (side * (outer.x - cheek) / 2, -outer.y / 4, 0), (cheek, outer.y / 2, outer.z))
+
+
+def build_hood(bm, target="Head", peak=0.45, standoff=None, drape=0.22):
+    """A peaked hood over the coif: a back-heavy shell with a capped peak.
+    `peak` is studs ABOVE the crown and is capped at 0.55 by the spec."""
+    off = (STANDOFF["Trim"] if standoff is None else standoff) + drape
+    s = fit_size(target)
+    outer = shell_size(target, off)
+    box(bm, (0, outer.y * 0.12, s.z / 2 + peak / 2), (outer.x * 0.92, outer.y * 0.88, peak))
+    box(bm, (0, outer.y * 0.22, 0), (outer.x, outer.y * 0.62, outer.z))
+
+
+def build_visor(bm, target="Head", slit=0.10, thickness=0.10, standoff=None, drop=0.10):
+    """A flat-fronted visor with ONE horizontal slit, made as two planes with
+    air between them - the slit is the gap, never a modelled notch."""
+    off = STANDOFF["Plate"] if standoff is None else standoff
+    s = fit_size(target)
+    y = -(s.y / 2 + off + thickness / 2)
+    upper = s.z / 2 - drop
+    box(bm, (0, y, (upper + slit / 2 + drop) / 2 + slit / 2), (s.x * 0.92, thickness, upper - slit / 2))
+    box(bm, (0, y, -(s.z / 2 - slit) / 2 - slit / 2), (s.x * 0.92, thickness, s.z / 2 - slit / 2))
+
+
+def build_brim(bm, target="Head", radius=0.95, thickness=0.12, z=-0.18, sides=12):
+    """A thin disc brim (sou'wester, bicorne). THIN is the point: 0.12 studs,
+    not the 1.30-stud box cluster the old Tideward helm carried."""
+    _band(bm, z, radius, radius, thickness, 0.82, segments=sides)
+
+
+def build_cape(bm, target="UpperTorso", side=-1, length=1.30, width=0.86, thickness=0.08, standoff=None):
+    """A half-cape off one shoulder. A declared fit exception in every set that
+    wears one - a cape IS the silhouette, and saying so in the spec is what
+    keeps check_fit honest."""
+    off = STANDOFF["Accent"] if standoff is None else standoff
+    s = fit_size(target)
+    box(
+        bm,
+        (side * s.x * 0.22, s.y / 2 + off + thickness / 2, s.z / 2 - length / 2),
+        (s.x * width, thickness, length),
+        Matrix.Rotation(math.radians(4), 3, "X"),
+    )
+
+
+def build_skirt(bm, target="LowerTorso", hem=0.85, flare=0.12, standoff=None, sides=10):
+    """A hip skirt / shroud hanging off the hip line, flaring outward as it
+    falls. `hem` is studs BELOW the hip centre and is a declared exception
+    wherever it passes MAX_STANDOFF."""
+    off = STANDOFF["Trim"] if standoff is None else standoff
+    s = fit_size(target)
+    _band(bm, -hem / 2, s.x / 2 + off + flare, s.x / 2 + off, hem, s.y / s.x)
+
+
+def build_ring(bm, target="Head", radius=0.86, thickness=0.07, standoff=0.25, sides=16):
+    """A halo ring standing off the BACK of the head - pure silhouette, zero
+    bulk. Stormcaller's answer to the crown spikes it used to carry."""
+    s = fit_size(target)
+    mat = (
+        Matrix.Translation(Vector((0, s.y / 2 + standoff, s.z * 0.16)))
+        @ Matrix.Rotation(math.radians(90), 4, "X")
+    )
+    # cap_ends=False leaves the tube WALL only - which is the halo. No
+    # solidify pass: a one-sided ring reads correctly flat-shaded and costs
+    # half the faces.
+    bmesh.ops.create_cone(
+        bm, cap_ends=False, segments=sides, radius1=radius, radius2=radius, depth=thickness, matrix=mat
+    )
+
+
+def build_lure(bm, target="Head", reach=0.62, rise=0.34, bulb=0.13, stalk=0.05):
+    """Duskveil's lantern stalk: a short arm curving FORWARD above the brow,
+    with a bulb on the end. The one protrusion in the redesign, and it earns
+    its keep - it sits above the face box, is the island's signature, and is a
+    lamp rather than a weapon."""
+    s = fit_size(target)
+    top = s.z / 2
+    a = Vector((0, -s.y * 0.20, top + 0.04))
+    b = Vector((0, -s.y * 0.20 - reach * 0.55, top + rise))
+    c = Vector((0, -s.y * 0.20 - reach, top + rise * 0.82))
+    limb(bm, a, b, stalk, stalk * 0.8, sides=5)
+    limb(bm, b, c, stalk * 0.8, stalk * 0.7, sides=5)
+    ellipsoid(bm, c, (bulb, bulb, bulb), subdiv=1)
+
+
+# ------------------------------------------------------- wave-1 garment builders
+#
+# Additions to the wave-0 set, each because a shape wave 1 actually needs could
+# not be said with what was there. Every one is generic - it takes
+# (bm, target, ...) and reads FIT, knows nothing about a set - and none of them
+# calls cone().
+#
+# THE PLATE LANGUAGE IS FLAT. The first wave-1 pass built every lame as a
+# flattened icosphere, and the render was unambiguous: twenty soft blobs in
+# rows read as bubble wrap on Tideward and as gravel on Chitin. Real shell and
+# real lamellar are FLAT PANELS with a hard corner-cut edge and a chamfer, and
+# the chamfer is what draws the row line at 30 studs. So _plate() is the atom
+# of both sets, and there is a deliberate SIZE HIERARCHY on top of it - one
+# large scute on the chest, medium plates on shoulder and thigh, small lames
+# only on forearm and shin - rather than one uniform plate size everywhere.
+
+
+def _jitter(seed, i, amount):
+    """Deterministic pseudo-noise in [-amount, +amount].
+
+    NOT random.random(): the pack has to be byte-reproducible run to run, or
+    every rebuild is an unreadable binary diff in a shared checkout. A real
+    carapace is not symmetric-perfect and the size variation is what stops the
+    rows reading as a printed grid - but it must be the SAME variation every
+    time."""
+    if amount <= 0.0:
+        return 0.0
+    h = math.sin(seed * 12.9898 + i * 78.233) * 43758.5453
+    return (h - math.floor(h) - 0.5) * 2.0 * amount
+
+
+def _bevel_box(bm, center, size, bevel=0.06, rot=None, segments=1):
+    """A box with every edge chamfered - the shape a helm shell wants.
+
+    A raw box reads as a mailbox at any distance, which is precisely what the
+    first pass's helms were. A chamfer catches one extra light value on every
+    edge and the same silhouette reads as armour instead. The bevel cuts
+    INWARD, so the bbox does not move and check_fit's numbers are unchanged."""
+    before = set(bm.verts)
+    box(bm, center, size, rot)
+    fresh = [v for v in bm.verts if v not in before]
+    edges = set()
+    for vert in fresh:
+        edges.update(vert.link_edges)
+    bmesh.ops.bevel(
+        bm,
+        geom=fresh + list(edges),
+        offset=min(bevel, min(size) * 0.30),
+        segments=segments,
+        affect="EDGES",
+        profile=0.5,
+        clamp_overlap=True,
+    )
+
+
+def _plate(bm, center, size, rot=None, bevel=0.22, corner=0.22, dome=0.0):
+    """ONE armour plate: a thin, FLAT, corner-cut slab whose outer face is
+    inset - a roof tile, a lamellar lame, a crab scute.
+
+    size = (width, thickness, height) in the plate's own axes; it faces -Y.
+    `bevel` is the fraction the OUTER face is inset (the chamfer that draws the
+    edge), `corner` the fraction of the smaller dimension cut off each corner
+    (so it reads rounded without one curved surface on it), and `dome` pushes
+    the outer face's centre out - Chitin's shells are slightly domed, and
+    Tideward's lacquered lames are dead flat."""
+    w, t, h = size[0] / 2, size[1] / 2, size[2] / 2
+    cut = min(w, h) * corner
+    outline = [
+        (-w + cut, h), (w - cut, h), (w, h - cut), (w, -h + cut),
+        (w - cut, -h), (-w + cut, -h), (-w, -h + cut), (-w, h - cut),
+    ]
+    inset = 1.0 - bevel
+    mat = Matrix.Translation(Vector(center))
+    if rot is not None:
+        mat = mat @ rot.to_4x4()
+    before = set(bm.faces)
+    back = [bm.verts.new(mat @ Vector((x, t, z))) for x, z in outline]
+    front = [bm.verts.new(mat @ Vector((x * inset, -t, z * inset))) for x, z in outline]
+    bm.faces.new(list(reversed(back)))
+    n = len(outline)
+    for i in range(n):
+        bm.faces.new((back[i], back[(i + 1) % n], front[(i + 1) % n], front[i]))
+    if dome > 0.0:
+        peak = bm.verts.new(mat @ Vector((0.0, -t - dome, 0.0)))
+        for i in range(n):
+            bm.faces.new((front[i], front[(i + 1) % n], peak))
+    else:
+        bm.faces.new(front)
+    bmesh.ops.recalc_face_normals(bm, faces=[f for f in bm.faces if f not in before])
+
+
+def build_lames(
+    bm,
+    target,
+    rows=(3,),
+    weights=None,
+    face="front",
+    wrap=0.90,
+    top=0.48,
+    bottom=-0.48,
+    thickness=0.10,
+    standoff=None,
+    overlap=0.30,
+    curve=0.10,
+    step=0.02,
+    tilt=6.0,
+    jitter=0.0,
+    seed=1,
+    dome=0.0,
+    corner=0.22,
+    bevel=0.22,
+    cap=0.0,
+    cap_count=2,
+):
+    """Rows of overlapping FLAT plates down a target's face - a carapace, a
+    lamellar coat, a scale bracer, a roof.
+
+    `rows` is the plate count per row, TOP ROW FIRST, so (1, 3) is one big
+    scute over three marginal plates. `weights` gives the rows their relative
+    heights, which is how the size hierarchy is stated: (2.4, 1.0) makes the
+    scute two and a half times the plates under it.
+
+    The shingle is the whole point, and it is three separate effects:
+      `overlap` widens and heightens each plate so it laps its neighbour and
+        the row below (~30% - roof tiles);
+      `step`    walks each lower row closer to the body, so the row above
+        always laps OVER the one below rather than beside it;
+      `tilt`    rakes every plate so its BOTTOM edge stands proud - the edge
+        that catches the light and draws the row line.
+    `curve` pulls the outboard plates back toward the body so a row reads as
+    wrapping a torso instead of as a billboard, and `cap` lays a short row flat
+    over the TOP of the target (a shoulder cap) in the same object.
+
+    face: "front" | "back" | "both". Standoff is clamped against the tilt and
+    the thickness, so a plate cannot author a check_fit violation by
+    accident."""
+    off0 = plate_offset("Plate", standoff, thickness)
+    s = fit_size(target)
+    rows = list(rows)
+    weights = list(weights) if weights else [1.0] * len(rows)
+    total = sum(weights) or 1.0
+    span = (top - bottom) * s.z
+    width = s.x * wrap
+    rake = math.radians(-abs(tilt))
+    faces = ("front", "back") if face == "both" else (face,)
+    for fi, which in enumerate(faces):
+        sign = -1.0 if which == "front" else 1.0
+        z_top = top * s.z
+        for r, count in enumerate(rows):
+            height = span * weights[r] / total
+            z = z_top - height / 2
+            z_top -= height
+            lw = width / count * (1.0 + overlap)
+            lh = height * (1.0 + overlap)
+            # A raked plate reaches further than its own half-thickness (the
+            # rake trades height for depth) and a domed one further still.
+            # Solve the standoff against the WHOLE reach - centre offset plus
+            # the plate's own extent - rather than guessing a margin. Getting
+            # this expression half right is what put five objects 0.01-0.02
+            # over on the first build of this pass.
+            # lh is the plate height BEFORE jitter, and jitter can only make a
+            # plate bigger - so the clamp has to use the largest one the row
+            # can emit, not the nominal one.
+            extent = max(
+                (thickness / 2 + dome) * math.cos(rake),
+                thickness / 2 * math.cos(rake) + lh * (1.0 + jitter) / 2 * abs(math.sin(rake)),
+            )
+            off = min(max(0.0, off0 - step * r), MAX_STANDOFF - thickness / 2 - extent)
+            depth = s.y / 2 + off + thickness / 2
+            for i in range(count):
+                x = -width / 2 + (i + 0.5) * width / count
+                u = x / (width / 2) if width > 1e-6 else 0.0
+                y = sign * (depth - curve * u * u)
+                k = 1.0 + _jitter(seed + fi * 7, r * 11 + i, jitter)
+                _plate(
+                    bm,
+                    (x, y, z),
+                    (lw * k, thickness, lh * k),
+                    Matrix.Rotation(rake if sign < 0 else -rake, 3, "X"),
+                    bevel=bevel,
+                    corner=corner + _jitter(seed + 3, r * 13 + i, jitter),
+                    dome=dome,
+                )
+    if cap > 0.0:
+        z = min(s.z / 2 + off0 + thickness / 2, s.z / 2 + MAX_STANDOFF - thickness / 2 - dome)
+        cw = s.x * wrap * 1.02
+        for i in range(cap_count):
+            x = -cw / 2 + (i + 0.5) * cw / cap_count
+            lw = cw / cap_count * (1.0 + overlap)
+            _plate(
+                bm,
+                (x, 0.0, z),
+                (lw, thickness, (s.y + 2 * off0) * cap),
+                Matrix.Rotation(math.radians(90), 3, "X"),
+                bevel=bevel,
+                corner=corner,
+                dome=dome,
+            )
+
+
+def build_scute(bm, target, face="front", **kw):
+    """ONE large plate on a face - build_lames' single-plate case, named so the
+    spec reads as what it is: a breast scute, a pauldron, a thigh plate. The
+    size hierarchy is declared here rather than emerging by accident."""
+    args = {"rows": (1,), "wrap": 0.86, "top": 0.44, "bottom": -0.40, "thickness": 0.12, "overlap": 0.0, "curve": 0.14, "corner": 0.26}
+    args.update(kw)
+    build_lames(bm, target, face=face, **args)
+
+
+def build_shell_cap(
+    bm,
+    target="Head",
+    thickness=0.10,
+    standoff=None,
+    dome=0.80,
+    brow=0.16,
+    cheek=0.9,
+    ridge=0.0,
+    tail=0,
+    brim=0.0,
+    brim_z=0.16,
+    brim_thickness=0.12,
+    bevel=0.09,
+    chamfer=1,
+):
+    """The helm's hard shell: a CHAMFERED shell hugging the upper head under a
+    chamfered crown, with an optional crown ridge, brow shelf, cheek scutes
+    hanging beside the open face, a nape plate, an optional scale tail down the
+    nape, and an optional short curved brim.
+
+    Everything here is a bevelled box or a _plate, because the three earlier
+    attempts proved what a head actually is. An icosphere loses ~8% of its
+    radius to faceting and lands flush inside the Under coif; a hexagonal cone
+    clears it by 0.007 studs on the face side; an octagon is proud only over
+    the middle 0.34 studs. A head is a BOX, so anything inscribed in a circle
+    sags inside it at the corners and the helm renders as no helm at all. A
+    bevelled box is proud on all four sides by construction AND has an edge
+    highlight, which a raw box - the fourth attempt, a mailbox - did not.
+
+    `chamfer` is the number of bevel SEGMENTS. 1 is the wave-1 read - one
+    chamfered facet per edge, which at helm scale still says "box with the
+    corners knocked off". 3 turns each edge into a three-step chamfer, i.e.
+    an octagonal profile in both section planes, and the shell reads ROUNDED
+    - a cap, a hood, a skull - without one curved surface, without smooth
+    shading, and without moving the bbox (the bevel cuts inward). Wave 2's
+    three sets all want the rounder read; wave 1's two stay at 1 so their
+    approved silhouettes do not move.
+
+    FACE BOX BY CONSTRUCTION: the shell's floor is z = +0.03, the crown is
+    above it, the brow shelf's lowest vertex is z = +0.03, the brim sits at
+    brow height, and the cheek scutes are entirely outboard of |x| = 0.40 - so
+    nothing this builder can emit reaches the box at all."""
+    off = plate_offset("Plate", standoff, thickness)
+    s = fit_size(target)
+    hw, hd, hh = s.x / 2, s.y / 2, s.z / 2
+    floor = hh * 0.05
+    band_top = hh * 0.96
+    _bevel_box(bm, (0, 0, (floor + band_top) / 2), (s.x + 2 * off, s.y + 2 * off, band_top - floor), bevel, segments=chamfer)
+    # The crown: one chamfered cap, raked back. Its height is SOLVED against
+    # MAX_STANDOFF, because a rake trades depth for height and a guessed
+    # constant put the helm 0.01 over on the first try.
+    rake = math.radians(-8)
+    deep = (s.y + 2 * off) * 0.38
+    headroom = hh + MAX_STANDOFF - band_top - deep * abs(math.sin(rake))
+    rise = min(dome * hh * 0.42, headroom / math.cos(rake))
+    _bevel_box(
+        bm,
+        (0, hd * 0.10, band_top + rise / 2 - 0.02),
+        ((s.x + 2 * off) * 0.80, deep * 2, rise),
+        bevel,
+        Matrix.Rotation(rake, 3, "X"),
+        segments=chamfer,
+    )
+    if ridge > 0.0:
+        # A ridge down the crown's centre line, front to back. A plane, not a
+        # crest: it is the one hard line the shell gets.
+        _bevel_box(
+            bm,
+            (0, hd * 0.10, band_top + rise * 0.62),
+            (ridge, (s.y + 2 * off) * 0.66, rise * 0.86),
+            bevel * 0.6,
+            Matrix.Rotation(rake, 3, "X"),
+            segments=chamfer,
+        )
+    box(bm, (0, hd + off * 0.7, -hh * 0.34), (s.x * 0.86, thickness * 1.2, hh * 0.90))
+    for i in range(tail):
+        # The scale tail down the nape - small plates, each lapping the one
+        # above, entirely behind the face plane.
+        t = (i + 0.5) / max(1, tail)
+        _plate(
+            bm,
+            (0, hd + off + thickness * 0.6, floor - t * (hh * 1.10)),
+            (s.x * (0.68 - 0.10 * t), thickness, hh * 0.44),
+            Matrix.Rotation(math.radians(180), 3, "Z"),
+            corner=0.26,
+        )
+    if brow > 0.0:
+        shelf, brow_rake = hh * brow * 1.9, math.radians(-16)
+        reach = thickness * 1.3 / 2 * math.cos(brow_rake) + shelf / 2 * abs(math.sin(brow_rake))
+        _plate(
+            bm,
+            (0, -min(hd + off + thickness * 0.6, hd + MAX_STANDOFF - reach), hh * 0.24),
+            (s.x * 0.94, thickness * 1.3, shelf),
+            Matrix.Rotation(brow_rake, 3, "X"),
+            corner=0.18,
+        )
+    if cheek > 0.0:
+        # Cheek scutes HANGING beside the open face: plates turned to face
+        # outward, inboard edge at |x| = 0.68 on a 1.2 head - the face box
+        # ends at 0.40, so they frame the face and never cross it.
+        for side in (-1, 1):
+            _plate(
+                bm,
+                (side * (hw + off * 0.92), -hd * 0.10, -hh * 0.34),
+                (hd * 1.60 * cheek, thickness * 1.3, hh * 1.02 * cheek),
+                Matrix.Rotation(math.radians(side * 90), 3, "Z"),
+                corner=0.30,
+            )
+    if brim > 0.0:
+        # A THIN brim at brow height, so it shades the face from ABOVE the face
+        # box rather than crossing it. `brim` is its OUTER half-extent in
+        # studs. The old Tideward helm's answer to this read was a 1.30-stud
+        # box cluster; this is the same silhouette at a twentieth of the bulk.
+        inner = hw + 0.07
+        width = max(0.10, min(brim, hw + MAX_STANDOFF) - inner)
+        _box_ring(bm, inner + width / 2, hd + 0.07 + width / 2, brim_z * hh, brim_thickness, width, 16)
+        # ...and the front of it curves down, which is what makes a brim read
+        # as a brim rather than as a shelf.
+        lip, lip_rake = width * 1.15, math.radians(-62)
+        lip_reach = brim_thickness / 2 * abs(math.cos(lip_rake)) + lip / 2 * abs(math.sin(lip_rake))
+        _plate(
+            bm,
+            (0, -min(hd + 0.07 + width * 0.62, hd + MAX_STANDOFF - lip_reach), brim_z * hh - brim_thickness * 0.30),
+            (s.x * 0.92, brim_thickness, lip),
+            Matrix.Rotation(lip_rake, 3, "X"),
+            corner=0.30,
+        )
+
+
+def build_lacing(
+    bm,
+    target,
+    rungs=3,
+    radius=0.05,
+    standoff=None,
+    face="front",
+    top=0.40,
+    bottom=-0.40,
+    spread=0.26,
+    rails=True,
+    toggles=0,
+    toggle=0.15,
+):
+    """Cross-lacing: two cords down a face with rungs crossing between them,
+    and optional driftwood toggles threaded on.
+
+    Authored PROUD of the plates it lashes (pass the plates' standoff plus a
+    little), because a cord tucked under a shell is a cord nobody ever sees -
+    and on Chitin the cord IS the design."""
+    off = STANDOFF["Trim"] if standoff is None else standoff
+    # A cord of radius r hung at off reaches off + 2r, not off + r - which is
+    # exactly the +0.03 check_fit caught on the first build.
+    off = min(off, MAX_STANDOFF - 2 * radius)
+    s = fit_size(target)
+    sign = -1.0 if face == "front" else 1.0
+    y = sign * (s.y / 2 + off + radius)
+    x = s.x * spread
+    z0, z1 = bottom * s.z, top * s.z
+    if rails:
+        for side in (-1, 1):
+            limb(bm, (side * x, y, z0), (side * x, y, z1), radius, radius, sides=5)
+    for i in range(rungs):
+        # BOTH diagonals of each bay, so the lacing reads as an X-cross - a
+        # single alternating diagonal reads as a ladder, which is what the
+        # first render showed down the middle of Chitin's chest.
+        t0, t1 = i / rungs, (i + 1) / rungs
+        for a in (-1, 1):
+            limb(
+                bm,
+                (a * x, y, z1 - (z1 - z0) * t0),
+                (-a * x, y, z1 - (z1 - z0) * t1),
+                radius * 0.8,
+                radius * 0.8,
+                sides=5,
+            )
+    for i in range(toggles):
+        t = (i + 0.5) / toggles
+        _bevel_box(
+            bm,
+            (0, y - sign * radius * 0.5, z1 - (z1 - z0) * t),
+            (toggle * 0.46, toggle * 0.46, toggle),
+            toggle * 0.12,
+            Matrix.Rotation(math.radians(16 if i % 2 else -16), 3, "Y"),
+        )
+
+
+def _perimeter(hx, hy, count):
+    """Walk a RECTANGLE's perimeter at half-extents (hx, hy), yielding
+    (x, y, turn, seg) for `count` evenly spaced stations - `turn` being the
+    Z rotation that makes a plate face that side's outward normal.
+
+    Why not a circle or an ellipse: every R15 part is a BOX, and a ring
+    inscribed in a circle sags inside the box at the diagonals - a hip belt
+    laid on an ellipse of rx 1.24 / ry 0.69 passes through (0.88, 0.49), which
+    is INSIDE a 2.0 x 1.0 hip. The belt then disappears at both hips and reads
+    as two separate front and back straps. A rectangular path sits on the
+    surface all the way round. Shared by the belt, the ruff and the fringe."""
+    sides = (
+        ((-hx, -hy), (hx, -hy), 0.0),
+        ((hx, -hy), (hx, hy), math.pi / 2),
+        ((hx, hy), (-hx, hy), 0.0),
+        ((-hx, hy), (-hx, -hy), math.pi / 2),
+    )
+    lengths = [Vector((b[0] - a[0], b[1] - a[1], 0)).length for a, b, _ in sides]
+    total = sum(lengths)
+    for (a, b, turn), length in zip(sides, lengths):
+        n = max(1, int(round(count * length / total)))
+        seg = length / n
+        for i in range(n):
+            t = (i + 0.5) / n
+            yield a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, turn, seg
+
+
+def _crosses_face(x, half, y, s, face_clear):
+    """True if a station on a ring would put geometry in the central band in
+    FRONT of the target - the band a helm has to leave open.
+
+    Measures the block's INBOARD EDGE, not its centre: the first build of the
+    fen hood's moss fringe tested the centre, and a 0.36-wide strand centred
+    at x = 0.52 still reached x = 0.34, which is inside the FACE BOX's 0.40.
+    check_faces caught it, which is what it is for."""
+    return face_clear > 0.0 and y < 0.0 and abs(x) - half <= s.x * face_clear / 2
+
+
+def _box_ring(bm, hx, hy, z, height, thickness, count, plate=False):
+    """A belt: short boxes walked round _perimeter(), each facing its side."""
+    for x, y, turn, seg in _perimeter(hx, hy, count):
+        box(bm, (x, y, z), (seg * 1.02, thickness, height), Matrix.Rotation(turn, 3, "Z"))
+
+
+def build_ring_band(
+    bm,
+    target,
+    z=0.0,
+    height=0.14,
+    thickness=0.10,
+    standoff=None,
+    role="Trim",
+    count=12,
+    buckle=0.0,
+    straps=0.0,
+    strap_drop=0.0,
+    face_clear=0.0,
+):
+    """A cord / belt / lace: short plates walked around the target, each facing
+    its own side, plus the one detail that makes Trim read as hardware rather
+    than as a stripe - a `buckle` at the front, or `straps` dropping down the
+    SIDES of a helm (a chinstrap, kept outboard of |x| = 0.40 so it never
+    crosses the face).
+
+    Wave 0's build_band is one box grown off the target, which from any angle
+    but dead-on reads as a PLANK driven through the wearer - the first wave-1
+    render had a brown plank through Chitin's skull and a green one across
+    Tideward's shoulder."""
+    off = (STANDOFF[role] if role in STANDOFF else STANDOFF["Trim"]) if standoff is None else standoff
+    off = min(off, MAX_STANDOFF - thickness)
+    s = fit_size(target)
+    hx = s.x / 2 + off + thickness / 2
+    hy = s.y / 2 + off + thickness / 2
+    if face_clear > 0.0:
+        # An OPEN band: a collar that frames the face instead of a bar drawn
+        # across it. Boneplate's nacre collar needs this - a closed nacre ring
+        # on a head renders as a white plank over the brow, which is the same
+        # thing this builder was written to stop happening with belts.
+        for x, y, turn, seg in _perimeter(hx, hy, count):
+            if _crosses_face(x, seg * 1.02 / 2, y, s, face_clear):
+                continue
+            box(bm, (x, y, s.z * z), (seg * 1.02, thickness, height), Matrix.Rotation(turn, 3, "Z"))
+    else:
+        _box_ring(bm, hx, hy, s.z * z, height, thickness, count)
+    if buckle > 0.0:
+        # The buckle stands on the belt's own face, and its outer surface is
+        # clamped to the budget - a 0.12 belt plus a 1.4x buckle plus its
+        # offset is 0.05 past MAX_STANDOFF if nobody does the arithmetic.
+        depth = thickness * 1.4
+        y = min(hy + thickness * 0.30, s.y / 2 + MAX_STANDOFF - depth / 2)
+        _bevel_box(bm, (0, -y, s.z * z), (buckle, depth, height * 1.55), buckle * 0.16)
+    if straps > 0.0 and strap_drop > 0.0:
+        for side in (-1, 1):
+            box(
+                bm,
+                (side * hx, -s.y * 0.10, s.z * z - strap_drop / 2),
+                (thickness, straps, strap_drop),
+            )
+
+
+def build_studs(bm, target, spots=(), radius=0.10, standoff=None, face="front", seat=0.0):
+    """Small spheres on a face - a pearl clasp, a scale glint, a rivet - each
+    optionally SET INTO a small backing plate (`seat` = the plate's half-width
+    as a multiple of the radius), which is how a pearl reads as a clasp rather
+    than as a dot of paint.
+
+    Radius floors at 0.06 (a 0.12-stud feature): anything smaller is detail the
+    game cannot show at 30 studs, which is the mistake the old pack made
+    everywhere."""
+    off = STANDOFF["Accent"] if standoff is None else standoff
+    radius = max(radius, 0.06)
+    off = min(off, MAX_STANDOFF - radius * 1.4)
+    s = fit_size(target)
+    sign = -1.0 if face == "front" else 1.0
+    for u, v in spots:
+        x, z = u * s.x / 2, v * s.z / 2
+        if seat > 0.0:
+            _plate(
+                bm,
+                (x, sign * (s.y / 2 + off * 0.5), z),
+                (radius * seat, radius * 0.7, radius * seat * 0.86),
+                None if sign < 0 else Matrix.Rotation(math.radians(180), 3, "Z"),
+                corner=0.34,
+            )
+        ellipsoid(bm, (x, sign * (s.y / 2 + off + radius * 0.4), z), (radius, radius, radius), subdiv=1)
+
+
+def build_scale_patch(bm, target, rows=(2,), face="front", standoff=None, **kw):
+    """A small patch of fish-scale glints - build_lames with a tight span, kept
+    as a named call so the SPEC reads as what it is."""
+    args = {"wrap": 0.56, "top": 0.28, "bottom": -0.16, "thickness": 0.07, "overlap": 0.34, "curve": 0.02, "step": 0.010, "tilt": 8.0, "jitter": 0.10, "corner": 0.30}
+    args.update(kw)
+    build_lames(bm, target, rows=rows, face=face, standoff=standoff, **args)
+
+
+# ------------------------------------------------------- wave-2 garment builders
+#
+# Wave 2's three sets are the SOFT half of the pack - a hide coat, a bone
+# half-mask, a fur parka - and none of them can be said with the lamellar
+# language wave 1 built. Five more generic builders, each (bm, target, ...),
+# each reading FIT, none of them calling cone().
+#
+# The two standing corrections from the wave-1 review are mechanised here
+# rather than left as style notes:
+#   (a) A HELM SHOULD READ ROUNDER THAN A CHAMFERED BOX. build_shell_cap grew
+#       a `chamfer` (bevel-segment) argument, and build_cowl below is a
+#       three-step-chamfered hood built the same way. Three segments is an
+#       octagonal profile in both section planes: rounded silhouette, flat
+#       shading, no smooth-shading and no moved bbox.
+#   (b) A PLATE IS DEAD FLAT unless the MATERIAL is genuinely domed. Wave 2
+#       keeps `dome 0` on every lame except Boneplate's, where the plates are
+#       long curved bone and a small dome (0.05) is the truth of the material.
+
+
+def build_cowl(
+    bm,
+    target="Head",
+    standoff=None,
+    drape=0.18,
+    aperture=0.46,
+    peak=0.10,
+    chamfer=3,
+    bevel=0.13,
+):
+    """A HOOD: a rounded, low cowl over the crown, closed behind and down both
+    sides, with the face left as open air.
+
+    Structurally build_coif's four blocks - crown, back, two cheeks - but each
+    one three-step chamfered, so the thing reads as cloth pulled over a head
+    rather than as a helmet. `drape` is the studs of slack the cloth hangs at
+    beyond the Under standoff (a hood is loose; a coif is not), `peak` a small
+    back-raked rise on the crown, solved against the standoff budget so the
+    hood can never author a violation.
+
+    FACE BOX BY CONSTRUCTION: the crown's floor is z = +0.06 * height, the
+    cheeks are outboard of the aperture, and nothing is placed in the central
+    band in front of the face plane below that floor."""
+    off = min((STANDOFF["Under"] if standoff is None else standoff) + drape, MAX_STANDOFF)
+    s = fit_size(target)
+    outer = shell_size(target, off)
+    hw, hd, hh = s.x / 2, s.y / 2, s.z / 2
+    floor = hh * 0.06
+    top = hh + off
+    _bevel_box(bm, (0, hd * 0.08, (floor + top) / 2), (outer.x, outer.y * 0.96, top - floor), bevel, segments=chamfer)
+    _bevel_box(bm, (0, (hd + off) / 2, 0), (outer.x, hd + off, outer.z), bevel, segments=chamfer)
+    cheek = (outer.x - s.x * aperture) / 2
+    for side in (-1, 1):
+        _bevel_box(
+            bm,
+            (side * (outer.x - cheek) / 2, -(hd + off) / 2, 0),
+            (cheek, hd + off, outer.z),
+            bevel,
+            segments=chamfer,
+        )
+    if peak > 0.0:
+        # The hood's crease, raked back off the crown. Its rise is what is
+        # LEFT of the budget after the drape, never a guessed constant - the
+        # same arithmetic build_shell_cap's crown does.
+        rake = math.radians(-14)
+        deep = outer.y * 0.46
+        rise = min(peak, MAX_STANDOFF - off - deep * abs(math.sin(rake)))
+        if rise > 0.02:
+            _bevel_box(
+                bm,
+                (0, hd * 0.20, top + rise / 2 - 0.01),
+                (outer.x * 0.72, deep, rise),
+                bevel,
+                Matrix.Rotation(rake, 3, "X"),
+                segments=chamfer,
+            )
+
+
+def build_brow_plate(
+    bm,
+    target="Head",
+    width=0.94,
+    shelf=0.30,
+    thickness=0.13,
+    standoff=None,
+    rake=-16.0,
+    corner=0.20,
+    cheeks=0.0,
+    cheek_z=-0.34,
+):
+    """A brow shelf ALONE - build_shell_cap's brow and cheek scutes without the
+    shell under them, for the sets whose head read is a hood or a coif and
+    whose only hard part is the scute over the eyes.
+
+    The shelf's z is SOLVED so its lowest vertex clears the FACE BOX's ceiling
+    (z = 0) by 0.035 rather than being placed at a constant and hoped about -
+    a raked plate's bottom edge is lower than its centre by
+    (shelf/2)cos + (t/2)|sin|, and that is exactly the term the first pass of
+    every helm in this file got wrong."""
+    off = plate_offset("Plate", standoff, thickness)
+    s = fit_size(target)
+    hw, hd, hh = s.x / 2, s.y / 2, s.z / 2
+    tilt = math.radians(rake)
+    half = shelf / 2 * abs(math.cos(tilt)) + thickness / 2 * abs(math.sin(tilt))
+    reach = thickness / 2 * abs(math.cos(tilt)) + shelf / 2 * abs(math.sin(tilt))
+    _plate(
+        bm,
+        (0, -min(hd + off + thickness * 0.6, hd + MAX_STANDOFF - reach), max(hh * 0.24, 0.035 + half)),
+        (s.x * width, thickness, shelf),
+        Matrix.Rotation(tilt, 3, "X"),
+        corner=corner,
+    )
+    if cheeks > 0.0:
+        for side in (-1, 1):
+            _plate(
+                bm,
+                (side * (hw + off * 0.92), -hd * 0.10, hh * cheek_z),
+                (hd * 1.60 * cheeks, thickness * 1.2, hh * 1.00 * cheeks),
+                Matrix.Rotation(math.radians(side * 90), 3, "Z"),
+                corner=0.30,
+            )
+
+
+def build_ruff(
+    bm,
+    target,
+    z=-0.18,
+    height=0.30,
+    thickness=0.16,
+    standoff=None,
+    count=14,
+    layers=2,
+    step=0.05,
+    stagger=0.06,
+    shrink=0.14,
+    face_clear=0.0,
+    jitter=0.30,
+    gap=0.88,
+    seed=1,
+    role="Trim",
+):
+    """A FUR RUFF / collar / cuff: two or three belts of chunky blocks stacked
+    at slightly different heights and standoffs.
+
+    Fur cannot be modelled and must not be faked with a smooth ring - what
+    reads as fur at game distance is a BROKEN outline, so this is deliberately
+    several short blocks per side at staggered radii rather than one band. The
+    standoff is clamped to MAX_STANDOFF - thickness, because a block on the
+    +/-X sides is turned 90 degrees and reaches its own full thickness
+    outboard: on a 1.2 head the outermost layer lands at x +/-0.90, exactly
+    the budget, with the ice shell under it at +/-0.74. No exception needed -
+    which is the point of doing the arithmetic instead of declaring one.
+
+    `face_clear` OPENS the ring across the front, which is what a parka ruff
+    actually does - it frames a face, it does not cover one. A closed ring on
+    the Head target puts fur across the nose and bows the FACE BOX, and the
+    gate caught exactly that on the first build of this set."""
+    base = (STANDOFF[role] if role in STANDOFF else STANDOFF["Trim"]) if standoff is None else standoff
+    s = fit_size(target)
+    for layer in range(layers):
+        off = min(base + layer * step, MAX_STANDOFF - thickness)
+        hx = s.x / 2 + off + thickness / 2
+        hy = s.y / 2 + off + thickness / 2
+        dz = (layer - (layers - 1) / 2.0) * stagger
+        tall = height * (1.0 - shrink * layer)
+        for i, (x, y, turn, seg) in enumerate(_perimeter(hx, hy, count + layer * 2)):
+            if _crosses_face(x, seg * gap / 2, y, s, face_clear):
+                continue
+            # The first build of this set laid the ruff as one even ring and
+            # the render was unambiguous: a flat dark PLANK across the chest,
+            # the same failure build_ring_band's docstring records. Fur has no
+            # even edge - so every block gets its own height and its own
+            # height offset, and they are set apart with a GAP rather than
+            # overlapped, which is what turns a bar back into a pelt.
+            k = 1.0 + _jitter(seed + layer * 5, i, jitter)
+            box(
+                bm,
+                (x, y, s.z * z + dz + _jitter(seed + 9, i + layer * 17, jitter) * tall * 0.5),
+                (seg * gap, thickness, tall * k),
+                Matrix.Rotation(turn, 3, "Z"),
+            )
+
+
+def build_fringe(
+    bm,
+    target,
+    z=-0.26,
+    drop=0.30,
+    thickness=0.08,
+    standoff=None,
+    count=12,
+    face_clear=0.80,
+    width=1.0,
+    jitter=0.0,
+    seed=1,
+    corner=0.30,
+    role="Accent",
+):
+    """Ragged strands hanging off a rim, all the way round except across the
+    face - moss off a fen hood, a mantle's edge, a hem.
+
+    `face_clear` is the fraction of the target's own width kept OPEN at the
+    front, so on a head the strands frame the face and never cross it. Each
+    strand is a _plate turned to its side's outward normal (the +X and back
+    sides need the extra half-turn or their chamfered faces point inward and
+    the fringe reads inside-out from behind)."""
+    off = (STANDOFF[role] if role in STANDOFF else STANDOFF["Accent"]) if standoff is None else standoff
+    off = min(off, MAX_STANDOFF - thickness)
+    s = fit_size(target)
+    hx = s.x / 2 + off + thickness / 2
+    hy = s.y / 2 + off + thickness / 2
+    top = s.z * z
+    floor = -(s.z / 2 + MAX_STANDOFF)
+    for i, (x, y, turn, seg) in enumerate(_perimeter(hx, hy, count)):
+        if _crosses_face(x, seg * 1.02 * width / 2, y, s, face_clear):
+            continue
+        fall = min(drop * (1.0 + _jitter(seed, i, jitter)), top - floor)
+        if fall <= 0.02:
+            continue
+        flip = math.pi if ((abs(turn) < 0.1 and y > 0) or (abs(turn) > 0.1 and x < 0)) else 0.0
+        _plate(
+            bm,
+            (x, y, top - fall / 2),
+            (seg * 1.02 * width, thickness, fall),
+            Matrix.Rotation(turn + flip, 3, "Z"),
+            corner=corner,
+        )
+
+
+def build_wraps(
+    bm,
+    target,
+    count=3,
+    top=0.34,
+    bottom=-0.36,
+    height=0.12,
+    thickness=0.09,
+    standoff=None,
+    role="Trim",
+    ring=8,
+    taper=0.0,
+):
+    """Several narrow belts down a limb: a wrapped forearm, a boot's strap
+    rows, a lashed greave. build_ring_band is ONE belt and carries a buckle;
+    this is the repeat, which is what makes a wrap read as a wrap."""
+    off = (STANDOFF[role] if role in STANDOFF else STANDOFF["Trim"]) if standoff is None else standoff
+    off = min(off, MAX_STANDOFF - thickness)
+    s = fit_size(target)
+    hx = s.x / 2 + off + thickness / 2
+    hy = s.y / 2 + off + thickness / 2
+    for i in range(count):
+        t = i / (count - 1) if count > 1 else 0.5
+        _box_ring(bm, hx, hy, (top + (bottom - top) * t) * s.z, height * (1.0 - taper * t), thickness, ring)
+
+
+# --------------------------------------------------------------- SET_SPEC
+#
+# ONE BLOCK PER SET. Wave 0 lands the MECHANISM and the declared exceptions;
+# the garment lists fill in per wave (1: Chitin + Tideward, 2: Mirewalker +
+# Boneplate + Rimebound, 3: Cindershell + Duskveil, 4: CorsairsRest +
+# Stormcaller + Wraithbound). Until a set's lists are filled it keeps
+# exporting its LEGACY single-part builders from SETS below, unchanged, and
+# ArmorService keeps wearing them - which is what makes each wave a
+# non-breaking change instead of a flag day.
+#
+# Shape of a filled-in slot list:
+#
+#     "Chest": [
+#         {"target": "UpperTorso", "role": "Under",  "build": build_glove},
+#         {"target": "UpperTorso", "role": "Plate",  "build": build_shell_plate,
+#          "args": {"wrap": 0.78, "thickness": 0.14}},
+#         {"target": "LeftUpperArm", "role": "Plate", "build": build_pauldron,
+#          "mirror": True},
+#     ],
+#
+# `mirror: True` authors the left side and emits the right by negating X.
+#
+# `fit_exceptions` lists OBJECT NAMES check_fit() is allowed to skip. An
+# exception is a decision ON THE RECORD - a cape, a ruff, a hem - never an
+# accident, and the reason each one is here is written beside it.
+SET_SPEC = {
+    # CHITIN SHELL - a fisherman lashing crab shell to himself with fishing
+    # line. Handmade and cheap, NOT monstrous: a dark kelp-weave bodysuit under
+    # a FEW BIG pale shells, and the cord is the detail that carries it.
+    #
+    # The plates are arranged like a crab's back: ONE large dorsal scute, then
+    # smaller marginal plates lapping downward off it, then small lames only on
+    # the forearms and shins. Slight size jitter and a domed centre on each
+    # shell - a carapace is not a printed grid. The under-suit is left showing
+    # at the elbow, the knee and the waist as deliberate negative space.
+    #
+    # Deleted from the legacy helm/chest/legs: two brow horns, three crest
+    # spines, two eye-stalks, five front spines, two dorsal spines, the
+    # oversized crab-claw pauldron, three flank spine pairs and the tail plate
+    # - 18 protrusions, nothing tapering to a point left in the set.
+    "Chitin": {
+        "Helm": [
+            {"target": "Head", "role": "Under", "build": build_coif, "args": {"aperture": 0.40, "brow": 0.19}},
+            # Domed shell cap, ridge along the crown, cheek scutes beside the face.
+            {"target": "Head", "role": "Plate", "build": build_shell_cap, "args": {"thickness": 0.11, "standoff": 0.18, "dome": 0.92, "brow": 0.17, "cheek": 1.0, "ridge": 0.16, "bevel": 0.10}},
+            # Cord round the shell with a chinstrap dropping past the cheeks.
+            {"target": "Head", "role": "Trim", "build": build_ring_band, "args": {"z": 0.34, "height": 0.09, "thickness": 0.08, "standoff": 0.12, "count": 12, "straps": 0.26, "strap_drop": 0.60}},
+            {"target": "Head", "role": "Accent", "build": build_studs, "args": {"spots": ((-0.90, -0.30), (0.90, -0.30)), "radius": 0.09, "standoff": 0.17}},
+        ],
+        "Chest": [
+            {"target": "UpperTorso", "role": "Under", "build": build_glove},
+            {"target": "LeftUpperArm", "role": "Under", "build": build_glove, "mirror": True},
+            {"target": "LeftLowerArm", "role": "Under", "build": build_glove, "mirror": True},
+            {"target": "LeftHand", "role": "Under", "build": build_glove, "mirror": True},
+            # THE CARAPACE: one large domed dorsal scute over the chest and the
+            # back, with three marginal plates lapping downward off it.
+            {"target": "UpperTorso", "role": "Plate", "build": build_lames, "args": {"rows": (1, 3), "weights": (2.2, 1.0), "face": "both", "wrap": 0.74, "top": 0.50, "bottom": -0.34, "thickness": 0.12, "standoff": 0.16, "overlap": 0.22, "curve": 0.20, "step": 0.03, "tilt": 7.0, "jitter": 0.10, "seed": 3, "dome": 0.07, "corner": 0.36}},
+            # MEDIUM: one shell shoulder cap plus a marginal plate under it.
+            {"target": "LeftUpperArm", "role": "Plate", "build": build_lames, "mirror": True, "args": {"rows": (1, 1), "weights": (1.5, 1.0), "face": "both", "wrap": 0.84, "top": 0.50, "bottom": -0.22, "thickness": 0.11, "standoff": 0.16, "overlap": 0.22, "curve": 0.14, "step": 0.024, "tilt": 7.0, "jitter": 0.08, "seed": 5, "dome": 0.045, "corner": 0.34, "cap": 0.78, "cap_count": 2}},
+            # SMALL: two lames on the forearm only, leaving the elbow soft.
+            {"target": "LeftLowerArm", "role": "Plate", "build": build_lames, "mirror": True, "args": {"rows": (1, 1), "face": "front", "wrap": 0.88, "top": 0.24, "bottom": -0.48, "thickness": 0.10, "standoff": 0.16, "overlap": 0.24, "curve": 0.12, "step": 0.02, "tilt": 7.0, "jitter": 0.08, "seed": 7, "dome": 0.035, "corner": 0.34}},
+            # The lashing, authored PROUD of the shells so it reads.
+            {"target": "UpperTorso", "role": "Trim", "build": build_lacing, "args": {"rungs": 3, "radius": 0.055, "standoff": 0.21, "top": 0.06, "bottom": -0.44, "spread": 0.24, "toggles": 3, "toggle": 0.16}},
+            {"target": "LeftLowerArm", "role": "Accent", "build": build_scale_patch, "mirror": True, "args": {"rows": (2,), "standoff": 0.19, "top": 0.46, "bottom": 0.16, "wrap": 0.60}},
+        ],
+        "Legs": [
+            {"target": "LowerTorso", "role": "Under", "build": build_glove},
+            {"target": "LeftUpperLeg", "role": "Under", "build": build_glove, "mirror": True},
+            {"target": "LeftLowerLeg", "role": "Under", "build": build_glove, "mirror": True},
+            {"target": "LeftFoot", "role": "Under", "build": build_glove, "mirror": True},
+            # A short shell fauld off the hip line: three marginal plates, front
+            # and back, hanging past the hip box onto the thigh.
+            {"target": "LowerTorso", "role": "Plate", "build": build_lames, "args": {"rows": (3,), "face": "both", "wrap": 0.86, "top": 0.10, "bottom": -1.02, "thickness": 0.12, "standoff": 0.15, "overlap": 0.22, "curve": 0.18, "tilt": 8.0, "jitter": 0.08, "seed": 11, "dome": 0.05, "corner": 0.34}},
+            # SMALL: two shin lames, knee left soft.
+            {"target": "LeftLowerLeg", "role": "Plate", "build": build_lames, "mirror": True, "args": {"rows": (1, 1), "face": "front", "wrap": 0.88, "top": 0.26, "bottom": -0.50, "thickness": 0.11, "standoff": 0.16, "overlap": 0.24, "curve": 0.12, "step": 0.02, "tilt": 7.0, "jitter": 0.08, "seed": 13, "dome": 0.04, "corner": 0.34}},
+            {"target": "LeftFoot", "role": "Plate", "build": build_boot_cap, "mirror": True, "args": {"thickness": 0.11, "standoff": 0.13, "toe": 0.22}},
+            # Driftwood belt with a buckle at the front.
+            {"target": "LowerTorso", "role": "Trim", "build": build_ring_band, "args": {"z": 0.34, "height": 0.21, "thickness": 0.12, "standoff": 0.17, "count": 14, "buckle": 0.30}},
+            {"target": "LeftUpperLeg", "role": "Accent", "build": build_scale_patch, "mirror": True, "args": {"rows": (2,), "standoff": 0.19, "top": -0.06, "bottom": -0.40, "wrap": 0.62}},
+        ],
+        # Nothing needs one. The shell cap is 0.89 on a 0.60 head, the carapace
+        # 1.16 on a 1.00 torso, the fauld stops inside the hip box + 0.30. The
+        # set that WAS the worst offender in the pack (x = -1.32 claw) now has
+        # no declared exception at all.
+        "fit_exceptions": [],
+    },
+    # TIDEWARD - lacquered scale lames clasped with pearl: the village's best
+    # work, made for leaving, and the most CIVILISED set in the game. Where
+    # Chitin is jittered, domed and lashed, Tideward is ORDERED and DEAD FLAT -
+    # the same builder with the jitter off, the dome at zero and crisp
+    # horizontal bands of four lames whose chamfered lower edges draw the row
+    # lines at game distance.
+    #
+    # Pearl is the set's signature, so it appears three times and is big enough
+    # to see: brow, throat and both wrists, each one SET INTO a small plate.
+    # Helm is a smooth rounded lacquered coif with a short curved brim at the
+    # brow and a scale tail down the nape; face open.
+    "Tideward": {
+        "Helm": [
+            {"target": "Head", "role": "Under", "build": build_coif, "args": {"aperture": 0.40, "brow": 0.17}},
+            # Smooth lacquered coif: no ridge, no cheek scutes, a curved brim
+            # at the brow and four lames tailing down the nape.
+            {"target": "Head", "role": "Plate", "build": build_shell_cap, "args": {"thickness": 0.10, "standoff": 0.17, "dome": 0.56, "brow": 0.0, "cheek": 0.0, "tail": 4, "brim": 0.88, "brim_z": 0.16, "brim_thickness": 0.13, "bevel": 0.13}},
+            {"target": "Head", "role": "Trim", "build": build_ring_band, "args": {"z": 0.36, "height": 0.10, "thickness": 0.08, "standoff": 0.12, "count": 12, "buckle": 0.20}},
+            # The pearl at the brow, set into its own small plate.
+            {"target": "Head", "role": "Accent", "build": build_studs, "args": {"spots": ((0.0, 0.40),), "radius": 0.14, "standoff": 0.15, "seat": 2.6}},
+        ],
+        "Chest": [
+            {"target": "UpperTorso", "role": "Under", "build": build_glove},
+            {"target": "LeftUpperArm", "role": "Under", "build": build_glove, "mirror": True},
+            {"target": "LeftLowerArm", "role": "Under", "build": build_glove, "mirror": True},
+            {"target": "LeftHand", "role": "Under", "build": build_glove, "mirror": True},
+            # THE LAMELLAR COAT: three crisp bands of four flat lames, front and
+            # back. Each lame is 0.65 x 0.41 studs - five times the 0.12
+            # readability floor - and the waist is left bare on purpose.
+            {"target": "UpperTorso", "role": "Plate", "build": build_lames, "args": {"rows": (4, 4, 4), "face": "both", "wrap": 0.88, "top": 0.50, "bottom": -0.30, "thickness": 0.09, "standoff": 0.18, "overlap": 0.15, "curve": 0.13, "step": 0.018, "tilt": 7.0, "jitter": 0.0, "seed": 21, "corner": 0.30}},
+            # The short scale mantle: two bands plus a flat cap over the shoulder.
+            {"target": "LeftUpperArm", "role": "Plate", "build": build_lames, "mirror": True, "args": {"rows": (2, 2), "face": "both", "wrap": 0.86, "top": 0.50, "bottom": -0.20, "thickness": 0.09, "standoff": 0.17, "overlap": 0.15, "curve": 0.13, "step": 0.014, "tilt": 7.0, "jitter": 0.0, "seed": 23, "corner": 0.30, "cap": 0.80, "cap_count": 2}},
+            # Scale bracers - small lames, elbow left bare.
+            {"target": "LeftLowerArm", "role": "Plate", "build": build_lames, "mirror": True, "args": {"rows": (2, 2), "face": "front", "wrap": 0.88, "top": 0.22, "bottom": -0.48, "thickness": 0.09, "standoff": 0.17, "overlap": 0.15, "curve": 0.11, "step": 0.014, "tilt": 7.0, "jitter": 0.0, "seed": 25, "corner": 0.30}},
+            # Pearl clasp at the throat - the closure the set is named for.
+            {"target": "UpperTorso", "role": "Accent", "build": build_studs, "args": {"spots": ((0.0, 0.82),), "radius": 0.14, "standoff": 0.21, "seat": 2.8}},
+            # ...and the wrist clasps.
+            {"target": "LeftLowerArm", "role": "Accent", "build": build_studs, "mirror": True, "args": {"spots": ((0.0, 0.66),), "radius": 0.12, "standoff": 0.20, "seat": 2.6}},
+        ],
+        "Legs": [
+            {"target": "LowerTorso", "role": "Under", "build": build_glove},
+            {"target": "LeftUpperLeg", "role": "Under", "build": build_glove, "mirror": True},
+            {"target": "LeftLowerLeg", "role": "Under", "build": build_glove, "mirror": True},
+            {"target": "LeftFoot", "role": "Under", "build": build_glove, "mirror": True},
+            # The coat's hip-length hem, in the same crisp bands.
+            {"target": "LowerTorso", "role": "Plate", "build": build_lames, "args": {"rows": (4, 4), "face": "both", "wrap": 0.88, "top": 0.10, "bottom": -1.14, "thickness": 0.09, "standoff": 0.16, "overlap": 0.15, "curve": 0.17, "step": 0.018, "tilt": 7.0, "jitter": 0.0, "seed": 27, "corner": 0.30}},
+            # MEDIUM: one flat thigh plate each, knee left bare.
+            {"target": "LeftUpperLeg", "role": "Plate", "build": build_scute, "mirror": True, "args": {"face": "front", "wrap": 0.80, "top": 0.30, "bottom": -0.18, "thickness": 0.10, "standoff": 0.16, "curve": 0.12, "tilt": 6.0, "corner": 0.30}},
+            # Tall scale-faced sea boots: two bands down the shin.
+            {"target": "LeftLowerLeg", "role": "Plate", "build": build_lames, "mirror": True, "args": {"rows": (2, 2), "face": "both", "wrap": 0.88, "top": 0.24, "bottom": -0.52, "thickness": 0.09, "standoff": 0.16, "overlap": 0.15, "curve": 0.12, "step": 0.014, "tilt": 7.0, "jitter": 0.0, "seed": 31, "corner": 0.30}},
+            {"target": "LeftFoot", "role": "Plate", "build": build_boot_cap, "mirror": True, "args": {"thickness": 0.10, "standoff": 0.13, "toe": 0.20}},
+            # The rope belt, with its buckle.
+            {"target": "LowerTorso", "role": "Trim", "build": build_ring_band, "args": {"z": 0.40, "height": 0.14, "thickness": 0.10, "standoff": 0.17, "count": 14, "buckle": 0.26}},
+        ],
+        # NONE. Wave 0 reserved one for a wide sou'wester brim; the brim the set
+        # actually got is a 0.13-thick ring at x +/-0.88, inside a 0.60 head's
+        # own MAX_STANDOFF (0.90) - so the exception was deleted rather than
+        # left on file unused. An exception nobody needs is how a gate's output
+        # starts getting skimmed.
+        "fit_exceptions": [],
+    },
+    # MIREWALKER - a poacher's hooded long coat out of Blackmire Fen, and the
+    # set that must read SOFT. LEATHER, NOT PLATE: the Under role is not a
+    # body glove here, it IS the coat - peat-black cured hide, Enum.Material
+    # Leather - and the hard parts are deliberately FEW AND LARGE: a scute
+    # brow, two shoulder scutes, a spine run down the back, two knee caps, two
+    # shin scutes. Nothing hard on the chest at all; that is the whole point of
+    # difference from Chitin's carapace and Boneplate's cuirass.
+    #
+    # The silhouette read is HOOD + LONG HEM + no shoulder line, which is the
+    # opposite of the two lamellar sets' shoulder-cap read. The hood is a
+    # three-step-chamfered cowl (rounded, low, face open) rather than the
+    # bevelled box wave 1's helms used, and the moss fringe hanging beside the
+    # face - never across it - is what says "fen" at 60 studs.
+    #
+    # Every lame here is dome 0. Hide and scute are flat; only bone and shell
+    # earn a dome, and this set has neither.
+    #
+    # Deleted from the legacy build: two snapped-reed antlers (+1.00 above the
+    # crown), the shelf-fungi stack, the shoulder sapling, the root lacing, the
+    # cone at the hip and the shard - the whole z = +2.13 collar.
+    "Mirewalker": {
+        "Helm": [
+            {"target": "Head", "role": "Under", "build": build_coif, "args": {"aperture": 0.42, "brow": 0.18}},
+            {"target": "Head", "role": "Under", "n": 2, "build": build_cowl, "args": {"drape": 0.17, "aperture": 0.52, "peak": 0.09, "chamfer": 3, "bevel": 0.15}},
+            {"target": "Head", "role": "Plate", "build": build_brow_plate, "args": {"width": 0.88, "shelf": 0.28, "thickness": 0.12, "standoff": 0.15, "rake": -18.0, "corner": 0.26}},
+            {"target": "Head", "role": "Trim", "build": build_ring_band, "args": {"z": 0.30, "height": 0.09, "thickness": 0.08, "standoff": 0.11, "count": 12, "straps": 0.24, "strap_drop": 0.52}},
+            {"target": "Head", "role": "Accent", "build": build_fringe, "args": {"z": -0.04, "drop": 0.34, "thickness": 0.08, "standoff": 0.20, "count": 14, "face_clear": 0.94, "jitter": 0.26, "seed": 41, "corner": 0.18}},
+        ],
+        "Chest": [
+            {"target": "UpperTorso", "role": "Under", "build": build_glove},
+            {"target": "LeftUpperArm", "role": "Under", "build": build_glove, "mirror": True},
+            {"target": "LeftLowerArm", "role": "Under", "build": build_glove, "mirror": True},
+            {"target": "LeftHand", "role": "Under", "build": build_glove, "mirror": True},
+            {"target": "LeftUpperArm", "role": "Plate", "build": build_lames, "mirror": True, "args": {"rows": (1,), "face": "both", "wrap": 0.86, "top": 0.50, "bottom": -0.08, "thickness": 0.13, "standoff": 0.17, "overlap": 0.18, "curve": 0.12, "tilt": 8.0, "dome": 0.0, "corner": 0.34, "cap": 0.86, "cap_count": 2}},
+            {"target": "UpperTorso", "role": "Plate", "build": build_lames, "args": {"rows": (1, 1, 1), "face": "back", "wrap": 0.42, "top": 0.50, "bottom": -0.42, "thickness": 0.13, "standoff": 0.18, "overlap": 0.20, "curve": 0.03, "step": 0.02, "tilt": 8.0, "dome": 0.0, "corner": 0.30}},
+            {"target": "UpperTorso", "role": "Accent", "build": build_lames, "args": {"rows": (1, 1), "face": "both", "wrap": 0.94, "top": 0.50, "bottom": 0.20, "thickness": 0.09, "standoff": 0.13, "overlap": 0.10, "curve": 0.18, "step": 0.014, "tilt": 6.0, "dome": 0.0, "corner": 0.24}},
+            {"target": "UpperTorso", "role": "Trim", "build": build_ring_band, "args": {"z": -0.26, "height": 0.17, "thickness": 0.11, "standoff": 0.16, "count": 14, "buckle": 0.30}},
+            {"target": "UpperTorso", "role": "Trim", "n": 2, "build": build_studs, "args": {"spots": ((-0.74, 0.60), (-0.36, 0.72), (0.36, 0.72), (0.74, 0.60)), "radius": 0.07, "standoff": 0.17}},
+            {"target": "LeftLowerArm", "role": "Trim", "n": 3, "build": build_wraps, "mirror": True, "args": {"count": 3, "top": 0.38, "bottom": -0.40, "height": 0.13, "thickness": 0.10, "standoff": 0.14, "ring": 8}},
+        ],
+        "Legs": [
+            {"target": "LowerTorso", "role": "Under", "build": build_glove},
+            {"target": "LeftUpperLeg", "role": "Under", "build": build_glove, "mirror": True},
+            {"target": "LeftLowerLeg", "role": "Under", "build": build_glove, "mirror": True},
+            {"target": "LeftFoot", "role": "Under", "build": build_glove, "mirror": True},
+            {"target": "LowerTorso", "role": "Under", "n": 2, "build": build_fringe, "args": {"z": -0.16, "drop": 0.42, "thickness": 0.11, "standoff": 0.09, "count": 16, "face_clear": 0.0, "jitter": 0.12, "seed": 47, "corner": 0.12}},
+            {"target": "LeftUpperLeg", "role": "Plate", "build": build_lames, "mirror": True, "args": {"rows": (1,), "face": "front", "wrap": 0.82, "top": -0.02, "bottom": -0.48, "thickness": 0.13, "standoff": 0.17, "overlap": 0.16, "curve": 0.10, "tilt": 7.0, "dome": 0.0, "corner": 0.36}},
+            {"target": "LeftLowerLeg", "role": "Plate", "build": build_lames, "mirror": True, "args": {"rows": (1,), "face": "front", "wrap": 0.84, "top": 0.28, "bottom": -0.34, "thickness": 0.12, "standoff": 0.16, "overlap": 0.14, "curve": 0.10, "tilt": 7.0, "dome": 0.0, "corner": 0.32}},
+            {"target": "LowerTorso", "role": "Trim", "build": build_ring_band, "args": {"z": 0.30, "height": 0.19, "thickness": 0.12, "standoff": 0.16, "count": 14, "buckle": 0.32}},
+            {"target": "LeftLowerLeg", "role": "Trim", "n": 2, "build": build_wraps, "mirror": True, "args": {"count": 3, "top": 0.34, "bottom": -0.44, "height": 0.12, "thickness": 0.10, "standoff": 0.14, "ring": 8}},
+        ],
+        # NONE. The cowl is 0.84 on a 0.60 head, the moss fringe 0.88, the coat
+        # hem stops inside the hip box + 0.30, and the shoulder scutes are the
+        # only thing near the shoulder line at x 1.19 against a 1.35 limit.
+        "fit_exceptions": [],
+    },
+    # BONEPLATE - brine-blackened bone over a dark under-suit, and NOT a
+    # skeleton costume: the legacy build was a literal fish skull worn as a
+    # crown with 1.14 studs of snout in front of the face and a free-standing
+    # ribcage. What lands instead is a CUIRASS of long curved bone plates with
+    # a NACRE LINING showing at every plate edge.
+    #
+    # That lining is the one trick in the set and it is done with geometry, not
+    # with a texture the game cannot show: the Accent object repeats the Plate
+    # object's own rows at a SMALLER standoff (0.13 against 0.17) and a WIDER
+    # wrap and overlap, so the pale nacre sits just under and just outside each
+    # bone plate and shows as a rim of pearl light around it. Dark, wet, cursed
+    # - with the light at the edges.
+    #
+    # This is the one wave-2 set whose lames are DOMED, and only slightly
+    # (0.05): bone is genuinely curved, and the standing note is that a plate
+    # is dead flat unless the MATERIAL is domed. Hide, scute, wool and
+    # everfrost are not; bone is.
+    #
+    # The helm is a bone half-mask - a three-step-chamfered skull cap with a
+    # brow shelf and two cheek scutes framing an OPEN face (Boneplate is not in
+    # HIDES_FACE and must not become a full mask), nacre inlay round the crown,
+    # and two ghost-green temple glints outboard of the face box.
+    "Boneplate": {
+        "Helm": [
+            {"target": "Head", "role": "Under", "build": build_coif, "args": {"aperture": 0.42, "brow": 0.18}},
+            {"target": "Head", "role": "Plate", "build": build_shell_cap, "args": {"thickness": 0.11, "standoff": 0.16, "dome": 0.74, "brow": 0.17, "cheek": 0.98, "tail": 3, "bevel": 0.12, "chamfer": 3}},
+            {"target": "Head", "role": "Accent", "build": build_ring_band, "args": {"z": 0.30, "height": 0.07, "thickness": 0.06, "standoff": 0.20, "count": 14}},
+            {"target": "Head", "role": "Trim", "build": build_studs, "args": {"spots": ((-0.92, -0.10), (0.92, -0.10), (-0.88, 0.52), (0.88, 0.52)), "radius": 0.07, "standoff": 0.19}},
+            {"target": "Head", "role": "Glow", "build": build_studs, "args": {"spots": ((-0.95, 0.16), (0.95, 0.16)), "radius": 0.075, "standoff": 0.18, "seat": 2.2}},
+        ],
+        "Chest": [
+            {"target": "UpperTorso", "role": "Under", "build": build_glove},
+            {"target": "LeftUpperArm", "role": "Under", "build": build_glove, "mirror": True},
+            {"target": "LeftLowerArm", "role": "Under", "build": build_glove, "mirror": True},
+            {"target": "LeftHand", "role": "Under", "build": build_glove, "mirror": True},
+            {"target": "UpperTorso", "role": "Plate", "build": build_lames, "args": {"rows": (1, 2), "weights": (2.4, 1.0), "face": "both", "wrap": 0.80, "top": 0.50, "bottom": -0.32, "thickness": 0.12, "standoff": 0.17, "overlap": 0.18, "curve": 0.20, "step": 0.028, "tilt": 7.0, "dome": 0.05, "corner": 0.30}},
+            {"target": "UpperTorso", "role": "Accent", "build": build_lames, "args": {"rows": (1, 2), "weights": (2.4, 1.0), "face": "both", "wrap": 0.88, "top": 0.52, "bottom": -0.34, "thickness": 0.08, "standoff": 0.12, "overlap": 0.26, "curve": 0.20, "step": 0.028, "tilt": 7.0, "dome": 0.0, "corner": 0.30}},
+            {"target": "UpperTorso", "role": "Accent", "n": 2, "build": build_ring_band, "args": {"z": 0.42, "height": 0.10, "thickness": 0.08, "standoff": 0.20, "count": 16}},
+            {"target": "UpperTorso", "role": "Trim", "build": build_studs, "args": {"spots": ((-0.80, 0.66), (0.80, 0.66), (-0.86, -0.10), (0.86, -0.10), (0.0, 0.30)), "radius": 0.07, "standoff": 0.19}},
+            {"target": "LeftUpperArm", "role": "Plate", "build": build_lames, "mirror": True, "args": {"rows": (1,), "face": "both", "wrap": 0.86, "top": 0.50, "bottom": -0.12, "thickness": 0.12, "standoff": 0.16, "overlap": 0.18, "curve": 0.14, "tilt": 7.0, "dome": 0.05, "corner": 0.32, "cap": 0.84, "cap_count": 2}},
+            {"target": "LeftLowerArm", "role": "Plate", "build": build_lames, "mirror": True, "args": {"rows": (1, 1), "face": "front", "wrap": 0.88, "top": 0.26, "bottom": -0.48, "thickness": 0.11, "standoff": 0.16, "overlap": 0.20, "curve": 0.12, "step": 0.02, "tilt": 7.0, "dome": 0.045, "corner": 0.32}},
+        ],
+        "Legs": [
+            {"target": "LowerTorso", "role": "Under", "build": build_glove},
+            {"target": "LeftUpperLeg", "role": "Under", "build": build_glove, "mirror": True},
+            {"target": "LeftLowerLeg", "role": "Under", "build": build_glove, "mirror": True},
+            {"target": "LeftFoot", "role": "Under", "build": build_glove, "mirror": True},
+            {"target": "LowerTorso", "role": "Plate", "build": build_lames, "args": {"rows": (2,), "face": "both", "wrap": 0.86, "top": 0.10, "bottom": -1.00, "thickness": 0.12, "standoff": 0.16, "overlap": 0.18, "curve": 0.18, "tilt": 8.0, "dome": 0.05, "corner": 0.32}},
+            {"target": "LeftUpperLeg", "role": "Plate", "build": build_lames, "mirror": True, "args": {"rows": (1,), "face": "front", "wrap": 0.82, "top": 0.24, "bottom": -0.40, "thickness": 0.12, "standoff": 0.16, "overlap": 0.16, "curve": 0.12, "tilt": 7.0, "dome": 0.05, "corner": 0.32}},
+            {"target": "LeftLowerLeg", "role": "Plate", "build": build_lames, "mirror": True, "args": {"rows": (1, 1), "face": "front", "wrap": 0.88, "top": 0.28, "bottom": -0.48, "thickness": 0.11, "standoff": 0.16, "overlap": 0.20, "curve": 0.12, "step": 0.02, "tilt": 7.0, "dome": 0.045, "corner": 0.32}},
+            {"target": "LeftFoot", "role": "Plate", "build": build_boot_cap, "mirror": True, "args": {"thickness": 0.11, "standoff": 0.13, "toe": 0.22}},
+            {"target": "LowerTorso", "role": "Trim", "build": build_ring_band, "args": {"z": 0.34, "height": 0.18, "thickness": 0.11, "standoff": 0.17, "count": 14, "buckle": 0.28}},
+        ],
+        "fit_exceptions": [],
+    },
+    # RIMEBOUND - WARM UNDER COLD. A thick white rimewool under-suit with a
+    # visible fur collar, fur cuffs and fur boot tops, under smooth translucent
+    # everfrost slabs on chest, shoulders, thighs and shins. Chunky but FLAT:
+    # everfrost is a slab of ice, not a dome, so every lame here is dome 0 and
+    # wrapped in ONE big plate per surface rather than in rows - the only set
+    # in the pack whose plates are single large panels.
+    #
+    # Two palette rows moved for this set and both are recorded in
+    # armor_palette.py: the Plate is now transparency 0.12 (a slab of ice that
+    # renders opaque is the material lying about itself), and the Trim's
+    # material is Snow rather than Leather, because this row dresses the fur
+    # and Leather on a ruff is a shiny strap. The Trim COLOUR is unchanged -
+    # dark sealskin is the only value separation in a set that is otherwise
+    # white on pale blue.
+    #
+    # THE RUFF FITS. Wave 0 pre-declared an exception for it at x +/-0.95; the
+    # ruff that actually landed is two staggered layers of blocks whose
+    # outermost reaches x +/-0.90, which is exactly the 0.60 head plus
+    # MAX_STANDOFF, with the ice shell under it at +/-0.74. The exception was
+    # DELETED rather than left on file - an exception nobody needs is how a
+    # gate's output starts getting skimmed.
+    #
+    # The glacier shards are low rounded studs. No spikes: the set's hard read
+    # comes from the slabs' chamfered edges and the fur's broken outline.
+    "Rimebound": {
+        "Helm": [
+            {"target": "Head", "role": "Under", "build": build_coif, "args": {"aperture": 0.40, "brow": 0.17}},
+            {"target": "Head", "role": "Plate", "build": build_shell_cap, "args": {"thickness": 0.11, "standoff": 0.14, "dome": 0.64, "brow": 0.15, "cheek": 0.96, "bevel": 0.12, "chamfer": 3}},
+            {"target": "Head", "role": "Trim", "build": build_ruff, "args": {"z": -0.26, "height": 0.30, "thickness": 0.15, "standoff": 0.10, "count": 16, "layers": 2, "step": 0.05, "stagger": 0.07, "shrink": 0.16, "face_clear": 0.92}},
+            {"target": "Head", "role": "Accent", "build": build_studs, "args": {"spots": ((-0.92, 0.40), (0.92, 0.40), (0.0, 0.62)), "radius": 0.085, "standoff": 0.17, "seat": 2.2}},
+        ],
+        "Chest": [
+            {"target": "UpperTorso", "role": "Under", "build": build_glove},
+            {"target": "LeftUpperArm", "role": "Under", "build": build_glove, "mirror": True},
+            {"target": "LeftLowerArm", "role": "Under", "build": build_glove, "mirror": True},
+            {"target": "LeftHand", "role": "Under", "build": build_glove, "mirror": True},
+            {"target": "UpperTorso", "role": "Plate", "build": build_lames, "args": {"rows": (1,), "face": "both", "wrap": 0.76, "top": 0.42, "bottom": -0.26, "thickness": 0.15, "standoff": 0.15, "overlap": 0.0, "curve": 0.18, "tilt": 5.0, "dome": 0.0, "corner": 0.30, "bevel": 0.18}},
+            {"target": "LeftUpperArm", "role": "Plate", "build": build_lames, "mirror": True, "args": {"rows": (1,), "face": "both", "wrap": 0.84, "top": 0.46, "bottom": -0.12, "thickness": 0.14, "standoff": 0.15, "overlap": 0.06, "curve": 0.14, "tilt": 6.0, "dome": 0.0, "corner": 0.32, "bevel": 0.18, "cap": 0.84, "cap_count": 2}},
+            {"target": "UpperTorso", "role": "Trim", "build": build_ruff, "args": {"z": 0.40, "height": 0.26, "thickness": 0.15, "standoff": 0.10, "count": 16, "layers": 2, "step": 0.05, "stagger": 0.06, "shrink": 0.16}},
+            {"target": "LeftLowerArm", "role": "Trim", "n": 2, "build": build_ruff, "mirror": True, "args": {"z": -0.34, "height": 0.20, "thickness": 0.13, "standoff": 0.12, "count": 10, "layers": 2, "step": 0.04, "stagger": 0.05, "shrink": 0.18}},
+            {"target": "UpperTorso", "role": "Accent", "build": build_studs, "args": {"spots": ((-0.62, 0.20), (0.62, 0.20), (0.0, -0.10)), "radius": 0.09, "standoff": 0.18, "seat": 2.0}},
+            {"target": "UpperTorso", "role": "Glow", "build": build_ring_band, "args": {"z": 0.26, "height": 0.06, "thickness": 0.05, "standoff": 0.22, "count": 16}},
+        ],
+        "Legs": [
+            {"target": "LowerTorso", "role": "Under", "build": build_glove},
+            {"target": "LeftUpperLeg", "role": "Under", "build": build_glove, "mirror": True},
+            {"target": "LeftLowerLeg", "role": "Under", "build": build_glove, "mirror": True},
+            {"target": "LeftFoot", "role": "Under", "build": build_glove, "mirror": True},
+            {"target": "LeftUpperLeg", "role": "Plate", "build": build_lames, "mirror": True, "args": {"rows": (1,), "face": "front", "wrap": 0.82, "top": 0.30, "bottom": -0.40, "thickness": 0.14, "standoff": 0.15, "overlap": 0.0, "curve": 0.12, "tilt": 5.0, "dome": 0.0, "corner": 0.32, "bevel": 0.18}},
+            {"target": "LeftLowerLeg", "role": "Plate", "build": build_lames, "mirror": True, "args": {"rows": (1,), "face": "front", "wrap": 0.84, "top": 0.24, "bottom": -0.46, "thickness": 0.14, "standoff": 0.15, "overlap": 0.0, "curve": 0.12, "tilt": 5.0, "dome": 0.0, "corner": 0.32, "bevel": 0.18}},
+            {"target": "LeftFoot", "role": "Trim", "build": build_ruff, "mirror": True, "args": {"z": 0.30, "height": 0.16, "thickness": 0.13, "standoff": 0.12, "count": 10, "layers": 2, "step": 0.04, "stagger": 0.04, "shrink": 0.18}},
+            {"target": "LowerTorso", "role": "Trim", "n": 2, "build": build_ring_band, "args": {"z": 0.30, "height": 0.17, "thickness": 0.11, "standoff": 0.17, "count": 14, "buckle": 0.28}},
+        ],
+        "fit_exceptions": [],
+    },
+    "Cindershell": {"Helm": [], "Chest": [], "Legs": [], "fit_exceptions": []},
+    "Duskveil": {
+        "Helm": [],
+        "Chest": [],
+        "Legs": [],
+        # The lantern lure on its stalk, above the brow. The one protrusion
+        # kept in the whole redesign.
+        "fit_exceptions": ["Duskveil_Helm_Head_Glow"],
+    },
+    "Wraithbound": {
+        "Helm": [],
+        "Chest": [],
+        "Legs": [],
+        # The shroud: one hem on the LEGS piece at -1.10, replacing today's
+        # 1.51-stud chest skirt AND 1.65-stud leg drop. A shroud is the
+        # silhouette.
+        "fit_exceptions": ["Wraithbound_Legs_LowerTorso_Trim"],
+    },
+    "CorsairsRest": {
+        "Helm": [],
+        "Chest": [],
+        "Legs": [],
+        # The bicorne's brim (thin, x +/-1.00) and the half-cape of spectral
+        # sailcloth over the LEFT shoulder only.
+        "fit_exceptions": [
+            "CorsairsRest_Helm_Head_Plate",
+            "CorsairsRest_Chest_UpperTorso_Accent",
+        ],
+    },
+    "Stormcaller": {
+        "Helm": [],
+        "Chest": [],
+        "Legs": [],
+        # The halo ring, 0.25 off the back of the head. Pure silhouette, zero
+        # bulk - it replaces the +1.63 crown spikes.
+        "fit_exceptions": ["Stormcaller_Helm_Head_Plate2"],
+    },
+}
+
+
+def build_spec(prefix, slot):
+    """Every object one set's slot declares. Empty until that set's wave."""
+    spec = SET_SPEC.get(prefix, {})
+    objects = []
+    for entry in spec.get(slot, []):
+        target = entry["target"]
+        role = entry["role"]
+        bm = bmesh.new()
+        entry["build"](bm, target, **entry.get("args", {}))
+        obj = emit(prefix, slot, target, role, bm, entry.get("n"))
+        objects.append(obj)
+        if entry.get("mirror"):
+            twin = FIT[target].get("mirror")
+            if twin:
+                objects.append(mirror_object(obj, obj_name(prefix, slot, twin, role, entry.get("n"))))
+    return objects
+
+
+# ----------------------------------------------------------------- gates
+#
+# All three print and never throw, the house style: a work-in-progress set
+# still exports and can be looked at. They are the MECHANICAL half of the
+# user's instruction - "not bulky, not spiky, covers the character" stops
+# being a promise and becomes a number somebody has to answer for.
+
+# A legacy two-field name has no <Target>; these are the parts each legacy
+# slot was authored against, so the gates can measure the shipped pack too.
+LEGACY_TARGET = {"Helm": "Head", "Chest": "UpperTorso", "Legs": "LowerTorso"}
+
+
+def parse_name(name):
+    """(prefix, slot, target, role) for a pack object, or None for a name that
+    is neither shape. Legacy two-field names come back with the slot's own
+    target and role None."""
+    fields = name.split("_")
+    if len(fields) == 4:
+        return fields[0], fields[1], fields[2], fields[3].rstrip("0123456789")
+    if len(fields) == 2 and fields[1] in LEGACY_TARGET:
+        return fields[0], fields[1], LEGACY_TARGET[fields[1]], None
+    return None
+
+
+def _exceptions():
+    names = set()
+    for spec in SET_SPEC.values():
+        names.update(spec.get("fit_exceptions", []))
+    return names
+
+
 def check_faces(objects):
     """Enforce the header's FACE BOX. Prints offenders; never throws, so a
-    half-built set still exports and can be looked at."""
+    half-built set still exports and can be looked at.
+
+    SKIPS the sets that declare hides_face (Duskveil, Wraithbound,
+    Stormcaller). Those three are full masks BY DESIGN - the brief says so and
+    armor_palette.HIDES_FACE is the one list of them. Without the skip this
+    gate would print three permanent false violations, and a gate whose output
+    is routinely ignored is a dead gate."""
     offenders = {}
+    skipped = []
     for obj in objects:
-        if not obj.name.endswith("_Helm"):
+        parsed = parse_name(obj.name)
+        if not parsed or parsed[1] != "Helm":
+            continue
+        prefix = parsed[0]
+        if armor_palette.hides_face(prefix):
+            if prefix not in skipped:
+                skipped.append(prefix)
             continue
         for vert in obj.data.vertices:
             x, y, z = vert.co
@@ -1093,11 +2637,103 @@ def check_faces(objects):
                 entry[0] += 1
                 if entry[1] is None or y < entry[1][1]:
                     entry[1] = (round(x, 2), round(y, 2), round(z, 2))
+    if skipped:
+        print("FACE BOX: skipping %s - declared full masks (hides_face)" % ", ".join(sorted(skipped)))
     if not offenders:
         print("FACE BOX: clear - every helm leaves the face open below the brow")
         return
     for name, (count, worst) in sorted(offenders.items()):
         print("FACE BOX VIOLATION: %s has %d vert(s) below the brow line, deepest at %s" % (name, count, worst))
+
+
+def check_fit(objects):
+    """Every object's bbox must lie inside its target's box + MAX_STANDOFF,
+    and nothing may cross SHOULDER_CLEAR in x. Declared per-set exceptions are
+    skipped by name. Prints one line per offender with the overshoot in studs.
+
+    This is the gate the pack never had. The measured result on the SHIPPED
+    30 pieces is helms averaging +0.47 of standoff per side on a 0.60 head and
+    chests projecting 1.13 studs off a 0.50-deep torso - which is exactly why
+    the armour reads bulky, and exactly what this number is for."""
+    skip = _exceptions()
+    offenders = []
+    swing = []
+    for obj in objects:
+        if obj.name in skip:
+            continue
+        parsed = parse_name(obj.name)
+        if not parsed:
+            print("FIT: %s does not parse as a pack name - skipped" % obj.name)
+            continue
+        target = parsed[2]
+        if target not in FIT:
+            print("FIT: %s names target '%s', which is not in FIT" % (obj.name, target))
+            continue
+        half = fit_size(target) / 2
+        lo = [min(v.co[i] for v in obj.data.vertices) for i in range(3)]
+        hi = [max(v.co[i] for v in obj.data.vertices) for i in range(3)]
+        over = []
+        for i, axis in enumerate("xyz"):
+            limit = half[i] + MAX_STANDOFF
+            worst = max(hi[i] - limit, -lo[i] - limit)
+            if worst > 0.005:
+                over.append("%s +%.2f" % (axis, worst))
+        if over:
+            offenders.append((obj.name, target, ", ".join(over)))
+        reach = max(hi[0], -lo[0])
+        if reach > SHOULDER_CLEAR + 0.005:
+            swing.append((obj.name, reach))
+    if skip:
+        print("FIT: %d declared exception(s) on file: %s" % (len(skip), ", ".join(sorted(skip))))
+    if not offenders and not swing:
+        print("FIT: clear - every object inside its target's box + %.2f" % MAX_STANDOFF)
+    for name, target, over in sorted(offenders):
+        print("FIT: %s stands off %s (limit is the %s box + %.2f)" % (name, over, target, MAX_STANDOFF))
+    for name, reach in sorted(swing):
+        print("FIT: %s reaches x %.2f - past SHOULDER_CLEAR %.2f, it fouls the arm swing" % (name, reach, SHOULDER_CLEAR))
+
+
+def check_coverage(objects):
+    """Every set x slot must emit at least one object on every target in
+    SLOT_TARGETS for that slot. A missing LeftFoot is a bare ankle nobody
+    would notice in a static render and everybody notices in play - the
+    silent-absence shape this codebase keeps getting bitten by.
+
+    A slot still on its LEGACY single part is reported as such rather than as
+    twelve missing limbs: it is not a hole, it is a set that has not had its
+    wave yet."""
+    dressed = {}
+    legacy = set()
+    for obj in objects:
+        parsed = parse_name(obj.name)
+        if not parsed:
+            continue
+        prefix, slot, target, role = parsed
+        if role is None:
+            legacy.add((prefix, slot))
+            continue
+        dressed.setdefault((prefix, slot), set()).add(target)
+    holes = 0
+    for prefix in sorted(SETS):
+        for slot in ("Helm", "Chest", "Legs"):
+            if (prefix, slot) in legacy:
+                continue
+            covered = dressed.get((prefix, slot))
+            if covered is None:
+                print("COVERAGE: %s %s has no objects at all" % (prefix, slot))
+                holes += 1
+                continue
+            missing = [t for t in SLOT_TARGETS[slot] if t not in covered]
+            if missing:
+                print("COVERAGE: %s %s leaves %s bare" % (prefix, slot, ", ".join(missing)))
+                holes += 1
+    if legacy:
+        print(
+            "COVERAGE: %d slot(s) still on the LEGACY single part (not yet rebuilt): %s"
+            % (len(legacy), ", ".join("%s_%s" % p for p in sorted(legacy)))
+        )
+    if not holes and dressed:
+        print("COVERAGE: clear - every rebuilt slot dresses every target in its region")
 
 
 # ---------------------------------------------------------------- registry
@@ -1667,11 +3303,22 @@ SETS = {
 
 
 def build_all():
+    """Every object in the pack. A set's slot comes from SET_SPEC once that
+    set has had its wave; until then it comes from the LEGACY builder, byte
+    for byte as it ships today. Both shapes export into the same pack and
+    ArmorService wears either, which is what makes each wave a non-breaking
+    change."""
     objects = []
-    for _prefix, builders in SETS.items():
-        for builder in builders:
-            objects.append(builder())
+    for prefix, builders in SETS.items():
+        for slot, builder in zip(("Helm", "Chest", "Legs"), builders):
+            spec_objects = build_spec(prefix, slot)
+            if spec_objects:
+                objects += spec_objects
+            else:
+                objects.append(builder())
     check_faces(objects)
+    check_fit(objects)
+    check_coverage(objects)
     return objects
 
 
@@ -1697,52 +3344,287 @@ def export(path, objects):
         )
 
 
-def render_preview(path, objects):
-    # Lay the pieces out in set columns: helm on top, chest, then legs.
-    columns = {}
-    for obj in objects:
-        prefix = obj.name.split("_")[0]
-        columns.setdefault(prefix, []).append(obj)
-    for column, prefix in enumerate(SETS):
-        for row, obj in enumerate(columns.get(prefix, [])):
-            obj.location = Vector(((column - (len(SETS) - 1) / 2) * 3.6, 0, 4.0 - row * 2.1))
+# ------------------------------------------------------- the mannequin preview
+#
+# THIS IS THE HIGHEST-VALUE PART OF THE FILE, because its absence caused the
+# whole problem. The old render laid the 30 pieces out in a grid, floating in
+# grey, with no body, no rig and no mannequin - so nothing in the pipeline had
+# ever shown a piece ON A BODY, and nothing had ever revealed that the pieces
+# do not fit one. Fit was authored blind against three constants.
+#
+# What lands instead:
+#   * an R15 BLOCK MANNEQUIN built from FIT itself, in a relaxed A-pose, so a
+#     mannequin/armour mismatch is impossible by construction - they are the
+#     same table;
+#   * one PNG per set, three views (three-quarter hero, front, back), the set
+#     worn;
+#   * a contact sheet, all ten side by side: the "do these read as ten
+#     different sets at a glance?" image;
+#   * HONEST COLOUR - materials come from armor_palette, Neon roles are
+#     emissive and transparent roles carry their real alpha, so the render
+#     shows what the game will show. A legacy single-part piece is drawn in
+#     the set ROW's colour, because that is precisely what ArmorService paints
+#     it: one flat tint over a whole piece, which is the look being replaced.
 
-    sun = bpy.data.objects.new("Sun", bpy.data.lights.new("Sun", "SUN"))
-    sun.rotation_euler = (math.radians(55), 0, math.radians(30))
-    bpy.context.collection.objects.link(sun)
+PREVIEW_SKIN = (0.61, 0.57, 0.53)  # sRGB; _linear() below converts
+
+
+def _linear(rgb):
+    """sRGB -> linear, for the PREVIEW ONLY.
+
+    The pack's own materials (finish()) write colour/255 straight into Base
+    Color with no gamma step, because that is the mapping the whole repo uses
+    - WorldService.MESH_COLOR's numbers are derived from island_gen's
+    constants exactly that way, and changing it would move every island. But
+    Blender treats Base Color as LINEAR, so a palette colour pasted in raw
+    renders about a stop and a half too bright. The result is the washed-out
+    near-monochrome look the old preview had, which is precisely what stopped
+    it from telling a reviewer anything.
+
+    So the preview converts. The render then shows what Roblox shows, and
+    "honest colour" is a property of the image rather than a hope."""
+    out = []
+    for c in rgb:
+        out.append(c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4)
+    return tuple(out)
+A_POSE = 15.0  # degrees the arms swing out, so shoulder AND arm plates read
+SHOULDER_Z = 4.00  # top of UpperTorso in mannequin space - the arm pivot
+
+
+def _pose(target):
+    """The world matrix of a posed body part. Identity for everything but the
+    arm chain, which swings out about the shoulder."""
+    row = FIT.get(target) or {}
+    if row.get("chain") != "arm":
+        return Matrix.Identity(4)
+    side = -1.0 if target.startswith("Left") else 1.0
+    pivot = Vector((side * 1.0, 0.0, SHOULDER_Z))
+    return (
+        Matrix.Translation(pivot)
+        @ Matrix.Rotation(math.radians(A_POSE) * -side, 4, "Y")
+        @ Matrix.Translation(-pivot)
+    )
+
+
+def build_mannequin(name="Mannequin"):
+    """One box per R15 part, at FIT's own sizes and centres. ~20 lines, and it
+    is derived from the same table the armour is fitted to."""
+    bm = bmesh.new()
+    for target, row in FIT.items():
+        m = _pose(target)
+        box(bm, m @ Vector(row["center"]), Vector(row["size"]), m.to_3x3())
+    return finish(name, bm, _linear(PREVIEW_SKIN))
+
+
+def preview_material(prefix, role):
+    """The material the GAME will give this object: palette colour, real
+    alpha, and emission for the Neon roles. Cached by name."""
+    key = "PV_%s_%s" % (prefix, role or "Row")
+    mat = bpy.data.materials.get(key)
+    if mat is not None:
+        return mat
+    if role is None:
+        rgb = tuple(c / 255.0 for c in armor_palette.ROW_COLOR.get(prefix, (128, 128, 128)))
+        row = None
+    else:
+        rgb = armor_palette.rgb01(prefix, role)
+        row = armor_palette.row(prefix, role)
+    mat = bpy.data.materials.new(key)
+    mat.use_nodes = True
+    bsdf = mat.node_tree.nodes.get("Principled BSDF")
+    if bsdf:
+        lit = _linear(rgb)
+        bsdf.inputs["Base Color"].default_value = (*lit, 1.0)
+        bsdf.inputs["Roughness"].default_value = 0.85
+        if row and row.get("neon"):
+            if "Emission Color" in bsdf.inputs:
+                bsdf.inputs["Emission Color"].default_value = (*lit, 1.0)
+            if "Emission Strength" in bsdf.inputs:
+                bsdf.inputs["Emission Strength"].default_value = 2.4
+            bsdf.inputs["Roughness"].default_value = 0.4
+        alpha = 1.0 - (row["transparency"] if row else 0.0)
+        if alpha < 1.0:
+            bsdf.inputs["Alpha"].default_value = alpha
+            for attr, value in (("blend_method", "BLEND"), ("surface_render_method", "BLENDED")):
+                if hasattr(mat, attr):
+                    try:
+                        setattr(mat, attr, value)
+                    except (TypeError, AttributeError):
+                        pass
+    return mat
+
+
+def _instance(src, matrix, material=None):
+    """A render-only copy of a source object at a world matrix. The mesh data
+    is shared unless the copy needs its own material (the pack's exported
+    materials are the legacy preview colours; the render wants the palette)."""
+    copy = src.copy()
+    if material is not None:
+        copy.data = src.data.copy()
+        if copy.data.materials:
+            copy.data.materials[0] = material
+        else:
+            copy.data.materials.append(material)
+    copy.hide_render = False
+    bpy.context.collection.objects.link(copy)
+    copy.matrix_world = matrix
+    return copy
+
+
+def _label(text, location, size=0.42):
+    curve = bpy.data.curves.new(type="FONT", name="Label")
+    curve.body = text
+    curve.align_x = "CENTER"
+    curve.size = size
+    obj = bpy.data.objects.new("Label_" + text, curve)
+    bpy.context.collection.objects.link(obj)
+    obj.location = Vector(location)
+    obj.rotation_euler = (math.radians(90), 0, 0)
+    mat = bpy.data.materials.get("PV_Label")
+    if mat is None:
+        mat = bpy.data.materials.new("PV_Label")
+        mat.use_nodes = True
+        bsdf = mat.node_tree.nodes.get("Principled BSDF")
+        if bsdf:
+            bsdf.inputs["Base Color"].default_value = (0.86, 0.88, 0.92, 1.0)
+            if "Emission Color" in bsdf.inputs:
+                bsdf.inputs["Emission Color"].default_value = (0.86, 0.88, 0.92, 1.0)
+            if "Emission Strength" in bsdf.inputs:
+                bsdf.inputs["Emission Strength"].default_value = 1.4
+    obj.data.materials.append(mat)
+    return obj
+
+
+def _dress(prefix, pieces, mannequin, matrix, label=None):
+    """One dressed mannequin at a world matrix. Returns every object made, so
+    the caller can tear the scene down between renders."""
+    made = [_instance(mannequin, matrix)]
+    for src in pieces:
+        parsed = parse_name(src.name)
+        if not parsed:
+            continue
+        target, role = parsed[2], parsed[3]
+        if target not in FIT:
+            continue
+        placed = matrix @ _pose(target) @ Matrix.Translation(Vector(FIT[target]["center"]))
+        made.append(_instance(src, placed, preview_material(prefix, role)))
+    if label:
+        made.append(_label(label, (matrix.translation.x, 0.0, -0.85)))
+    return made
+
+
+def _stage(resolution, cam_height, ortho, path):
+    """Camera, key light, fill, sky - built fresh per render so a stale camera
+    cannot silently frame the wrong thing."""
+    made = []
+    for angle, energy, name in ((52, 2.6, "Key"), (-40, 1.0, "Fill")):
+        sun = bpy.data.objects.new(name, bpy.data.lights.new(name, "SUN"))
+        sun.data.energy = energy
+        sun.rotation_euler = (math.radians(58), 0, math.radians(angle))
+        bpy.context.collection.objects.link(sun)
+        made.append(sun)
     cam_data = bpy.data.cameras.new("Cam")
-    cam_data.lens = 23
+    cam_data.type = "ORTHO"
+    cam_data.ortho_scale = ortho
     cam = bpy.data.objects.new("Cam", cam_data)
-    cam.location = Vector((0.0, -26.0, 1.9))
-    cam.rotation_euler = (math.radians(88), 0, math.radians(2))
+    cam.location = Vector((0.0, -40.0, cam_height))
+    cam.rotation_euler = (math.radians(90), 0, 0)
     bpy.context.collection.objects.link(cam)
-    bpy.context.scene.camera = cam
+    made.append(cam)
 
     scene = bpy.context.scene
+    scene.camera = cam
     scene.render.engine = "BLENDER_EEVEE"
-    scene.render.resolution_x = 1600
-    scene.render.resolution_y = 860
+    scene.render.resolution_x, scene.render.resolution_y = resolution
     scene.render.filepath = path
-    scene.world = bpy.data.worlds.new("World")
+    if scene.world is None:
+        scene.world = bpy.data.worlds.new("World")
     scene.world.use_nodes = True
     bg = scene.world.node_tree.nodes.get("Background")
     if bg:
-        bg.inputs[0].default_value = (0.22, 0.25, 0.3, 1.0)
+        bg.inputs[0].default_value = (0.11, 0.12, 0.15, 1.0)
+        bg.inputs[1].default_value = 1.0
+    return made
+
+
+def _teardown(objects):
+    """Every render builds its own scene and removes it again - eleven images
+    out of one Blender run, with no chance of a leftover from image 3 turning
+    up in image 7."""
+    for obj in objects:
+        bpy.data.objects.remove(obj, do_unlink=True)
+
+
+def render_preview(path, objects):
+    """Writes assets/armor_preview_<set>.png for all ten sets and replaces
+    assets/armor_preview.png with the ten-set line-up."""
+    out_dir = os.path.dirname(os.path.abspath(path)) or "."
+    base = os.path.basename(path)
+    stem = base[: -len(".png")] if base.endswith(".png") else base
+
+    # The pack objects are sources; only their instances are ever rendered.
+    for obj in objects:
+        obj.hide_render = True
+    mannequin = build_mannequin()
+    mannequin.hide_render = True
+
+    by_prefix = {}
+    for obj in objects:
+        parsed = parse_name(obj.name)
+        if parsed:
+            by_prefix.setdefault(parsed[0], []).append(obj)
+
+    written = []
+    # ---- one PNG per set: three-quarter hero, front, back.
+    for prefix in SETS:
+        pieces = by_prefix.get(prefix, [])
+        made = []
+        for column, (yaw, view) in enumerate(((-38, "three-quarter"), (0, "front"), (180, "back"))):
+            at = Matrix.Translation(Vector(((column - 1) * 4.4, 0, 0))) @ Matrix.Rotation(
+                math.radians(yaw), 4, "Z"
+            )
+            made += _dress(prefix, pieces, mannequin, at, label=view)
+        made.append(_label(prefix, (0.0, 0.0, 7.85), size=0.70))
+        target = os.path.join(out_dir, "%s_%s.png" % (stem, prefix.lower()))
+        made += _stage((1500, 950), 3.70, 15.5, target)
+        bpy.ops.render.render(write_still=True)
+        written.append(target)
+        _teardown(made)
+
+    # ---- the line-up: ten dressed mannequins, three-quarter, one row.
+    made = []
+    for column, prefix in enumerate(SETS):
+        at = Matrix.Translation(
+            Vector(((column - (len(SETS) - 1) / 2) * 4.3, 0, 0))
+        ) @ Matrix.Rotation(math.radians(-38), 4, "Z")
+        made += _dress(prefix, by_prefix.get(prefix, []), mannequin, at, label=prefix)
+    made += _stage((2800, 880), 3.40, 45.0, path)
     bpy.ops.render.render(write_still=True)
-    print("ARMOR PREVIEW:", path)
+    written.append(path)
+    _teardown(made)
+
+    for target in written:
+        print("ARMOR PREVIEW:", target)
 
 
 def main():
     argv = sys.argv[sys.argv.index("--") + 1 :] if "--" in sys.argv else []
     if not argv:
-        print("usage: blender --background --python armor_gen.py -- <out.glb> [preview]")
+        print("usage: blender --background --python armor_gen.py -- <out.glb> [preview [<preview.png>]]")
         return
     out = argv[0]
     clear_scene()
     objects = build_all()
     export(out, objects)
     if "preview" in argv[1:]:
-        render_preview(out.replace(".glb", "_preview.png"), objects)
+        # The preview base path defaults to the pack's, but can be given
+        # explicitly - which is how a run can re-render assets/armor_preview*
+        # WITHOUT rewriting assets/armor.glb. A pack rebuild that changes no
+        # object is still a new binary in a shared checkout, and a binary diff
+        # nobody can read is a bad thing to hand a reviewer.
+        rest = argv[argv.index("preview") + 1 :]
+        preview = rest[0] if rest else out.replace(".glb", "_preview.png")
+        render_preview(preview, objects)
 
 
 main()

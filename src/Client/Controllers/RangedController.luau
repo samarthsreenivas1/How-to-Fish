@@ -54,6 +54,7 @@ local ZOOM_TWEEN = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirecti
 local bound = false
 local firing = false -- the button is down (matters for auto)
 local zoomed = false
+local lastDryFireAt = 0 -- rate limit for the empty click; see tryFire
 
 -- Per-WEAPON mirrors of the server's persistent gun state (CombatService
 -- keeps its magazine / reload clock / bucket per (player, weaponId) across
@@ -141,9 +142,18 @@ local function setZoom(on: boolean, ranged)
 	if not camera then
 		return
 	end
+	local was = zoomed
 	zoomed = on and ranged ~= nil
 	local fov = if zoomed then (ranged.zoomFov or Tuning.Ranged.DEFAULT_ZOOM_FOV) else DEFAULT_FOV
 	TweenService:Create(camera, ZOOM_TWEEN, { FieldOfView = fov }):Play()
+	-- Keyed off the TRANSITION, not off `on`. setZoom(false, nil) is called
+	-- defensively from four places that have no idea whether a scope was
+	-- actually up - unbindFire on every equip change, the respawn, the
+	-- third-person guard, the head of onZoomAction - so a cue on `on` alone
+	-- would click the scope shut every time the player swapped to a rod.
+	if zoomed ~= was then
+		Sfx.play(if zoomed then "zoomIn" else "zoomOut")
+	end
 end
 
 -- ---------------------------------------------------------------- aim
@@ -397,6 +407,20 @@ local function tryFire()
 	local mirror = mirrorFor(weapon)
 
 	if now < mirror.reloadUntil then
+		-- Pulling the trigger mid-reload: the click of a hammer falling on
+		-- nothing, which is the only feedback there is that the gun is busy
+		-- rather than broken.
+		--
+		-- RATE-LIMITED, because this return is reached from the Heartbeat auto
+		-- loop as well as from the button: hold the trigger on an auto weapon
+		-- through a two-second reload and an unguarded cue here is ~120 clicks
+		-- stacked on each other. A quarter second is about as fast as a hand
+		-- can actually work a trigger, so what survives the limit still sounds
+		-- like the player mashing it - which is what they are doing.
+		if now - lastDryFireAt >= 0.25 then
+			lastDryFireAt = now
+			Sfx.play("dryFire")
+		end
 		return
 	end
 	if mirror.shotsInMag <= 0 then
@@ -418,6 +442,12 @@ local function tryFire()
 		-- Per-shot loaders (bow, crossbow, flintlock, harpooner): the
 		-- cooldown IS the reload, so the re-nock / re-ram plays after every
 		-- shot inside it, leaving a beat of aim time at the end.
+		--
+		-- One cue for all four: `renock` is the per-shot re-arm, whether that
+		-- is an arrow onto a string or a ball down a barrel. It rides the
+		-- reloadAnim rather than replacing gunReload, which belongs to the
+		-- magazine weapons in the branch above.
+		Sfx.play("renock")
 		WeaponViewmodelController.reloadAnim(weapon.model and weapon.model.variant, weapon.cooldown * 0.85)
 	end
 
@@ -533,6 +563,8 @@ function RangedController.init()
 end
 
 function RangedController.start()
+	-- No uiEquip echo here: three controllers watch this same attribute, so the
+	-- equip cue lives in FishingController alone rather than triple-playing.
 	player:GetAttributeChangedSignal(Equipment.ATTRIBUTE):Connect(refresh)
 	player:GetAttributeChangedSignal(Equipment.WEAPON_ATTRIBUTE):Connect(refresh)
 	refresh()
@@ -582,6 +614,12 @@ function RangedController.start()
 			mirror.reloadUntil = 0
 			mirror.shotsInMag = weapon.ranged.magazine
 			updateHud(weapon)
+			-- The bolt closing on a full magazine, landing on the same frame
+			-- the amber RELOADING line flips back to numbers. This is the one
+			-- place the reload ENDS - the mirror is the client's copy of the
+			-- server's clock, so the click and the server's willingness to
+			-- accept a shot are the same instant.
+			Sfx.play("gunReady")
 		end
 	end)
 end

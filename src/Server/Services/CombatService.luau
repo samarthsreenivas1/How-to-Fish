@@ -202,7 +202,10 @@ local function onRequestAttack(player: Player)
 	-- skipRangedOnly: a melee swing reaches past a rangedOnly boss head (the
 	-- Kraken's) to the tentacles - guns are how the head is hurt.
 	local from = (root :: BasePart).Position
-	local inReach = CreatureService.inRange(from, weapon.reach, { skipRangedOnly = true })
+	-- `from` again as the shooter's own position: reach is measured off it here,
+	-- but a positional punish window (Noctyss's open maw) needs to know WHO is
+	-- asking, not just where the query circle sits.
+	local inReach = CreatureService.inRange(from, weapon.reach, { skipRangedOnly = true, from = from })
 	local target = inReach[1]
 	if not target then
 		return

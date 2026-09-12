@@ -1,0 +1,4653 @@
+{
+ "ambience": [
+  "amb_ash",
+  "amb_blizzard",
+  "amb_clear",
+  "amb_ghost",
+  "amb_gloom",
+  "amb_heartchamber",
+  "amb_mist",
+  "amb_sea",
+  "amb_storm",
+  "amb_summit"
+ ],
+ "bundle_seconds": 390.0,
+ "bundles": {
+  "audio_ambience_1": {
+   "bytes": 4554792,
+   "file": "audio_ambience_1.ogg",
+   "gap_seconds": 0.5,
+   "members": [
+    {
+     "length": 84.0,
+     "name": "amb_gloom",
+     "start": 0.0
+    },
+    {
+     "length": 84.0,
+     "name": "amb_sea",
+     "start": 84.5
+    },
+    {
+     "length": 78.0,
+     "name": "amb_ghost",
+     "start": 169.0
+    },
+    {
+     "length": 78.0,
+     "name": "amb_mist",
+     "start": 247.5
+    },
+    {
+     "length": 60.0,
+     "name": "amb_heartchamber",
+     "start": 326.0
+    }
+   ],
+   "pcm_sha256": "cd5b594d3dc56158",
+   "seconds": 386.0,
+   "sha256": "6c0a23555d90cbe8"
+  },
+  "audio_ambience_2": {
+   "bytes": 4673604,
+   "file": "audio_ambience_2.ogg",
+   "gap_seconds": 0.5,
+   "members": [
+    {
+     "length": 72.0,
+     "name": "amb_blizzard",
+     "start": 0.0
+    },
+    {
+     "length": 72.0,
+     "name": "amb_clear",
+     "start": 72.5
+    },
+    {
+     "length": 72.0,
+     "name": "amb_summit",
+     "start": 145.0
+    },
+    {
+     "length": 66.0,
+     "name": "amb_ash",
+     "start": 217.5
+    },
+    {
+     "length": 66.0,
+     "name": "amb_storm",
+     "start": 284.0
+    }
+   ],
+   "pcm_sha256": "5dbb34cb501831c0",
+   "seconds": 350.0,
+   "sha256": "c4e712533fe03095"
+  },
+  "audio_music_1": {
+   "bytes": 6343801,
+   "file": "audio_music_1.ogg",
+   "gap_seconds": 0.5,
+   "members": [
+    {
+     "length": 92.055,
+     "name": "boss_noctyss_low",
+     "start": 0.0
+    },
+    {
+     "length": 92.055,
+     "name": "boss_noctyss_high",
+     "start": 92.555
+    },
+    {
+     "length": 91.948,
+     "name": "boss_admiral_wrack_low",
+     "start": 185.11
+    },
+    {
+     "length": 91.948,
+     "name": "boss_admiral_wrack_high",
+     "start": 277.558
+    },
+    {
+     "length": 12.0,
+     "name": "stinger_finale",
+     "start": 370.006
+    },
+    {
+     "length": 6.0,
+     "name": "stinger_victory",
+     "start": 382.506
+    }
+   ],
+   "pcm_sha256": "201eaf6e92513481",
+   "seconds": 388.506,
+   "sha256": "6dc93a132315e8db"
+  },
+  "audio_music_2": {
+   "bytes": 6154400,
+   "file": "audio_music_2.ogg",
+   "gap_seconds": 0.5,
+   "members": [
+    {
+     "length": 91.579,
+     "name": "boss_brinejaw_low",
+     "start": 0.0
+    },
+    {
+     "length": 91.579,
+     "name": "boss_brinejaw_high",
+     "start": 92.079
+    },
+    {
+     "length": 91.5,
+     "name": "boss_kraken_low",
+     "start": 184.158
+    },
+    {
+     "length": 91.5,
+     "name": "boss_kraken_high",
+     "start": 276.158
+    },
+    {
+     "length": 4.0,
+     "name": "stinger_bossIntro",
+     "start": 368.158
+    }
+   ],
+   "pcm_sha256": "4b97a9c6f70238a1",
+   "seconds": 372.158,
+   "sha256": "d1c3f065f2d5607c"
+  },
+  "audio_music_3": {
+   "bytes": 6056196,
+   "file": "audio_music_3.ogg",
+   "gap_seconds": 0.5,
+   "members": [
+    {
+     "length": 91.2,
+     "name": "boss_rimefang_low",
+     "start": 0.0
+    },
+    {
+     "length": 91.2,
+     "name": "boss_rimefang_high",
+     "start": 91.7
+    },
+    {
+     "length": 90.769,
+     "name": "boss_pyrelisk_low",
+     "start": 183.4
+    },
+    {
+     "length": 90.769,
+     "name": "boss_pyrelisk_high",
+     "start": 274.669
+    }
+   ],
+   "pcm_sha256": "1763f627c14b163b",
+   "seconds": 365.438,
+   "sha256": "582d4ea5c9e170d7"
+  },
+  "audio_music_4": {
+   "bytes": 5032829,
+   "file": "audio_music_4.ogg",
+   "gap_seconds": 0.5,
+   "members": [
+    {
+     "length": 90.0,
+     "name": "boss_old_gnashroot_low",
+     "start": 0.0
+    },
+    {
+     "length": 90.0,
+     "name": "boss_old_gnashroot_high",
+     "start": 90.5
+    },
+    {
+     "length": 172.8,
+     "name": "island_gloom",
+     "start": 181.0
+    }
+   ],
+   "pcm_sha256": "ccbedf51871f6681",
+   "seconds": 353.8,
+   "sha256": "be2c300fec1a7d69"
+  },
+  "audio_music_5": {
+   "bytes": 4568767,
+   "file": "audio_music_5.ogg",
+   "gap_seconds": 0.5,
+   "members": [
+    {
+     "length": 164.444,
+     "name": "island_swamp",
+     "start": 0.0
+    },
+    {
+     "length": 160.0,
+     "name": "island_ice",
+     "start": 164.944
+    }
+   ],
+   "pcm_sha256": "5a3645a42b8022bf",
+   "seconds": 324.944,
+   "sha256": "c86bd02670bb894b"
+  },
+  "audio_music_6": {
+   "bytes": 4150102,
+   "file": "audio_music_6.ogg",
+   "gap_seconds": 0.5,
+   "members": [
+    {
+     "length": 160.0,
+     "name": "island_tropical",
+     "start": 0.0
+    },
+    {
+     "length": 155.455,
+     "name": "island_wreck",
+     "start": 160.5
+    }
+   ],
+   "pcm_sha256": "67772c7013f50ffd",
+   "seconds": 315.955,
+   "sha256": "ad67916bcaf97d44"
+  },
+  "audio_music_7": {
+   "bytes": 3917192,
+   "file": "audio_music_7.ogg",
+   "gap_seconds": 0.5,
+   "members": [
+    {
+     "length": 150.0,
+     "name": "island_maelstrom",
+     "start": 0.0
+    },
+    {
+     "length": 140.69,
+     "name": "island_volcano",
+     "start": 150.5
+    }
+   ],
+   "pcm_sha256": "22bb04d89bdbc84a",
+   "seconds": 291.19,
+   "sha256": "6a0be5397e693057"
+  },
+  "audio_sfx_1": {
+   "bytes": 2445982,
+   "file": "audio_sfx_1.ogg",
+   "gap_seconds": 0.15,
+   "members": [
+    {
+     "length": 32.528,
+     "name": "fishing",
+     "start": 0.0
+    },
+    {
+     "length": 15.846,
+     "name": "boat",
+     "start": 32.678
+    },
+    {
+     "length": 34.749,
+     "name": "character",
+     "start": 48.674
+    },
+    {
+     "length": 16.338,
+     "name": "combat",
+     "start": 83.573
+    },
+    {
+     "length": 10.177,
+     "name": "ui",
+     "start": 100.061
+    },
+    {
+     "length": 31.436,
+     "name": "progression",
+     "start": 110.389
+    },
+    {
+     "length": 30.113,
+     "name": "world",
+     "start": 141.975
+    },
+    {
+     "length": 27.823,
+     "name": "creatures",
+     "start": 172.237
+    },
+    {
+     "length": 59.861,
+     "name": "families",
+     "start": 200.211
+    },
+    {
+     "length": 20.566,
+     "name": "boss_shared",
+     "start": 260.221
+    },
+    {
+     "length": 39.499,
+     "name": "boss_brinejaw",
+     "start": 280.937
+    },
+    {
+     "length": 26.969,
+     "name": "boss_gnashroot",
+     "start": 320.586
+    },
+    {
+     "length": 32.426,
+     "name": "boss_pyrelisk",
+     "start": 347.705
+    }
+   ],
+   "pcm_sha256": "0b51bdfa25ddea61",
+   "seconds": 380.132,
+   "sha256": "7ddec75d81234d68"
+  },
+  "audio_sfx_2": {
+   "bytes": 1255974,
+   "file": "audio_sfx_2.ogg",
+   "gap_seconds": 0.15,
+   "members": [
+    {
+     "length": 49.895,
+     "name": "boss_rimefang",
+     "start": 0.0
+    },
+    {
+     "length": 36.66,
+     "name": "boss_noctyss",
+     "start": 50.045
+    },
+    {
+     "length": 44.776,
+     "name": "boss_wrack",
+     "start": 86.854
+    },
+    {
+     "length": 40.047,
+     "name": "boss_kraken",
+     "start": 131.78
+    }
+   ],
+   "pcm_sha256": "d5a6dc013a33fa20",
+   "seconds": 171.827,
+   "sha256": "41b8d7309b20e9b2"
+  }
+ },
+ "cue_peak_db": -1.0,
+ "cues": {
+  "baitCycle": {
+   "file": "audio_sfx_1",
+   "length": 0.22,
+   "loop": false,
+   "sheet": "ui",
+   "sheet_start": 6.079,
+   "spatial": "2D",
+   "start": 106.14
+  },
+  "baitGain": {
+   "file": "audio_sfx_1",
+   "length": 0.413,
+   "loop": false,
+   "sheet": "progression",
+   "sheet_start": 4.612,
+   "spatial": "2D",
+   "start": 115.001
+  },
+  "beamHum": {
+   "file": "audio_sfx_1",
+   "length": 1.0,
+   "loop": true,
+   "sheet": "creatures",
+   "sheet_start": 25.306,
+   "spatial": "2D",
+   "start": 197.543
+  },
+  "bellToll": {
+   "file": "audio_sfx_1",
+   "length": 2.521,
+   "loop": false,
+   "sheet": "world",
+   "sheet_start": 17.946,
+   "spatial": "3D",
+   "start": 159.921
+  },
+  "belltoll": {
+   "file": "audio_sfx_1",
+   "length": 2.033,
+   "loop": false,
+   "sheet": "boss_brinejaw",
+   "sheet_start": 31.415,
+   "spatial": "3D",
+   "start": 312.352
+  },
+  "bigFishAttack": {
+   "file": "audio_sfx_1",
+   "length": 0.66,
+   "loop": false,
+   "sheet": "families",
+   "sheet_start": 3.514,
+   "spatial": "3D",
+   "start": 203.725
+  },
+  "bigFishDie": {
+   "file": "audio_sfx_1",
+   "length": 1.774,
+   "loop": false,
+   "sheet": "families",
+   "sheet_start": 4.899,
+   "spatial": "3D",
+   "start": 205.11
+  },
+  "bigFishHurt": {
+   "file": "audio_sfx_1",
+   "length": 0.425,
+   "loop": false,
+   "sheet": "families",
+   "sheet_start": 4.324,
+   "spatial": "3D",
+   "start": 204.535
+  },
+  "bigFishIdle": {
+   "file": "audio_sfx_1",
+   "length": 0.614,
+   "loop": false,
+   "sheet": "families",
+   "sheet_start": 2.75,
+   "spatial": "3D",
+   "start": 202.961
+  },
+  "blobAttack": {
+   "file": "audio_sfx_1",
+   "length": 0.677,
+   "loop": false,
+   "sheet": "families",
+   "sheet_start": 24.729,
+   "spatial": "3D",
+   "start": 224.94
+  },
+  "blobDie": {
+   "file": "audio_sfx_1",
+   "length": 1.842,
+   "loop": false,
+   "sheet": "families",
+   "sheet_start": 26.09,
+   "spatial": "3D",
+   "start": 226.301
+  },
+  "blobHurt": {
+   "file": "audio_sfx_1",
+   "length": 0.384,
+   "loop": false,
+   "sheet": "families",
+   "sheet_start": 25.556,
+   "spatial": "3D",
+   "start": 225.767
+  },
+  "blobIdle": {
+   "file": "audio_sfx_1",
+   "length": 0.766,
+   "loop": false,
+   "sheet": "families",
+   "sheet_start": 23.813,
+   "spatial": "3D",
+   "start": 224.024
+  },
+  "boatArrive": {
+   "file": "audio_sfx_1",
+   "length": 1.135,
+   "loop": false,
+   "sheet": "boat",
+   "sheet_start": 1.597,
+   "spatial": "3D",
+   "start": 34.275
+  },
+  "boatBoard": {
+   "file": "audio_sfx_1",
+   "length": 0.668,
+   "loop": false,
+   "sheet": "boat",
+   "sheet_start": 2.882,
+   "spatial": "2D",
+   "start": 35.56
+  },
+  "boatCreak": {
+   "file": "audio_sfx_1",
+   "length": 0.974,
+   "loop": false,
+   "sheet": "boat",
+   "sheet_start": 8.266,
+   "spatial": "3D",
+   "start": 40.944
+  },
+  "boatEngine": {
+   "file": "audio_sfx_1",
+   "length": 1.5,
+   "loop": true,
+   "sheet": "boat",
+   "sheet_start": 4.466,
+   "spatial": "3D",
+   "start": 37.144
+  },
+  "boatHit": {
+   "file": "audio_sfx_1",
+   "length": 0.693,
+   "loop": false,
+   "sheet": "boat",
+   "sheet_start": 9.39,
+   "spatial": "3D",
+   "start": 42.068
+  },
+  "boatLeave": {
+   "file": "audio_sfx_1",
+   "length": 0.616,
+   "loop": false,
+   "sheet": "boat",
+   "sheet_start": 3.7,
+   "spatial": "2D",
+   "start": 36.378
+  },
+  "boatSink": {
+   "file": "audio_sfx_1",
+   "length": 2.541,
+   "loop": false,
+   "sheet": "boat",
+   "sheet_start": 11.491,
+   "spatial": "2D",
+   "start": 44.169
+  },
+  "boatSummon": {
+   "file": "audio_sfx_1",
+   "length": 1.447,
+   "loop": false,
+   "sheet": "boat",
+   "sheet_start": 0.0,
+   "spatial": "2D",
+   "start": 32.678
+  },
+  "boatUpgrade": {
+   "file": "audio_sfx_1",
+   "length": 1.664,
+   "loop": false,
+   "sheet": "boat",
+   "sheet_start": 14.182,
+   "spatial": "2D",
+   "start": 46.86
+  },
+  "boatWarn": {
+   "file": "audio_sfx_1",
+   "length": 1.109,
+   "loop": false,
+   "sheet": "boat",
+   "sheet_start": 10.232,
+   "spatial": "2D",
+   "start": 42.91
+  },
+  "boatWash": {
+   "file": "audio_sfx_1",
+   "length": 2.0,
+   "loop": true,
+   "sheet": "boat",
+   "sheet_start": 6.116,
+   "spatial": "3D",
+   "start": 38.794
+  },
+  "bobberBob": {
+   "file": "audio_sfx_1",
+   "length": 2.4,
+   "loop": true,
+   "sheet": "fishing",
+   "sheet_start": 2.206,
+   "spatial": "3D",
+   "start": 2.206
+  },
+  "bobberPlop": {
+   "file": "audio_sfx_1",
+   "length": 0.685,
+   "loop": false,
+   "sheet": "fishing",
+   "sheet_start": 1.371,
+   "spatial": "3D",
+   "start": 1.371
+  },
+  "bossCollapse": {
+   "file": "audio_sfx_1",
+   "length": 2.657,
+   "loop": false,
+   "sheet": "boss_shared",
+   "sheet_start": 14.659,
+   "spatial": "3D",
+   "start": 274.88
+  },
+  "bossDown": {
+   "file": "audio_sfx_1",
+   "length": 2.185,
+   "loop": false,
+   "sheet": "boss_shared",
+   "sheet_start": 8.976,
+   "spatial": "3D",
+   "start": 269.197
+  },
+  "bossDown__admiral_wrack": {
+   "file": "audio_sfx_2",
+   "length": 2.401,
+   "loop": false,
+   "sheet": "boss_wrack",
+   "sheet_start": 8.427,
+   "spatial": "3D",
+   "start": 95.281
+  },
+  "bossDown__brinejaw": {
+   "file": "audio_sfx_1",
+   "length": 2.336,
+   "loop": false,
+   "sheet": "boss_brinejaw",
+   "sheet_start": 8.41,
+   "spatial": "3D",
+   "start": 289.347
+  },
+  "bossDown__kraken": {
+   "file": "audio_sfx_2",
+   "length": 2.658,
+   "loop": false,
+   "sheet": "boss_kraken",
+   "sheet_start": 9.805,
+   "spatial": "3D",
+   "start": 141.585
+  },
+  "bossDown__noctyss": {
+   "file": "audio_sfx_2",
+   "length": 2.514,
+   "loop": false,
+   "sheet": "boss_noctyss",
+   "sheet_start": 9.398,
+   "spatial": "3D",
+   "start": 59.443
+  },
+  "bossDown__old_gnashroot": {
+   "file": "audio_sfx_1",
+   "length": 2.423,
+   "loop": false,
+   "sheet": "boss_gnashroot",
+   "sheet_start": 8.181,
+   "spatial": "3D",
+   "start": 328.767
+  },
+  "bossDown__pyrelisk": {
+   "file": "audio_sfx_1",
+   "length": 2.478,
+   "loop": false,
+   "sheet": "boss_pyrelisk",
+   "sheet_start": 8.926,
+   "spatial": "3D",
+   "start": 356.631
+  },
+  "bossDown__rimefang": {
+   "file": "audio_sfx_2",
+   "length": 2.277,
+   "loop": false,
+   "sheet": "boss_rimefang",
+   "sheet_start": 8.313,
+   "spatial": "3D",
+   "start": 8.313
+  },
+  "bossGlobThud": {
+   "file": "audio_sfx_1",
+   "length": 0.566,
+   "loop": false,
+   "sheet": "boss_shared",
+   "sheet_start": 20.0,
+   "spatial": "3D",
+   "start": 280.221
+  },
+  "bossRise": {
+   "file": "audio_sfx_1",
+   "length": 1.963,
+   "loop": false,
+   "sheet": "boss_shared",
+   "sheet_start": 1.113,
+   "spatial": "3D",
+   "start": 261.334
+  },
+  "bossRise__admiral_wrack": {
+   "file": "audio_sfx_2",
+   "length": 2.19,
+   "loop": false,
+   "sheet": "boss_wrack",
+   "sheet_start": 1.145,
+   "spatial": "3D",
+   "start": 87.999
+  },
+  "bossRise__brinejaw": {
+   "file": "audio_sfx_1",
+   "length": 2.058,
+   "loop": false,
+   "sheet": "boss_brinejaw",
+   "sheet_start": 1.166,
+   "spatial": "3D",
+   "start": 282.103
+  },
+  "bossRise__kraken": {
+   "file": "audio_sfx_2",
+   "length": 2.411,
+   "loop": false,
+   "sheet": "boss_kraken",
+   "sheet_start": 1.35,
+   "spatial": "3D",
+   "start": 133.13
+  },
+  "bossRise__noctyss": {
+   "file": "audio_sfx_2",
+   "length": 2.302,
+   "loop": false,
+   "sheet": "boss_noctyss",
+   "sheet_start": 1.274,
+   "spatial": "3D",
+   "start": 51.319
+  },
+  "bossRise__old_gnashroot": {
+   "file": "audio_sfx_1",
+   "length": 2.136,
+   "loop": false,
+   "sheet": "boss_gnashroot",
+   "sheet_start": 1.108,
+   "spatial": "3D",
+   "start": 321.694
+  },
+  "bossRise__pyrelisk": {
+   "file": "audio_sfx_1",
+   "length": 2.244,
+   "loop": false,
+   "sheet": "boss_pyrelisk",
+   "sheet_start": 1.258,
+   "spatial": "3D",
+   "start": 348.963
+  },
+  "bossRise__rimefang": {
+   "file": "audio_sfx_2",
+   "length": 2.131,
+   "loop": false,
+   "sheet": "boss_rimefang",
+   "sheet_start": 1.168,
+   "spatial": "3D",
+   "start": 1.168
+  },
+  "bossRoar": {
+   "file": "audio_sfx_1",
+   "length": 2.081,
+   "loop": false,
+   "sheet": "boss_shared",
+   "sheet_start": 3.226,
+   "spatial": "3D",
+   "start": 263.447
+  },
+  "bossRoar__admiral_wrack": {
+   "file": "audio_sfx_2",
+   "length": 2.213,
+   "loop": false,
+   "sheet": "boss_wrack",
+   "sheet_start": 3.485,
+   "spatial": "3D",
+   "start": 90.339
+  },
+  "bossRoar__brinejaw": {
+   "file": "audio_sfx_1",
+   "length": 2.215,
+   "loop": false,
+   "sheet": "boss_brinejaw",
+   "sheet_start": 3.373,
+   "spatial": "3D",
+   "start": 284.31
+  },
+  "bossRoar__kraken": {
+   "file": "audio_sfx_2",
+   "length": 2.601,
+   "loop": false,
+   "sheet": "boss_kraken",
+   "sheet_start": 3.91,
+   "spatial": "3D",
+   "start": 135.69
+  },
+  "bossRoar__noctyss": {
+   "file": "audio_sfx_2",
+   "length": 2.508,
+   "loop": false,
+   "sheet": "boss_noctyss",
+   "sheet_start": 3.726,
+   "spatial": "3D",
+   "start": 53.771
+  },
+  "bossRoar__old_gnashroot": {
+   "file": "audio_sfx_1",
+   "length": 2.1,
+   "loop": false,
+   "sheet": "boss_gnashroot",
+   "sheet_start": 3.394,
+   "spatial": "3D",
+   "start": 323.98
+  },
+  "bossRoar__pyrelisk": {
+   "file": "audio_sfx_1",
+   "length": 2.347,
+   "loop": false,
+   "sheet": "boss_pyrelisk",
+   "sheet_start": 3.652,
+   "spatial": "3D",
+   "start": 351.357
+  },
+  "bossRoar__rimefang": {
+   "file": "audio_sfx_2",
+   "length": 2.163,
+   "loop": false,
+   "sheet": "boss_rimefang",
+   "sheet_start": 3.449,
+   "spatial": "3D",
+   "start": 3.449
+  },
+  "bossSlam": {
+   "file": "audio_sfx_1",
+   "length": 1.512,
+   "loop": false,
+   "sheet": "boss_shared",
+   "sheet_start": 7.314,
+   "spatial": "3D",
+   "start": 267.535
+  },
+  "bossSlam__admiral_wrack": {
+   "file": "audio_sfx_2",
+   "length": 1.578,
+   "loop": false,
+   "sheet": "boss_wrack",
+   "sheet_start": 6.699,
+   "spatial": "3D",
+   "start": 93.553
+  },
+  "bossSlam__brinejaw": {
+   "file": "audio_sfx_1",
+   "length": 1.618,
+   "loop": false,
+   "sheet": "boss_brinejaw",
+   "sheet_start": 6.643,
+   "spatial": "3D",
+   "start": 287.58
+  },
+  "bossSlam__kraken": {
+   "file": "audio_sfx_2",
+   "length": 1.975,
+   "loop": false,
+   "sheet": "boss_kraken",
+   "sheet_start": 7.68,
+   "spatial": "3D",
+   "start": 139.46
+  },
+  "bossSlam__noctyss": {
+   "file": "audio_sfx_2",
+   "length": 1.807,
+   "loop": false,
+   "sheet": "boss_noctyss",
+   "sheet_start": 7.441,
+   "spatial": "3D",
+   "start": 57.486
+  },
+  "bossSlam__old_gnashroot": {
+   "file": "audio_sfx_1",
+   "length": 1.523,
+   "loop": false,
+   "sheet": "boss_gnashroot",
+   "sheet_start": 6.508,
+   "spatial": "3D",
+   "start": 327.094
+  },
+  "bossSlam__pyrelisk": {
+   "file": "audio_sfx_1",
+   "length": 1.698,
+   "loop": false,
+   "sheet": "boss_pyrelisk",
+   "sheet_start": 7.078,
+   "spatial": "3D",
+   "start": 354.783
+  },
+  "bossSlam__rimefang": {
+   "file": "audio_sfx_2",
+   "length": 1.56,
+   "loop": false,
+   "sheet": "boss_rimefang",
+   "sheet_start": 6.603,
+   "spatial": "3D",
+   "start": 6.603
+  },
+  "bossSnap": {
+   "file": "audio_sfx_1",
+   "length": 0.623,
+   "loop": false,
+   "sheet": "boss_shared",
+   "sheet_start": 5.457,
+   "spatial": "3D",
+   "start": 265.678
+  },
+  "bossSnap__admiral_wrack": {
+   "file": "audio_sfx_2",
+   "length": 0.701,
+   "loop": false,
+   "sheet": "boss_wrack",
+   "sheet_start": 5.848,
+   "spatial": "3D",
+   "start": 92.702
+  },
+  "bossSnap__brinejaw": {
+   "file": "audio_sfx_1",
+   "length": 0.754,
+   "loop": false,
+   "sheet": "boss_brinejaw",
+   "sheet_start": 5.738,
+   "spatial": "3D",
+   "start": 286.675
+  },
+  "bossSnap__kraken": {
+   "file": "audio_sfx_2",
+   "length": 0.868,
+   "loop": false,
+   "sheet": "boss_kraken",
+   "sheet_start": 6.662,
+   "spatial": "3D",
+   "start": 138.442
+  },
+  "bossSnap__noctyss": {
+   "file": "audio_sfx_2",
+   "length": 0.907,
+   "loop": false,
+   "sheet": "boss_noctyss",
+   "sheet_start": 6.384,
+   "spatial": "3D",
+   "start": 56.429
+  },
+  "bossSnap__old_gnashroot": {
+   "file": "audio_sfx_1",
+   "length": 0.713,
+   "loop": false,
+   "sheet": "boss_gnashroot",
+   "sheet_start": 5.644,
+   "spatial": "3D",
+   "start": 326.23
+  },
+  "bossSnap__pyrelisk": {
+   "file": "audio_sfx_1",
+   "length": 0.778,
+   "loop": false,
+   "sheet": "boss_pyrelisk",
+   "sheet_start": 6.15,
+   "spatial": "3D",
+   "start": 353.855
+  },
+  "bossSnap__rimefang": {
+   "file": "audio_sfx_2",
+   "length": 0.691,
+   "loop": false,
+   "sheet": "boss_rimefang",
+   "sheet_start": 5.762,
+   "spatial": "3D",
+   "start": 5.762
+  },
+  "bossSpine": {
+   "file": "audio_sfx_1",
+   "length": 0.323,
+   "loop": false,
+   "sheet": "boss_shared",
+   "sheet_start": 18.981,
+   "spatial": "3D",
+   "start": 279.202
+  },
+  "bossSpineHit": {
+   "file": "audio_sfx_1",
+   "length": 0.397,
+   "loop": false,
+   "sheet": "boss_shared",
+   "sheet_start": 19.453,
+   "spatial": "3D",
+   "start": 279.674
+  },
+  "bossSpit": {
+   "file": "audio_sfx_1",
+   "length": 0.531,
+   "loop": false,
+   "sheet": "boss_shared",
+   "sheet_start": 18.299,
+   "spatial": "3D",
+   "start": 278.52
+  },
+  "bossStagger": {
+   "file": "audio_sfx_1",
+   "length": 1.845,
+   "loop": false,
+   "sheet": "boss_shared",
+   "sheet_start": 11.311,
+   "spatial": "3D",
+   "start": 271.532
+  },
+  "bossStagger__admiral_wrack": {
+   "file": "audio_sfx_2",
+   "length": 2.075,
+   "loop": false,
+   "sheet": "boss_wrack",
+   "sheet_start": 10.978,
+   "spatial": "3D",
+   "start": 97.832
+  },
+  "bossStagger__brinejaw": {
+   "file": "audio_sfx_1",
+   "length": 2.058,
+   "loop": false,
+   "sheet": "boss_brinejaw",
+   "sheet_start": 10.896,
+   "spatial": "3D",
+   "start": 291.833
+  },
+  "bossStagger__kraken": {
+   "file": "audio_sfx_2",
+   "length": 2.315,
+   "loop": false,
+   "sheet": "boss_kraken",
+   "sheet_start": 12.613,
+   "spatial": "3D",
+   "start": 144.393
+  },
+  "bossStagger__noctyss": {
+   "file": "audio_sfx_2",
+   "length": 2.195,
+   "loop": false,
+   "sheet": "boss_noctyss",
+   "sheet_start": 12.062,
+   "spatial": "3D",
+   "start": 62.107
+  },
+  "bossStagger__old_gnashroot": {
+   "file": "audio_sfx_1",
+   "length": 1.992,
+   "loop": false,
+   "sheet": "boss_gnashroot",
+   "sheet_start": 10.754,
+   "spatial": "3D",
+   "start": 331.34
+  },
+  "bossStagger__pyrelisk": {
+   "file": "audio_sfx_1",
+   "length": 2.146,
+   "loop": false,
+   "sheet": "boss_pyrelisk",
+   "sheet_start": 11.553,
+   "spatial": "3D",
+   "start": 359.258
+  },
+  "bossStagger__rimefang": {
+   "file": "audio_sfx_2",
+   "length": 1.968,
+   "loop": false,
+   "sheet": "boss_rimefang",
+   "sheet_start": 10.74,
+   "spatial": "3D",
+   "start": 10.74
+  },
+  "bossStance": {
+   "file": "audio_sfx_1",
+   "length": 1.202,
+   "loop": false,
+   "sheet": "boss_shared",
+   "sheet_start": 13.306,
+   "spatial": "3D",
+   "start": 273.527
+  },
+  "bossSweep": {
+   "file": "audio_sfx_1",
+   "length": 0.934,
+   "loop": false,
+   "sheet": "boss_shared",
+   "sheet_start": 6.23,
+   "spatial": "3D",
+   "start": 266.451
+  },
+  "bossTell": {
+   "file": "audio_sfx_1",
+   "length": 0.963,
+   "loop": false,
+   "sheet": "boss_shared",
+   "sheet_start": 0.0,
+   "spatial": "3D",
+   "start": 260.221
+  },
+  "bossTell__admiral_wrack": {
+   "file": "audio_sfx_2",
+   "length": 0.995,
+   "loop": false,
+   "sheet": "boss_wrack",
+   "sheet_start": 0.0,
+   "spatial": "3D",
+   "start": 86.854
+  },
+  "bossTell__brinejaw": {
+   "file": "audio_sfx_1",
+   "length": 1.016,
+   "loop": false,
+   "sheet": "boss_brinejaw",
+   "sheet_start": 0.0,
+   "spatial": "3D",
+   "start": 280.937
+  },
+  "bossTell__kraken": {
+   "file": "audio_sfx_2",
+   "length": 1.2,
+   "loop": false,
+   "sheet": "boss_kraken",
+   "sheet_start": 0.0,
+   "spatial": "3D",
+   "start": 131.78
+  },
+  "bossTell__noctyss": {
+   "file": "audio_sfx_2",
+   "length": 1.124,
+   "loop": false,
+   "sheet": "boss_noctyss",
+   "sheet_start": 0.0,
+   "spatial": "3D",
+   "start": 50.045
+  },
+  "bossTell__old_gnashroot": {
+   "file": "audio_sfx_1",
+   "length": 0.958,
+   "loop": false,
+   "sheet": "boss_gnashroot",
+   "sheet_start": 0.0,
+   "spatial": "3D",
+   "start": 320.586
+  },
+  "bossTell__pyrelisk": {
+   "file": "audio_sfx_1",
+   "length": 1.108,
+   "loop": false,
+   "sheet": "boss_pyrelisk",
+   "sheet_start": 0.0,
+   "spatial": "3D",
+   "start": 347.705
+  },
+  "bossTell__rimefang": {
+   "file": "audio_sfx_2",
+   "length": 1.018,
+   "loop": false,
+   "sheet": "boss_rimefang",
+   "sheet_start": 0.0,
+   "spatial": "3D",
+   "start": 0.0
+  },
+  "bowFire": {
+   "file": "audio_sfx_1",
+   "length": 0.468,
+   "loop": false,
+   "sheet": "combat",
+   "sheet_start": 4.174,
+   "spatial": "2D",
+   "start": 87.747
+  },
+  "bowFireRemote": {
+   "file": "audio_sfx_1",
+   "length": 1.264,
+   "loop": false,
+   "sheet": "combat",
+   "sheet_start": 6.362,
+   "spatial": "3D",
+   "start": 89.935
+  },
+  "bulletImpact": {
+   "file": "audio_sfx_1",
+   "length": 0.558,
+   "loop": false,
+   "sheet": "combat",
+   "sheet_start": 11.044,
+   "spatial": "3D",
+   "start": 94.617
+  },
+  "bulletWhiz": {
+   "file": "audio_sfx_1",
+   "length": 0.76,
+   "loop": false,
+   "sheet": "combat",
+   "sheet_start": 11.753,
+   "spatial": "3D",
+   "start": 95.326
+  },
+  "burrow": {
+   "file": "audio_sfx_1",
+   "length": 0.782,
+   "loop": false,
+   "sheet": "creatures",
+   "sheet_start": 5.996,
+   "spatial": "2D",
+   "start": 178.233
+  },
+  "burrowerAttack": {
+   "file": "audio_sfx_1",
+   "length": 0.919,
+   "loop": false,
+   "sheet": "families",
+   "sheet_start": 33.625,
+   "spatial": "3D",
+   "start": 233.836
+  },
+  "burrowerDie": {
+   "file": "audio_sfx_1",
+   "length": 1.55,
+   "loop": false,
+   "sheet": "families",
+   "sheet_start": 35.368,
+   "spatial": "3D",
+   "start": 235.579
+  },
+  "burrowerHurt": {
+   "file": "audio_sfx_1",
+   "length": 0.524,
+   "loop": false,
+   "sheet": "families",
+   "sheet_start": 34.694,
+   "spatial": "3D",
+   "start": 234.905
+  },
+  "burrowerIdle": {
+   "file": "audio_sfx_1",
+   "length": 0.79,
+   "loop": false,
+   "sheet": "families",
+   "sheet_start": 32.685,
+   "spatial": "3D",
+   "start": 232.896
+  },
+  "burstFail": {
+   "file": "audio_sfx_1",
+   "length": 0.547,
+   "loop": false,
+   "sheet": "fishing",
+   "sheet_start": 10.01,
+   "spatial": "2D",
+   "start": 10.01
+  },
+  "burstFill": {
+   "file": "audio_sfx_1",
+   "length": 0.795,
+   "loop": false,
+   "sheet": "fishing",
+   "sheet_start": 9.065,
+   "spatial": "2D",
+   "start": 9.065
+  },
+  "burstOpen": {
+   "file": "audio_sfx_1",
+   "length": 0.51,
+   "loop": false,
+   "sheet": "fishing",
+   "sheet_start": 8.165,
+   "spatial": "2D",
+   "start": 8.165
+  },
+  "burstTap": {
+   "file": "audio_sfx_1",
+   "length": 0.09,
+   "loop": false,
+   "sheet": "fishing",
+   "sheet_start": 8.825,
+   "spatial": "2D",
+   "start": 8.825
+  },
+  "castCancel": {
+   "file": "audio_sfx_1",
+   "length": 0.582,
+   "loop": false,
+   "sheet": "fishing",
+   "sheet_start": 25.534,
+   "spatial": "2D",
+   "start": 25.534
+  },
+  "castRefused": {
+   "file": "audio_sfx_1",
+   "length": 0.461,
+   "loop": false,
+   "sheet": "fishing",
+   "sheet_start": 24.923,
+   "spatial": "2D",
+   "start": 24.923
+  },
+  "castSwing": {
+   "file": "audio_sfx_1",
+   "length": 0.566,
+   "loop": false,
+   "sheet": "fishing",
+   "sheet_start": 0.0,
+   "spatial": "2D",
+   "start": 0.0
+  },
+  "catchBoss": {
+   "file": "audio_sfx_1",
+   "length": 3.381,
+   "loop": false,
+   "sheet": "fishing",
+   "sheet_start": 20.023,
+   "spatial": "2D",
+   "start": 20.023
+  },
+  "catchCommon": {
+   "file": "audio_sfx_1",
+   "length": 0.596,
+   "loop": false,
+   "sheet": "fishing",
+   "sheet_start": 12.349,
+   "spatial": "2D",
+   "start": 12.349
+  },
+  "catchEpic": {
+   "file": "audio_sfx_1",
+   "length": 1.878,
+   "loop": false,
+   "sheet": "fishing",
+   "sheet_start": 15.268,
+   "spatial": "2D",
+   "start": 15.268
+  },
+  "catchLegendary": {
+   "file": "audio_sfx_1",
+   "length": 2.577,
+   "loop": false,
+   "sheet": "fishing",
+   "sheet_start": 17.296,
+   "spatial": "2D",
+   "start": 17.296
+  },
+  "catchRare": {
+   "file": "audio_sfx_1",
+   "length": 1.134,
+   "loop": false,
+   "sheet": "fishing",
+   "sheet_start": 13.985,
+   "spatial": "2D",
+   "start": 13.985
+  },
+  "catchUncommon": {
+   "file": "audio_sfx_1",
+   "length": 0.739,
+   "loop": false,
+   "sheet": "fishing",
+   "sheet_start": 13.096,
+   "spatial": "2D",
+   "start": 13.096
+  },
+  "chainRattle": {
+   "file": "audio_sfx_1",
+   "length": 0.979,
+   "loop": false,
+   "sheet": "creatures",
+   "sheet_start": 23.68,
+   "spatial": "2D",
+   "start": 195.917
+  },
+  "chillTick": {
+   "file": "audio_sfx_1",
+   "length": 0.497,
+   "loop": false,
+   "sheet": "creatures",
+   "sheet_start": 18.141,
+   "spatial": "2D",
+   "start": 190.378
+  },
+  "chilled": {
+   "file": "audio_sfx_1",
+   "length": 1.484,
+   "loop": false,
+   "sheet": "character",
+   "sheet_start": 28.548,
+   "spatial": "2D",
+   "start": 77.222
+  },
+  "choirBeam": {
+   "file": "audio_sfx_2",
+   "length": 1.597,
+   "loop": false,
+   "sheet": "boss_noctyss",
+   "sheet_start": 17.265,
+   "spatial": "3D",
+   "start": 67.31
+  },
+  "choirDouse": {
+   "file": "audio_sfx_2",
+   "length": 2.45,
+   "loop": false,
+   "sheet": "boss_noctyss",
+   "sheet_start": 20.849,
+   "spatial": "3D",
+   "start": 70.894
+  },
+  "choirPulse": {
+   "file": "audio_sfx_2",
+   "length": 1.088,
+   "loop": false,
+   "sheet": "boss_noctyss",
+   "sheet_start": 14.407,
+   "spatial": "3D",
+   "start": 64.452
+  },
+  "choirPulseTrue": {
+   "file": "audio_sfx_2",
+   "length": 1.471,
+   "loop": false,
+   "sheet": "boss_noctyss",
+   "sheet_start": 15.644,
+   "spatial": "3D",
+   "start": 65.689
+  },
+  "coinGain": {
+   "file": "audio_sfx_1",
+   "length": 0.55,
+   "loop": false,
+   "sheet": "progression",
+   "sheet_start": 0.0,
+   "spatial": "2D",
+   "start": 110.389
+  },
+  "coinSteal": {
+   "file": "audio_sfx_1",
+   "length": 0.698,
+   "loop": false,
+   "sheet": "creatures",
+   "sheet_start": 10.58,
+   "spatial": "2D",
+   "start": 182.817
+  },
+  "collectionComplete": {
+   "file": "audio_sfx_1",
+   "length": 1.821,
+   "loop": false,
+   "sheet": "progression",
+   "sheet_start": 8.103,
+   "spatial": "2D",
+   "start": 118.492
+  },
+  "comboWarn": {
+   "file": "audio_sfx_1",
+   "length": 0.586,
+   "loop": false,
+   "sheet": "boss_brinejaw",
+   "sheet_start": 38.913,
+   "spatial": "2D",
+   "start": 319.85
+  },
+  "crackle": {
+   "file": "audio_sfx_1",
+   "length": 0.78,
+   "loop": false,
+   "sheet": "creatures",
+   "sheet_start": 11.428,
+   "spatial": "2D",
+   "start": 183.665
+  },
+  "craftFail": {
+   "file": "audio_sfx_1",
+   "length": 0.48,
+   "loop": false,
+   "sheet": "ui",
+   "sheet_start": 4.37,
+   "spatial": "2D",
+   "start": 104.431
+  },
+  "craftSuccess": {
+   "file": "audio_sfx_1",
+   "length": 0.667,
+   "loop": false,
+   "sheet": "ui",
+   "sheet_start": 3.552,
+   "spatial": "2D",
+   "start": 103.613
+  },
+  "crustaceanAttack": {
+   "file": "audio_sfx_1",
+   "length": 0.459,
+   "loop": false,
+   "sheet": "families",
+   "sheet_start": 11.048,
+   "spatial": "3D",
+   "start": 211.259
+  },
+  "crustaceanDie": {
+   "file": "audio_sfx_1",
+   "length": 1.699,
+   "loop": false,
+   "sheet": "families",
+   "sheet_start": 12.139,
+   "spatial": "3D",
+   "start": 212.35
+  },
+  "crustaceanHurt": {
+   "file": "audio_sfx_1",
+   "length": 0.332,
+   "loop": false,
+   "sheet": "families",
+   "sheet_start": 11.657,
+   "spatial": "3D",
+   "start": 211.868
+  },
+  "crustaceanIdle": {
+   "file": "audio_sfx_1",
+   "length": 0.771,
+   "loop": false,
+   "sheet": "families",
+   "sheet_start": 10.127,
+   "spatial": "3D",
+   "start": 210.338
+  },
+  "cursorFree": {
+   "file": "audio_sfx_1",
+   "length": 0.251,
+   "loop": false,
+   "sheet": "ui",
+   "sheet_start": 6.449,
+   "spatial": "2D",
+   "start": 106.51
+  },
+  "cursorLock": {
+   "file": "audio_sfx_1",
+   "length": 0.213,
+   "loop": false,
+   "sheet": "ui",
+   "sheet_start": 6.85,
+   "spatial": "2D",
+   "start": 106.911
+  },
+  "dashWhoosh": {
+   "file": "audio_sfx_1",
+   "length": 0.5,
+   "loop": false,
+   "sheet": "creatures",
+   "sheet_start": 0.0,
+   "spatial": "2D",
+   "start": 172.237
+  },
+  "dazed": {
+   "file": "audio_sfx_1",
+   "length": 1.145,
+   "loop": false,
+   "sheet": "creatures",
+   "sheet_start": 0.65,
+   "spatial": "2D",
+   "start": 172.887
+  },
+  "death": {
+   "file": "audio_sfx_1",
+   "length": 1.795,
+   "loop": false,
+   "sheet": "character",
+   "sheet_start": 24.231,
+   "spatial": "2D",
+   "start": 72.905
+  },
+  "decoyPop": {
+   "file": "audio_sfx_1",
+   "length": 0.347,
+   "loop": false,
+   "sheet": "creatures",
+   "sheet_start": 24.809,
+   "spatial": "2D",
+   "start": 197.046
+  },
+  "dialogBlip": {
+   "file": "audio_sfx_1",
+   "length": 0.05,
+   "loop": false,
+   "sheet": "ui",
+   "sheet_start": 8.996,
+   "spatial": "2D",
+   "start": 109.057
+  },
+  "dialogChoice": {
+   "file": "audio_sfx_1",
+   "length": 0.352,
+   "loop": false,
+   "sheet": "ui",
+   "sheet_start": 9.196,
+   "spatial": "2D",
+   "start": 109.257
+  },
+  "dialogClose": {
+   "file": "audio_sfx_1",
+   "length": 0.479,
+   "loop": false,
+   "sheet": "ui",
+   "sheet_start": 9.699,
+   "spatial": "2D",
+   "start": 109.76
+  },
+  "dialogOpen": {
+   "file": "audio_sfx_1",
+   "length": 0.659,
+   "loop": false,
+   "sheet": "ui",
+   "sheet_start": 8.187,
+   "spatial": "2D",
+   "start": 108.248
+  },
+  "dryFire": {
+   "file": "audio_sfx_1",
+   "length": 0.096,
+   "loop": false,
+   "sheet": "combat",
+   "sheet_start": 9.497,
+   "spatial": "2D",
+   "start": 93.07
+  },
+  "eelAttack": {
+   "file": "audio_sfx_1",
+   "length": 0.66,
+   "loop": false,
+   "sheet": "families",
+   "sheet_start": 14.984,
+   "spatial": "3D",
+   "start": 215.195
+  },
+  "eelDie": {
+   "file": "audio_sfx_1",
+   "length": 1.924,
+   "loop": false,
+   "sheet": "families",
+   "sheet_start": 16.399,
+   "spatial": "3D",
+   "start": 216.61
+  },
+  "eelHurt": {
+   "file": "audio_sfx_1",
+   "length": 0.455,
+   "loop": false,
+   "sheet": "families",
+   "sheet_start": 15.793,
+   "spatial": "3D",
+   "start": 216.004
+  },
+  "eelIdle": {
+   "file": "audio_sfx_1",
+   "length": 0.846,
+   "loop": false,
+   "sheet": "families",
+   "sheet_start": 13.988,
+   "spatial": "3D",
+   "start": 214.199
+  },
+  "elementalAttack": {
+   "file": "audio_sfx_1",
+   "length": 0.777,
+   "loop": false,
+   "sheet": "families",
+   "sheet_start": 48.0,
+   "spatial": "3D",
+   "start": 248.211
+  },
+  "elementalDie": {
+   "file": "audio_sfx_1",
+   "length": 1.674,
+   "loop": false,
+   "sheet": "families",
+   "sheet_start": 49.573,
+   "spatial": "3D",
+   "start": 249.784
+  },
+  "elementalHurt": {
+   "file": "audio_sfx_1",
+   "length": 0.496,
+   "loop": false,
+   "sheet": "families",
+   "sheet_start": 48.927,
+   "spatial": "3D",
+   "start": 249.138
+  },
+  "elementalIdle": {
+   "file": "audio_sfx_1",
+   "length": 1.046,
+   "loop": false,
+   "sheet": "families",
+   "sheet_start": 46.804,
+   "spatial": "3D",
+   "start": 247.015
+  },
+  "emerge": {
+   "file": "audio_sfx_1",
+   "length": 0.73,
+   "loop": false,
+   "sheet": "creatures",
+   "sheet_start": 8.278,
+   "spatial": "2D",
+   "start": 180.515
+  },
+  "explodeBoom": {
+   "file": "audio_sfx_1",
+   "length": 1.413,
+   "loop": false,
+   "sheet": "creatures",
+   "sheet_start": 4.433,
+   "spatial": "2D",
+   "start": 176.67
+  },
+  "explodeCrack": {
+   "file": "audio_sfx_1",
+   "length": 0.422,
+   "loop": false,
+   "sheet": "creatures",
+   "sheet_start": 3.861,
+   "spatial": "2D",
+   "start": 176.098
+  },
+  "fishSurface": {
+   "file": "audio_sfx_1",
+   "length": 0.748,
+   "loop": false,
+   "sheet": "fishing",
+   "sheet_start": 26.266,
+   "spatial": "3D",
+   "start": 26.266
+  },
+  "fistReady": {
+   "file": "audio_sfx_1",
+   "length": 0.534,
+   "loop": false,
+   "sheet": "character",
+   "sheet_start": 34.215,
+   "spatial": "2D",
+   "start": 82.889
+  },
+  "flopGround": {
+   "file": "audio_sfx_1",
+   "length": 0.882,
+   "loop": false,
+   "sheet": "fishing",
+   "sheet_start": 28.562,
+   "spatial": "3D",
+   "start": 28.562
+  },
+  "flopGround1": {
+   "file": "audio_sfx_1",
+   "length": 0.86,
+   "loop": false,
+   "sheet": "fishing",
+   "sheet_start": 29.594,
+   "spatial": "3D",
+   "start": 29.594
+  },
+  "flopGround2": {
+   "file": "audio_sfx_1",
+   "length": 0.879,
+   "loop": false,
+   "sheet": "fishing",
+   "sheet_start": 30.603,
+   "spatial": "3D",
+   "start": 30.603
+  },
+  "flopGround3": {
+   "file": "audio_sfx_1",
+   "length": 0.896,
+   "loop": false,
+   "sheet": "fishing",
+   "sheet_start": 31.632,
+   "spatial": "3D",
+   "start": 31.632
+  },
+  "flopWater": {
+   "file": "audio_sfx_1",
+   "length": 0.652,
+   "loop": false,
+   "sheet": "fishing",
+   "sheet_start": 27.164,
+   "spatial": "3D",
+   "start": 27.164
+  },
+  "floraAttack": {
+   "file": "audio_sfx_1",
+   "length": 0.672,
+   "loop": false,
+   "sheet": "families",
+   "sheet_start": 56.738,
+   "spatial": "3D",
+   "start": 256.949
+  },
+  "floraDie": {
+   "file": "audio_sfx_1",
+   "length": 1.67,
+   "loop": false,
+   "sheet": "families",
+   "sheet_start": 58.191,
+   "spatial": "3D",
+   "start": 258.402
+  },
+  "floraHurt": {
+   "file": "audio_sfx_1",
+   "length": 0.481,
+   "loop": false,
+   "sheet": "families",
+   "sheet_start": 57.56,
+   "spatial": "3D",
+   "start": 257.771
+  },
+  "floraIdle": {
+   "file": "audio_sfx_1",
+   "length": 0.823,
+   "loop": false,
+   "sheet": "families",
+   "sheet_start": 55.765,
+   "spatial": "3D",
+   "start": 255.976
+  },
+  "gasHiss": {
+   "file": "audio_sfx_1",
+   "length": 1.4,
+   "loop": true,
+   "sheet": "creatures",
+   "sheet_start": 13.701,
+   "spatial": "2D",
+   "start": 185.938
+  },
+  "gnashBite": {
+   "file": "audio_sfx_1",
+   "length": 0.974,
+   "loop": false,
+   "sheet": "boss_gnashroot",
+   "sheet_start": 12.896,
+   "spatial": "3D",
+   "start": 333.482
+  },
+  "gnashDeath": {
+   "file": "audio_sfx_1",
+   "length": 2.709,
+   "loop": false,
+   "sheet": "boss_gnashroot",
+   "sheet_start": 24.26,
+   "spatial": "3D",
+   "start": 344.846
+  },
+  "gnashDisgorge": {
+   "file": "audio_sfx_1",
+   "length": 0.946,
+   "loop": false,
+   "sheet": "boss_gnashroot",
+   "sheet_start": 15.642,
+   "spatial": "3D",
+   "start": 336.228
+  },
+  "gnashGurgle": {
+   "file": "audio_sfx_1",
+   "length": 1.036,
+   "loop": false,
+   "sheet": "boss_gnashroot",
+   "sheet_start": 23.074,
+   "spatial": "3D",
+   "start": 343.66
+  },
+  "gnashHammerfall": {
+   "file": "audio_sfx_1",
+   "length": 1.79,
+   "loop": false,
+   "sheet": "boss_gnashroot",
+   "sheet_start": 19.782,
+   "spatial": "3D",
+   "start": 340.368
+  },
+  "gnashHeave": {
+   "file": "audio_sfx_1",
+   "length": 1.503,
+   "loop": false,
+   "sheet": "boss_gnashroot",
+   "sheet_start": 16.738,
+   "spatial": "3D",
+   "start": 337.324
+  },
+  "gnashMire": {
+   "file": "audio_sfx_1",
+   "length": 1.241,
+   "loop": false,
+   "sheet": "boss_gnashroot",
+   "sheet_start": 18.391,
+   "spatial": "3D",
+   "start": 338.977
+  },
+  "gnashRootCreak": {
+   "file": "audio_sfx_1",
+   "length": 1.202,
+   "loop": false,
+   "sheet": "boss_gnashroot",
+   "sheet_start": 21.722,
+   "spatial": "3D",
+   "start": 342.308
+  },
+  "gnashWallow": {
+   "file": "audio_sfx_1",
+   "length": 1.472,
+   "loop": false,
+   "sheet": "boss_gnashroot",
+   "sheet_start": 14.02,
+   "spatial": "3D",
+   "start": 334.606
+  },
+  "gullCry1": {
+   "file": "audio_sfx_1",
+   "length": 1.493,
+   "loop": false,
+   "sheet": "world",
+   "sheet_start": 22.933,
+   "spatial": "3D",
+   "start": 164.908
+  },
+  "gullCry2": {
+   "file": "audio_sfx_1",
+   "length": 1.417,
+   "loop": false,
+   "sheet": "world",
+   "sheet_start": 24.576,
+   "spatial": "3D",
+   "start": 166.551
+  },
+  "gullCry3": {
+   "file": "audio_sfx_1",
+   "length": 1.885,
+   "loop": false,
+   "sheet": "world",
+   "sheet_start": 26.143,
+   "spatial": "3D",
+   "start": 168.118
+  },
+  "gunFire": {
+   "file": "audio_sfx_1",
+   "length": 0.576,
+   "loop": false,
+   "sheet": "combat",
+   "sheet_start": 3.448,
+   "spatial": "2D",
+   "start": 87.021
+  },
+  "gunFireRemote": {
+   "file": "audio_sfx_1",
+   "length": 1.421,
+   "loop": false,
+   "sheet": "combat",
+   "sheet_start": 4.791,
+   "spatial": "3D",
+   "start": 88.364
+  },
+  "gunReady": {
+   "file": "audio_sfx_1",
+   "length": 0.066,
+   "loop": false,
+   "sheet": "combat",
+   "sheet_start": 9.281,
+   "spatial": "2D",
+   "start": 92.854
+  },
+  "gunReload": {
+   "file": "audio_sfx_1",
+   "length": 1.355,
+   "loop": false,
+   "sheet": "combat",
+   "sheet_start": 7.776,
+   "spatial": "2D",
+   "start": 91.349
+  },
+  "heartsAll": {
+   "file": "audio_sfx_1",
+   "length": 1.545,
+   "loop": false,
+   "sheet": "progression",
+   "sheet_start": 16.84,
+   "spatial": "2D",
+   "start": 127.229
+  },
+  "hitCrack": {
+   "file": "audio_sfx_1",
+   "length": 0.055,
+   "loop": false,
+   "sheet": "combat",
+   "sheet_start": 1.794,
+   "spatial": "3D",
+   "start": 85.367
+  },
+  "hitCrack1": {
+   "file": "audio_sfx_1",
+   "length": 0.077,
+   "loop": false,
+   "sheet": "combat",
+   "sheet_start": 14.586,
+   "spatial": "3D",
+   "start": 98.159
+  },
+  "hitCrack2": {
+   "file": "audio_sfx_1",
+   "length": 0.055,
+   "loop": false,
+   "sheet": "combat",
+   "sheet_start": 14.813,
+   "spatial": "3D",
+   "start": 98.386
+  },
+  "hitCrack3": {
+   "file": "audio_sfx_1",
+   "length": 0.073,
+   "loop": false,
+   "sheet": "combat",
+   "sheet_start": 15.018,
+   "spatial": "3D",
+   "start": 98.591
+  },
+  "hitThump": {
+   "file": "audio_sfx_1",
+   "length": 0.265,
+   "loop": false,
+   "sheet": "combat",
+   "sheet_start": 1.998,
+   "spatial": "3D",
+   "start": 85.571
+  },
+  "hitThump1": {
+   "file": "audio_sfx_1",
+   "length": 0.265,
+   "loop": false,
+   "sheet": "combat",
+   "sheet_start": 15.241,
+   "spatial": "3D",
+   "start": 98.814
+  },
+  "hitThump2": {
+   "file": "audio_sfx_1",
+   "length": 0.249,
+   "loop": false,
+   "sheet": "combat",
+   "sheet_start": 15.656,
+   "spatial": "3D",
+   "start": 99.229
+  },
+  "hitThump3": {
+   "file": "audio_sfx_1",
+   "length": 0.283,
+   "loop": false,
+   "sheet": "combat",
+   "sheet_start": 16.055,
+   "spatial": "3D",
+   "start": 99.628
+  },
+  "hurt": {
+   "file": "audio_sfx_1",
+   "length": 0.34,
+   "loop": false,
+   "sheet": "character",
+   "sheet_start": 20.723,
+   "spatial": "2D",
+   "start": 69.397
+  },
+  "hurtHeavy": {
+   "file": "audio_sfx_1",
+   "length": 0.718,
+   "loop": false,
+   "sheet": "character",
+   "sheet_start": 21.212,
+   "spatial": "2D",
+   "start": 69.886
+  },
+  "iceCreak": {
+   "file": "audio_sfx_1",
+   "length": 2.165,
+   "loop": false,
+   "sheet": "world",
+   "sheet_start": 20.618,
+   "spatial": "3D",
+   "start": 162.593
+  },
+  "inkBlast": {
+   "file": "audio_sfx_1",
+   "length": 0.993,
+   "loop": false,
+   "sheet": "creatures",
+   "sheet_start": 15.251,
+   "spatial": "2D",
+   "start": 187.488
+  },
+  "islandUnlock": {
+   "file": "audio_sfx_1",
+   "length": 2.887,
+   "loop": false,
+   "sheet": "progression",
+   "sheet_start": 13.803,
+   "spatial": "2D",
+   "start": 124.192
+  },
+  "itemDrop": {
+   "file": "audio_sfx_1",
+   "length": 1.418,
+   "loop": false,
+   "sheet": "progression",
+   "sheet_start": 5.175,
+   "spatial": "2D",
+   "start": 115.564
+  },
+  "jabCoil": {
+   "file": "audio_sfx_2",
+   "length": 0.611,
+   "loop": false,
+   "sheet": "boss_noctyss",
+   "sheet_start": 35.2,
+   "spatial": "3D",
+   "start": 85.245
+  },
+  "jabCrack": {
+   "file": "audio_sfx_2",
+   "length": 0.698,
+   "loop": false,
+   "sheet": "boss_noctyss",
+   "sheet_start": 35.961,
+   "spatial": "3D",
+   "start": 86.006
+  },
+  "jellyAttack": {
+   "file": "audio_sfx_1",
+   "length": 1.081,
+   "loop": false,
+   "sheet": "families",
+   "sheet_start": 19.642,
+   "spatial": "3D",
+   "start": 219.853
+  },
+  "jellyDie": {
+   "file": "audio_sfx_1",
+   "length": 1.846,
+   "loop": false,
+   "sheet": "families",
+   "sheet_start": 21.817,
+   "spatial": "3D",
+   "start": 222.028
+  },
+  "jellyHurt": {
+   "file": "audio_sfx_1",
+   "length": 0.794,
+   "loop": false,
+   "sheet": "families",
+   "sheet_start": 20.873,
+   "spatial": "3D",
+   "start": 221.084
+  },
+  "jellyIdle": {
+   "file": "audio_sfx_1",
+   "length": 1.02,
+   "loop": false,
+   "sheet": "families",
+   "sheet_start": 18.472,
+   "spatial": "3D",
+   "start": 218.683
+  },
+  "jump": {
+   "file": "audio_sfx_1",
+   "length": 0.315,
+   "loop": false,
+   "sheet": "character",
+   "sheet_start": 16.363,
+   "spatial": "3D",
+   "start": 65.037
+  },
+  "killCrack": {
+   "file": "audio_sfx_1",
+   "length": 0.149,
+   "loop": false,
+   "sheet": "combat",
+   "sheet_start": 2.413,
+   "spatial": "3D",
+   "start": 85.986
+  },
+  "killThump": {
+   "file": "audio_sfx_1",
+   "length": 0.585,
+   "loop": false,
+   "sheet": "combat",
+   "sheet_start": 2.713,
+   "spatial": "3D",
+   "start": 86.286
+  },
+  "knockback": {
+   "file": "audio_sfx_1",
+   "length": 0.642,
+   "loop": false,
+   "sheet": "character",
+   "sheet_start": 30.182,
+   "spatial": "2D",
+   "start": 78.856
+  },
+  "krakenClosingfist": {
+   "file": "audio_sfx_2",
+   "length": 1.662,
+   "loop": false,
+   "sheet": "boss_kraken",
+   "sheet_start": 17.246,
+   "spatial": "3D",
+   "start": 149.026
+  },
+  "krakenDeath": {
+   "file": "audio_sfx_2",
+   "length": 2.836,
+   "loop": false,
+   "sheet": "boss_kraken",
+   "sheet_start": 37.211,
+   "spatial": "3D",
+   "start": 168.991
+  },
+  "krakenInknova": {
+   "file": "audio_sfx_2",
+   "length": 2.346,
+   "loop": false,
+   "sheet": "boss_kraken",
+   "sheet_start": 27.356,
+   "spatial": "3D",
+   "start": 159.136
+  },
+  "krakenInkspit": {
+   "file": "audio_sfx_2",
+   "length": 1.157,
+   "loop": false,
+   "sheet": "boss_kraken",
+   "sheet_start": 19.058,
+   "spatial": "3D",
+   "start": 150.838
+  },
+  "krakenRingwave": {
+   "file": "audio_sfx_2",
+   "length": 2.018,
+   "loop": false,
+   "sheet": "boss_kraken",
+   "sheet_start": 15.078,
+   "spatial": "3D",
+   "start": 146.858
+  },
+  "krakenRoar": {
+   "file": "audio_sfx_2",
+   "length": 2.803,
+   "loop": false,
+   "sheet": "boss_kraken",
+   "sheet_start": 32.182,
+   "spatial": "3D",
+   "start": 163.962
+  },
+  "krakenStormcall": {
+   "file": "audio_sfx_2",
+   "length": 2.622,
+   "loop": false,
+   "sheet": "boss_kraken",
+   "sheet_start": 24.584,
+   "spatial": "3D",
+   "start": 156.364
+  },
+  "krakenTentacleRise": {
+   "file": "audio_sfx_2",
+   "length": 1.926,
+   "loop": false,
+   "sheet": "boss_kraken",
+   "sheet_start": 35.135,
+   "spatial": "3D",
+   "start": 166.915
+  },
+  "krakenTentaclelash": {
+   "file": "audio_sfx_2",
+   "length": 1.409,
+   "loop": false,
+   "sheet": "boss_kraken",
+   "sheet_start": 20.365,
+   "spatial": "3D",
+   "start": 152.145
+  },
+  "krakenUndertow": {
+   "file": "audio_sfx_2",
+   "length": 2.179,
+   "loop": false,
+   "sheet": "boss_kraken",
+   "sheet_start": 29.852,
+   "spatial": "3D",
+   "start": 161.632
+  },
+  "krakenWreckhurl": {
+   "file": "audio_sfx_2",
+   "length": 2.51,
+   "loop": false,
+   "sheet": "boss_kraken",
+   "sheet_start": 21.924,
+   "spatial": "3D",
+   "start": 153.704
+  },
+  "lampOff": {
+   "file": "audio_sfx_1",
+   "length": 0.468,
+   "loop": false,
+   "sheet": "world",
+   "sheet_start": 8.387,
+   "spatial": "2D",
+   "start": 150.362
+  },
+  "lampOn": {
+   "file": "audio_sfx_1",
+   "length": 0.722,
+   "loop": false,
+   "sheet": "world",
+   "sheet_start": 7.515,
+   "spatial": "2D",
+   "start": 149.49
+  },
+  "land": {
+   "file": "audio_sfx_1",
+   "length": 0.495,
+   "loop": false,
+   "sheet": "character",
+   "sheet_start": 16.829,
+   "spatial": "3D",
+   "start": 65.503
+  },
+  "landGround": {
+   "file": "audio_sfx_1",
+   "length": 0.445,
+   "loop": false,
+   "sheet": "fishing",
+   "sheet_start": 27.966,
+   "spatial": "3D",
+   "start": 27.966
+  },
+  "lanternBreak": {
+   "file": "audio_sfx_2",
+   "length": 0.913,
+   "loop": false,
+   "sheet": "boss_noctyss",
+   "sheet_start": 19.012,
+   "spatial": "3D",
+   "start": 69.057
+  },
+  "lavaBubble": {
+   "file": "audio_sfx_1",
+   "length": 3.0,
+   "loop": true,
+   "sheet": "world",
+   "sheet_start": 10.646,
+   "spatial": "3D",
+   "start": 152.621
+  },
+  "lavaBurst": {
+   "file": "audio_sfx_1",
+   "length": 1.491,
+   "loop": false,
+   "sheet": "world",
+   "sheet_start": 9.005,
+   "spatial": "3D",
+   "start": 150.98
+  },
+  "levelUp": {
+   "file": "audio_sfx_1",
+   "length": 2.502,
+   "loop": false,
+   "sheet": "progression",
+   "sheet_start": 1.351,
+   "spatial": "2D",
+   "start": 111.74
+  },
+  "lineWhizz": {
+   "file": "audio_sfx_1",
+   "length": 0.505,
+   "loop": false,
+   "sheet": "fishing",
+   "sheet_start": 0.716,
+   "spatial": "2D",
+   "start": 0.716
+  },
+  "lowHealth": {
+   "file": "audio_sfx_1",
+   "length": 2.0,
+   "loop": true,
+   "sheet": "character",
+   "sheet_start": 22.081,
+   "spatial": "2D",
+   "start": 70.755
+  },
+  "lungeRoar": {
+   "file": "audio_sfx_1",
+   "length": 1.623,
+   "loop": false,
+   "sheet": "boss_brinejaw",
+   "sheet_start": 33.597,
+   "spatial": "3D",
+   "start": 314.534
+  },
+  "lureFlare": {
+   "file": "audio_sfx_2",
+   "length": 0.624,
+   "loop": false,
+   "sheet": "boss_noctyss",
+   "sheet_start": 20.075,
+   "spatial": "3D",
+   "start": 70.12
+  },
+  "materialGain": {
+   "file": "audio_sfx_1",
+   "length": 0.459,
+   "loop": false,
+   "sheet": "progression",
+   "sheet_start": 4.003,
+   "spatial": "2D",
+   "start": 114.392
+  },
+  "mawBite": {
+   "file": "audio_sfx_2",
+   "length": 1.157,
+   "loop": false,
+   "sheet": "boss_noctyss",
+   "sheet_start": 25.776,
+   "spatial": "3D",
+   "start": 75.821
+  },
+  "mawRise": {
+   "file": "audio_sfx_2",
+   "length": 2.177,
+   "loop": false,
+   "sheet": "boss_noctyss",
+   "sheet_start": 23.449,
+   "spatial": "3D",
+   "start": 73.494
+  },
+  "mechanicalAttack": {
+   "file": "audio_sfx_1",
+   "length": 0.757,
+   "loop": false,
+   "sheet": "families",
+   "sheet_start": 52.39,
+   "spatial": "3D",
+   "start": 252.601
+  },
+  "mechanicalDie": {
+   "file": "audio_sfx_1",
+   "length": 1.7,
+   "loop": false,
+   "sheet": "families",
+   "sheet_start": 53.915,
+   "spatial": "3D",
+   "start": 254.126
+  },
+  "mechanicalHurt": {
+   "file": "audio_sfx_1",
+   "length": 0.468,
+   "loop": false,
+   "sheet": "families",
+   "sheet_start": 53.297,
+   "spatial": "3D",
+   "start": 253.508
+  },
+  "mechanicalIdle": {
+   "file": "audio_sfx_1",
+   "length": 0.844,
+   "loop": false,
+   "sheet": "families",
+   "sheet_start": 51.396,
+   "spatial": "3D",
+   "start": 251.607
+  },
+  "mimicAttack": {
+   "file": "audio_sfx_1",
+   "length": 0.796,
+   "loop": false,
+   "sheet": "families",
+   "sheet_start": 38.005,
+   "spatial": "3D",
+   "start": 238.216
+  },
+  "mimicDie": {
+   "file": "audio_sfx_1",
+   "length": 1.692,
+   "loop": false,
+   "sheet": "families",
+   "sheet_start": 39.619,
+   "spatial": "3D",
+   "start": 239.83
+  },
+  "mimicHurt": {
+   "file": "audio_sfx_1",
+   "length": 0.519,
+   "loop": false,
+   "sheet": "families",
+   "sheet_start": 38.95,
+   "spatial": "3D",
+   "start": 239.161
+  },
+  "mimicIdle": {
+   "file": "audio_sfx_1",
+   "length": 0.787,
+   "loop": false,
+   "sheet": "families",
+   "sheet_start": 37.068,
+   "spatial": "3D",
+   "start": 237.279
+  },
+  "newSpecies": {
+   "file": "audio_sfx_1",
+   "length": 1.209,
+   "loop": false,
+   "sheet": "progression",
+   "sheet_start": 6.744,
+   "spatial": "2D",
+   "start": 117.133
+  },
+  "notify": {
+   "file": "audio_sfx_1",
+   "length": 0.824,
+   "loop": false,
+   "sheet": "ui",
+   "sheet_start": 7.213,
+   "spatial": "2D",
+   "start": 107.274
+  },
+  "phantomIn": {
+   "file": "audio_sfx_1",
+   "length": 1.053,
+   "loop": false,
+   "sheet": "creatures",
+   "sheet_start": 21.864,
+   "spatial": "2D",
+   "start": 194.101
+  },
+  "phantomOut": {
+   "file": "audio_sfx_1",
+   "length": 1.224,
+   "loop": false,
+   "sheet": "creatures",
+   "sheet_start": 20.49,
+   "spatial": "2D",
+   "start": 192.727
+  },
+  "polypBurst": {
+   "file": "audio_sfx_1",
+   "length": 0.48,
+   "loop": false,
+   "sheet": "boss_brinejaw",
+   "sheet_start": 24.46,
+   "spatial": "3D",
+   "start": 305.397
+  },
+  "polypHeal": {
+   "file": "audio_sfx_1",
+   "length": 0.698,
+   "loop": false,
+   "sheet": "boss_brinejaw",
+   "sheet_start": 25.09,
+   "spatial": "3D",
+   "start": 306.027
+  },
+  "poolSpawn": {
+   "file": "audio_sfx_1",
+   "length": 1.367,
+   "loop": false,
+   "sheet": "creatures",
+   "sheet_start": 26.456,
+   "spatial": "2D",
+   "start": 198.693
+  },
+  "pulseThump": {
+   "file": "audio_sfx_1",
+   "length": 0.579,
+   "loop": false,
+   "sheet": "creatures",
+   "sheet_start": 12.972,
+   "spatial": "2D",
+   "start": 185.209
+  },
+  "pulseZap": {
+   "file": "audio_sfx_1",
+   "length": 0.465,
+   "loop": false,
+   "sheet": "creatures",
+   "sheet_start": 12.358,
+   "spatial": "2D",
+   "start": 184.595
+  },
+  "punchSwing": {
+   "file": "audio_sfx_1",
+   "length": 0.493,
+   "loop": false,
+   "sheet": "combat",
+   "sheet_start": 0.0,
+   "spatial": "2D",
+   "start": 83.573
+  },
+  "punchSwing1": {
+   "file": "audio_sfx_1",
+   "length": 0.492,
+   "loop": false,
+   "sheet": "combat",
+   "sheet_start": 12.663,
+   "spatial": "2D",
+   "start": 96.236
+  },
+  "punchSwing2": {
+   "file": "audio_sfx_1",
+   "length": 0.475,
+   "loop": false,
+   "sheet": "combat",
+   "sheet_start": 13.305,
+   "spatial": "2D",
+   "start": 96.878
+  },
+  "punchSwing3": {
+   "file": "audio_sfx_1",
+   "length": 0.507,
+   "loop": false,
+   "sheet": "combat",
+   "sheet_start": 13.93,
+   "spatial": "2D",
+   "start": 97.503
+  },
+  "pyreAshfall": {
+   "file": "audio_sfx_1",
+   "length": 1.482,
+   "loop": false,
+   "sheet": "boss_pyrelisk",
+   "sheet_start": 20.269,
+   "spatial": "3D",
+   "start": 367.974
+  },
+  "pyreCrustCrack": {
+   "file": "audio_sfx_1",
+   "length": 1.261,
+   "loop": false,
+   "sheet": "boss_pyrelisk",
+   "sheet_start": 28.23,
+   "spatial": "3D",
+   "start": 375.935
+  },
+  "pyreDeath": {
+   "file": "audio_sfx_1",
+   "length": 2.785,
+   "loop": false,
+   "sheet": "boss_pyrelisk",
+   "sheet_start": 29.642,
+   "spatial": "3D",
+   "start": 377.347
+  },
+  "pyreHandfall": {
+   "file": "audio_sfx_1",
+   "length": 1.992,
+   "loop": false,
+   "sheet": "boss_pyrelisk",
+   "sheet_start": 13.849,
+   "spatial": "3D",
+   "start": 361.554
+  },
+  "pyreRimsweep": {
+   "file": "audio_sfx_1",
+   "length": 1.578,
+   "loop": false,
+   "sheet": "boss_pyrelisk",
+   "sheet_start": 15.992,
+   "spatial": "3D",
+   "start": 363.697
+  },
+  "pyreRoar": {
+   "file": "audio_sfx_1",
+   "length": 2.523,
+   "loop": false,
+   "sheet": "boss_pyrelisk",
+   "sheet_start": 25.557,
+   "spatial": "3D",
+   "start": 373.262
+  },
+  "pyreShardHit": {
+   "file": "audio_sfx_1",
+   "length": 0.768,
+   "loop": false,
+   "sheet": "boss_pyrelisk",
+   "sheet_start": 23.211,
+   "spatial": "3D",
+   "start": 370.916
+  },
+  "pyreShardhurl": {
+   "file": "audio_sfx_1",
+   "length": 1.16,
+   "loop": false,
+   "sheet": "boss_pyrelisk",
+   "sheet_start": 21.901,
+   "spatial": "3D",
+   "start": 369.606
+  },
+  "pyreStep": {
+   "file": "audio_sfx_1",
+   "length": 1.279,
+   "loop": false,
+   "sheet": "boss_pyrelisk",
+   "sheet_start": 24.129,
+   "spatial": "3D",
+   "start": 371.834
+  },
+  "pyreVentbreath": {
+   "file": "audio_sfx_1",
+   "length": 2.4,
+   "loop": true,
+   "sheet": "boss_pyrelisk",
+   "sheet_start": 17.719,
+   "spatial": "3D",
+   "start": 365.424
+  },
+  "questAccept": {
+   "file": "audio_sfx_1",
+   "length": 0.851,
+   "loop": false,
+   "sheet": "progression",
+   "sheet_start": 11.461,
+   "spatial": "2D",
+   "start": 121.85
+  },
+  "questComplete": {
+   "file": "audio_sfx_1",
+   "length": 1.191,
+   "loop": false,
+   "sheet": "progression",
+   "sheet_start": 12.463,
+   "spatial": "2D",
+   "start": 122.852
+  },
+  "questReady": {
+   "file": "audio_sfx_1",
+   "length": 0.734,
+   "loop": false,
+   "sheet": "progression",
+   "sheet_start": 10.577,
+   "spatial": "2D",
+   "start": 120.966
+  },
+  "questTick": {
+   "file": "audio_sfx_1",
+   "length": 0.353,
+   "loop": false,
+   "sheet": "progression",
+   "sheet_start": 10.074,
+   "spatial": "2D",
+   "start": 120.463
+  },
+  "raidClear": {
+   "file": "audio_sfx_1",
+   "length": 2.113,
+   "loop": false,
+   "sheet": "progression",
+   "sheet_start": 27.212,
+   "spatial": "2D",
+   "start": 137.601
+  },
+  "raidFail": {
+   "file": "audio_sfx_1",
+   "length": 1.961,
+   "loop": false,
+   "sheet": "progression",
+   "sheet_start": 29.475,
+   "spatial": "2D",
+   "start": 139.864
+  },
+  "raidStart": {
+   "file": "audio_sfx_1",
+   "length": 2.247,
+   "loop": false,
+   "sheet": "progression",
+   "sheet_start": 23.262,
+   "spatial": "2D",
+   "start": 133.651
+  },
+  "raidWave": {
+   "file": "audio_sfx_1",
+   "length": 1.403,
+   "loop": false,
+   "sheet": "progression",
+   "sheet_start": 25.659,
+   "spatial": "2D",
+   "start": 136.048
+  },
+  "rebornRise": {
+   "file": "audio_sfx_1",
+   "length": 1.553,
+   "loop": false,
+   "sheet": "creatures",
+   "sheet_start": 18.787,
+   "spatial": "2D",
+   "start": 191.024
+  },
+  "reefShatter": {
+   "file": "audio_sfx_1",
+   "length": 0.684,
+   "loop": false,
+   "sheet": "boss_shared",
+   "sheet_start": 17.465,
+   "spatial": "3D",
+   "start": 277.686
+  },
+  "reelMiss": {
+   "file": "audio_sfx_1",
+   "length": 0.363,
+   "loop": false,
+   "sheet": "fishing",
+   "sheet_start": 7.193,
+   "spatial": "2D",
+   "start": 7.193
+  },
+  "reelOpen": {
+   "file": "audio_sfx_1",
+   "length": 0.431,
+   "loop": false,
+   "sheet": "fishing",
+   "sheet_start": 5.462,
+   "spatial": "2D",
+   "start": 5.462
+  },
+  "reelTension": {
+   "file": "audio_sfx_1",
+   "length": 1.0,
+   "loop": true,
+   "sheet": "fishing",
+   "sheet_start": 6.043,
+   "spatial": "2D",
+   "start": 6.043
+  },
+  "reelZoneShrink": {
+   "file": "audio_sfx_1",
+   "length": 0.309,
+   "loop": false,
+   "sheet": "fishing",
+   "sheet_start": 7.706,
+   "spatial": "2D",
+   "start": 7.706
+  },
+  "renock": {
+   "file": "audio_sfx_1",
+   "length": 0.433,
+   "loop": false,
+   "sheet": "combat",
+   "sheet_start": 9.743,
+   "spatial": "2D",
+   "start": 93.316
+  },
+  "respawn": {
+   "file": "audio_sfx_1",
+   "length": 2.222,
+   "loop": false,
+   "sheet": "character",
+   "sheet_start": 26.176,
+   "spatial": "2D",
+   "start": 74.85
+  },
+  "rimeBreachCrash": {
+   "file": "audio_sfx_2",
+   "length": 2.153,
+   "loop": false,
+   "sheet": "boss_rimefang",
+   "sheet_start": 17.644,
+   "spatial": "3D",
+   "start": 17.644
+  },
+  "rimeBreachLaunch": {
+   "file": "audio_sfx_2",
+   "length": 1.457,
+   "loop": false,
+   "sheet": "boss_rimefang",
+   "sheet_start": 16.037,
+   "spatial": "3D",
+   "start": 16.037
+  },
+  "rimeCrackLock": {
+   "file": "audio_sfx_2",
+   "length": 0.508,
+   "loop": false,
+   "sheet": "boss_rimefang",
+   "sheet_start": 31.838,
+   "spatial": "3D",
+   "start": 31.838
+  },
+  "rimeCrackWeb": {
+   "file": "audio_sfx_2",
+   "length": 0.978,
+   "loop": false,
+   "sheet": "boss_rimefang",
+   "sheet_start": 30.711,
+   "spatial": "3D",
+   "start": 30.711
+  },
+  "rimeDeath": {
+   "file": "audio_sfx_2",
+   "length": 2.828,
+   "loop": false,
+   "sheet": "boss_rimefang",
+   "sheet_start": 27.733,
+   "spatial": "3D",
+   "start": 27.733
+  },
+  "rimeEnrage": {
+   "file": "audio_sfx_2",
+   "length": 2.082,
+   "loop": false,
+   "sheet": "boss_rimefang",
+   "sheet_start": 44.863,
+   "spatial": "3D",
+   "start": 44.863
+  },
+  "rimeFloeCrack": {
+   "file": "audio_sfx_2",
+   "length": 0.979,
+   "loop": false,
+   "sheet": "boss_rimefang",
+   "sheet_start": 19.946,
+   "spatial": "3D",
+   "start": 19.946
+  },
+  "rimeFlukeSlam": {
+   "file": "audio_sfx_2",
+   "length": 1.266,
+   "loop": false,
+   "sheet": "boss_rimefang",
+   "sheet_start": 22.204,
+   "spatial": "3D",
+   "start": 22.204
+  },
+  "rimeIceBurst": {
+   "file": "audio_sfx_2",
+   "length": 1.781,
+   "loop": false,
+   "sheet": "boss_rimefang",
+   "sheet_start": 32.496,
+   "spatial": "3D",
+   "start": 32.496
+  },
+  "rimeQuake": {
+   "file": "audio_sfx_2",
+   "length": 1.79,
+   "loop": false,
+   "sheet": "boss_rimefang",
+   "sheet_start": 40.534,
+   "spatial": "3D",
+   "start": 40.534
+  },
+  "rimeRiftAmbient": {
+   "file": "audio_sfx_2",
+   "length": 2.8,
+   "loop": true,
+   "sheet": "boss_rimefang",
+   "sheet_start": 47.095,
+   "spatial": "3D",
+   "start": 47.095
+  },
+  "rimeShatter": {
+   "file": "audio_sfx_2",
+   "length": 2.239,
+   "loop": false,
+   "sheet": "boss_rimefang",
+   "sheet_start": 42.474,
+   "spatial": "3D",
+   "start": 42.474
+  },
+  "rimeShock": {
+   "file": "audio_sfx_2",
+   "length": 1.476,
+   "loop": false,
+   "sheet": "boss_rimefang",
+   "sheet_start": 38.908,
+   "spatial": "3D",
+   "start": 38.908
+  },
+  "rimeSkyImpact": {
+   "file": "audio_sfx_2",
+   "length": 2.473,
+   "loop": false,
+   "sheet": "boss_rimefang",
+   "sheet_start": 36.285,
+   "spatial": "3D",
+   "start": 36.285
+  },
+  "rimeSkyLaunch": {
+   "file": "audio_sfx_2",
+   "length": 1.707,
+   "loop": false,
+   "sheet": "boss_rimefang",
+   "sheet_start": 34.427,
+   "spatial": "3D",
+   "start": 34.427
+  },
+  "rimeSpout": {
+   "file": "audio_sfx_2",
+   "length": 0.899,
+   "loop": false,
+   "sheet": "boss_rimefang",
+   "sheet_start": 12.858,
+   "spatial": "3D",
+   "start": 12.858
+  },
+  "rimeSpyHop": {
+   "file": "audio_sfx_2",
+   "length": 0.813,
+   "loop": false,
+   "sheet": "boss_rimefang",
+   "sheet_start": 23.62,
+   "spatial": "3D",
+   "start": 23.62
+  },
+  "rimeThrash": {
+   "file": "audio_sfx_2",
+   "length": 0.979,
+   "loop": false,
+   "sheet": "boss_rimefang",
+   "sheet_start": 21.075,
+   "spatial": "3D",
+   "start": 21.075
+  },
+  "rimeWash": {
+   "file": "audio_sfx_2",
+   "length": 1.981,
+   "loop": false,
+   "sheet": "boss_rimefang",
+   "sheet_start": 13.906,
+   "spatial": "3D",
+   "start": 13.906
+  },
+  "rimeWhiteout": {
+   "file": "audio_sfx_2",
+   "length": 3.0,
+   "loop": true,
+   "sheet": "boss_rimefang",
+   "sheet_start": 24.583,
+   "spatial": "3D",
+   "start": 24.583
+  },
+  "rodDraw": {
+   "file": "audio_sfx_1",
+   "length": 0.716,
+   "loop": false,
+   "sheet": "character",
+   "sheet_start": 30.974,
+   "spatial": "2D",
+   "start": 79.648
+  },
+  "rodStow": {
+   "file": "audio_sfx_1",
+   "length": 0.637,
+   "loop": false,
+   "sheet": "character",
+   "sheet_start": 31.84,
+   "spatial": "2D",
+   "start": 80.514
+  },
+  "salvageHaul": {
+   "file": "audio_sfx_1",
+   "length": 1.218,
+   "loop": false,
+   "sheet": "fishing",
+   "sheet_start": 23.555,
+   "spatial": "2D",
+   "start": 23.555
+  },
+  "sandShift": {
+   "file": "audio_sfx_1",
+   "length": 1.2,
+   "loop": true,
+   "sheet": "creatures",
+   "sheet_start": 6.928,
+   "spatial": "2D",
+   "start": 179.165
+  },
+  "scytheCreak": {
+   "file": "audio_sfx_2",
+   "length": 1.213,
+   "loop": false,
+   "sheet": "boss_noctyss",
+   "sheet_start": 31.887,
+   "spatial": "3D",
+   "start": 81.932
+  },
+  "scytheDrag": {
+   "file": "audio_sfx_2",
+   "length": 1.8,
+   "loop": true,
+   "sheet": "boss_noctyss",
+   "sheet_start": 33.25,
+   "spatial": "3D",
+   "start": 83.295
+  },
+  "serpentBite": {
+   "file": "audio_sfx_1",
+   "length": 0.86,
+   "loop": false,
+   "sheet": "boss_brinejaw",
+   "sheet_start": 30.404,
+   "spatial": "3D",
+   "start": 311.341
+  },
+  "serpentCoilslam": {
+   "file": "audio_sfx_1",
+   "length": 1.82,
+   "loop": false,
+   "sheet": "boss_brinejaw",
+   "sheet_start": 28.435,
+   "spatial": "3D",
+   "start": 309.372
+  },
+  "serpentGeysers": {
+   "file": "audio_sfx_1",
+   "length": 1.289,
+   "loop": false,
+   "sheet": "boss_brinejaw",
+   "sheet_start": 25.938,
+   "spatial": "3D",
+   "start": 306.875
+  },
+  "serpentPolyps": {
+   "file": "audio_sfx_1",
+   "length": 0.866,
+   "loop": false,
+   "sheet": "boss_brinejaw",
+   "sheet_start": 23.444,
+   "spatial": "3D",
+   "start": 304.381
+  },
+  "serpentRain": {
+   "file": "audio_sfx_1",
+   "length": 1.538,
+   "loop": false,
+   "sheet": "boss_brinejaw",
+   "sheet_start": 18.575,
+   "spatial": "3D",
+   "start": 299.512
+  },
+  "serpentRings": {
+   "file": "audio_sfx_1",
+   "length": 1.595,
+   "loop": false,
+   "sheet": "boss_brinejaw",
+   "sheet_start": 20.264,
+   "spatial": "3D",
+   "start": 301.201
+  },
+  "serpentSlam": {
+   "file": "audio_sfx_1",
+   "length": 1.154,
+   "loop": false,
+   "sheet": "boss_brinejaw",
+   "sheet_start": 15.347,
+   "spatial": "3D",
+   "start": 296.284
+  },
+  "serpentSpines": {
+   "file": "audio_sfx_1",
+   "length": 0.908,
+   "loop": false,
+   "sheet": "boss_brinejaw",
+   "sheet_start": 27.376,
+   "spatial": "3D",
+   "start": 308.313
+  },
+  "serpentSurge": {
+   "file": "audio_sfx_1",
+   "length": 1.285,
+   "loop": false,
+   "sheet": "boss_brinejaw",
+   "sheet_start": 22.008,
+   "spatial": "3D",
+   "start": 302.945
+  },
+  "serpentSweepHigh": {
+   "file": "audio_sfx_1",
+   "length": 0.856,
+   "loop": false,
+   "sheet": "boss_brinejaw",
+   "sheet_start": 14.341,
+   "spatial": "3D",
+   "start": 295.278
+  },
+  "serpentSweepLow": {
+   "file": "audio_sfx_1",
+   "length": 1.087,
+   "loop": false,
+   "sheet": "boss_brinejaw",
+   "sheet_start": 13.104,
+   "spatial": "3D",
+   "start": 294.041
+  },
+  "serpentWave": {
+   "file": "audio_sfx_1",
+   "length": 1.774,
+   "loop": false,
+   "sheet": "boss_brinejaw",
+   "sheet_start": 16.651,
+   "spatial": "3D",
+   "start": 297.588
+  },
+  "shellCreak": {
+   "file": "audio_sfx_1",
+   "length": 0.858,
+   "loop": false,
+   "sheet": "creatures",
+   "sheet_start": 9.158,
+   "spatial": "2D",
+   "start": 181.395
+  },
+  "shellSnap": {
+   "file": "audio_sfx_1",
+   "length": 0.264,
+   "loop": false,
+   "sheet": "creatures",
+   "sheet_start": 10.166,
+   "spatial": "2D",
+   "start": 182.403
+  },
+  "shopBuy": {
+   "file": "audio_sfx_1",
+   "length": 0.396,
+   "loop": false,
+   "sheet": "ui",
+   "sheet_start": 4.999,
+   "spatial": "2D",
+   "start": 105.06
+  },
+  "shopFail": {
+   "file": "audio_sfx_1",
+   "length": 0.384,
+   "loop": false,
+   "sheet": "ui",
+   "sheet_start": 5.545,
+   "spatial": "2D",
+   "start": 105.606
+  },
+  "slamImpact": {
+   "file": "audio_sfx_2",
+   "length": 1.849,
+   "loop": false,
+   "sheet": "boss_noctyss",
+   "sheet_start": 28.021,
+   "spatial": "3D",
+   "start": 78.066
+  },
+  "slamPeel": {
+   "file": "audio_sfx_2",
+   "length": 1.718,
+   "loop": false,
+   "sheet": "boss_noctyss",
+   "sheet_start": 30.019,
+   "spatial": "3D",
+   "start": 80.064
+  },
+  "slamSnuff": {
+   "file": "audio_sfx_2",
+   "length": 0.787,
+   "loop": false,
+   "sheet": "boss_noctyss",
+   "sheet_start": 27.083,
+   "spatial": "3D",
+   "start": 77.128
+  },
+  "smallFishAttack": {
+   "file": "audio_sfx_1",
+   "length": 0.321,
+   "loop": false,
+   "sheet": "families",
+   "sheet_start": 0.608,
+   "spatial": "3D",
+   "start": 200.819
+  },
+  "smallFishDie": {
+   "file": "audio_sfx_1",
+   "length": 1.067,
+   "loop": false,
+   "sheet": "families",
+   "sheet_start": 1.533,
+   "spatial": "3D",
+   "start": 201.744
+  },
+  "smallFishHurt": {
+   "file": "audio_sfx_1",
+   "length": 0.305,
+   "loop": false,
+   "sheet": "families",
+   "sheet_start": 1.078,
+   "spatial": "3D",
+   "start": 201.289
+  },
+  "smallFishIdle": {
+   "file": "audio_sfx_1",
+   "length": 0.458,
+   "loop": false,
+   "sheet": "families",
+   "sheet_start": 0.0,
+   "spatial": "3D",
+   "start": 200.211
+  },
+  "snapAppear": {
+   "file": "audio_sfx_1",
+   "length": 0.567,
+   "loop": false,
+   "sheet": "fishing",
+   "sheet_start": 10.707,
+   "spatial": "2D",
+   "start": 10.707
+  },
+  "snapHit": {
+   "file": "audio_sfx_1",
+   "length": 0.474,
+   "loop": false,
+   "sheet": "fishing",
+   "sheet_start": 11.424,
+   "spatial": "2D",
+   "start": 11.424
+  },
+  "snapMiss": {
+   "file": "audio_sfx_1",
+   "length": 0.152,
+   "loop": false,
+   "sheet": "fishing",
+   "sheet_start": 12.048,
+   "spatial": "2D",
+   "start": 12.048
+  },
+  "snareSnap": {
+   "file": "audio_sfx_1",
+   "length": 0.464,
+   "loop": false,
+   "sheet": "creatures",
+   "sheet_start": 23.067,
+   "spatial": "2D",
+   "start": 195.304
+  },
+  "spineStick": {
+   "file": "audio_sfx_1",
+   "length": 0.38,
+   "loop": false,
+   "sheet": "creatures",
+   "sheet_start": 17.611,
+   "spatial": "2D",
+   "start": 189.848
+  },
+  "spinyAttack": {
+   "file": "audio_sfx_1",
+   "length": 0.624,
+   "loop": false,
+   "sheet": "families",
+   "sheet_start": 7.483,
+   "spatial": "3D",
+   "start": 207.694
+  },
+  "spinyDie": {
+   "file": "audio_sfx_1",
+   "length": 1.201,
+   "loop": false,
+   "sheet": "families",
+   "sheet_start": 8.776,
+   "spatial": "3D",
+   "start": 208.987
+  },
+  "spinyHurt": {
+   "file": "audio_sfx_1",
+   "length": 0.37,
+   "loop": false,
+   "sheet": "families",
+   "sheet_start": 8.256,
+   "spatial": "3D",
+   "start": 208.467
+  },
+  "spinyIdle": {
+   "file": "audio_sfx_1",
+   "length": 0.51,
+   "loop": false,
+   "sheet": "families",
+   "sheet_start": 6.823,
+   "spatial": "3D",
+   "start": 207.034
+  },
+  "spiralWind": {
+   "file": "audio_sfx_1",
+   "length": 1.716,
+   "loop": false,
+   "sheet": "boss_brinejaw",
+   "sheet_start": 37.047,
+   "spatial": "3D",
+   "start": 317.984
+  },
+  "spitLaunch": {
+   "file": "audio_sfx_1",
+   "length": 0.322,
+   "loop": false,
+   "sheet": "creatures",
+   "sheet_start": 1.945,
+   "spatial": "2D",
+   "start": 174.182
+  },
+  "spitSplashGround": {
+   "file": "audio_sfx_1",
+   "length": 0.42,
+   "loop": false,
+   "sheet": "creatures",
+   "sheet_start": 3.291,
+   "spatial": "2D",
+   "start": 175.528
+  },
+  "spitSplashWater": {
+   "file": "audio_sfx_1",
+   "length": 0.723,
+   "loop": false,
+   "sheet": "creatures",
+   "sheet_start": 2.417,
+   "spatial": "2D",
+   "start": 174.654
+  },
+  "splashRing": {
+   "file": "audio_sfx_1",
+   "length": 1.066,
+   "loop": false,
+   "sheet": "creatures",
+   "sheet_start": 16.395,
+   "spatial": "2D",
+   "start": 188.632
+  },
+  "stepGrass1": {
+   "file": "audio_sfx_1",
+   "length": 0.379,
+   "loop": false,
+   "sheet": "character",
+   "sheet_start": 5.267,
+   "spatial": "3D",
+   "start": 53.941
+  },
+  "stepGrass2": {
+   "file": "audio_sfx_1",
+   "length": 0.356,
+   "loop": false,
+   "sheet": "character",
+   "sheet_start": 5.795,
+   "spatial": "3D",
+   "start": 54.469
+  },
+  "stepGrass3": {
+   "file": "audio_sfx_1",
+   "length": 0.394,
+   "loop": false,
+   "sheet": "character",
+   "sheet_start": 6.301,
+   "spatial": "3D",
+   "start": 54.975
+  },
+  "stepGrass4": {
+   "file": "audio_sfx_1",
+   "length": 0.369,
+   "loop": false,
+   "sheet": "character",
+   "sheet_start": 6.845,
+   "spatial": "3D",
+   "start": 55.519
+  },
+  "stepMetal1": {
+   "file": "audio_sfx_1",
+   "length": 0.441,
+   "loop": false,
+   "sheet": "character",
+   "sheet_start": 9.453,
+   "spatial": "3D",
+   "start": 58.127
+  },
+  "stepMetal2": {
+   "file": "audio_sfx_1",
+   "length": 0.437,
+   "loop": false,
+   "sheet": "character",
+   "sheet_start": 10.044,
+   "spatial": "3D",
+   "start": 58.718
+  },
+  "stepMetal3": {
+   "file": "audio_sfx_1",
+   "length": 0.418,
+   "loop": false,
+   "sheet": "character",
+   "sheet_start": 10.631,
+   "spatial": "3D",
+   "start": 59.305
+  },
+  "stepMetal4": {
+   "file": "audio_sfx_1",
+   "length": 0.439,
+   "loop": false,
+   "sheet": "character",
+   "sheet_start": 11.199,
+   "spatial": "3D",
+   "start": 59.873
+  },
+  "stepMud1": {
+   "file": "audio_sfx_1",
+   "length": 0.399,
+   "loop": false,
+   "sheet": "character",
+   "sheet_start": 11.788,
+   "spatial": "3D",
+   "start": 60.462
+  },
+  "stepMud2": {
+   "file": "audio_sfx_1",
+   "length": 0.402,
+   "loop": false,
+   "sheet": "character",
+   "sheet_start": 12.337,
+   "spatial": "3D",
+   "start": 61.011
+  },
+  "stepMud3": {
+   "file": "audio_sfx_1",
+   "length": 0.406,
+   "loop": false,
+   "sheet": "character",
+   "sheet_start": 12.889,
+   "spatial": "3D",
+   "start": 61.563
+  },
+  "stepMud4": {
+   "file": "audio_sfx_1",
+   "length": 0.404,
+   "loop": false,
+   "sheet": "character",
+   "sheet_start": 13.445,
+   "spatial": "3D",
+   "start": 62.119
+  },
+  "stepSand1": {
+   "file": "audio_sfx_1",
+   "length": 0.3,
+   "loop": false,
+   "sheet": "character",
+   "sheet_start": 0.0,
+   "spatial": "3D",
+   "start": 48.674
+  },
+  "stepSand2": {
+   "file": "audio_sfx_1",
+   "length": 0.299,
+   "loop": false,
+   "sheet": "character",
+   "sheet_start": 0.45,
+   "spatial": "3D",
+   "start": 49.124
+  },
+  "stepSand3": {
+   "file": "audio_sfx_1",
+   "length": 0.289,
+   "loop": false,
+   "sheet": "character",
+   "sheet_start": 0.899,
+   "spatial": "3D",
+   "start": 49.573
+  },
+  "stepSand4": {
+   "file": "audio_sfx_1",
+   "length": 0.292,
+   "loop": false,
+   "sheet": "character",
+   "sheet_start": 1.338,
+   "spatial": "3D",
+   "start": 50.012
+  },
+  "stepShallow1": {
+   "file": "audio_sfx_1",
+   "length": 0.431,
+   "loop": false,
+   "sheet": "character",
+   "sheet_start": 13.999,
+   "spatial": "3D",
+   "start": 62.673
+  },
+  "stepShallow2": {
+   "file": "audio_sfx_1",
+   "length": 0.406,
+   "loop": false,
+   "sheet": "character",
+   "sheet_start": 14.58,
+   "spatial": "3D",
+   "start": 63.254
+  },
+  "stepShallow3": {
+   "file": "audio_sfx_1",
+   "length": 0.474,
+   "loop": false,
+   "sheet": "character",
+   "sheet_start": 15.135,
+   "spatial": "3D",
+   "start": 63.809
+  },
+  "stepShallow4": {
+   "file": "audio_sfx_1",
+   "length": 0.454,
+   "loop": false,
+   "sheet": "character",
+   "sheet_start": 15.76,
+   "spatial": "3D",
+   "start": 64.434
+  },
+  "stepSnow1": {
+   "file": "audio_sfx_1",
+   "length": 0.387,
+   "loop": false,
+   "sheet": "character",
+   "sheet_start": 7.364,
+   "spatial": "3D",
+   "start": 56.038
+  },
+  "stepSnow2": {
+   "file": "audio_sfx_1",
+   "length": 0.342,
+   "loop": false,
+   "sheet": "character",
+   "sheet_start": 7.901,
+   "spatial": "3D",
+   "start": 56.575
+  },
+  "stepSnow3": {
+   "file": "audio_sfx_1",
+   "length": 0.368,
+   "loop": false,
+   "sheet": "character",
+   "sheet_start": 8.392,
+   "spatial": "3D",
+   "start": 57.066
+  },
+  "stepSnow4": {
+   "file": "audio_sfx_1",
+   "length": 0.393,
+   "loop": false,
+   "sheet": "character",
+   "sheet_start": 8.911,
+   "spatial": "3D",
+   "start": 57.585
+  },
+  "stepStone1": {
+   "file": "audio_sfx_1",
+   "length": 0.283,
+   "loop": false,
+   "sheet": "character",
+   "sheet_start": 1.78,
+   "spatial": "3D",
+   "start": 50.454
+  },
+  "stepStone2": {
+   "file": "audio_sfx_1",
+   "length": 0.299,
+   "loop": false,
+   "sheet": "character",
+   "sheet_start": 2.213,
+   "spatial": "3D",
+   "start": 50.887
+  },
+  "stepStone3": {
+   "file": "audio_sfx_1",
+   "length": 0.272,
+   "loop": false,
+   "sheet": "character",
+   "sheet_start": 2.662,
+   "spatial": "3D",
+   "start": 51.336
+  },
+  "stepStone4": {
+   "file": "audio_sfx_1",
+   "length": 0.294,
+   "loop": false,
+   "sheet": "character",
+   "sheet_start": 3.084,
+   "spatial": "3D",
+   "start": 51.758
+  },
+  "stepWood1": {
+   "file": "audio_sfx_1",
+   "length": 0.291,
+   "loop": false,
+   "sheet": "character",
+   "sheet_start": 3.528,
+   "spatial": "3D",
+   "start": 52.202
+  },
+  "stepWood2": {
+   "file": "audio_sfx_1",
+   "length": 0.271,
+   "loop": false,
+   "sheet": "character",
+   "sheet_start": 3.969,
+   "spatial": "3D",
+   "start": 52.643
+  },
+  "stepWood3": {
+   "file": "audio_sfx_1",
+   "length": 0.314,
+   "loop": false,
+   "sheet": "character",
+   "sheet_start": 4.39,
+   "spatial": "3D",
+   "start": 53.064
+  },
+  "stepWood4": {
+   "file": "audio_sfx_1",
+   "length": 0.263,
+   "loop": false,
+   "sheet": "character",
+   "sheet_start": 4.854,
+   "spatial": "3D",
+   "start": 53.528
+  },
+  "swimStroke": {
+   "file": "audio_sfx_1",
+   "length": 0.734,
+   "loop": false,
+   "sheet": "character",
+   "sheet_start": 17.473,
+   "spatial": "3D",
+   "start": 66.147
+  },
+  "swingRefused": {
+   "file": "audio_sfx_1",
+   "length": 0.212,
+   "loop": false,
+   "sheet": "combat",
+   "sheet_start": 1.431,
+   "spatial": "2D",
+   "start": 85.004
+  },
+  "thunder1": {
+   "file": "audio_sfx_1",
+   "length": 2.076,
+   "loop": false,
+   "sheet": "world",
+   "sheet_start": 0.0,
+   "spatial": "2D",
+   "start": 141.975
+  },
+  "thunder2": {
+   "file": "audio_sfx_1",
+   "length": 2.44,
+   "loop": false,
+   "sheet": "world",
+   "sheet_start": 2.226,
+   "spatial": "2D",
+   "start": 144.201
+  },
+  "thunder3": {
+   "file": "audio_sfx_1",
+   "length": 2.549,
+   "loop": false,
+   "sheet": "world",
+   "sheet_start": 4.816,
+   "spatial": "2D",
+   "start": 146.791
+  },
+  "travelArrive": {
+   "file": "audio_sfx_1",
+   "length": 2.079,
+   "loop": false,
+   "sheet": "progression",
+   "sheet_start": 20.223,
+   "spatial": "2D",
+   "start": 130.612
+  },
+  "travelGo": {
+   "file": "audio_sfx_1",
+   "length": 1.538,
+   "loop": false,
+   "sheet": "progression",
+   "sheet_start": 18.535,
+   "spatial": "2D",
+   "start": 128.924
+  },
+  "travelRefused": {
+   "file": "audio_sfx_1",
+   "length": 0.66,
+   "loop": false,
+   "sheet": "progression",
+   "sheet_start": 22.452,
+   "spatial": "2D",
+   "start": 132.841
+  },
+  "tug": {
+   "file": "audio_sfx_1",
+   "length": 0.556,
+   "loop": false,
+   "sheet": "fishing",
+   "sheet_start": 4.756,
+   "spatial": "3D",
+   "start": 4.756
+  },
+  "uiClick": {
+   "file": "audio_sfx_1",
+   "length": 0.204,
+   "loop": false,
+   "sheet": "ui",
+   "sheet_start": 0.0,
+   "spatial": "2D",
+   "start": 100.061
+  },
+  "uiClose": {
+   "file": "audio_sfx_1",
+   "length": 0.302,
+   "loop": false,
+   "sheet": "ui",
+   "sheet_start": 1.102,
+   "spatial": "2D",
+   "start": 101.163
+  },
+  "uiEquip": {
+   "file": "audio_sfx_1",
+   "length": 0.424,
+   "loop": false,
+   "sheet": "ui",
+   "sheet_start": 2.404,
+   "spatial": "2D",
+   "start": 102.465
+  },
+  "uiError": {
+   "file": "audio_sfx_1",
+   "length": 0.424,
+   "loop": false,
+   "sheet": "ui",
+   "sheet_start": 2.979,
+   "spatial": "2D",
+   "start": 103.04
+  },
+  "uiHover": {
+   "file": "audio_sfx_1",
+   "length": 0.055,
+   "loop": false,
+   "sheet": "ui",
+   "sheet_start": 0.354,
+   "spatial": "2D",
+   "start": 100.415
+  },
+  "uiOpen": {
+   "file": "audio_sfx_1",
+   "length": 0.393,
+   "loop": false,
+   "sheet": "ui",
+   "sheet_start": 0.559,
+   "spatial": "2D",
+   "start": 100.62
+  },
+  "uiSelect": {
+   "file": "audio_sfx_1",
+   "length": 0.291,
+   "loop": false,
+   "sheet": "ui",
+   "sheet_start": 1.964,
+   "spatial": "2D",
+   "start": 102.025
+  },
+  "uiTab": {
+   "file": "audio_sfx_1",
+   "length": 0.259,
+   "loop": false,
+   "sheet": "ui",
+   "sheet_start": 1.554,
+   "spatial": "2D",
+   "start": 101.615
+  },
+  "undeadAttack": {
+   "file": "audio_sfx_1",
+   "length": 0.97,
+   "loop": false,
+   "sheet": "families",
+   "sheet_start": 42.823,
+   "spatial": "3D",
+   "start": 243.034
+  },
+  "undeadDie": {
+   "file": "audio_sfx_1",
+   "length": 1.894,
+   "loop": false,
+   "sheet": "families",
+   "sheet_start": 44.76,
+   "spatial": "3D",
+   "start": 244.971
+  },
+  "undeadHurt": {
+   "file": "audio_sfx_1",
+   "length": 0.667,
+   "loop": false,
+   "sheet": "families",
+   "sheet_start": 43.943,
+   "spatial": "3D",
+   "start": 244.154
+  },
+  "undeadIdle": {
+   "file": "audio_sfx_1",
+   "length": 1.211,
+   "loop": false,
+   "sheet": "families",
+   "sheet_start": 41.462,
+   "spatial": "3D",
+   "start": 241.673
+  },
+  "undertowPull": {
+   "file": "audio_sfx_1",
+   "length": 1.526,
+   "loop": false,
+   "sheet": "boss_brinejaw",
+   "sheet_start": 35.371,
+   "spatial": "3D",
+   "start": 316.308
+  },
+  "waterEnter": {
+   "file": "audio_sfx_1",
+   "length": 0.949,
+   "loop": false,
+   "sheet": "character",
+   "sheet_start": 18.357,
+   "spatial": "3D",
+   "start": 67.031
+  },
+  "waterExit": {
+   "file": "audio_sfx_1",
+   "length": 1.117,
+   "loop": false,
+   "sheet": "character",
+   "sheet_start": 19.456,
+   "spatial": "3D",
+   "start": 68.13
+  },
+  "weaponDraw": {
+   "file": "audio_sfx_1",
+   "length": 0.644,
+   "loop": false,
+   "sheet": "character",
+   "sheet_start": 32.627,
+   "spatial": "2D",
+   "start": 81.301
+  },
+  "weaponStow": {
+   "file": "audio_sfx_1",
+   "length": 0.644,
+   "loop": false,
+   "sheet": "character",
+   "sheet_start": 33.421,
+   "spatial": "2D",
+   "start": 82.095
+  },
+  "weaponSwing": {
+   "file": "audio_sfx_1",
+   "length": 0.638,
+   "loop": false,
+   "sheet": "combat",
+   "sheet_start": 0.643,
+   "spatial": "2D",
+   "start": 84.216
+  },
+  "whirlpool": {
+   "file": "audio_sfx_1",
+   "length": 4.0,
+   "loop": true,
+   "sheet": "world",
+   "sheet_start": 13.796,
+   "spatial": "3D",
+   "start": 155.771
+  },
+  "windGust": {
+   "file": "audio_sfx_1",
+   "length": 1.934,
+   "loop": false,
+   "sheet": "world",
+   "sheet_start": 28.179,
+   "spatial": "2D",
+   "start": 170.154
+  },
+  "wingAttack": {
+   "file": "audio_sfx_1",
+   "length": 0.851,
+   "loop": false,
+   "sheet": "families",
+   "sheet_start": 29.207,
+   "spatial": "3D",
+   "start": 229.418
+  },
+  "wingDie": {
+   "file": "audio_sfx_1",
+   "length": 1.7,
+   "loop": false,
+   "sheet": "families",
+   "sheet_start": 30.835,
+   "spatial": "3D",
+   "start": 231.046
+  },
+  "wingHurt": {
+   "file": "audio_sfx_1",
+   "length": 0.477,
+   "loop": false,
+   "sheet": "families",
+   "sheet_start": 30.208,
+   "spatial": "3D",
+   "start": 230.419
+  },
+  "wingIdle": {
+   "file": "audio_sfx_1",
+   "length": 0.975,
+   "loop": false,
+   "sheet": "families",
+   "sheet_start": 28.082,
+   "spatial": "3D",
+   "start": 228.293
+  },
+  "wrackAnchorline": {
+   "file": "audio_sfx_2",
+   "length": 1.099,
+   "loop": false,
+   "sheet": "boss_wrack",
+   "sheet_start": 28.461,
+   "spatial": "3D",
+   "start": 115.315
+  },
+  "wrackAnchorsweep": {
+   "file": "audio_sfx_2",
+   "length": 1.558,
+   "loop": false,
+   "sheet": "boss_wrack",
+   "sheet_start": 16.265,
+   "spatial": "3D",
+   "start": 103.119
+  },
+  "wrackBell": {
+   "file": "audio_sfx_2",
+   "length": 1.979,
+   "loop": false,
+   "sheet": "boss_wrack",
+   "sheet_start": 38.187,
+   "spatial": "3D",
+   "start": 125.041
+  },
+  "wrackBilgeblow": {
+   "file": "audio_sfx_2",
+   "length": 1.437,
+   "loop": false,
+   "sheet": "boss_wrack",
+   "sheet_start": 35.141,
+   "spatial": "3D",
+   "start": 121.995
+  },
+  "wrackBoomsweep": {
+   "file": "audio_sfx_2",
+   "length": 1.215,
+   "loop": false,
+   "sheet": "boss_wrack",
+   "sheet_start": 33.776,
+   "spatial": "3D",
+   "start": 120.63
+  },
+  "wrackBrazier": {
+   "file": "audio_sfx_2",
+   "length": 1.364,
+   "loop": false,
+   "sheet": "boss_wrack",
+   "sheet_start": 24.624,
+   "spatial": "3D",
+   "start": 111.478
+  },
+  "wrackBroadside": {
+   "file": "audio_sfx_2",
+   "length": 1.901,
+   "loop": false,
+   "sheet": "boss_wrack",
+   "sheet_start": 14.214,
+   "spatial": "3D",
+   "start": 101.068
+  },
+  "wrackBulletWhiz": {
+   "file": "audio_sfx_2",
+   "length": 0.29,
+   "loop": false,
+   "sheet": "boss_wrack",
+   "sheet_start": 37.747,
+   "spatial": "3D",
+   "start": 124.601
+  },
+  "wrackCannonoverload": {
+   "file": "audio_sfx_2",
+   "length": 2.173,
+   "loop": false,
+   "sheet": "boss_wrack",
+   "sheet_start": 26.138,
+   "spatial": "3D",
+   "start": 112.992
+  },
+  "wrackDeath": {
+   "file": "audio_sfx_2",
+   "length": 2.702,
+   "loop": false,
+   "sheet": "boss_wrack",
+   "sheet_start": 42.074,
+   "spatial": "3D",
+   "start": 128.928
+  },
+  "wrackGrapeshot": {
+   "file": "audio_sfx_2",
+   "length": 0.861,
+   "loop": false,
+   "sheet": "boss_wrack",
+   "sheet_start": 13.204,
+   "spatial": "3D",
+   "start": 100.058
+  },
+  "wrackHullGroan": {
+   "file": "audio_sfx_2",
+   "length": 1.608,
+   "loop": false,
+   "sheet": "boss_wrack",
+   "sheet_start": 40.316,
+   "spatial": "3D",
+   "start": 127.17
+  },
+  "wrackKegBlast": {
+   "file": "audio_sfx_2",
+   "length": 1.916,
+   "loop": false,
+   "sheet": "boss_wrack",
+   "sheet_start": 22.558,
+   "spatial": "3D",
+   "start": 109.412
+  },
+  "wrackKegFuse": {
+   "file": "audio_sfx_2",
+   "length": 1.2,
+   "loop": true,
+   "sheet": "boss_wrack",
+   "sheet_start": 21.208,
+   "spatial": "3D",
+   "start": 108.062
+  },
+  "wrackLadybelow": {
+   "file": "audio_sfx_2",
+   "length": 1.984,
+   "loop": false,
+   "sheet": "boss_wrack",
+   "sheet_start": 31.642,
+   "spatial": "3D",
+   "start": 118.496
+  },
+  "wrackLongboat": {
+   "file": "audio_sfx_2",
+   "length": 1.781,
+   "loop": false,
+   "sheet": "boss_wrack",
+   "sheet_start": 29.71,
+   "spatial": "3D",
+   "start": 116.564
+  },
+  "wrackPowderrun": {
+   "file": "audio_sfx_2",
+   "length": 1.277,
+   "loop": false,
+   "sheet": "boss_wrack",
+   "sheet_start": 19.781,
+   "spatial": "3D",
+   "start": 106.635
+  },
+  "wrackShots": {
+   "file": "audio_sfx_2",
+   "length": 0.869,
+   "loop": false,
+   "sheet": "boss_wrack",
+   "sheet_start": 36.728,
+   "spatial": "3D",
+   "start": 123.582
+  },
+  "wrackWisps": {
+   "file": "audio_sfx_2",
+   "length": 1.658,
+   "loop": false,
+   "sheet": "boss_wrack",
+   "sheet_start": 17.974,
+   "spatial": "3D",
+   "start": 104.828
+  },
+  "xpGain": {
+   "file": "audio_sfx_1",
+   "length": 0.501,
+   "loop": false,
+   "sheet": "progression",
+   "sheet_start": 0.7,
+   "spatial": "2D",
+   "start": 111.089
+  },
+  "zoomIn": {
+   "file": "audio_sfx_1",
+   "length": 0.225,
+   "loop": false,
+   "sheet": "combat",
+   "sheet_start": 10.327,
+   "spatial": "2D",
+   "start": 93.9
+  },
+  "zoomOut": {
+   "file": "audio_sfx_1",
+   "length": 0.193,
+   "loop": false,
+   "sheet": "combat",
+   "sheet_start": 10.702,
+   "spatial": "2D",
+   "start": 94.275
+  }
+ },
+ "declared": 427,
+ "files": [
+  "audio_ambience_1",
+  "audio_ambience_2",
+  "audio_music_1",
+  "audio_music_2",
+  "audio_music_3",
+  "audio_music_4",
+  "audio_music_5",
+  "audio_music_6",
+  "audio_music_7",
+  "audio_sfx_1",
+  "audio_sfx_2"
+ ],
+ "gap_seconds": 0.15,
+ "implemented": 427,
+ "missing": [],
+ "music": [
+  "boss_admiral_wrack_high",
+  "boss_admiral_wrack_low",
+  "boss_brinejaw_high",
+  "boss_brinejaw_low",
+  "boss_kraken_high",
+  "boss_kraken_low",
+  "boss_noctyss_high",
+  "boss_noctyss_low",
+  "boss_old_gnashroot_high",
+  "boss_old_gnashroot_low",
+  "boss_pyrelisk_high",
+  "boss_pyrelisk_low",
+  "boss_rimefang_high",
+  "boss_rimefang_low",
+  "island_gloom",
+  "island_ice",
+  "island_maelstrom",
+  "island_swamp",
+  "island_tropical",
+  "island_volcano",
+  "island_wreck",
+  "stinger_bossIntro",
+  "stinger_finale",
+  "stinger_victory"
+ ],
+ "sample_rate": 44100,
+ "sheet_gap_seconds": 0.15,
+ "sheets": {
+  "boat": {
+   "bundle": "audio_sfx_1",
+   "cues": 11,
+   "pcm_sha256": "6f39fbae9bcc28ef",
+   "start": 32.678
+  },
+  "boss_brinejaw": {
+   "bundle": "audio_sfx_1",
+   "cues": 26,
+   "pcm_sha256": "2488139b7cbbcb59",
+   "start": 280.937
+  },
+  "boss_gnashroot": {
+   "bundle": "audio_sfx_1",
+   "cues": 16,
+   "pcm_sha256": "6208f258f573f472",
+   "start": 320.586
+  },
+  "boss_kraken": {
+   "bundle": "audio_sfx_2",
+   "cues": 18,
+   "pcm_sha256": "1c9f8e67f1fa9061",
+   "start": 131.78
+  },
+  "boss_noctyss": {
+   "bundle": "audio_sfx_2",
+   "cues": 22,
+   "pcm_sha256": "34ade649496a7552",
+   "start": 50.045
+  },
+  "boss_pyrelisk": {
+   "bundle": "audio_sfx_1",
+   "cues": 17,
+   "pcm_sha256": "4fe484a509110600",
+   "start": 347.705
+  },
+  "boss_rimefang": {
+   "bundle": "audio_sfx_2",
+   "cues": 27,
+   "pcm_sha256": "0bfc6d3b586a59ee",
+   "start": 0.0
+  },
+  "boss_shared": {
+   "bundle": "audio_sfx_1",
+   "cues": 15,
+   "pcm_sha256": "c67051464deb58c8",
+   "start": 260.221
+  },
+  "boss_wrack": {
+   "bundle": "audio_sfx_2",
+   "cues": 26,
+   "pcm_sha256": "23450ced4786eda8",
+   "start": 86.854
+  },
+  "character": {
+   "bundle": "audio_sfx_1",
+   "cues": 49,
+   "pcm_sha256": "c35db892dffe5d33",
+   "start": 48.674
+  },
+  "combat": {
+   "bundle": "audio_sfx_1",
+   "cues": 28,
+   "pcm_sha256": "e2dda8b38283448a",
+   "start": 83.573
+  },
+  "creatures": {
+   "bundle": "audio_sfx_1",
+   "cues": 29,
+   "pcm_sha256": "0aec476a0a0b2d64",
+   "start": 172.237
+  },
+  "families": {
+   "bundle": "audio_sfx_1",
+   "cues": 56,
+   "pcm_sha256": "18e115b3bd2f8d83",
+   "start": 200.211
+  },
+  "fishing": {
+   "bundle": "audio_sfx_1",
+   "cues": 32,
+   "pcm_sha256": "5a566b9a24b5b608",
+   "start": 0.0
+  },
+  "progression": {
+   "bundle": "audio_sfx_1",
+   "cues": 21,
+   "pcm_sha256": "3b9cd0665e91f626",
+   "start": 110.389
+  },
+  "ui": {
+   "bundle": "audio_sfx_1",
+   "cues": 20,
+   "pcm_sha256": "afc79f49ed522a80",
+   "start": 100.061
+  },
+  "world": {
+   "bundle": "audio_sfx_1",
+   "cues": 14,
+   "pcm_sha256": "1774d04e364c9e30",
+   "start": 141.975
+  }
+ },
+ "track_gap_seconds": 0.5,
+ "tracks": {
+  "amb_ash": {
+   "file": "audio_ambience_2",
+   "kind": "ambience",
+   "length": 66.0,
+   "loop": true,
+   "pcm_sha256": "8d81b70285004109",
+   "start": 217.5
+  },
+  "amb_blizzard": {
+   "file": "audio_ambience_2",
+   "kind": "ambience",
+   "length": 72.0,
+   "loop": true,
+   "pcm_sha256": "98c90ce4ac45d0fa",
+   "start": 0.0
+  },
+  "amb_clear": {
+   "file": "audio_ambience_2",
+   "kind": "ambience",
+   "length": 72.0,
+   "loop": true,
+   "pcm_sha256": "0be907518fff4116",
+   "start": 72.5
+  },
+  "amb_ghost": {
+   "file": "audio_ambience_1",
+   "kind": "ambience",
+   "length": 78.0,
+   "loop": true,
+   "pcm_sha256": "7c4b3c0a54edc044",
+   "start": 169.0
+  },
+  "amb_gloom": {
+   "file": "audio_ambience_1",
+   "kind": "ambience",
+   "length": 84.0,
+   "loop": true,
+   "pcm_sha256": "9457fac1589dd87e",
+   "start": 0.0
+  },
+  "amb_heartchamber": {
+   "file": "audio_ambience_1",
+   "kind": "ambience",
+   "length": 60.0,
+   "loop": true,
+   "pcm_sha256": "14a1c1dd02c1db29",
+   "start": 326.0
+  },
+  "amb_mist": {
+   "file": "audio_ambience_1",
+   "kind": "ambience",
+   "length": 78.0,
+   "loop": true,
+   "pcm_sha256": "c9ba7f7099e02e7a",
+   "start": 247.5
+  },
+  "amb_sea": {
+   "file": "audio_ambience_1",
+   "kind": "ambience",
+   "length": 84.0,
+   "loop": true,
+   "pcm_sha256": "604054ef3615b982",
+   "start": 84.5
+  },
+  "amb_storm": {
+   "file": "audio_ambience_2",
+   "kind": "ambience",
+   "length": 66.0,
+   "loop": true,
+   "pcm_sha256": "060ad8d329f9b2bc",
+   "start": 284.0
+  },
+  "amb_summit": {
+   "file": "audio_ambience_2",
+   "kind": "ambience",
+   "length": 72.0,
+   "loop": true,
+   "pcm_sha256": "50e5a375a9744768",
+   "start": 145.0
+  },
+  "boss_admiral_wrack_high": {
+   "file": "audio_music_1",
+   "kind": "music",
+   "length": 91.948,
+   "loop": true,
+   "pcm_sha256": "3cfd467d085b749d",
+   "start": 277.558
+  },
+  "boss_admiral_wrack_low": {
+   "file": "audio_music_1",
+   "kind": "music",
+   "length": 91.948,
+   "loop": true,
+   "pcm_sha256": "75bc2afeea725dcb",
+   "start": 185.11
+  },
+  "boss_brinejaw_high": {
+   "file": "audio_music_2",
+   "kind": "music",
+   "length": 91.579,
+   "loop": true,
+   "pcm_sha256": "4ad566a82b55e880",
+   "start": 92.079
+  },
+  "boss_brinejaw_low": {
+   "file": "audio_music_2",
+   "kind": "music",
+   "length": 91.579,
+   "loop": true,
+   "pcm_sha256": "32e51b407c3b8cac",
+   "start": 0.0
+  },
+  "boss_kraken_high": {
+   "file": "audio_music_2",
+   "kind": "music",
+   "length": 91.5,
+   "loop": true,
+   "pcm_sha256": "4df602cc2599aa56",
+   "start": 276.158
+  },
+  "boss_kraken_low": {
+   "file": "audio_music_2",
+   "kind": "music",
+   "length": 91.5,
+   "loop": true,
+   "pcm_sha256": "f46345264fec70bf",
+   "start": 184.158
+  },
+  "boss_noctyss_high": {
+   "file": "audio_music_1",
+   "kind": "music",
+   "length": 92.055,
+   "loop": true,
+   "pcm_sha256": "433844d2c18f6a73",
+   "start": 92.555
+  },
+  "boss_noctyss_low": {
+   "file": "audio_music_1",
+   "kind": "music",
+   "length": 92.055,
+   "loop": true,
+   "pcm_sha256": "1785ca0e952d79f7",
+   "start": 0.0
+  },
+  "boss_old_gnashroot_high": {
+   "file": "audio_music_4",
+   "kind": "music",
+   "length": 90.0,
+   "loop": true,
+   "pcm_sha256": "39a2052d610bf8f1",
+   "start": 90.5
+  },
+  "boss_old_gnashroot_low": {
+   "file": "audio_music_4",
+   "kind": "music",
+   "length": 90.0,
+   "loop": true,
+   "pcm_sha256": "b4bb5857848e716b",
+   "start": 0.0
+  },
+  "boss_pyrelisk_high": {
+   "file": "audio_music_3",
+   "kind": "music",
+   "length": 90.769,
+   "loop": true,
+   "pcm_sha256": "fd05413c97609144",
+   "start": 274.669
+  },
+  "boss_pyrelisk_low": {
+   "file": "audio_music_3",
+   "kind": "music",
+   "length": 90.769,
+   "loop": true,
+   "pcm_sha256": "c9b12dbb1358aea1",
+   "start": 183.4
+  },
+  "boss_rimefang_high": {
+   "file": "audio_music_3",
+   "kind": "music",
+   "length": 91.2,
+   "loop": true,
+   "pcm_sha256": "ba5e8427827061a0",
+   "start": 91.7
+  },
+  "boss_rimefang_low": {
+   "file": "audio_music_3",
+   "kind": "music",
+   "length": 91.2,
+   "loop": true,
+   "pcm_sha256": "bb8f5a8d5d786727",
+   "start": 0.0
+  },
+  "island_gloom": {
+   "file": "audio_music_4",
+   "kind": "music",
+   "length": 172.8,
+   "loop": true,
+   "pcm_sha256": "dd6c775d622a86bf",
+   "start": 181.0
+  },
+  "island_ice": {
+   "file": "audio_music_5",
+   "kind": "music",
+   "length": 160.0,
+   "loop": true,
+   "pcm_sha256": "96f2c755c6da154e",
+   "start": 164.944
+  },
+  "island_maelstrom": {
+   "file": "audio_music_7",
+   "kind": "music",
+   "length": 150.0,
+   "loop": true,
+   "pcm_sha256": "4368711c8d3c64cd",
+   "start": 0.0
+  },
+  "island_swamp": {
+   "file": "audio_music_5",
+   "kind": "music",
+   "length": 164.444,
+   "loop": true,
+   "pcm_sha256": "59bf1b3e2d2b34fa",
+   "start": 0.0
+  },
+  "island_tropical": {
+   "file": "audio_music_6",
+   "kind": "music",
+   "length": 160.0,
+   "loop": true,
+   "pcm_sha256": "7b0ab147708ab53b",
+   "start": 0.0
+  },
+  "island_volcano": {
+   "file": "audio_music_7",
+   "kind": "music",
+   "length": 140.69,
+   "loop": true,
+   "pcm_sha256": "068fd66943511497",
+   "start": 150.5
+  },
+  "island_wreck": {
+   "file": "audio_music_6",
+   "kind": "music",
+   "length": 155.455,
+   "loop": true,
+   "pcm_sha256": "3bf989d329b759d5",
+   "start": 160.5
+  },
+  "stinger_bossIntro": {
+   "file": "audio_music_2",
+   "kind": "music",
+   "length": 4.0,
+   "loop": false,
+   "pcm_sha256": "9e7b115a99ceecbc",
+   "start": 368.158
+  },
+  "stinger_finale": {
+   "file": "audio_music_1",
+   "kind": "music",
+   "length": 12.0,
+   "loop": false,
+   "pcm_sha256": "6ba20c92d7395389",
+   "start": 370.006
+  },
+  "stinger_victory": {
+   "file": "audio_music_1",
+   "kind": "music",
+   "length": 6.0,
+   "loop": false,
+   "pcm_sha256": "177e0abc680f98c4",
+   "start": 382.506
+  }
+ },
+ "version": 2
+}

@@ -125,6 +125,14 @@ local function onKilled(row, grade: string, killer: Player?, extra)
 	if not killer or killer.Parent ~= Players then
 		return -- despawned on its own, or the killer already left
 	end
+	-- A boss: BossService pays the WHOLE party, once (user, 2026-09-06 - "the
+	-- killing blow should pay all of the team members"). Paying the killer
+	-- here too was a second, killer-only reward on top of that - and the
+	-- pre-existing farm where a heart-holder snipes killing blows on other
+	-- people's summons for unchecked coins/XP.
+	if type(extra) == "table" and extra.suppressRewards then
+		return
+	end
 
 	local coins, xp = rewardFor(row, grade)
 

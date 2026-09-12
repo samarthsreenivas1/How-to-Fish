@@ -70,6 +70,17 @@ local function tryAttack()
 		hitTime = FistsViewmodelController.punch()
 	end
 	if not hitTime then
+		-- The viewmodel REFUSED: no rig yet, or the previous swing has not
+		-- played far enough to chain into. Nothing at all happens on this
+		-- click otherwise, and a click that does nothing reads as the game
+		-- having dropped the input.
+		--
+		-- The cooldown return above is deliberately left silent even though it
+		-- is also a refusal. It is the ordinary rhythm of holding down a fast
+		-- weapon - the state the player is in for most of a fight - and a cue
+		-- there would fire many times a second under the swings themselves.
+		-- This branch is the exceptional one, so this is the one that speaks.
+		Sfx.play("swingRefused")
 		return
 	end
 	lastAttackAt = now
@@ -117,6 +128,8 @@ end
 function CombatController.init() end
 
 function CombatController.start()
+	-- No uiEquip echo here: three controllers watch this same attribute, so the
+	-- equip cue lives in FishingController alone rather than triple-playing.
 	player:GetAttributeChangedSignal(Equipment.ATTRIBUTE):Connect(refresh)
 	-- Swapping between a melee weapon and a gun changes who owns the click
 	-- without `Equipped` ever changing.

@@ -17,6 +17,7 @@ local BurstMath = require(Shared.Modules.Minigames.burst)
 local Tuning = require(Shared.Config.Tuning)
 
 local TapMeter = require(script.Parent.Parent.UI.TapMeter)
+local Sfx = require(script.Parent.Parent.Modules.Sfx)
 
 local Burst = {}
 
@@ -66,6 +67,10 @@ local function registerTap(ctx)
 		cast.mg.taps += 1
 		cast.mg.lastCountedAt = now
 		view:setFill(cast.mg.taps / cast.config.target)
+		-- Only a COUNTED tap gets a sound. Mashing past MAX_TAPS_PER_SEC still
+		-- pulses the meter, but those taps buy nothing server-side, and letting
+		-- them click anyway would teach the player that faster is always better.
+		Sfx.play("burstTap")
 	end
 	view:pulse()
 
@@ -75,6 +80,7 @@ local function registerTap(ctx)
 	-- Filled the bar: finish now rather than making them mash out the timer.
 	-- (The tap submit above is sent before FINISH, so the server counts it.)
 	if cast.mg.taps >= cast.config.target then
+		Sfx.play("burstFill")
 		finish(ctx)
 	end
 end
@@ -87,6 +93,7 @@ function Burst.onAccepted(ctx)
 	ensureView(ctx.gui)
 	view:reset()
 	view:show()
+	Sfx.play("burstOpen")
 
 	ContextActionService:BindActionAtPriority(
 		ACTION,
@@ -115,12 +122,19 @@ function Burst.update(ctx)
 		local left = cast.config.duration - (now - cast.mg.firstTapAt)
 		view:setTime(left / cast.config.duration)
 		if left <= 0 then
+			-- The window closed short of target - the fill path always finishes
+			-- the instant the bar is full, so reaching the timer at all means it
+			-- wasn't filled.
+			Sfx.play("burstFail")
 			finish(ctx)
 		end
 	else
 		-- No tap yet: hold a full timer, but don't wait forever if they never mash.
 		view:setTime(1)
 		if now - cast.mg.openedAt > Tuning.Minigames.Burst.OPEN_TIMEOUT then
+			-- Never tapped once: the same failure, and the one that would
+			-- otherwise resolve in complete silence.
+			Sfx.play("burstFail")
 			finish(ctx)
 		end
 	end

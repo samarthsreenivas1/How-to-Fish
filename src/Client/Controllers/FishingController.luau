@@ -45,6 +45,7 @@ local Bosses = require(Shared.Data.Bosses)
 local RodCastAnim = require(Shared.Data.RodCastAnim)
 local CastAim = require(Shared.Modules.CastAim)
 local Rods = require(Shared.Data.Rods)
+local Weapons = require(Shared.Data.Weapons)
 local Remotes = require(Shared.Net.Remotes)
 
 local Theme = require(script.Parent.Parent.UI.Theme)
@@ -52,6 +53,12 @@ local Minigames = require(script.Parent.Parent.Minigames)
 local RodViewmodelController = require(script.Parent.RodViewmodelController)
 local Vfx = require(script.Parent.Parent.Modules.Vfx)
 local Sfx = require(script.Parent.Parent.Modules.Sfx)
+local BossHudController = require(script.Parent.BossHudController)
+-- Listed BELOW this controller in the client ORDER, like BossHudController
+-- above it and for the same reason: the only thing asked of it is
+-- `rodWindow()`, a pure read of a local that is nil until the server opens one
+-- of Rimefang's rod moments. See the note in init.client.luau.
+local FloeController = require(script.Parent.FloeController)
 
 local player = Players.LocalPlayer
 local camera = Workspace.CurrentCamera
@@ -84,6 +91,19 @@ local RARITY_COLOR = {
 	Legendary = Color3.fromRGB(255, 200, 80),
 }
 
+-- The reveal stinger, by the REVEALED rarity - the same key the pop's colour
+-- is chosen by, so what you hear and what you see always agree. The cues
+-- escalate (Common is a two-note plink, Legendary a full fanfare), which is
+-- the only thing that tells a good catch from an ordinary one at the moment
+-- it lands: the grade is deliberately never named in the UI.
+local RARITY_CUE = {
+	Common = "catchCommon",
+	Uncommon = "catchUncommon",
+	Rare = "catchRare",
+	Epic = "catchEpic",
+	Legendary = "catchLegendary",
+}
+
 -- Effects timing / sizing.
 local SWING_TRAIL_LIFETIME = 0.14 -- seconds a point on the rod-tip trail lingers
 local SWING_TRAIL_HALF_WIDTH = 0.22 -- studs either side of the tip
@@ -112,6 +132,14 @@ local bobber: BasePart? = nil
 local lineTip: BasePart? = nil
 local bobberBaseY = 0
 
+-- The lapping-water loop at a floating bobber. It belongs to the RIG, not to
+-- the cast: it starts when the bobber lands and must die with the bobber on
+-- every path, so it is stopped in destroyRig - the one funnel every teardown
+-- (endCast, a re-cast's buildRig, a lost character) already goes through. A
+-- dropped loop handle is audible for the rest of the session, so it lives here
+-- next to the parts it shadows rather than in the cast table.
+local bobberLoop: BasePart? = nil
+
 -- The bobber's flight, while it's in the air: { from, to, startedAt, onLanded }
 local arc = nil
 
@@ -125,6 +153,8 @@ local swingTrail: BasePart? = nil
 
 local function destroyRig()
 	arc = nil
+	Sfx.stopLoop(bobberLoop)
+	bobberLoop = nil
 	if ripples then
 		ripples.stop()
 		ripples = nil
@@ -278,6 +308,9 @@ local function updateRig(t: number)
 			local bob = math.sin(t * BOB_FREQUENCY * (2 * math.pi)) * BOB_AMPLITUDE
 			local pos = bobber.Position
 			bobber.CFrame = CFrame.new(pos.X, bobberBaseY + bob, pos.Z)
+			-- Keep the lapping loop on the bobber: it drifts with the bob, and a
+			-- loop left at the landing point would slowly desync from what you see.
+			Sfx.moveLoop(bobberLoop, bobber.Position)
 		end
 	end
 end
@@ -354,6 +387,10 @@ local function onCastAccepted(castId, seed, config, landing)
 		if not cast or cast.id ~= castId then
 			return -- resolved or abandoned while we waited
 		end
+		-- The release moment: the line is what you hear leaving the rod, so the
+		-- zip starts with the bobber's flight, not with the swing (castSwing
+		-- already covered the wind-up back on the click).
+		Sfx.play("lineWhizz")
 		buildRig(landingPos, function()
 			if not cast or cast.id ~= castId then
 				return
@@ -364,6 +401,10 @@ local function onCastAccepted(castId, seed, config, landing)
 			local splashAt = Vector3.new(landingPos.X, surfaceY, landingPos.Z)
 			Vfx.splash(splashAt, LAND_SPLASH)
 			Sfx.play("bobberPlop", splashAt)
+			-- ...and the water keeps lapping at it for as long as it floats. The
+			-- handle is the rig's (destroyRig stops it); it is started here rather
+			-- than in buildRig so it begins on the splash, not mid-flight.
+			bobberLoop = Sfx.loop("bobberBob", splashAt)
 			ripples = Vfx.ripples(function()
 				local current = bobber
 				return current and Vector3.new(current.Position.X, surfaceY, current.Position.Z)
@@ -371,6 +412,10 @@ local function onCastAccepted(castId, seed, config, landing)
 
 			-- The bobber's down: hand off to the rolled minigame (shows its
 			-- view, binds its input, first render).
+			-- No cue here: `reelOpen` is the REEL BAR's mechanical click-whirr,
+			-- and this line fired it for every minigame - the tap burst and the
+			-- snap both have their own opening cue, so all three announced
+			-- themselves as a reel. Each minigame's onAccepted opens itself now.
 			if mg and mgCtx then
 				mg.onAccepted(mgCtx)
 			end
@@ -415,6 +460,13 @@ local function onCastResolved(castId, summary)
 	-- Walked away from (rod put away / swapped, character lost) or left idle
 	-- until it timed out: the server landed nothing and granted nothing.
 	if summary.cancelled then
+		-- The line coming back in. This is the ONLY castCancel site, and it is
+		-- here rather than inside endCast on purpose: endCast runs on every
+		-- resolve, a landed catch included, so a cue there would sound over the
+		-- catch stinger. Every real cancel reaches this branch - walking away and
+		-- putting the rod away both tear the rig down locally first, but the
+		-- server still echoes the cancelled resolve here afterwards.
+		Sfx.play("castCancel")
 		showBanner(CANCEL_TEXT, Theme.Color.textDim)
 		return
 	end
@@ -423,6 +475,7 @@ local function onCastResolved(castId, summary)
 	-- the banner names the haul instead. Without this branch a salvage cast
 	-- would resolve in total silence (the banner below needs a creature).
 	if summary.salvage then
+		Sfx.play("salvageHaul")
 		showBanner(string.format("Salvage!  +%d coins", summary.coins or 0), SALVAGE_COLOR)
 		if catchAt then
 			Vfx.burst(Vector3.new(catchAt.X, catchAt.Y + 0.4, catchAt.Z), SALVAGE_COLOR)
@@ -433,8 +486,21 @@ local function onCastResolved(castId, summary)
 	-- The deep answered instead of biting: the boss is already rising at the
 	-- island's arena (BossService), so this cast has nothing to land.
 	if summary.summoned then
+		-- Not a catch and shouldn't sound like one: the swell, not a rarity
+		-- stinger. The boss's own rise is scored at the arena by BossService.
+		Sfx.play("catchBoss")
 		local boss = Bosses.items[summary.summoned]
 		showBanner(string.format("%s answers the call.", boss and boss.shortName or "The deep"), SUMMON_COLOR)
+		return
+	end
+
+	-- A ROD MOMENT, resolved. No catch and no materials: what a won cast buys
+	-- is a beached whale (or a shoal in her mouth), which the server has
+	-- already applied - this is only the line that says which way it went.
+	if summary.boss then
+		local won = summary.won == true
+		Sfx.play(if won then "rimeSkyImpact" else "castRefused")
+		showBanner(if won then "HOOKED!" else "The line snaps!", if won then Theme.Color.gold else Theme.Color.red)
 		return
 	end
 
@@ -446,6 +512,15 @@ local function onCastResolved(castId, summary)
 	if creature and catchAt then
 		local color = RARITY_COLOR[creature.rarity] or RARITY_COLOR.Common
 		Vfx.burst(Vector3.new(catchAt.X, catchAt.Y + 0.4, catchAt.Z), color)
+		-- NO splash cue here. CreatureVfxController already plays fishSurface at
+		-- the surfacing body, in the same beat and at very nearly the same
+		-- point, so this one only doubled it - two splashes half a metre apart,
+		-- which reads as a flam rather than as depth. The rarity stinger below
+		-- is the caster's own layer and stays.
+	end
+
+	if creature then
+		Sfx.play(RARITY_CUE[creature.rarity] or "catchCommon")
 	end
 
 	-- The reel grade (Hooked / Neutral / Enraged) silently scales the fish's
@@ -473,8 +548,83 @@ local function hasRod(): boolean
 	return character ~= nil and character:FindFirstChild(EQUIPPED_NAME) ~= nil
 end
 
+-- THE SINGLE HOOK POINT for "is the rod refused because of a boss right now".
+--
+-- A function rather than an inline test in `tryCast` because the answer is
+-- about to get more interesting and must only get more interesting in ONE
+-- place: the Rimefang design routes rod input DURING that fight to a dedicated
+-- boss-cast remote instead of refusing it, which means this stops being a
+-- boolean veto and starts being a question about which fight you are in.
+-- Extend THIS and every caller follows; scatter the test and they won't.
+local function castBlockedByBoss(): boolean
+	-- ...AND THIS IS WHERE IT GOT MORE INTERESTING. A boss fight still refuses
+	-- the rod - except during one of Rimefang's rod MOMENTS, where the rod is
+	-- the answer and the cast goes to the server on its own channel
+	-- (`tryCast`'s window branch, BossCast). The window is server state;
+	-- FloeController only repeats what it was told, and FloeService re-decides
+	-- it, so a client that lies about a window gets a refusal instead of a cast.
+	return BossHudController.isEngaged() and FloeController.rodWindow() == nil
+end
+
+-- Rate limit for the refusal above: a held mouse button asks to cast every
+-- frame, and the banner and the cue must not machine-gun.
+local BOSS_REFUSAL_COOLDOWN = 1.5
+local lastBossRefusal = -math.huge
+
 local function tryCast()
-	if cast or pendingCast or not hasRod() then
+	if cast or pendingCast then
+		return
+	end
+
+	-- A ROD MOMENT IN A BOSS FIGHT takes the input before anything else looks
+	-- at it, and it never touches `aimLanding`: there is nothing to aim at - the
+	-- line snaps to the blowhole (or the shoal), which the server owns the
+	-- position of. A miss here is IMPOSSIBLE by construction, which is the
+	-- user's rule that a rod cast in a boss moment must never start a normal
+	-- fishing cast: this branch returns either way.
+	local window = FloeController.rodWindow()
+	if window then
+		if not hasRod() then
+			local now = os.clock()
+			if now - lastBossRefusal >= BOSS_REFUSAL_COOLDOWN then
+				lastBossRefusal = now
+				Sfx.play("castRefused")
+				showBanner("Equip your rod", Theme.Color.red)
+			end
+			return
+		end
+		local requestedAt = os.clock()
+		pendingCast = requestedAt
+		-- Predicted exactly like an ordinary cast: the swing starts on the
+		-- click, and an unanswered request eases it back.
+		RodViewmodelController.playCast()
+		startSwingTrail()
+		Sfx.play("castSwing")
+		Remotes.BossCast:FireServer(window)
+		task.delay(PENDING_TIMEOUT, function()
+			if pendingCast == requestedAt then
+				pendingCast = nil
+				RodViewmodelController.releaseCast()
+			end
+		end)
+		return
+	end
+
+	if not hasRod() then
+		return
+	end
+
+	-- A BOSS FIGHT REFUSES THE ROD, and it refuses it before any of the rig
+	-- exists: no viewmodel cast, no swing trail, no swing cue, no RequestCast.
+	-- FishingService rejects it anyway, so predicting the swing here would only
+	-- play an animation that eases back a round trip later.
+	if castBlockedByBoss() then
+		local now = os.clock()
+		if now - lastBossRefusal >= BOSS_REFUSAL_COOLDOWN then
+			lastBossRefusal = now
+			Sfx.play("castRefused")
+			showBanner("No fishing in a boss fight", Theme.Color.red)
+		end
 		return
 	end
 
@@ -482,6 +632,7 @@ local function tryCast()
 	-- applies the same rules, so this is feedback, not the gate itself.
 	local landing, reason = aimLanding()
 	if not landing then
+		Sfx.play("castRefused")
 		showBanner(reason or CastAim.REASON_NOT_WATER, Theme.Color.red)
 		return
 	end
@@ -539,6 +690,39 @@ function FishingController.init()
 	Remotes.CastRejected.OnClientEvent:Connect(onCastRejected)
 end
 
+-- ------------------------------------------------------------- equip echo
+--
+-- What the hands hold, as one of three words: "rod", "weapon" (melee or
+-- ranged - both are drawn the same way) or "fists". `Equipped` itself only
+-- ever says rod or weapon (Shared/Config/Equipment), because the fists ARE
+-- the starter weapon row - so bare hands read as the weapon kind carrying
+-- the starter id, the same test CombatController's currentWeapon makes.
+-- An unset attribute (before the first publish) is bare hands too.
+local function handState(): string
+	if player:GetAttribute(Equipment.ATTRIBUTE) == Equipment.ROD then
+		return "rod"
+	end
+	local weaponId = player:GetAttribute(Equipment.WEAPON_ATTRIBUTE)
+	if
+		player:GetAttribute(Equipment.ATTRIBUTE) == Equipment.WEAPON
+		and weaponId ~= nil
+		and weaponId ~= ""
+		and weaponId ~= Weapons.STARTER_WEAPON_ID
+	then
+		return "weapon"
+	end
+	return "fists"
+end
+
+-- The hand the last echo played for, so a change can name what LEFT as well
+-- as what arrived. Seeded in start() from the attribute as it already stands.
+local lastHand = "fists"
+
+-- Bare fists have nothing to put away, so they have no stow row.
+local STOW_CUE = { rod = "rodStow", weapon = "weaponStow" }
+local DRAW_CUE = { rod = "rodDraw", weapon = "weaponDraw", fists = "fistReady" }
+local STOW_TO_DRAW = 0.12 -- seconds from the old hand leaving to the new arriving
+
 function FishingController.start()
 	-- Bound for the whole session, same as InventoryController's `I`; tryCast
 	-- already no-ops with no rod or mid-cast, so there's no need to
@@ -566,11 +750,40 @@ function FishingController.start()
 		end
 	end)
 
+	-- Seeded before the hook is connected, so the first swap names what was
+	-- actually in hand rather than assuming fists.
+	lastHand = handState()
+
 	-- Putting the rod away mid-cast cancels it. The server cancels the cast
 	-- itself on the same loadout change (no fish, no materials - user
 	-- decision, 2026-08-22); this just clears the bar and line right away
 	-- instead of waiting for the cancelled CastResolved.
 	player:GetAttributeChangedSignal(Equipment.ATTRIBUTE):Connect(function()
+		-- THE equip echo for the whole game, and the only one. CombatController
+		-- and RangedController hang off this same attribute and are deliberately
+		-- left silent: three controllers each playing uiEquip on one loadout
+		-- change would triple-play it. It sits before the rod check because the
+		-- click deserves an answer whatever you switched TO, not just away from
+		-- the rod.
+		--
+		-- ONE DRAW PER CHANGE, and the stow of what left leads it so the pair
+		-- reads as one gesture rather than a chord. Nothing plays when the state
+		-- is unchanged (the attribute can be rewritten to the kind it already
+		-- held): a re-publish is not a swap and shouldn't sound like one.
+		local hand = handState()
+		if hand ~= lastHand then
+			local stow = STOW_CUE[lastHand]
+			local draw = DRAW_CUE[hand]
+			lastHand = hand
+			if stow then
+				Sfx.play(stow)
+				task.delay(STOW_TO_DRAW, function()
+					Sfx.play(draw)
+				end)
+			else
+				Sfx.play(draw)
+			end
+		end
 		if player:GetAttribute(Equipment.ATTRIBUTE) ~= Equipment.ROD and (cast or pendingCast) then
 			endCast()
 		end

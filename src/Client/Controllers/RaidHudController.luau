@@ -17,6 +17,7 @@ local Islands = require(Shared.Config.Islands)
 local Remotes = require(Shared.Net.Remotes)
 
 local Theme = require(script.Parent.Parent.UI.Theme)
+local Sfx = require(script.Parent.Parent.Modules.Sfx)
 
 local player = Players.LocalPlayer
 
@@ -50,6 +51,10 @@ local cardSub: TextLabel
 local cardToken = 0
 local shownIsland: string? = nil -- the island whose raid the line is showing
 local lastPhase: { [string]: string } = {} -- islandId -> phase, for edge-triggered cards
+-- islandId -> wave number last sounded. RaidState re-broadcasts the same
+-- wave every second, so the phase alone can't tell "wave 2 started" from
+-- "wave 2 is still going" - the number has to be remembered separately.
+local lastWave: { [string]: number } = {}
 
 -- ---------------------------------------------------------------- build
 
@@ -170,9 +175,18 @@ local function onRaidState(payload)
 		line.Visible = true
 		shownIsland = islandId
 		if previous ~= "announced" then
+			Sfx.play("raidStart")
 			showCard("A RAID APPROACHES", "hold the beach", RAID_COLOR)
 		end
 	elseif phase == "wave" or phase == "breather" then
+		-- One horn per wave, on the number changing: the tick that carries
+		-- wave 2 for the first time, whether it comes out of a breather or
+		-- straight off the previous wave's last kill.
+		local wave = tonumber(payload.wave) or 0
+		if phase == "wave" and lastWave[islandId] ~= wave then
+			lastWave[islandId] = wave
+			Sfx.play("raidWave")
+		end
 		line.Text = string.format(
 			"RAID  -  WAVE %d/%d  -  %d LEFT",
 			tonumber(payload.wave) or 0,
@@ -185,16 +199,26 @@ local function onRaidState(payload)
 	elseif phase == "cleared" then
 		line.Visible = false
 		shownIsland = nil
+		-- Cleared re-broadcasts for as long as the card is up, so the
+		-- fanfare rides the phase edge, not the tick.
+		if previous ~= "cleared" then
+			Sfx.play("raidClear")
+		end
+		lastWave[islandId] = nil
 		showCard("RAID CLEARED", "the island holds", Theme.Color.green)
 	elseif phase == "failed" then
 		line.Visible = false
 		shownIsland = nil
+		lastWave[islandId] = nil
 		if previous == "wave" or previous == "breather" then
+			Sfx.play("raidFail")
 			showCard("RAID FAILED", "they got what they came for", FAIL_COLOR)
 		end
 	else -- idle, or anything unknown: stand down
 		line.Visible = false
 		shownIsland = nil
+		-- Next raid on this island starts its wave count over.
+		lastWave[islandId] = nil
 	end
 end
 

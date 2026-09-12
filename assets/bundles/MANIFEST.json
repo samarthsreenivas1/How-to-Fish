@@ -1,0 +1,85 @@
+{
+  "bundles": {
+    "bundle_bosses.glb": {
+      "bytes": 16834392,
+      "file_hash": "a72385f86a94e4247261a03dc8c822735077f1cd707b8e6a817444de5c34cdbd",
+      "object_hash": "f07a89c87a3506692b812684e1979a6bb7eac7d35696e68f610f849de53d92c2",
+      "objects": 346,
+      "packs": [
+        "Maelstrom",
+        "BrinejawArena",
+        "BrinejawPack",
+        "BrinejawFxPack",
+        "GnashrootArena",
+        "GnashrootPack",
+        "RimefangArena",
+        "RimefangPack",
+        "WrackArena",
+        "WrackPack",
+        "NoctyssArena",
+        "NoctyssPack",
+        "PyreliskArena",
+        "PyreliskHeart",
+        "PyreliskPack",
+        "KrakenArena",
+        "KrakenGullet",
+        "KrakenPack"
+      ],
+      "sources": [
+        "island_maelstrom.glb",
+        "arena_brinejaw.glb",
+        "boss_brinejaw.glb",
+        "brinejaw_fx.glb",
+        "arena_gnashroot.glb",
+        "boss_gnashroot.glb",
+        "arena_rimefang.glb",
+        "boss_rimefang.glb",
+        "arena_wrack.glb",
+        "boss_wrack.glb",
+        "arena_noctyss.glb",
+        "boss_noctyss.glb",
+        "arena_pyrelisk.glb",
+        "arena_pyrelisk_heart.glb",
+        "boss_pyrelisk.glb",
+        "arena_kraken.glb",
+        "arena_kraken_gullet.glb",
+        "boss_kraken.glb"
+      ]
+    },
+    "bundle_gear.glb": {
+      "bytes": 9151080,
+      "file_hash": "875656b04cac230a4e140fc179bb2d2f471e6614f0faa19217c89da55053a120",
+      "object_hash": "0027f15bb9c7306aa33a11ec86514619992359ce6847c57002817d80c50b9307",
+      "objects": 1074,
+      "packs": [
+        "RodPack",
+        "WeaponPack",
+        "ArmorPack",
+        "BoatPack",
+        "FishPack",
+        "CreaturePack"
+      ],
+      "sources": [
+        "rod.glb",
+        "weapon.glb",
+        "armor.glb",
+        "boat.glb",
+        "fish.glb",
+        "creatures.glb"
+      ]
+    },
+    "bundle_world.glb": {
+      "bytes": 34489072,
+      "file_hash": "90f09c4bd814457310570bf4a0fd49dcbe1947daa893f2dbd6732a79cfd5e030",
+      "object_hash": "778af9683ee632ceb4f4617c7f29e3f46b8c058ebcf069e0a849c677a6164570",
+      "objects": 213,
+      "packs": [
+        "IslandPack"
+      ],
+      "sources": [
+        "island_pack.glb"
+      ]
+    }
+  },
+  "note": "written by assets/bundle_gen.py - object-set hashes, for --check"
+}

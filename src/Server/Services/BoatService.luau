@@ -34,6 +34,11 @@ local BoatModel = require(Shared.Modules.BoatModel)
 local Remotes = require(Shared.Net.Remotes)
 
 local WorldService = require(script.Parent.WorldService)
+-- Listed BELOW this service in the boot ORDER, and that is fine: ORDER governs
+-- init()/start(), while requiring a module only loads its chunk. Nothing in
+-- BossService's own require closure (BossArena/Creature/Inventory/Progression/
+-- World) reaches back here, so there is no cycle to thread around.
+local BossService = require(script.Parent.BossService)
 
 local BoatService = {}
 
@@ -196,6 +201,15 @@ local function onOccupantChanged(player: Player, state: BoatState)
 end
 
 local function summon(player: Player)
+	-- NO BOATS DURING A BOSS FIGHT (user, 2026-09-12): a hull summoned onto an
+	-- arena is both a free ride out of the fight and a physics object standing
+	-- in a room every telegraph is measured against. Ahead of the cooldown so
+	-- the refusal always explains itself instead of silently doing nothing.
+	if BossService.fightFor(player) then
+		message(player, "No boats during a boss fight.")
+		return
+	end
+
 	local now = os.clock()
 	if now - (lastSummon[player] or -math.huge) < Tuning.Boat.SUMMON_COOLDOWN then
 		return

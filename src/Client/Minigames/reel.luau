@@ -22,6 +22,7 @@
 
 local ContextActionService = game:GetService("ContextActionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local ReelMath = require(Shared.Modules.ReelMath)
@@ -41,6 +42,21 @@ local TUG_SPLASH = { red = 0.7, green = 0.4 }
 
 -- The bar view, built once on first use and reused every cast.
 local bar
+
+-- The creaking-ratchet loop that runs for as long as the bar is up. Module
+-- state, not cast state: endCast is the single teardown every exit path
+-- (caught, missed out, cancelled, character lost) funnels through, and stopping
+-- it there is what keeps a leaked loop - the known failure of this API - out of
+-- the session. Stop is idempotent, so the blind call costs nothing.
+local tensionLoop: BasePart? = nil
+
+-- Pitch by tension. The marker's sweep IS the tension: it ping-pongs 0..1, so
+-- one end of the bar is slack line and the other is the line at full strain,
+-- and the ratchet rises and falls with it instead of droning. The range is
+-- narrow on purpose - wide enough to hear the sweep, not so wide the loop reads
+-- as a different sound at each end.
+local TENSION_PITCH_MIN = 0.85
+local TENSION_PITCH_MAX = 1.35
 
 local function ensureBar(gui)
 	if not bar then
@@ -92,6 +108,20 @@ local function registerClick(ctx)
 	if cast.mg.round > cast.config.clicksRequired then
 		cast.finished = true
 	else
+		-- The tick belongs to the zones actually getting tighter, not to every
+		-- new round: shrink is a function of the miss count alone, so it only
+		-- moves on a miss, and not even then while a rod's freeMisses are being
+		-- spent or under noShrink. Comparing the two shrinks is the only way to
+		-- tell - a tick on a round that drew the same zones would be a lie about
+		-- the difficulty. (renderRound is also called from onResult on a
+		-- regrade; that's a resync, not a moment, and stays silent.)
+		if
+			kind == "grey"
+			and ReelMath_Minigame.shrinkFor(cast.config, cast.mg.misses)
+				< ReelMath_Minigame.shrinkFor(cast.config, cast.mg.misses - 1)
+		then
+			Sfx.play("reelZoneShrink")
+		end
 		renderRound(cast)
 	end
 end
@@ -119,13 +149,31 @@ function Reel.onAccepted(ctx)
 	)
 
 	bar:show()
+	-- The bar's own opening cue, fired HERE rather than by FishingController,
+	-- which cannot know which minigame it just handed the cast to: burst and
+	-- snap open with theirs, this one opens with the reel's ratchet click.
+	Sfx.play("reelOpen")
 	renderRound(cast)
 end
 
 function Reel.update(ctx)
 	local cast = ctx.cast
 	if bar and cast and not cast.finished and cast.mg then
-		bar:setMarker(ReelMath.markerAt(os.clock() - cast.startedAt, cast.config.barSpeed))
+		local marker = ReelMath.markerAt(os.clock() - cast.startedAt, cast.config.barSpeed)
+		bar:setMarker(marker)
+
+		-- reelTension is a 2D cue but Sfx.loop only builds 3D carriers, so the
+		-- carrier is pinned to the camera every frame: at zero distance it plays
+		-- flat in your ears, and following the camera keeps it that way when you
+		-- look around mid-reel.
+		local head = Workspace.CurrentCamera and Workspace.CurrentCamera.CFrame.Position
+		if head then
+			if not tensionLoop then
+				tensionLoop = Sfx.loop("reelTension", head)
+			end
+			Sfx.moveLoop(tensionLoop, head)
+			Sfx.setLoopPitch(tensionLoop, TENSION_PITCH_MIN + (TENSION_PITCH_MAX - TENSION_PITCH_MIN) * marker)
+		end
 	end
 end
 
@@ -153,6 +201,11 @@ function Reel.onResult(ctx, round, kind)
 end
 
 function Reel.endCast(_ctx)
+	-- Every way out of the bar comes through here, so this is where the tension
+	-- loop dies - before the view, because a hidden bar still creaking is the
+	-- shape the leak would take.
+	Sfx.stopLoop(tensionLoop)
+	tensionLoop = nil
 	if bar then
 		bar:hide()
 	end

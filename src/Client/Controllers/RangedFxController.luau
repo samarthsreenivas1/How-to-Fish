@@ -58,6 +58,7 @@ local Remotes = require(Shared.Net.Remotes)
 
 local CameraController = require(script.Parent.CameraController)
 local WeaponViewmodelController = require(script.Parent.WeaponViewmodelController)
+local Sfx = require(script.Parent.Parent.Modules.Sfx)
 
 local player = Players.LocalPlayer
 
@@ -101,6 +102,7 @@ local tracers = {}
 local tracerCursor = 1
 local impacts = {}
 local impactCursor = 1
+local lastImpactSfxAt = 0 -- coalesces a shotgun's simultaneous pellets; see impactTick
 
 local function ensureFolder(): Folder
 	if folder and folder.Parent then
@@ -198,6 +200,23 @@ local function impactTick(at: Vector3)
 	impact.startedAt = os.clock()
 	impact.until_ = impact.startedAt + IMPACT_TIME
 	impact.part.Transparency = 0.1
+
+	-- The terminus cue, 3D where the shot actually ended - this is the single
+	-- funnel every landing goes through (one per bolt, fired at the end of its
+	-- flight rather than at the trigger, so it arrives with the damage), which
+	-- is why it lives in here rather than at the call site.
+	--
+	-- COALESCED, because a pellet weapon lands its whole spread on one frame:
+	-- the Grave Blunderbuss would otherwise stack eight identical bulletImpacts
+	-- at the same instant, which is not eight impacts to the ear, it is one
+	-- impact at eight times the volume. A 50 ms window collapses a spread into
+	-- the single thud it reads as visually, while two aimed shots - which are
+	-- a cooldown apart at the very least - each keep their own.
+	local now = os.clock()
+	if now - lastImpactSfxAt >= 0.05 then
+		lastImpactSfxAt = now
+		Sfx.play("bulletImpact", at)
+	end
 end
 
 -- ---------------------------------------------------------------- muzzles
@@ -421,6 +440,24 @@ local function onShotFired(attackerUserId: number, origin, termini, weaponId)
 		from = WeaponViewmodelController.getMuzzlePosition() or origin
 	else
 		from = weldedMuzzle(shooter and shooter.Character, weapon) or origin
+	end
+
+	-- THE MUZZLE CUE HERE IS FOR OTHER PEOPLE'S WEAPONS ONLY. The local
+	-- shooter already heard gunFire / bowFire from RangedController the
+	-- instant they pulled the trigger - the 2D "own weapon" cue, fired on the
+	-- press rather than on the server's echo precisely so the gun feels
+	-- connected to the finger. Playing again on the round trip would double
+	-- every one of your own shots, a latency behind itself.
+	--
+	-- Everybody ELSE'S shots have no local half at all; this remote echo is
+	-- the only place they can be heard, which is why it is 3D and at the
+	-- barrel rather than 2D - the direction incoming fire is coming from is
+	-- the whole information content of the cue. `from` is used rather than the
+	-- server's echoed `origin` for the same reason the flash and the tracer
+	-- use it: it is the muzzle actually on screen (see the header), so the
+	-- sound leaves the gun the eye is looking at.
+	if attackerUserId ~= player.UserId then
+		Sfx.play(if ranged.arc then "bowFireRemote" else "gunFireRemote", from)
 	end
 
 	-- A bow doesn't flash; its arrow IS the effect.

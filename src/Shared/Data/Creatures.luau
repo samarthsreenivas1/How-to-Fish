@@ -770,6 +770,38 @@ Creatures.items.brine_polyp = {
 	},
 }
 
+-- RIMEFANG'S REFREEZE, as a thing you can break. Her heal mists three open
+-- shards and each one that finishes pays her 6% of her health and comes back
+-- SLICK; what cancels it is BREAKING THE GLOW, and a glow a weapon can hit has
+-- to be a creature - that is the only thing CombatService's melee and shots
+-- resolve against (the polyp above is the same trick for the same reason).
+--
+-- Rarity "Boss" keeps it out of every cast pool (FishingService's RARITY_ORDER
+-- never walks that bucket) and the zero rewards say the right thing: denying a
+-- heal is the reward. Health is a little under the polyp's because there are
+-- three of these on a 12-second clock in a fight with no cover to break them
+-- from.
+Creatures.items.rime_rift = {
+	id = "rime_rift",
+	name = "Refreezing Rift",
+	rarity = "Boss",
+	archetype = "flopper",
+	health = 220,
+	rewards = { coins = { 0, 0 }, xp = 0 },
+	body = {
+		-- No rift species in the pack: the jelly's bell, shrunk and lit the
+		-- floe's own ice blue, standing in until creatures_gen.py grows one.
+		model = "CreaturePack",
+		species = "Jelly",
+		shape = "jelly",
+		stance = "upright", -- it grows UP out of the water it is freezing
+		scale = 0.85,
+		color = Color3.fromRGB(150, 186, 214), -- wet new ice
+		finColor = Color3.fromRGB(205, 232, 248),
+		markColor = Color3.fromRGB(215, 240, 255), -- the glow FloeController draws over it
+	},
+}
+
 -- ============================================================ Companion
 -- Not a catch: the hatchling Split Roe brings up, which fights hostiles ON THE
 -- PLAYER'S SIDE for a minute and then leaves (CreatureService's "companion"
@@ -1141,23 +1173,176 @@ Creatures.items.ashfeather_phoenix = {
 	},
 }
 
--- Pyrelisk, the Caldera Wyrm - Ashfall Caldera's boss (Bosses.luau). A
--- colossal obsidian-scaled magma serpent that rises out of the boiling
--- shallows off the shore jetty. Rarity "Boss" keeps it out of every cast
--- roll; it is summoned by casting Caldera's Call (Bait.luau), exactly the
--- Brinejaw ritual. Its heart is the Heart_pyrelisk attribute, not a drop.
+-- Pyrelisk, the Ashfall Colossus - Ashfall Caldera's boss (Bosses.luau). A
+-- 270-stud obsidian rock golem rooted in the caldera lake of its own arena,
+-- summoned by casting Caldera's Call (Bait.luau) exactly as Brinejaw is.
+-- Rarity "Boss" keeps it out of every cast roll; its heart is the
+-- Heart_pyrelisk attribute, never a drop.
 Creatures.items.pyrelisk = {
 	id = "pyrelisk",
-	name = "Pyrelisk, the Caldera Wyrm",
+	name = "Pyrelisk, the Ashfall Colossus",
 	rarity = "Boss",
 	archetype = "boss",
 	boss = "pyrelisk",
 	waters = "volcano",
-	-- Interim tuning for the volcano's slot-2 band (L8-14): a wall the way
-	-- Brinejaw is for L7, against island-2 gear (~130-180 dps). Re-tunes to
-	-- ~40,000 when the island slides to slot 4 (docs/revamp-plan.md).
+	-- The volcano band's capstone (L22-28) against island-4 gear. 40,000 is
+	-- unchanged by the redesign on purpose: none of it went into the health
+	-- bar. What the colossus added was a fight where damage is only legal
+	-- inside an EARNED window (`entrenched` keeps it untargetable otherwise),
+	-- and the answer to that is a longer window - `handfall.stagger` is 20
+	-- seconds - not a smaller bar. Re-tune the two together or not at all.
 	health = 40000,
 	rewards = { coins = { 9000, 13000 }, xp = 10000 },
+	drops = {
+		materials = {
+			magma_core = { 2, 3 },
+			obsidian_shard = { 4, 6 },
+			ember = { 6, 10 },
+			sulfur = { 4, 6 },
+		},
+	},
+	-- AUTHORITY ONLY. Nothing here is ever seen: the body is 270 studs of
+	-- rock drawn entirely client-side by PyreliskBodyController off
+	-- PyreliskPath, and CreatureService.hideColossusModel makes every part of
+	-- this model invisible the moment it rises. What survives is a hit volume
+	-- and the HUD's health bar.
+	--
+	-- And the pack cannot build it either, which is the fact that decides the
+	-- numbers below. `assembleSpecies` wants <Species>_Body / _Fins / _Eyes /
+	-- _Marks; boss_gen.py's build_pyrelisk exports Pyrelisk_Torso, _Head,
+	-- _Core, _Shoulder, _Seam, _Vent, _WalkArm ... and no _Body at all, so
+	-- the species never resolves and the row always falls through to the
+	-- procedural `shape`. The proxy is therefore a ~15-stud leviathan
+	-- stand-in, and its bounding sphere is what `raycastNearest` adds to
+	-- `hitRadius` when it decides whether a shot found the boss.
+	body = {
+		model = "CreaturePack",
+		species = "Pyrelisk",
+		-- The stand-in, and today the only thing this row ever builds. The
+		-- day the pack grows a Pyrelisk_Body the proxy becomes the real
+		-- shell at true size and the shot sphere widens to match it, which
+		-- is an improvement and needs no change here - provided `scale`
+		-- stays 1.0.
+		shape = "leviathan",
+		stance = "upright",
+		-- 1.0 = PyreliskPath.SCALE, the Kraken convention (that row tracks
+		-- KrakenPath.SCALE for the same reason). It was 1.5, sized for the
+		-- pre-redesign serpent that was cut small and scaled up; the colossus
+		-- is authored at TRUE SIZE, so there is nothing left to scale up.
+		--
+		-- The reason it matters at all: `creature.hitRadius` is
+		-- Bosses.hitRadius * this, so at 1.0 that number reads in real studs
+		-- and the moat arithmetic it is derived from (96 + a 16-stud melee
+		-- reach must stay inside the lake's 120-stud edge) can be checked
+		-- without a multiplication. Raising this raises the melee reach into
+		-- the boss with it, and hands anyone standing at the lava's edge the
+		-- window the climb is supposed to be the price of.
+		scale = 1.0,
+		color = Color3.fromRGB(38, 32, 40), -- cooled obsidian shell
+		finColor = Color3.fromRGB(80, 44, 34), -- basalt plating, crown columns, claws
+		markColor = Color3.fromRGB(255, 96, 16), -- the melt in every seam and vent (neon)
+	},
+}
+
+-- ACT 2's TWO LIMBS. Both arms come down across the moat onto the rim path
+-- and become these - the first melee this fight has ever offered. Everything
+-- about it is the moat's fault: `pyrelisk.hitRadius` 96 plus the longest melee
+-- reach in Weapons.luau (16) is eight studs inside the lake's 120-stud edge,
+-- so act 1 is ranged-only BY GEOMETRY and there is nothing a blade can do in
+-- it. The arms are the answer, and a `rangedOnly` flag here would take it back.
+--
+-- 7,000 EACH, and it is one decision with `K.PY_ARM_WINDOW`'s 120 seconds -
+-- the window is ~1.6x the time a solo player is projected to need. Both halves
+-- are guesses against a band-4 party DPS nobody has measured (design flag
+-- F-2/F-3): re-derive them together off a real playtest or not at all. The
+-- party's `healthMult` is carried in by `Fn.pyreliskPlantArm`, as the generic
+-- parts ring has always carried it.
+--
+-- `shotRadius = 14` IS A SPHERE AT THE FIST, AND THE ARM IS 150 STUDS LONG.
+-- Ship (a) of design flag F-5, knowingly: you fight the hand. The fist is
+-- where the limb meets the rim path, which is where the party is standing and
+-- where every telegraph in the act already points. The correct fix is
+-- generalising `creature.hitHeight` (a vertical axis, and these arms lie flat)
+-- to a `hitAxis` capsule in `raycastNearest` - the same eight lines this
+-- fight's checklist already owes for the colossus's own pivot-to-crown
+-- capture. That is a follow-on, not this slice.
+--
+-- `archetype = "pyreliskarm"` is NOT a no-op, which is what separates it from
+-- `krakenarm` and `krakenpolyp`: see `Fn.updatePyreliskArm`. An arm bleeds a
+-- lava pool onto the rim path near itself every seven seconds, so the ground
+-- you have to stand on to hit it shrinks while you do. 120 seconds of a silent
+-- boss and two inert limbs is a damage check, not an act.
+Creatures.items.pyrelisk_arm = {
+	id = "pyrelisk_arm",
+	name = "Ashfall Limb",
+	rarity = "Boss",
+	archetype = "pyreliskarm",
+	health = 7000,
+	waters = "volcano",
+	shotRadius = 14.0,
+	rewards = { coins = { 240, 380 }, xp = 600 },
+	body = {
+		model = "CreaturePack",
+		species = "Pyrelisk",
+		-- The same stand-in the colossus row falls through to, for the same
+		-- reason: `assembleSpecies` wants <Species>_Body and boss_gen exports
+		-- no Pyrelisk_Body, so the species never resolves. The drawn limb is
+		-- PyreliskBodyController's; this is the hit volume.
+		shape = "leviathan",
+		stance = "upright",
+		scale = 2.2,
+		color = Color3.fromRGB(38, 32, 40), -- the colossus's cooled obsidian
+		finColor = Color3.fromRGB(80, 44, 34), -- its basalt plating
+		markColor = Color3.fromRGB(255, 96, 16), -- the melt, brighter on a broken limb
+	},
+}
+
+-- (`pyrelisk_ventrock` - act 3's six magma bleeders - and `pyrelisk_neckcore`
+-- - the core at the top of the climb - stood here and are CUT (2026-09-12, the
+-- directive). There is no climb: the second arm's death is the colossus's
+-- death, the body collapses, the caldera opens and the party drops to the
+-- heart. `pyrelisk_arm` above is act 2's and is unchanged; the two rows below
+-- are the heart's room and are unchanged. `CreatureFamilies.luau` loses the
+-- matching two rows in the same unit - that gate is two-directional.)
+
+-- THE LAST ACT'S BOSS: the thing burning inside the mountain, on a dais in a sealed
+-- room six hundred studs up. `archetype = "boss"` and `boss = "pyrelisk_heart"`
+-- make it an ordinary boss creature; everything particular about it is the two
+-- fields below.
+--
+-- `vulnerableWhen = "partsDown"` IS THE WHOLE GATE. The shipped declarative
+-- rule (`Fn.unaimable`): the heart cannot be scratched while a single pillar
+-- stands, and the eighth pillar's death stamps `Exposed` through `kill()`'s
+-- existing path. No bespoke code, and it is the same mechanism that gates the
+-- Kraken's head behind its arms.
+--
+-- 14,000 against the colossus's 40,000 dial - and unlike that one this IS a
+-- bar: the heart is damaged, directly, with weapons, which nothing in acts 1-3
+-- ever was. Unmeasured with the rest of the fight (design flag F-2).
+Creatures.items.pyrelisk_heart = {
+	id = "pyrelisk_heart",
+	name = "The Ashfall Heart",
+	rarity = "Boss",
+	archetype = "boss",
+	boss = "pyrelisk_heart",
+	waters = "volcano",
+	health = 14000,
+	vulnerableWhen = "partsDown",
+	-- THE ONLY PLACE THIS FIGHT CAN ANSWER ITS OWN DEATH, and the reason is the
+	-- same one `kraken_heart` carries the field for: `Fn.updateBoss` is not
+	-- called for a creature that is already dead, so putting the party back on
+	-- the mountain they jumped off has nowhere else to live. `kill()` runs
+	-- `gimmick.onKill` while `pos` still means something and before Killed pays
+	-- anyone out.
+	--
+	-- It also closes the caldera behind them - see `K.GIMMICKS.pyreliskheart`.
+	-- It carries no `onHit`, so `hitModifiers` falls straight through and
+	-- nothing about how the heart takes damage changes.
+	gimmick = { kind = "pyreliskheart" },
+	rewards = { coins = { 9000, 13000 }, xp = 10000 },
+	-- THE COLOSSUS'S DROPS MOVE HERE, because this is where the fight actually
+	-- ends and `suppressDrops` is already true for a boss carrying
+	-- `succeededBy`. Acts 1-3 pay nothing on their own.
 	drops = {
 		materials = {
 			magma_core = { 2, 3 },
@@ -1169,12 +1354,58 @@ Creatures.items.pyrelisk = {
 	body = {
 		model = "CreaturePack",
 		species = "Pyrelisk",
-		shape = "leviathan", -- pre-import stand-in: the boss silhouette recoloured molten
+		shape = "leviathan",
 		stance = "upright",
-		scale = 1.5,
-		color = Color3.fromRGB(38, 32, 40), -- cooled obsidian hide
-		finColor = Color3.fromRGB(80, 44, 34), -- basalt fin plates
-		markColor = Color3.fromRGB(255, 96, 16), -- the melt in every seam (neon)
+		-- 2.0, AND IT IS HALF OF ONE DECISION. `creature.hitRadius` is
+		-- `Bosses.pyrelisk_heart.hitRadius * this`, so the row authors 13
+		-- against this 2.0 to land a live capture sphere of 26. Move one and
+		-- move the other: the PRODUCT is the number that matters, and at 52 the
+		-- sphere starts eating shots aimed at the pillars that gate it.
+		scale = 2.0,
+		color = Color3.fromRGB(43, 39, 43), -- cooled basalt, the chamber's own
+		finColor = Color3.fromRGB(120, 46, 20), -- the socket collars' ember
+		markColor = Color3.fromRGB(255, 210, 90), -- the molten mass itself (Neon)
+	},
+}
+
+-- THE EIGHT OBSIDIAN PILLARS, on the chamber's authored socket collars. They
+-- are cover and they are the gate, in one object: you hide behind them from the
+-- six wall vents, and breaking them is the only way to reach the heart.
+--
+-- BREAKING ONE COSTS YOU THE GROUND IT STOOD ON. A permanent lava pool vents at
+-- that socket (`K.PY_PILLAR_POOL`) and the heart's cooldowns tighten by
+-- `K.PY_PILLAR_STEP` - so the room gets smaller, faster and less defensible
+-- with every one you take, and the eighth is fought at roughly twice the
+-- opening cadence with a floor full of holes. That is the same bargain the arms
+-- and the arm rocks make: the reward for progress is a harder floor, which is
+-- the only reward structure a fight with no punish window can offer.
+--
+-- `archetype = "krakenpolyp"` is the shipped no-op. A pillar is a pillar: it
+-- does not walk and has no initiative, and the generic flop would send a
+-- thirty-stud obsidian column hopping round a room somebody is standing in.
+--
+-- 1,500 EACH - eight of them is 12,000, comparable to the heart's own 14,000,
+-- because clearing the cover IS half this act rather than a preamble to it.
+Creatures.items.pyrelisk_pillar = {
+	id = "pyrelisk_pillar",
+	name = "Obsidian Pillar",
+	rarity = "Boss",
+	archetype = "krakenpolyp",
+	health = 1500,
+	waters = "volcano",
+	-- ~24 studs across at the foot. Generous, because it is cover first and a
+	-- target second: a player pressed against one to break it should not have
+	-- to aim, and the eight of them stand at r44-70 where nothing else is.
+	shotRadius = 12.0,
+	rewards = { coins = { 120, 200 }, xp = 300 },
+	body = {
+		model = "CreaturePack",
+		species = "Pyrelisk",
+		shape = "urchin",
+		scale = 1.4,
+		color = Color3.fromRGB(23, 23, 31), -- obsidian (PY_OBSIDIAN)
+		finColor = Color3.fromRGB(43, 39, 43), -- cooled basalt at the collar
+		markColor = Color3.fromRGB(255, 120, 20), -- the seam of melt up its spine
 	},
 }
 
@@ -2089,7 +2320,9 @@ Creatures.items.choir_stalk = {
 	name = "Lantern Stalk",
 	rarity = "Boss",
 	archetype = "choirstalk",
-	health = 2600,
+	-- A lantern is a lock, not a health bar: at 2,600 a solo player spent
+	-- longer opening each cycle than fighting inside it.
+	health = 1900,
 	waters = "gloom",
 	rangedOnly = true,
 	rewards = { coins = { 70, 120 }, xp = 200 },
@@ -2098,7 +2331,38 @@ Creatures.items.choir_stalk = {
 		species = "Noctyss",
 		shape = "leviathan",
 		stance = "upright",
-		scale = 0.55,
+		-- THIS SCALE IS THE HITBOX, NOT THE STALK. The visible stalk is a
+		-- 33-stud chain the client draws from NoctyssPath at its authored
+		-- size; this row's model is the hidden authority standing at the
+		-- BULB, and its scale is what sizes the sphere a shot has to find.
+		-- The two are different objects that happen to share a field name -
+		-- raising this to "match the stalk" would not grow anything you can
+		-- see.
+		--
+		-- 0.846, NOT 0.55, AND IT IS SOLVED, NOT PICKED. The lantern is an
+		-- EYE now (NoctyssPath.EYE_R), and the eye is drawn as a sphere of
+		-- radius 4.0 centred exactly on NoctyssPath.bulbPosition - the same
+		-- point this model stands on. The player is told "shoot the pupil",
+		-- so the sphere behind the pupil has to be the sphere they are
+		-- looking at, to the stud.
+		--
+		-- The mapping, read out of CreatureService (raycastNearest) rather
+		-- than guessed: a creature with no `hitRadius` - and a part row has
+		-- none, that field comes off the Bosses def - is captured within
+		--     shotRadius = max(1.4, boundingBox.Magnitude * 0.3)
+		-- of the shot ray, and CreatureModel applies the row's scale with
+		-- `model:ScaleTo`, so the bounding box and therefore that radius are
+		-- LINEAR in this number. 0.55 measured 2.6 studs, so
+		--     0.55 * (4.0 / 2.6) = 0.846
+		-- and the capture sphere is EYE_R exactly. (Well clear of the 1.4
+		-- floor at either end, so the max() is not in play.)
+		--
+		-- HEALTH IS UNCHANGED at 1,900. The mapping does not force a
+		-- rebalance - nothing about a stalk's damage taken depends on its
+		-- size - and the 2.4x of extra cross-section is the point of the
+		-- change, not a side effect of it: at 2.6 studs, 35 studs up, in a
+		-- pitch-black arena, the fight's central act was a pixel hunt.
+		scale = 0.846,
 		color = Color3.fromRGB(44, 38, 58),
 		finColor = Color3.fromRGB(70, 58, 92),
 		markColor = Color3.fromRGB(255, 226, 130), -- the lantern
@@ -2114,7 +2378,11 @@ Creatures.items.noctyss = {
 	rarity = "Boss",
 	archetype = "boss",
 	boss = "noctyss",
-	health = 60000,
+	-- 46,000, not 60,000: she is the only boss in the saga whose health bar is
+	-- GATED - she can be hurt solely inside the maw window, roughly 40% of the
+	-- fight's clock, and only after the party has solved which light is real.
+	-- The same number as her neighbours would read as three times the fight.
+	health = 46000,
 	waters = "gloom",
 	vulnerableWhen = "markedDown",
 	rewards = { coins = { 18000, 26000 }, xp = 16000 },
@@ -2124,12 +2392,18 @@ Creatures.items.noctyss = {
 		species = "Noctyss",
 		shape = "leviathan",
 		stance = "upright",
-		-- 2.4, not 1.8: at 1.8 the maw was a crocodile in a hole. Here the
-		-- skull is 28.8 studs across against the arena pit's 30-stud mouth -
-		-- she FILLS it, jaws overhanging the lip, without clipping the rim
-		-- (measured in assets/boss_noctyss_staged.png). hitRadius 6 then
-		-- reads as 14.4 studs of hide, which is what the eye sees.
-		scale = 2.4,
+		-- 2.0, and it MUST equal NoctyssPath.MAW.SCALE - that table's pose
+		-- (FORWARD, Y_UP, the jaw floor, the gullet) is solved against this
+		-- number, and CreatureService's K.NOCTYSS_GULLET_REACH is measured off
+		-- the tongue slab it sizes. Editing one without the other moves the
+		-- floor the party stands on out from under the mesh they see.
+		--
+		-- 2.0, not 2.4: at 2.4 the skull was 28.8 studs across against the
+		-- arena pit's 30-stud mouth, so she came up wedged in the rim - the
+		-- user's read was that the head has to FIT INSIDE the hole. At 2.0 it
+		-- is 24 across with three studs of daylight each side. hitRadius 6 then
+		-- reads as 12 studs of hide, which is what the eye sees.
+		scale = 2.0,
 		color = Color3.fromRGB(44, 38, 58),
 		finColor = Color3.fromRGB(70, 58, 92),
 		markColor = Color3.fromRGB(255, 226, 130), -- the lure
@@ -2416,21 +2690,31 @@ Creatures.items.admiral_wrack = {
 	rarity = "Boss",
 	archetype = "boss",
 	boss = "admiral_wrack",
-	-- 58,000, not 85,000. The bullet-hell redesign GATES this bar: he can only
-	-- be hurt inside the burst window his four gun decks open, which is
-	-- roughly two thirds of the fight's clock rather than all of it, so a bar
-	-- sized for an ungated boss reads as half again the intended fight. Same
-	-- correction, same reason, as Noctyss's 60,000 -> 46,000 above.
-	health = 58000,
+	-- 24,000, DOWN FROM 58,000, and the bar did not shrink - it SPLIT. The
+	-- three-act rework (2026-09-09) spends the same total across three health
+	-- pools instead of one: 14,400 on the four permanent guns (act one),
+	-- 24,000 on the hull here (act two), and 20,000 on the Admiral himself
+	-- (act three, `wrack_admiral` below). 58,400 against the 58,000 this row
+	-- used to carry alone, so the fight is the same length and it is now three
+	-- fights long instead of one.
+	health = 24000,
 	waters = "wreck",
-	-- The hull only opens when every gun deck is silent. The Bosses entry's
-	-- `parts` ring plants four wrack_battery emplacements on his gun deck;
-	-- CreatureService.damage refuses the boss while partsAlive > 0, kill()
-	-- counts them down, and updateBoss re-plants them `parts.regrow` seconds
-	-- after the last one falls. Same machinery as the Kraken's tentacle ring.
+	-- THE HULL IS IMMUNE FOR THE WHOLE OF ACT ONE, and this one word is what
+	-- says so. `damage()` refuses him while `partsAlive > 0`; the Bosses
+	-- entry's `parts` ring plants the four corner cannons; `kill()` counts them
+	-- down. What CHANGED is that `parts.regrow` is GONE, so the count only ever
+	-- goes down: the fourth kill opens the hull permanently, and the loop this
+	-- used to be (all down -> window -> regrow -> repeat) becomes a one-way ACT
+	-- TRANSITION with no new engine state at all. The act boundary is the
+	-- deletion of a field.
 	vulnerableWhen = "partsDown",
-	rewards = { coins = { 40000, 55000 }, xp = 30000 },
-	drops = { materials = { wraith_essence = { 3, 4 }, spectral_sailcloth = { 5, 7 }, tarnished_doubloon = { 8, 12 } } },
+	-- NO `rewards` AND NO `drops`. The hull's death is not the end of the
+	-- fight, it is the end of act two: BossService's `onKilled` sees
+	-- `succeededBy` on the Bosses row, hands off to the Admiral and returns
+	-- before it pays anybody. The payout moved WITH the ending, onto
+	-- `wrack_admiral` - and `raise` spawns this one with `suppressDrops` so the
+	-- generic per-kill path cannot pay it either. A row that still carried the
+	-- numbers would be a second, quieter claim about where the fight ends.
 	body = {
 		model = "CreaturePack",
 		species = "AdmiralWrack",
@@ -2451,24 +2735,43 @@ Creatures.items.admiral_wrack = {
 -- an archetype of their own: planted, inert, and there to be broken.
 Creatures.items.wrack_battery = {
 	id = "wrack_battery",
-	name = "Gun-Deck Battery",
+	name = "Flagship Cannon",
 	rarity = "Boss",
 	archetype = "choirstalk",
-	health = 2800,
+	-- 3,600, up from 2,800, because these four ARE act one now. With
+	-- `parts.regrow` deleted they never come back, so this bar is not one cycle
+	-- of a loop that repeats against a denser phase - it is the whole first act
+	-- of the fight, once. 14,400 across the four.
+	health = 3600,
 	waters = "wreck",
-	-- Same reason as `choir_stalk`'s: the batteries are the ship's own cannons,
-	-- 9.0 to 12.4 studs up on the upright hull (Bosses.admiral_wrack
-	-- `parts.mounts`, re-cut for the 2026-09-08 mesh), so melee target-picking
-	-- must not select one it can never reach.
+	-- Same reason as `choir_stalk`'s: they are the ship's own cannons, 13.2 to
+	-- 14.0 studs up in sponsons at her four corners (Bosses.admiral_wrack
+	-- `parts.mounts`), so melee target-picking must not select one it can never
+	-- reach.
 	rangedOnly = true,
-	-- THE FIGHT'S PRIMARY TARGET, and it was inheriting the derived ~3.6-stud
-	-- capture off a 0.5-scale model standing 9-12 studs up a hull. Same
-	-- treatment as the four props below it (see their class note): 4.5, so the
-	-- thing the whole fight asks you to shoot is a thing you can reliably shoot.
-	-- The four mounts are 10.9 studs apart at their closest, so overlapping
-	-- captures are still resolved correctly - raycastNearest keeps the nearest
-	-- ALONG the ray, which is the cannon you are actually looking at.
-	shotRadius = 4.5,
+	-- THE FIGHT'S PRIMARY TARGET, and this number is not a comfort setting any
+	-- more - IT IS GEOMETRY THE SHIP IS BUILT AGAINST. The corner sponsons are
+	-- three-sided casemates (back wall and two cheeks, collidable, folded into
+	-- `Wrack_HullCollider`) whose whole job is that only two cannons can be
+	-- shot from any one bearing. The capture sphere has to fit inside that
+	-- house, and it fits on TWO sides:
+	--
+	--     shotRadius <= cheek half-width          (4.0)
+	--     plate top  >= tallest mount + shotRadius (14.0 + 4.0 = 18.0)
+	--
+	-- At 5.0 the sphere spans r 14-24 against a cheek mouth at r 23 and pokes
+	-- straight through it: a third cannon becomes shootable past the casemate
+	-- from the sand's edge, and the ship stops occluding the thing it exists to
+	-- occlude. At 4.5 it still overhangs. 4.0 is the largest capture the
+	-- geometry admits, and it is authored AT the half-width rather than near it.
+	--
+	-- THE SAME NUMBER IS BAKED INTO assets/boss_gen.py AS
+	-- `WR_BATTERY_SHOT_RADIUS`, because the casemates are solved against it
+	-- there. Two files, two languages, one number - and a stale value on either
+	-- side leaves BOTH guards green while the boss is shootable through, so
+	-- tools/check_content.py reads them both and FAILS on a mismatch. Change
+	-- this and you change that, or the gate stops you.
+	shotRadius = 4.0,
 	rewards = { coins = { 120, 200 }, xp = 350 },
 	-- Authority only, like the tentacles: a chunk of the flagship at gun-deck
 	-- scale, so it reads as part of the hull it is bolted to.
@@ -2481,6 +2784,73 @@ Creatures.items.wrack_battery = {
 		color = Color3.fromRGB(96, 116, 108),
 		finColor = Color3.fromRGB(70, 86, 82),
 		markColor = Color3.fromRGB(255, 190, 120), -- the muzzle glow, lit until it is broken
+	},
+}
+
+-- ---------------------------------------------------------------------------
+-- ACT THREE: THE ADMIRAL HIMSELF (three-act rework, 2026-09-09)
+--
+-- User's mandate: "after the main ship is defeated, you fight the main admiral
+-- himself in like a dual." So he is a SECOND CREATURE, not a phase - the hull
+-- dies, the wreck lists, and he leaps down onto the sand as his own boss with
+-- his own health bar and his own Bosses row (`wrack_duel`).
+--
+-- WHY A SECOND ROW AND NOT A THIRD PHASE. The boss archetype reaches
+-- everything it needs - the rise, the phase table, the attack book, the HUD
+-- name - through `row.boss` -> `Bosses.items[...]`, one row per fight. A third
+-- phase would have had to be a mobile duellist and a planted gun platform at
+-- the same time, sharing one `speed`, one `turnRate`, one `hitRadius` and one
+-- attack book with a first-rate ship of the line. Two rows cost one field
+-- (`succeededBy`) and a handoff in BossService; one row would have cost a
+-- branch in every one of those numbers.
+--
+-- HE IS THE OPPOSITE OF THE THING THAT MADE HIM. The hull never took a step
+-- and never turned; he does nothing but. The hull could only be hurt through
+-- its guns; he has no gate at all - no `vulnerableWhen`, and deliberately no
+-- `rangedOnly`, so sword and gun both reach him. After two acts of shooting
+-- fixed brass from a distance, the fight ends in reach.
+Creatures.items.wrack_admiral = {
+	id = "wrack_admiral",
+	name = "Admiral Wrack",
+	rarity = "Boss",
+	archetype = "boss",
+	boss = "wrack_duel",
+	-- 20,000: act three's third of the 58,400. Shorter than the hull's act on
+	-- purpose - this is the tense one, not the long one.
+	health = 20000,
+	waters = "wreck",
+	-- 8.6, AND IT IS NOT A COMFORT SETTING EITHER. The drawn duelist is 17.2
+	-- studs tall while the server's stand-in body is a fraction of that, so
+	-- without an authored capture BOTH sides derive one from the stand-in's
+	-- bounding box - `raycastNearest` server-side and `aimDistance`
+	-- client-side, independently, exactly the composition that made shots pass
+	-- through the powder runner (user, 2026-09-08: "when i point my crosshair
+	-- at something and shoot, it doesnt work"). Against a body this tall the
+	-- symptom would not read as a miss at all: it reads as "the Admiral feels
+	-- unhittable", which is a difficulty complaint about a targeting bug.
+	--
+	-- The duel rig's reach numbers are tuned against 8.6 (lunge reach 1.2 with
+	-- the reach moved into the arm), so this value is shared with the client
+	-- and not free to drift.
+	shotRadius = 8.6,
+	-- NO `rangedOnly` and NO `vulnerableWhen`: melee and guns both land on him,
+	-- at all times. The duel's difficulty is its moves, never its access.
+	rewards = { coins = { 40000, 55000 }, xp = 30000 },
+	drops = { materials = { wraith_essence = { 3, 4 }, spectral_sailcloth = { 5, 7 }, tarnished_doubloon = { 8, 12 } } },
+	-- `scale = 1`, and nothing added for the sabre. The mesh lane authors him
+	-- at his true height (17.2, sole 0.73 BELOW the deck at his station) and
+	-- the client draws that rig off `CreatureId`; a scale here would fight the
+	-- drawn body rather than change it, and a capture padded for the blade
+	-- would make the blade itself a hitbox.
+	body = {
+		model = "CreaturePack",
+		species = "AdmiralWrack",
+		shape = "leviathan",
+		stance = "upright",
+		scale = 1,
+		color = Color3.fromRGB(30, 37, 62), -- WR_COAT, the drowned indigo
+		finColor = Color3.fromRGB(201, 177, 102), -- WR_GOLD: lace, epaulettes, rank
+		markColor = Color3.fromRGB(255, 204, 92), -- WR_EYE - the only light left in him
 	},
 }
 
@@ -2653,6 +3023,114 @@ Creatures.items.wrack_boarder = {
 		color = Color3.fromRGB(96, 116, 108),
 		finColor = Color3.fromRGB(70, 86, 82),
 		markColor = Color3.fromRGB(160, 255, 210),
+	},
+}
+
+-- ---------------------------------------------------------------------------
+-- ...AND THE SHIP'S OWN TWO (2026-09-09). The four above are things the Admiral
+-- PUTS on the sand; these two are pieces of the hull, and they inherit every one
+-- of the three decisions in the class note above (`choirstalk` so their handler
+-- owns their position, `rarity = "Boss"` plus a spawned `lifetime` so neither can
+-- be stranded, no drops) for the same reasons.
+--
+-- ONE THING IS DIFFERENT AND IT IS WORTH SAYING: both of these MOVE FAST and
+-- both are the whole answer to the move that made them, so their `shotRadius` is
+-- at the generous end of the band the note argues for - 5.0 against models of
+-- three to four studs. The Lady crosses at 54 studs/s, which is three times the
+-- keg's pace and therefore three times the round-trip lead, and a player who has
+-- correctly read "shoot her" and led her properly should not lose the shot to
+-- the capture geometry the note above was written about.
+--
+-- Their PROVENANCE, so the next reader knows what these numbers answer to: both
+-- rows are consumed only by the Wrack handlers `ladybelow` and `boomsweep` in
+-- CreatureService (via `p.rows` on Bosses.admiral_wrack's attacks of the same
+-- names), and the geometry they are placed at - the figurehead's dock, the
+-- boom's pivot and length - comes from the mesh lane's `WR_FIGUREHEAD` /
+-- `WR_BOOM` handoff into that boss row's `rigging`. Health is set against the
+-- SECONDS each move gives you, exactly as the four above are.
+-- ---------------------------------------------------------------------------
+
+-- THE LADY BELOW. The flagship's figurehead unships herself and makes two or
+-- three telegraphed lane dives at one player before re-docking at the prow.
+--
+-- 900 IS THE "ONE DIVE EARLY" NUMBER, and it is the only number on this row the
+-- design actually turns on. It was set by running the arithmetic rather than by
+-- describing it, and the first answer was wrong: a dive cycle is 4.3 seconds
+-- (lead 1.1 + a 2.1-second crossing + a 1.1 re-arm), so ending the TWO-dive
+-- version before its last pass is that whole bar inside ONE cycle - 211 dps at
+-- 900, against the braziers' 233 and the midlink's 167. That is a burst, or two
+-- players looking at her, and it is deliberately not free.
+--
+-- The same 900 makes phase 3's three-dive version a much softer ask (two cycles,
+-- 8.4 seconds, 107 dps), and that progression is the right way round: the party
+-- that learned to shoot her in phase 1 is PAID for the verb late, when there is
+-- most else to be doing. Her health does not scale with the number of dives -
+-- the window does.
+--
+-- (`assets/wrack_patterns_gen.py` prints both numbers in its HANDOFF block, so a
+-- retune that breaks the intent shows up in a diff of that output.)
+--
+-- DELIBERATELY NOT `rangedOnly`, and for the powder keg's reason rather than by
+-- omission: she flies at head height down the lane she was telegraphed on, so
+-- melee CAN reach her - by standing in the one strip of sand the tell says will
+-- hurt. That is a real choice with a real cost, which is better than a rule
+-- forbidding it.
+Creatures.items.wrack_figurehead = {
+	id = "wrack_figurehead",
+	name = "The Lady Below",
+	rarity = "Boss",
+	archetype = "choirstalk",
+	health = 900,
+	waters = "wreck",
+	-- See the class note above, and the lead argument in this block's header:
+	-- 54 studs/s is 5 studs of travel across a 100 ms round trip.
+	shotRadius = 5.0,
+	rewards = { coins = { 100, 160 }, xp = 320 },
+	body = {
+		model = "CreaturePack",
+		species = "AdmiralWrack",
+		shape = "leviathan",
+		stance = "upright",
+		scale = 0.34,
+		color = Color3.fromRGB(128, 120, 104), -- salt-bleached oak
+		finColor = Color3.fromRGB(92, 86, 74),
+		markColor = Color3.fromRGB(210, 240, 255), -- her eyes, and they are open
+	},
+}
+
+-- THE BOOM TACKLE. The block and fall at the end of the main boom: shoot it and
+-- the spar drops on the frame it breaks, mid-windup or mid-sweep.
+--
+-- 700 IS THE MIDLINK'S NUMBER ON PURPOSE - the same bar for the same shape of
+-- decision. The window is bigger here (a 2.2-second windup plus a 3-second
+-- sweep, against the midlink's 4.2), but so is the cost of taking it: the tackle
+-- swings over the near ring, which is the ground the sweep is clearing, so the
+-- shot is taken while walking backwards out of it.
+--
+-- `rangedOnly` FOR THE BATTERIES' REASON: it hangs six studs up off a spar that
+-- is sweeping a band you are being told to leave, so melee target-picking must
+-- not select a thing whose only melee approach is standing in the swing.
+Creatures.items.wrack_boom_tackle = {
+	id = "wrack_boom_tackle",
+	name = "Boom Tackle",
+	rarity = "Boss",
+	archetype = "choirstalk",
+	health = 700,
+	waters = "wreck",
+	rangedOnly = true,
+	-- See the class note above: swinging at 28 studs/s at the band's edge, and
+	-- the only thing that ends the sweep early.
+	shotRadius = 5.0,
+	rewards = { coins = { 60, 100 }, xp = 200 },
+	body = {
+		model = "CreaturePack",
+		species = "AdmiralWrack",
+		shape = "leviathan",
+		stance = "upright",
+		scale = 0.28,
+		color = Color3.fromRGB(112, 96, 64), -- blocks and brass
+		finColor = Color3.fromRGB(78, 66, 46),
+		markColor = Color3.fromRGB(255, 214, 130), -- the fall, straining in the sun
 	},
 }
 
@@ -2943,6 +3421,104 @@ Creatures.items.kraken_tentacle = {
 	},
 }
 
+-- ------------------------------------------------------- the reworked finale
+-- THREE ROWS THE KRAKEN'S REWORK ADDED, and none of them replaces
+-- `kraken_tentacle` above: that row is the eight-arm whirlpool ring, which is
+-- a different fight in a different place and is left exactly as it is.
+--
+-- All three are `rarity = "Boss"`, spawned only by the fight and never by a
+-- cast, and all three are drawn by KrakenBodyController rather than by their
+-- own model - the `body` block here is the fallback a client that has not
+-- adopted the boss yet sees, and the colours match the hide so the fallback is
+-- wrong rather than garish.
+
+-- THE TWO ARMS of phases one and two: the shootable HP bars the whole first
+-- two thirds of the fight is about. The client draws each one as a chain of
+-- Kraken_TentacleSeg capsules from the head's crown to wherever this hitbox
+-- stands, so what you swing at is the limb you can see.
+--
+-- `archetype = "krakenarm"` has NO updater of its own, on purpose, and that is
+-- the difference from `tentacle` above: a tentacle is an autonomous slam
+-- machine that picks its own targets off its own cooldown, and these two are
+-- CONDUCTED - every rear, sweep, wrap and withdrawal is a beat in the boss's
+-- attack book, and an arm that also slammed on its own initiative would put
+-- unannounced damage on a deck whose entire counterplay is reading telegraphs.
+-- See ARCHETYPE_UPDATERS in CreatureService (the `choirstalk` precedent).
+--
+-- 9,000 against the boss's 130,000: two of them is 18,000, and breaking BOTH
+-- inside one cycle is what opens the siphon. That has to be achievable by a
+-- party inside the ~12s an arm stays away, or the fight has no rhythm - and it
+-- must not be so cheap that one player alone can hold the window open forever.
+Creatures.items.kraken_arm = {
+	id = "kraken_arm",
+	name = "Kraken Arm",
+	rarity = "Boss",
+	archetype = "krakenarm",
+	health = 9000,
+	waters = "maelstrom",
+	rewards = { coins = { 200, 320 }, xp = 520 },
+	body = {
+		model = "CreaturePack",
+		species = "KrakenTentacle",
+		shape = "gulletcod",
+		stance = "upright",
+		scale = 2.2,
+		color = Color3.fromRGB(33, 20, 51),
+		finColor = Color3.fromRGB(51, 33, 77),
+		markColor = Color3.fromRGB(150, 120, 255),
+	},
+}
+
+-- PHASE THREE'S SIX GROWTHS, planted on the gullet's authored socket collars
+-- (BossArenas.maelstrom_gullet.sockets). The heart is untouchable while any of
+-- them lives, so this is the parts-gate idea again in a room instead of on a
+-- ring - and every one that dies steps the heartbeat's metronome up, so the
+-- fight gets louder as it gets shorter.
+--
+-- Stationary by the same rule the arms are: `archetype = "krakenpolyp"` has no
+-- updater. A polyp is a node on a stalk grown into a wall; it does not walk.
+Creatures.items.kraken_polyp = {
+	id = "kraken_polyp",
+	name = "Gullet Polyp",
+	rarity = "Boss",
+	archetype = "krakenpolyp",
+	health = 5200,
+	waters = "maelstrom",
+	rewards = { coins = { 180, 280 }, xp = 460 },
+	body = {
+		model = "CreaturePack",
+		species = "KrakenPolyp",
+		shape = "urchin",
+		scale = 1.5,
+		color = Color3.fromRGB(106, 77, 117), -- the violet collar (arena_gen KG_COLLAR)
+		finColor = Color3.fromRGB(122, 29, 38), -- gut flesh (KG_HEART)
+		markColor = Color3.fromRGB(230, 74, 73), -- the Neon bulb (KG_HEARTGLOW)
+	},
+}
+
+-- ...and the things the body sends after you when you cut one. Small, fast,
+-- and a `rusher` - the archetype it borrows is the whole behaviour, exactly
+-- the bargain `splitter` and `thornback` strike above: nothing here is new
+-- code, it is a rusher with the gullet's colours and a boss-fight bounty.
+Creatures.items.kraken_antibody = {
+	id = "kraken_antibody",
+	name = "Gullet Antibody",
+	rarity = "Boss",
+	archetype = "rusher",
+	health = 1700,
+	waters = "maelstrom",
+	rewards = { coins = { 60, 110 }, xp = 180 },
+	body = {
+		model = "CreaturePack",
+		species = "KrakenSpawn",
+		shape = "urchin",
+		scale = 0.9,
+		color = Color3.fromRGB(122, 29, 38),
+		finColor = Color3.fromRGB(74, 33, 38),
+		markColor = Color3.fromRGB(230, 102, 90),
+	},
+}
+
 -- The final boss. rangedOnly: melee target-picking skips the head entirely
 -- (the tentacles are the melee fight); vulnerableWhen = "partsDown": the
 -- head takes damage only in the window after every tentacle is dead, until
@@ -2958,19 +3534,41 @@ Creatures.items.kraken = {
 	waters = "maelstrom",
 	rangedOnly = true,
 	vulnerableWhen = "partsDown",
+	-- THE ONLY PLACE THIS FIGHT CAN ANSWER ITS OWN DEATH. `Fn.updateBoss` is not
+	-- called for a creature that is already dead, so the collapse at the end of
+	-- phase three - the event, and putting the party back on the ship they were
+	-- swallowed off - has nowhere else to live. `kill()` runs `gimmick.onKill`
+	-- while `pos` still means something and before Killed pays anyone out, which
+	-- is exactly the beat that is wanted. See K.GIMMICKS.krakenheart.
+	--
+	-- It carries no `onHit`, so `hitModifiers` falls straight through it and
+	-- nothing about how the head takes damage changes.
+	gimmick = { kind = "krakenheart" },
 	rewards = { coins = { 90000, 120000 }, xp = 80000 },
 	drops = { materials = { maelstrom_core = { 4, 6 }, thunder_pearl = { 6, 8 }, storm_glass = { 8, 12 } } },
 	-- Authority only: this model is hidden the moment it rises
-	-- (CreatureService.hideColossusModel) and KrakenBodyController draws the
-	-- octopus instead. `scale` still matters - it is what hitRadius is
-	-- multiplied by - so it tracks KrakenPath.SCALE exactly, or the hide you
-	-- can hit stops matching the hide you can see.
+	-- (CreatureService.Fn.hideColossusModel, and KrakenBodyController hides it a
+	-- second time at adopt as a belt) and the octopus the fight draws comes out of
+	-- KrakenPack instead. Nothing about the fields below is ever seen.
+	--
+	-- `scale` IS STILL LOAD-BEARING and it is NOT the draw scale: it is what
+	-- Fn.updateBoss multiplies the row's hitRadius by, so 200 x 1.4 = the 280-stud
+	-- capture sphere the Bosses row's hitRadius note is written against. It has
+	-- nothing to do with KrakenPath.SCALE (6.0, the pack's authored draw scale) -
+	-- an earlier comment here claimed the two tracked each other, which was never
+	-- true of 1.4 and would, if anyone had "fixed" it, have quadrupled the sphere
+	-- a shot has to reach.
+	--
+	-- `species` is the PRE-REWORK mantle in CreaturePack (creatures_gen.py's
+	-- Kraken_Body/_Fins/_Eyes/_Marks) and `shape` the procedural serpent that
+	-- stands in if that species is ever dropped from the pack. Neither is drawn;
+	-- both are kept because an unbuildable row is a crash and a hidden one is not.
 	body = {
 		model = "CreaturePack",
 		species = "Kraken",
 		shape = "leviathan",
 		stance = "upright",
-		scale = 1.4, -- = KrakenPath.SCALE
+		scale = 1.4, -- hitRadius multiplier, NOT KrakenPath.SCALE
 		color = Color3.fromRGB(33, 20, 51), -- deep dark purple, the octopus hide
 		finColor = Color3.fromRGB(51, 33, 77), -- the lighter underside and arm crown
 		markColor = Color3.fromRGB(150, 120, 255), -- storm-lit eyes and suckers
@@ -3001,8 +3599,8 @@ Creatures.items.kraken = {
 -- luck rolls.
 
 -- The Drowned Bell (hermit: bellkeeper_odd). It swallowed the clapper out of
--- a chapel bell that went down with the bay, and it has been ringing ever
--- since. Huge, slow, and patient: a devouring lunge that crosses half the
+-- the Drowned Chapel's bell and carried it north under the ice shelf, and it
+-- has been ringing ever since. Huge, slow, and patient: a devouring lunge that crosses half the
 -- beach, and a toll that comes out of it as a shockwave. `harden` is the
 -- lesson - swinging into those long windups does almost nothing, and the
 -- gulp's wide expose window is where the fight is actually won.
@@ -3011,14 +3609,22 @@ Creatures.items.tollmaw = {
 	name = "Tollmaw",
 	rarity = "Epic",
 	archetype = "rusher",
-	health = 14000,
-	waters = "wreck",
-	rewards = { coins = { 5200, 7800 }, xp = 12000 },
+	-- BAND SWAP 2026-09-12 (quest-reach audit). It was the WRECK band's elite
+	-- (14,000 HP, waters "wreck"), which put Bellkeeper Odd - on the chapel
+	-- islet, first sailable L8 - behind Wreckwater's L36 gate and left his
+	-- saga dead for ~30 levels. It is the ICE band's elite now (L15-21,
+	-- Frostmaw's ice-holes, one of that pool's three Epics exactly as the Moth
+	-- is one of the gloom's), and Old Ribbonjaw took these wreck numbers in
+	-- exchange. Only the band moved: name, kit, model, lore and the guaranteed
+	-- bell_clapper are its own.
+	health = 3800,
+	waters = "ice",
+	rewards = { coins = { 1100, 1700 }, xp = 2800 },
 	drops = {
 		materials = {
 			bell_clapper = { 1, 1 }, -- the quest gate: guaranteed
-			ghost_plank = { 2, 4 },
-			tarnished_doubloon = { 3, 5 },
+			everice = { 1, 2 },
+			rime_pelt = { 2, 4 },
 		},
 	},
 	moves = {
@@ -3029,7 +3635,7 @@ Creatures.items.tollmaw = {
 			duration = 0.45,
 			recover = 1.0,
 			cooldown = 6.5,
-			damage = { 70, 110 },
+			damage = { 38, 60 }, -- x BAND (see contactDamage)
 			reach = 18,
 			hop = 3.5,
 			radius = 9,
@@ -3037,7 +3643,7 @@ Creatures.items.tollmaw = {
 			range = 26,
 			expose = 1.4, -- the whole fight: bait the gulp, punish the miss
 			tell = "snap",
-			skin = "wreck",
+			skin = "frost",
 		},
 		{
 			name = "toll",
@@ -3046,11 +3652,11 @@ Creatures.items.tollmaw = {
 			duration = 1.6,
 			recover = 1.2,
 			cooldown = 11.0,
-			damage = { 55, 85 },
+			damage = { 30, 47 }, -- x BAND
 			radius = 34, -- the band sweeps outward; step across it or outrun it
 			ringWidth = 6,
 			tell = "burst",
-			skin = "wreck",
+			skin = "frost",
 		},
 		{
 			name = "swallow",
@@ -3065,7 +3671,7 @@ Creatures.items.tollmaw = {
 			range = 34,
 			follow = "gulp", -- dragged into the maw, then swallowed
 			tell = "pull",
-			skin = "wreck",
+			skin = "frost",
 		},
 		{
 			name = "deadtoll",
@@ -3074,17 +3680,24 @@ Creatures.items.tollmaw = {
 			duration = 0.9,
 			recover = 1.0,
 			cooldown = 14.0,
-			damage = { 75, 115 },
+			damage = { 41, 63 }, -- x BAND
 			radius = 30,
 			safeRadius = 9,
 			invert = true, -- the SAFE spot is under it - the ringTell says so
 			below = 0.5, -- the bell's second half, once it is truly hurt
-			skin = "wreck",
+			skin = "frost",
 		},
 	},
 	gimmick = { kind = "harden", mult = 0.3 },
 	tuning = { SHAMBLE_SPEED = 6, STANDOFF = 9, TURN_RATE_DEG = 90 },
-	contactDamage = { 26, 40 },
+	-- BAND = 0.55, the one factor the band swap applied to every damage number
+	-- in this row (2026-09-12). It is the ice band's contact figure over the
+	-- wreck band's - {26,40} -> {14,22} - and the elite ladder the three hermit
+	-- elites form is per-HIT, not per-second: what separates the bands is how
+	-- much of a player's bar one landed blow takes, and a 110-damage gulp at
+	-- L15 is a different game from the same gulp at L38. Cadence, tells,
+	-- reaches and radii are the fight's own language and did NOT scale.
+	contactDamage = { 14, 22 },
 	attackGap = { 2.2, 3.2 }, -- ponderous: slower than the Epic default
 	body = {
 		model = "CreaturePack",
@@ -3099,7 +3712,7 @@ Creatures.items.tollmaw = {
 }
 
 -- The Saltmother's Price (hermit: saltmother_vess). A ribbon of an eel that
--- lives under the sheet and robs anything that walks over it. Its whole
+-- works the wrecks of the bay and robs anything that walks over them. Its whole
 -- identity is theft, so it runs the THIEF archetype as its kit locomotion:
 -- it closes, takes coins off you on contact, and bolts. Killing it pays the
 -- haul back with THIEF_BONUS on top (ProgressionService) - that IS "make it
@@ -3110,14 +3723,20 @@ Creatures.items.old_ribbonjaw = {
 	name = "Old Ribbonjaw",
 	rarity = "Epic",
 	archetype = "thief",
-	health = 3800,
-	waters = "ice",
-	rewards = { coins = { 1100, 1700 }, xp = 2800 },
+	-- BAND SWAP 2026-09-12 (quest-reach audit). It was the ICE band's elite
+	-- (3,800 HP, waters "ice"), while its hermit Saltmother Vess lives on the
+	-- Whale Fall, which is not sailable until L36 - the whole saga was gated
+	-- 20 levels above the thing it hunts. It holds the WRECK band now (L36-42,
+	-- Wreckwater's bay) and Tollmaw took the ice numbers. Only the band moved:
+	-- the theft kit, model, lore and the guaranteed whetstone_heart are its own.
+	health = 14000,
+	waters = "wreck",
+	rewards = { coins = { 5200, 7800 }, xp = 12000 },
 	drops = {
 		materials = {
 			whetstone_heart = { 1, 1 }, -- the quest gate: guaranteed
-			everice = { 1, 2 },
-			rime_pelt = { 2, 4 },
+			ghost_plank = { 2, 4 },
+			tarnished_doubloon = { 3, 5 },
 		},
 	},
 	-- The full thief updater walks it between moves: chase, pickpocket on
@@ -3131,13 +3750,13 @@ Creatures.items.old_ribbonjaw = {
 			duration = 0.25,
 			recover = 0.3,
 			cooldown = 2.4,
-			damage = { 26, 40 },
+			damage = { 40, 62 }, -- x BAND (see contactDamage)
 			lunge = 7,
 			radius = 7,
 			cone = math.rad(75),
 			range = 14,
 			tell = "snap",
-			skin = "frost",
+			skin = "wreck",
 		},
 		{
 			name = "cutandrun",
@@ -3146,7 +3765,7 @@ Creatures.items.old_ribbonjaw = {
 			duration = 0.3,
 			recover = 0.35,
 			cooldown = 4.0,
-			damage = { 30, 46 },
+			damage = { 47, 71 }, -- x BAND
 			reach = 20,
 			hop = 2.0,
 			radius = 6,
@@ -3154,7 +3773,7 @@ Creatures.items.old_ribbonjaw = {
 			range = 26,
 			follow = "vanish", -- cut, then gone before you can answer
 			tell = "snap",
-			skin = "frost",
+			skin = "wreck",
 		},
 		{
 			name = "vanish",
@@ -3163,12 +3782,12 @@ Creatures.items.old_ribbonjaw = {
 			duration = 0.9,
 			recover = 0.5,
 			cooldown = 7.0,
-			damage = { 34, 52 },
+			damage = { 53, 81 }, -- x BAND
 			emergeAt = 6,
 			radius = 7,
 			cone = 70, -- phantom takes DEGREES, unlike snap/lunge
 			weight = 0, -- follow-only: the back half of cutandrun
-			skin = "frost",
+			skin = "wreck",
 		},
 		{
 			name = "brinecoil",
@@ -3177,17 +3796,25 @@ Creatures.items.old_ribbonjaw = {
 			duration = 0.3,
 			recover = 0.4,
 			cooldown = 9.0,
-			damage = { 18, 28 },
+			damage = { 28, 43 }, -- x BAND
 			arm = 1.0, -- the window to step off the mark
 			radius = 6,
 			snare = 1.6, -- rooted: this is how it gets paid
 			tell = "mark",
-			skin = "frost",
+			skin = "wreck",
 		},
 	},
 	gimmick = { kind = "phasey", hits = 3, gap = 0.8, hop = 14 },
 	tuning = { TURN_RATE_DEG = 320 },
-	contactDamage = { 14, 22 }, -- the contact is the robbery, not the wound
+	-- BAND = 1.55, the one factor the band swap applied to every damage number
+	-- in this row (2026-09-12), and deliberately NOT the 1.82 that the two
+	-- bands' contact figures ({14,22} -> {26,40}) would give: this thing swings
+	-- every 0.9-1.5s where the elite those wreck numbers came from swings every
+	-- 2.2-3.2s, so the honest full step would have handed the band an elite of
+	-- roughly twice its own DPS. 1.55 puts each hit at the low end of the
+	-- band's per-hit language and leaves the harasser ahead on the clock, which
+	-- is what a thief should be. Cadence, tells, reaches and radii unscaled.
+	contactDamage = { 22, 34 }, -- the contact is the robbery, not the wound
 	attackGap = { 0.9, 1.5 }, -- busier than the Epic default: it never settles
 	body = {
 		model = "CreaturePack",

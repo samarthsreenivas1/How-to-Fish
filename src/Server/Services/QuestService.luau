@@ -63,12 +63,17 @@ local VISIT_POLL = 3.0
 
 -- ============================================================ replication
 
+-- `loaded` says whether the PROFILE is in yet. It rides along because the
+-- client cannot otherwise tell an empty log from a log that has not arrived:
+-- the join sequence pushes an empty snapshot (onPlayerAdded) and then the real
+-- one (loadSlice), and a client that took the first for its baseline announced
+-- every restored quest as freshly accepted.
 local function snapshot(player: Player)
 	local s = state[player]
 	if not s then
-		return { active = {}, completed = {} }
+		return { active = {}, completed = {}, loaded = false }
 	end
-	return { active = s.active, completed = s.completed }
+	return { active = s.active, completed = s.completed, loaded = DataService.isLoaded(player) }
 end
 
 local function push(player: Player)
@@ -151,15 +156,39 @@ end
 
 -- ============================================================ offer / accept / turn-in
 
+-- The level/prereq gate, in ONE place. It used to live inline in offersFor
+-- only, which quietly made it a DISPLAY rule: offersFor decides what the giver
+-- SHOWS, but the accept itself runs through QuestService.accept, which never
+-- looked at requiresLevel or prereq at all - so a hand-rolled
+-- NpcChoice("accept:<id>") on a level-38 quest was granted at level 1. Both
+-- callers read this now, so they cannot drift apart again.
+local function gateOf(player: Player, s, quest): (boolean, boolean)
+	local levelOk = not quest.requiresLevel
+		or (player:GetAttribute(Progression.ATTR.level) or Progression.START_LEVEL) >= quest.requiresLevel
+	local prereqOk = not quest.prereq or s.completed[quest.prereq] ~= nil
+	return levelOk, prereqOk
+end
+
 -- What this NPC has for this player right now, in the giver's listed order.
--- status: "available" | "active" (ready = every objective done) | nil (gated
--- or already completed and not repeatable - not shown at all).
-function QuestService.offersFor(player: Player, npc): { { quest: any, status: string, ready: boolean? } }
+-- status: "available" | "active" (ready = every objective done) | "locked"
+-- (see below) | nil (already completed and not repeatable - not shown).
+--
+-- "locked" is reported for the FIRST gated quest in the giver's list only,
+-- and it carries `reason` ("level" | "prereq") plus, for a prereq gate, the
+-- `prereqQuest` row. It exists so the NPC can SAY why there is nothing new
+-- ("come back at level 8") instead of shrugging. Callers that only branch on
+-- "available"/"active" are unaffected: a locked entry never gets a button,
+-- and the rest of the list is unchanged.
+function QuestService.offersFor(
+	player: Player,
+	npc
+): { { quest: any, status: string, ready: boolean?, reason: string?, prereqQuest: any? } }
 	local out = {}
 	local s = state[player]
 	if not s or not npc.quests then
 		return out
 	end
+	local lockedShown = false
 	for _, questId in npc.quests do
 		local quest = Quests.items[questId]
 		if quest then
@@ -176,15 +205,47 @@ function QuestService.offersFor(player: Player, npc): { { quest: any, status: st
 			if entry then
 				table.insert(out, { quest = quest, status = "active", ready = allObjectivesDone(quest, entry) })
 			elseif not completedAt or repeatableNow then
-				local levelOk = not quest.requiresLevel
-					or (player:GetAttribute(Progression.ATTR.level) or Progression.START_LEVEL)
-						>= quest.requiresLevel
-				local prereqOk = not quest.prereq or s.completed[quest.prereq] ~= nil
+				local levelOk, prereqOk = gateOf(player, s, quest)
 				if levelOk and prereqOk then
 					table.insert(out, { quest = quest, status = "available" })
+				elseif not lockedShown then
+					lockedShown = true
+					table.insert(out, {
+						quest = quest,
+						status = "locked",
+						reason = if not levelOk then "level" else "prereq",
+						prereqQuest = if not levelOk then nil else Quests.items[quest.prereq],
+					})
 				end
 			end
 		end
+	end
+	return out
+end
+
+-- Live progress on one active quest, one row per objective, in objective
+-- order: { objective, count, needed, done }. The dialog's "About: <quest>"
+-- pane is the only caller today; it words `objective` itself (NpcService
+-- owns the player-facing phrasing). Returns nil when the player isn't on
+-- that quest at all.
+function QuestService.progressOf(
+	player: Player,
+	questId: string
+): { { objective: any, count: number, needed: number, done: boolean } }?
+	local s = state[player]
+	local quest = Quests.items[questId]
+	local entry = s and s.active[questId]
+	if not (quest and entry) then
+		return nil
+	end
+	local out = {}
+	for index, objective in quest.objectives do
+		table.insert(out, {
+			objective = objective,
+			count = entry.progress[index] or 0,
+			needed = objective.count or 1,
+			done = objectiveDone(quest, entry, index),
+		})
 	end
 	return out
 end
@@ -207,52 +268,84 @@ function QuestService.accept(player: Player, questId: string): boolean
 			return false
 		end
 	end
+	-- The same gate offersFor shows, ENFORCED. NpcService only checks that the
+	-- quest is on the giver's list, so this is the one thing standing between a
+	-- forged "accept:<id>" and a quest the player has not earned.
+	local levelOk, prereqOk = gateOf(player, s, quest)
+	if not (levelOk and prereqOk) then
+		return false
+	end
 	s.active[questId] = { progress = {} }
 	push(player)
 	return true
 end
 
 -- Turn-in: every objective done, deliver costs spendable - then pay out.
--- Returns ok plus a player-facing refusal.
+-- Returns ok plus, on a refusal, a REASON CODE - never player-facing text:
+-- the giver's own voice lines answer for it (NpcService maps the code), so
+-- two refusals that read identically here can sound different per NPC.
+--   "none"         - not on that quest (or the profile isn't loaded)
+--   "unfinished"   - objectives still outstanding
+--   "missingGoods" - a deliver objective's materials aren't in the pack
 function QuestService.tryTurnIn(player: Player, questId: string): (boolean, string?)
 	local s = state[player]
 	local quest = Quests.items[questId]
 	local entry = s and s.active[questId]
 	if not (quest and entry) or not DataService.isLoaded(player) then
-		return false, "Nothing to turn in."
+		return false, "none"
 	end
 	if not allObjectivesDone(quest, entry) then
-		return false, "That work isn't finished yet."
+		return false, "unfinished"
 	end
+	-- EVERY deliver objective's materials, summed into ONE cost, spent ONCE.
+	-- Spending them per objective meant a quest with two deliver lines could
+	-- take the first bundle and then refuse on the second - the goods gone for
+	-- a turn-in that never happened, and "missingGoods" the only explanation.
+	local cost: { [string]: number } = {}
+	local delivers = false
 	for _, objective in quest.objectives do
 		if objective.type == "deliver" then
-			if not MaterialService.spend(player, objective.materials or {}) then
-				return false, "You don't have the goods on you."
+			delivers = true
+			for matId, amount in objective.materials or {} do
+				cost[matId] = (cost[matId] or 0) + amount
 			end
 		end
 	end
+	if delivers and not MaterialService.spend(player, cost) then
+		return false, "missingGoods"
+	end
 
+	-- THE STATE FLIP LANDS FIRST and the payout is pcall'd behind it. An error
+	-- part-way through granting used to leave the quest active AND still ready,
+	-- so the next click paid the whole bundle again - an unbounded printer.
+	-- Losing the tail of one reward is a support ticket; duplicating it is an
+	-- economy. The turn-in itself has already succeeded by here, so `true` is
+	-- the honest answer either way.
 	local rewards = quest.rewards or {}
-	if rewards.coins then
-		progression().addCoins(player, rewards.coins)
-	end
-	if rewards.xp then
-		progression().addXp(player, rewards.xp)
-	end
-	for matId, amount in rewards.materials or {} do
-		MaterialService.grant(player, matId, amount)
-	end
-	for baitId, amount in rewards.bait or {} do
-		BaitService.grant(player, baitId, amount)
-	end
-	-- Finished items (armor pieces, rods, weapons, trinkets) - granted by
-	-- id; already-owned ids are InventoryService no-ops.
-	for _, itemId in rewards.items or {} do
-		InventoryService.grantItem(player, itemId)
-	end
-
 	s.active[questId] = nil
 	s.completed[questId] = os.time()
+	local paid, err = pcall(function()
+		if rewards.coins then
+			progression().addCoins(player, rewards.coins)
+		end
+		if rewards.xp then
+			progression().addXp(player, rewards.xp)
+		end
+		for matId, amount in rewards.materials or {} do
+			MaterialService.grant(player, matId, amount)
+		end
+		for baitId, amount in rewards.bait or {} do
+			BaitService.grant(player, baitId, amount)
+		end
+		-- Finished items (armor pieces, rods, weapons, trinkets) - granted by
+		-- id; already-owned ids are InventoryService no-ops.
+		for _, itemId in rewards.items or {} do
+			InventoryService.grantItem(player, itemId)
+		end
+	end)
+	if not paid then
+		warn(string.format("[QuestService] %s: reward payout failed after turn-in (%s)", questId, tostring(err)))
+	end
 	push(player)
 	return true
 end

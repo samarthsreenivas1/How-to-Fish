@@ -30,8 +30,10 @@ local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
+local BossArenas = require(Shared.Config.BossArenas)
 local Islands = require(Shared.Config.Islands)
 local Ocean = require(Shared.Config.Ocean)
+local Remotes = require(Shared.Net.Remotes)
 local World = require(Shared.Config.World)
 
 local OceanController = {}
@@ -137,6 +139,32 @@ local function probeTint(camPos: Vector3)
 		t = math.clamp(raw, 0, 1)
 		t = t * t * (3 - 2 * t)
 	end
+	-- THE LAIRS. Nothing on the map claims a position 24,000 studs out, so
+	-- the island leg above leaves `t == 0` at every boss arena and the sea
+	-- there was the open-ocean base blue - under the owning island's own AIR,
+	-- which has travelled out here since the arenas were built
+	-- (WeatherController). The user's rule closes that gap: the lair's water
+	-- is its island's water (2026-09-12). Same band math, against the arena's
+	-- own mood radius, off the SAME probe the air uses
+	-- (BossArenas.ownerIslandAt - one table, two consumers, so the two can
+	-- never drift apart).
+	--
+	-- `ignoreHeightGate = true`: the summit's `minY = 100` exists so open
+	-- ocean does not wear a mountaintop's sky, but the sea 292 studs BELOW the
+	-- Ashfall Throne is exactly the water that should read as the volcano's.
+	-- The two sealed rooms resolve to islands that do not exist
+	-- (`maelstrom_gullet`, `pyrelisk_heart`) - no `Islands.items` entry, so
+	-- the base dress stands, which is right: neither room can see the sea.
+	if t <= 0 then
+		local ownerId, dist, radius = BossArenas.ownerIslandAt(camPos, true, TINT.FADE_FAR)
+		local owner = if ownerId then Islands.items[ownerId] else nil
+		if owner and owner.water and dist and radius then
+			palette = owner.water
+			local raw = ((radius + TINT.FADE_FAR) - dist) / (TINT.FADE_FAR - TINT.FADE_NEAR)
+			t = math.clamp(raw, 0, 1)
+			t = t * t * (3 - 2 * t)
+		end
+	end
 	if palette and t > 0 then
 		target.color = Ocean.COLOR:Lerp(palette.color, t)
 		target.caustics = BASE_CAUSTICS:Lerp(palette.caustics or BASE_CAUSTICS, t)
@@ -163,6 +191,36 @@ local function channelsSettled(): boolean
 		and near3(applied.seabed, target.seabed)
 		and math.abs(applied.causticsT - target.causticsT) < TINT.EPSILON
 		and math.abs(applied.reflectance - target.reflectance) < TINT.EPSILON
+end
+
+-- THE LAIR'S SEA, THE INSTANT THE PARTY LANDS IN IT. BossService fires the
+-- "arrival" WorldEvent at everyone it teleports and WeatherController snaps
+-- the AIR on it with tween 0; without the same snap here the first ~2s of the
+-- Gloomtrench fight is base-blue sea under pitch-black air, because the tint
+-- rolls on TINT.TAU (1.5s) while the air has already arrived.
+--
+-- The server NAMES the arena rather than letting us re-probe, for the reason
+-- WeatherController documents: the character's new position may not have
+-- replicated to its own client yet, so a probe on the camera would snap us to
+-- the sea we just left. We probe the ARENA CENTRE instead - which is what the
+-- camera is about to be looking from - and then hold the next interval probe
+-- off, so a stale camera cannot fade it straight back out.
+function OceanController.snapToArenaTint(islandId: string?)
+	local arena = if islandId then BossArenas.items[islandId] else nil
+	if not arena then
+		return
+	end
+	probeTint(arena.center)
+	applied.color = target.color
+	applied.caustics = target.caustics
+	applied.causticsT = target.causticsT
+	applied.reflectance = target.reflectance
+	applied.seabed = target.seabed
+	-- Every near tile still has last frame's colour painted on it, so the
+	-- write pass has to run once more before it may fall quiet.
+	settled = false
+	firstProbe = false
+	lastProbe = elapsed
 end
 
 -- ---------------------------------------------------------------- tide
@@ -422,6 +480,15 @@ function OceanController.init()
 					FOAM_MATCH
 				)
 			)
+		end
+	end)
+
+	-- The arena arrival snap (see snapToArenaTint). Same remote, same event
+	-- and the same `kind` WeatherController listens for: the air and the water
+	-- of a lair land together or the arrival reads as a glitch.
+	Remotes.WorldEvent.OnClientEvent:Connect(function(event)
+		if typeof(event) == "table" and event.kind == "arrival" and event.active then
+			OceanController.snapToArenaTint(event.islandId)
 		end
 	end)
 

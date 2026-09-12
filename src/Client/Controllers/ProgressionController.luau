@@ -17,7 +17,13 @@
 -- bar, text-stroked so it reads over bright water, sitting quietly in the
 -- corner (user: "cleaner and sleeker").
 --
--- No sound on purpose: the one fanfare tried earlier was cut by the user.
+-- Sound: the pops are the game's main "you got something" feedback, so each
+-- one carries a cue from the sfx_progression pack - coinGain / xpGain for a
+-- kill's payout, materialGain / baitGain once per batch (not once per line:
+-- a five-material cast would be a machine-gun otherwise), and a generic
+-- `notify` for any pop pushed through the public .pop() by another
+-- controller. The earlier fanfare the user cut was a *level* fanfare on
+-- every gain; levelUp keeps that fanfare and nothing else does.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -30,6 +36,7 @@ local Progression = require(Shared.Modules.Progression)
 local Remotes = require(Shared.Net.Remotes)
 
 local Theme = require(script.Parent.Parent.UI.Theme)
+local Sfx = require(script.Parent.Parent.Modules.Sfx)
 
 local player = Players.LocalPlayer
 
@@ -235,6 +242,8 @@ end
 -- ---------------------------------------------------------------- refresh
 
 local function flashLevelUp(level: number)
+	Sfx.play("levelUp")
+
 	-- Bar pops white then settles back to the accent; banner top centre.
 	xpFill.BackgroundColor3 = Theme.Color.text
 	TweenService:Create(xpFill, TweenInfo.new(LEVEL_FLASH_TIME), { BackgroundColor3 = Theme.Color.accent }):Play()
@@ -285,7 +294,16 @@ end
 -- One "+N thing" line rising up out of the stack in `color`. Each call takes
 -- the next slot above any pops still in flight, so a burst of gains stacks
 -- into a column instead of piling onto one line.
-local function pushPop(text: string, color: Color3)
+--
+-- `cue` names the sfx to play with the line: omitted it falls back to the
+-- generic `notify`, and `false` means deliberately silent - what the second
+-- and later lines of one batch pass so a multi-material haul makes one
+-- sound, not five.
+local function pushPop(text: string, color: Color3, cue: (string | boolean)?)
+	if cue ~= false then
+		Sfx.play(if type(cue) == "string" then cue else "notify")
+	end
+
 	local startY = -(stack.AbsoluteSize.Y + 6 + activePops * POP_STAGGER)
 	activePops += 1
 
@@ -326,10 +344,10 @@ local function showReward(reward)
 		return
 	end
 	if reward.coins and reward.coins > 0 then
-		pushPop(string.format("+%s coins", formatNumber(reward.coins)), COIN_COLOR)
+		pushPop(string.format("+%s coins", formatNumber(reward.coins)), COIN_COLOR, "coinGain")
 	end
 	if reward.xp and reward.xp > 0 then
-		pushPop(string.format("+%s XP", formatNumber(reward.xp)), XP_COLOR)
+		pushPop(string.format("+%s XP", formatNumber(reward.xp)), XP_COLOR, "xpGain")
 	end
 end
 
@@ -340,11 +358,17 @@ local function showMaterials(gained)
 	if type(gained) ~= "table" then
 		return
 	end
+	local sounded = false
 	for _, matId in Materials.order do
 		local amount = gained[matId]
 		if type(amount) == "number" and amount > 0 then
 			local mat = Materials.items[matId]
-			pushPop(string.format("+%s %s", formatNumber(amount), mat.name), mat.color)
+			pushPop(
+				string.format("+%s %s", formatNumber(amount), mat.name),
+				mat.color,
+				if sounded then false else "materialGain"
+			)
+			sounded = true
 		end
 	end
 end
@@ -355,19 +379,28 @@ local function showBait(gained)
 	if type(gained) ~= "table" then
 		return
 	end
+	local sounded = false
 	for _, baitId in Bait.order do
 		local amount = gained[baitId]
 		if type(amount) == "number" and amount > 0 then
 			local bait = Bait.items[baitId]
-			pushPop(string.format("+%s %s", formatNumber(amount), bait.name), bait.color)
+			pushPop(
+				string.format("+%s %s", formatNumber(amount), bait.name),
+				bait.color,
+				if sounded then false else "baitGain"
+			)
+			sounded = true
 		end
 	end
 end
 
 -- One line in the same bottom-right pop stack, for other controllers' gains
 -- and losses (a pickpocketed "-N coins" from CreatureEventController).
-function ProgressionController.pop(text: string, color: Color3)
-	pushPop(text, color)
+-- `cue` is optional and passes straight through: callers that have a better
+-- sound than the generic `notify` (CollectionsController's newSpecies) name
+-- it, everyone else gets the default.
+function ProgressionController.pop(text: string, color: Color3, cue: (string | boolean)?)
+	pushPop(text, color, cue)
 end
 
 -- ---------------------------------------------------------------- lifecycle

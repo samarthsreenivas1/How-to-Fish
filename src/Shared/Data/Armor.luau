@@ -14,8 +14,24 @@
 --
 -- Worn state is three server-set Player attributes (Armor.ATTRIBUTES),
 -- published by InventoryService; every consumer and the worn-model welds
--- (ArmorService lane) read those. Mesh naming for the ArmorPack:
--- <SetName>_Helm / _Chest / _Legs, where SetName = sets[id].modelPrefix.
+-- (ArmorService lane) read those.
+--
+-- MESH NAMING for the ArmorPack. Two shapes, both worn (ArmorModel prefers
+-- the first and falls back to the second per slot, so sets can be rebuilt
+-- one at a time):
+--
+--   <Prefix>_<Slot>_<Target>_<Role>[<n>]   the multi-part piece. <Slot> is
+--       Helm|Chest|Legs, <Target> the exact R15 part it welds to, <Role> one
+--       of Under|Plate|Trim|Accent|Glow - which supplies its colour AND its
+--       Enum.Material from Shared.Config.ArmorPalette. A slot dresses a whole
+--       REGION this way (a chest covers torso, arms and hands) with no change
+--       to the three slots or the thirty rows below.
+--   <Prefix>_<Slot>                        the legacy single part, painted
+--       the row's one `color`.
+--
+-- <Prefix> = sets[id].modelPrefix in both. `color` below is the crafting and
+-- inventory tile swatch as well as the legacy mesh tint, so it stays one
+-- colour per row; a set's multi-colour palette lives in ArmorPalette.
 
 local Armor = {}
 
@@ -147,7 +163,7 @@ Armor.items.chitin_helm = {
 	set = "chitin",
 	slot = "helmet",
 	rarity = "Uncommon",
-	color = Color3.fromRGB(214, 148, 110),
+	color = Color3.fromRGB(126, 150, 150),
 	defense = 2,
 	recipe = { requiresLevel = 5, coins = 120, materials = { barnacle_chitin = 4, fish_scale = 3 } },
 }
@@ -158,7 +174,7 @@ Armor.items.chitin_chest = {
 	set = "chitin",
 	slot = "chest",
 	rarity = "Uncommon",
-	color = Color3.fromRGB(214, 148, 110),
+	color = Color3.fromRGB(126, 150, 150),
 	defense = 4,
 	health = 4,
 	recipe = { requiresLevel = 7, coins = 200, materials = { barnacle_chitin = 6, kelp_fiber = 4 } },
@@ -170,7 +186,7 @@ Armor.items.chitin_legs = {
 	set = "chitin",
 	slot = "legs",
 	rarity = "Uncommon",
-	color = Color3.fromRGB(214, 148, 110),
+	color = Color3.fromRGB(126, 150, 150),
 	defense = 3,
 	recipe = { requiresLevel = 6, coins = 160, materials = { barnacle_chitin = 5, driftwood = 3 } },
 }
@@ -194,7 +210,7 @@ Armor.items.boneplate_helm = {
 	set = "boneplate",
 	slot = "helmet",
 	rarity = "Rare",
-	color = Color3.fromRGB(222, 214, 192),
+	color = Color3.fromRGB(120, 116, 96),
 	defense = 4,
 	health = 3,
 	recipe = { requiresLevel = 14, coins = 600, materials = { cursed_bone = 5, nacre = 2 } },
@@ -206,7 +222,7 @@ Armor.items.boneplate_chest = {
 	set = "boneplate",
 	slot = "chest",
 	rarity = "Rare",
-	color = Color3.fromRGB(222, 214, 192),
+	color = Color3.fromRGB(120, 116, 96),
 	defense = 7,
 	health = 6,
 	recipe = { requiresLevel = 18, coins = 950, materials = { cursed_bone = 8, gator_scute = 3 } },
@@ -218,7 +234,7 @@ Armor.items.boneplate_legs = {
 	set = "boneplate",
 	slot = "legs",
 	rarity = "Rare",
-	color = Color3.fromRGB(222, 214, 192),
+	color = Color3.fromRGB(120, 116, 96),
 	defense = 5,
 	health = 3,
 	recipe = { requiresLevel = 16, coins = 750, materials = { cursed_bone = 6, bog_iron = 3 } },
@@ -459,7 +475,7 @@ Armor.items.tideward_helm = {
 	set = "tideward",
 	slot = "helmet",
 	rarity = "Uncommon",
-	color = Color3.fromRGB(150, 176, 194),
+	color = Color3.fromRGB(150, 186, 210),
 	defense = 3,
 	-- No recipe: Old Maren hands it over for making the first crossing (the
 	-- Wider Water quest), and her stall sells it to anyone who sailed past
@@ -472,7 +488,7 @@ Armor.items.tideward_chest = {
 	set = "tideward",
 	slot = "chest",
 	rarity = "Uncommon",
-	color = Color3.fromRGB(150, 176, 194),
+	color = Color3.fromRGB(150, 186, 210),
 	defense = 5,
 	health = 4,
 	recipe = { requiresLevel = 11, coins = 380, materials = { fish_scale = 8, barnacle_chitin = 4, pearl = 1 } },
@@ -484,7 +500,7 @@ Armor.items.tideward_legs = {
 	set = "tideward",
 	slot = "legs",
 	rarity = "Uncommon",
-	color = Color3.fromRGB(150, 176, 194),
+	color = Color3.fromRGB(150, 186, 210),
 	defense = 4,
 	health = 2,
 	recipe = { requiresLevel = 10, coins = 300, materials = { fish_scale = 6, kelp_fiber = 5 } },
@@ -512,7 +528,7 @@ Armor.items.corsairs_rest_helm = {
 	set = "corsairs_rest",
 	slot = "helmet",
 	rarity = "Epic",
-	color = Color3.fromRGB(96, 118, 112),
+	color = Color3.fromRGB(55, 46, 37),
 	defense = 8,
 	health = 5,
 	-- No recipe: struck from Hollow's ledger (the Ledger of Teeth reward).
@@ -524,7 +540,7 @@ Armor.items.corsairs_rest_chest = {
 	set = "corsairs_rest",
 	slot = "chest",
 	rarity = "Epic",
-	color = Color3.fromRGB(96, 118, 112),
+	color = Color3.fromRGB(55, 46, 37),
 	defense = 14,
 	health = 10,
 	-- No recipe: sold from Hollow's locker (Shops.hollows_locker).
@@ -536,7 +552,7 @@ Armor.items.corsairs_rest_legs = {
 	set = "corsairs_rest",
 	slot = "legs",
 	rarity = "Epic",
-	color = Color3.fromRGB(96, 118, 112),
+	color = Color3.fromRGB(55, 46, 37),
 	defense = 10,
 	health = 6,
 	-- No recipe: sold from Hollow's locker (Shops.hollows_locker).
@@ -562,7 +578,7 @@ Armor.items.stormcaller_helm = {
 	set = "stormcaller",
 	slot = "helmet",
 	rarity = "Legendary",
-	color = Color3.fromRGB(120, 160, 200),
+	color = Color3.fromRGB(140, 190, 230),
 	defense = 7,
 	health = 4,
 	recipe = { requiresLevel = 43, coins = 9000, materials = { storm_glass = 6, thunder_pearl = 2 } },
@@ -574,7 +590,7 @@ Armor.items.stormcaller_chest = {
 	set = "stormcaller",
 	slot = "chest",
 	rarity = "Legendary",
-	color = Color3.fromRGB(120, 160, 200),
+	color = Color3.fromRGB(140, 190, 230),
 	defense = 12,
 	health = 8,
 	recipe = {
@@ -590,7 +606,7 @@ Armor.items.stormcaller_legs = {
 	set = "stormcaller",
 	slot = "legs",
 	rarity = "Legendary",
-	color = Color3.fromRGB(120, 160, 200),
+	color = Color3.fromRGB(140, 190, 230),
 	defense = 9,
 	health = 5,
 	recipe = {

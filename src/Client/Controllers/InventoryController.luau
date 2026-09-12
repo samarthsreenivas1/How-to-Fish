@@ -38,6 +38,7 @@ local Theme = require(script.Parent.Parent.UI.Theme)
 local Kit = require(script.Parent.Parent.UI.Kit)
 local Describe = require(script.Parent.Parent.UI.Describe)
 local ItemDetail = require(script.Parent.Parent.UI.ItemDetail)
+local Sfx = require(script.Parent.Parent.Modules.Sfx)
 local CameraController = require(script.Parent.CameraController)
 
 local player = Players.LocalPlayer
@@ -262,6 +263,11 @@ local function render()
 				dim = if count == 0 then MATERIAL_DIM else 0,
 				equipped = isEquipped(kind, id),
 				onSelect = function()
+					-- The cue hangs off the CARD, not off setSelected(): render()
+					-- re-selects on every InventoryUpdated / tab switch to keep the
+					-- detail pane populated, and hooking the setter would fire a
+					-- click for selections the player never made.
+					Sfx.play("uiSelect")
 					setSelected({ kind = kind, id = id })
 				end,
 			})
@@ -287,6 +293,11 @@ local function render()
 end
 
 local function setTab(kind: string)
+	-- Only a real move between tabs is a tab sound; clicking the tab you are
+	-- already on re-renders but must stay silent.
+	if kind ~= activeKind then
+		Sfx.play("uiTab")
+	end
 	activeKind = kind
 	tabs.set(kind)
 	render()
@@ -298,8 +309,15 @@ function InventoryController.setOpen(open: boolean)
 	if not modal then
 		return
 	end
+	-- setOpen(x) is called freely with the state it already has (the menu
+	-- buttons close every other menu before opening one, hotkeys re-assert
+	-- it), so the cue hangs off the CHANGE, not off the call.
+	local changed = modal.backdrop.Visible ~= open
 	modal.backdrop.Visible = open
 	CameraController.setCursorFree(open)
+	if changed then
+		Sfx.play(if open then "uiOpen" else "uiClose")
+	end
 	if open then
 		render()
 	end

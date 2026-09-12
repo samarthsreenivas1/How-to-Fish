@@ -57,11 +57,34 @@
 --   AimX           aimX           arena-LOCAL x of the aim point, 0 if none
 --   AimZ           aimZ           arena-LOCAL z of the aim point, 0 if none
 --
+-- ...AND ONE ELEVENTH THAT IS NOT ON THE WIRE AND NEVER WILL BE:
+--
+--   Entry          entry          nil = the fight pose; 0..1 = how far along
+--                                 its ARRIVAL this animal is (cutscene only)
+--
+-- `Entry` is written by a client cutscene onto a client-only stand-in and by
+-- NOTHING ELSE. THE SERVER MUST NEVER SEE `state.entry`: it builds its pose
+-- with `newState`, which has no such field, so every server frame takes the
+-- `entry == nil` path and every hit twin below is computed from the ten
+-- attributes exactly as before. The client collapses the attribute back to
+-- nil at >= 0.995 (BrinejawBodyController.drawBody), so the handoff to the
+-- real rig is enforced rather than trusted. See "the ENTRY channel" below for
+-- the parametrisation and why the track is walked tail-end first.
+--
 -- Aim is arena-local (relative to `state.center`, the tower's FOOT), because
 -- `center` is already replicated as PoseCenter and a world-space aim would
 -- be the same number written twice.
 --
--- TWO FIELDS ARE NOT ATTRIBUTES, ON PURPOSE:
+-- THREE FIELDS ARE NOT ATTRIBUTES, ON PURPOSE:
+--
+--   state.sweepBranch  which way round the tail is wound during a sweep,
+--                      stepped by `stepSweepBranch` and derived from
+--                      SweepAngle and Unwind, both of which already cross the
+--                      wire. It is a DRAWING value and nothing else - no hit
+--                      test reads it - and a caller that never steps it gets
+--                      the old per-frame rounding. See stepSweepBranch for
+--                      the 78.20-stud frame that made it necessary.
+--
 --
 --   state.time       each side's own clock; only ambient sway reads it, and
 --                    sway is deliberately not authoritative.
@@ -160,6 +183,51 @@
 --               U 0..1 maps reach SWEEP_REACH -> SWEEP_INNER + SPIRAL_CLOSE.
 --               Twins: sweepReach, sweepHits/spiralHits (the same function).
 --
+--   "coilslam"  a mid-body loop rises off the tower and CRASHES along the
+--               line the aim points down, then lies there as a melee window.
+--               Aim = the BEARING only (atan2 of AimZ/AimX); the magnitude is
+--               unused, because the bar's length is SLAM_INNER..SLAM_OUTER
+--               and not the aim's own radius. Freeze the aim at U = 0.
+--               U 0..0.40 rise: the loop peels off the drum, GROWS out along
+--                          the bearing and lifts to SLAM_LIFT. The client's
+--                          line marker is live for all of it.
+--               U 0.40..0.50 crash. THE BLOW LANDS AT 0.50 (SLAM_IMPACT_U),
+--                          so the countdown ends there.
+--               U 0.50..0.85 the fallen loop LIES ON THE SAND, underside
+--                          0.13..0.68 studs proud of the beach the whole way
+--                          out - a MELEE WINDOW on the body. The server makes
+--                          the creature damageable at full rate here and
+--                          parks the hittable proxy on `coilslamPoint`.
+--               U 0.85..1  the loop is dragged back to the tower and the pose
+--                          hands the body back to the coils. A DECLARED FAST
+--                          span - 6.46 studs a step at 240 - and it cannot be
+--                          made slower without lifting the bar off the sand
+--                          while the window is still open.
+--               THE LETHAL SHAPE IS A RAY, NOT A LINE, and this is deliberate
+--               and must not be "fixed" for symmetry: the drawn loop is a
+--               narrow V that leaves the tower on the aim bearing and comes
+--               back, so there is NO BODY on the far side of the tower.
+--               `coilslamHits` therefore tests distance along the aim RAY,
+--               r 14..62 (SLAM_INNER..SLAM_OUTER), within COILSLAM_BAND (5.0)
+--               of it. Widening it to the full line through the tower would
+--               damage ground this file has not drawn anything on.
+--               Twins: coilslamHits, coilslamPoint.
+--
+--   "bite"      the reactive close-range snap. NOT in any phase list: it
+--               fires on its own cooldown when somebody stands inside ~14
+--               studs of the tower. Aim = where the jaws shut, on the sand,
+--               and `aimCyl` clamps it to AIM_MIN as it does for the lunge.
+--               U 0..0.30  rear: the head cocks UP over the aim (it is
+--                          already on top of you - it does not draw back).
+--               U 0.30..0.45 snap. THE JAWS SHUT AT 0.45 (BITE_IMPACT_U),
+--                          BITE_RADIUS (6.0) around the aim point.
+--               U 0.45..0.75 the head HANGS LOW, jaw 0.91 studs off the sand:
+--                          a mini punish window. Hold U at 0.75 to keep it
+--                          open; the height comes from `headSitY`, so the jaw
+--                          is on the beach and not in it.
+--               U 0.75..1  recover back up the tower.
+--               Twins: biteHits, biteHeadPoint.
+--
 --   "collapse"  THE DEATH FALL, and the closed loop for `state.fall`, which
 --               used to be read by slumpPoint and written by nobody. `fall`
 --               is now DERIVED: kind "collapse" means fall = U. Nothing on
@@ -177,12 +245,20 @@
 -- bearing. Build probes with `BrinejawPath.sweepProbe(state, angle)`, which
 -- carries every field the twins read, and never by table literal.
 --
--- AND THE OTHER HALF OF THE FIGHT. Five of Brinejaw's attacks are not poses -
--- a wave crossing the arena, a seeded bombardment, the bell's rings, the
--- flood, the polyps - so they ride `fireEvent` payloads instead of the ten
--- attributes. Their geometry still lives in this file, under "THE EVENT
--- SHAPES" at the bottom: `lcg`, `waveFront`, `waveSheltered`, `rainChunks`,
--- `ringRadius`, `surgeRain`. Same law, different channel.
+-- AND THE OTHER HALF OF THE FIGHT. Several of Brinejaw's attacks are not
+-- poses - a wave crossing the arena, a seeded bombardment, the bell's rings,
+-- the flood, the polyps, the spine volley - so they ride `fireEvent` payloads
+-- instead of the ten attributes. Their geometry still lives in this file,
+-- under "THE EVENT SHAPES" at the bottom: `lcg`, `waveRing`, `waveSafe`,
+-- `spineFront`, `spineLane`, `spineHits`, `rainChunks`, `ringRadius`,
+-- `surgeRain`. Same law, different channel.
+--
+-- THE RIPTIDE IS A RING NOW. `waveRing` + `waveSafe` replace the directional
+-- `waveFront` + `waveSheltered`: the wave leaves the tower as an expanding
+-- ring with two GAP ARCS the player runs to, and safety is a BEARING question
+-- with the old lee kept as the secondary answer. The two old functions are
+-- still here and still work - the client is swapped over in the next pass and
+-- they go with it. Do not add a third wave shape in the meantime.
 
 local BrinejawPath = {}
 
@@ -248,7 +324,14 @@ BrinejawPath.REST = {
 	HEAD_OUT = 8.0, -- how far past the gallery the neck leans out
 	BEARING = math.rad(342.0),
 	TAIL_OUT = 31.0,
-	TAIL_TURN = 0.85,
+	-- 0.85 -> 0.55, and only because the slack is now a real spiral. The old
+	-- world-space Hermite reached the sand by CUTTING ACROSS (see the slack
+	-- section below), so 0.85 of a turn cost 49 studs of body. Wound honestly
+	-- at a growing radius the same 0.85 costs 111 studs - a third of the
+	-- serpent sprawled over the beach, against 18% before. 0.55 puts the
+	-- slack at 70 studs / 24% of a 288-stud body, which is the silhouette
+	-- that shipped (49 / 18% of 268) with the wander taken out of it.
+	TAIL_TURN = 0.55,
 	-- THE KEEPER'S BELL, arena-local, and it HANGS OFF THE GALLERY. It used to
 	-- lie half-buried in the sand at Roblox (26.0, 0.6, 38.0) - radius 46, out
 	-- past the mid-beach - and Bell Toll is a head strike that rings the tower,
@@ -305,6 +388,50 @@ BrinejawPath.SWEEP_INNER = 13.0
 -- warning moves with it.
 BrinejawPath.SWEEP_LOW = 1.6
 BrinejawPath.SWEEP_HIGH = 8.5
+
+-- ------------------------------------------------------- the drawn skull
+--
+-- THE HEAD IS NOT AT `pointAt(0)` AND THE POSE MATH HAS TO KNOW THAT. The
+-- chain's t=0 is the NECK JOINT; the client hangs the skull off a frame
+-- HEAD_LEAD studs further along the tangent (the mesh is centred on its neck
+-- joint and reaches forward from there, assets/boss_gen.py's HANDOFF), and
+-- the mesh itself hangs HEAD_UNDER studs below that frame's axis. Both live
+-- HERE rather than in the controller, because a pose that wants to put the
+-- jaw on the sand is doing arithmetic with them - and a drawing constant the
+-- pose math cannot see is the "one value, two homes" defect this file exists
+-- to prevent. BrinejawBodyController reads these two and keeps no copy.
+--
+-- MEASURED, from boss_gen's BJ_JAW: the jaw's rings run to cz - hh =
+-- -1.8 - 1.7 = -3.5 in mesh studs, so at HEAD_SCALE the solid underside of
+-- the skull sits 3.5 * 1.35 = 4.73 studs below the frame. (The two chin
+-- barbels are thinner and longer - 5.4 mesh studs, 7.3 scaled - and are
+-- DELIBERATELY allowed to trail in the sand. They are 0.3-stud spikes; a sit
+-- height that floated them would stand the whole skull 2.6 studs off the
+-- beach and put the jaw out of melee reach.)
+BrinejawPath.HEAD_LEAD = 8.9
+BrinejawPath.HEAD_SCALE = 1.35
+BrinejawPath.HEAD_UNDER = 3.5
+-- Daylight under the jaw when the head is resting on the sand. 0.95, not the
+-- 0.3 the eye needs, because the ambient bob is added AFTER every pose: at
+-- full slump the head's own bob is damped to 1.25 * 0.15 = 0.19 and the
+-- body-wide breath is 0.45 at the snout, so the worst downswing is 0.64 and
+-- the jaw still clears by 0.31 at the bottom of every breath.
+BrinejawPath.HEAD_CLEAR = 0.95
+
+-- WHERE A RESTING HEAD'S FRAME MUST SIT, at radius `r` from the tower: high
+-- enough that the skull's lowest solid point rests ON the beach with
+-- HEAD_CLEAR of daylight, and no higher. Every pose that lays the head down
+-- calls this - the slump, the bite's low hang - so "on the sand" means one
+-- number in one place.
+--
+-- It is only the truth if the frame is LEVEL there, which is why every such
+-- pose also runs flat for its first few studs (see `slumpPoint`): the client
+-- places the skull along the TANGENT, so a curve that dives at t=0 drives the
+-- skull into the beach however high this puts the joint. Measured on the
+-- pose that shipped: the stagger's skull sat 10.11 studs UNDER the sand.
+function BrinejawPath.headSitY(r: number): number
+	return BrinejawPath.sandY(r) + BrinejawPath.HEAD_UNDER * BrinejawPath.HEAD_SCALE + BrinejawPath.HEAD_CLEAR
+end
 
 -- How far off the coil's bearing the head can swing to watch someone. A
 -- cone, not free rotation: the neck is anchored to the top coil.
@@ -399,13 +526,35 @@ end
 --   "undertow" replace the middle third with a buried run
 --   "sweep"    no body pose of its own; it re-shapes the sweep arm
 --   "fall"     no body pose of its own; it drives `fall` for slumpPoint
+--   "coilslam" replace a mid-body span with a loop that rises and crashes
+--
+-- `level` is the fraction of a NECK span that runs FLAT out of the head
+-- before the arc starts climbing to the coil. It is only meaningful for a
+-- kind that PLANTS the skull, and it exists because the client draws the head
+-- HEAD_LEAD studs along the tangent: a neck that starts climbing at k = 0
+-- takes the skull down with it (the shipped lunge planted its jaw 4.5 studs
+-- inside the beach). `belltoll` strikes upward and has none.
 BrinejawPath.ATTACK = {
-	lunge = { mode = "neck", span = 0.26, entry = 0.10, exit = 0.28, arch = 5.0 },
+	lunge = { mode = "neck", span = 0.26, entry = 0.10, exit = 0.28, arch = 5.0, level = 0.22 },
 	belltoll = { mode = "neck", span = 0.24, entry = 0.10, exit = 0.14, arch = 7.0 },
 	rear = { mode = "rear", span = 0.50, entry = 0.16, exit = 0.16 },
 	undertow = { mode = "undertow", entry = 0.30, exit = 0.30 },
 	spiral = { mode = "sweep" },
 	collapse = { mode = "fall" },
+	-- The two new kinds. Their exits are sized by the same audit as every
+	-- other row - the shortest fade that keeps the worst single-step body jump
+	-- under 1.5 studs at 240 steps of U - and the numbers are in the header.
+	-- ENTRY 0.35 IS SIZED, NOT PICKED: the loop has to unwind off the drum and
+	-- reach the reef, which is the undertow's problem exactly, and the
+	-- undertow's answer (0.30) is the neighbourhood. At 0.10 the entry moved
+	-- 6.31 studs in one step of U at 240 steps; at 0.35 it moves 2.89. The
+	-- EXIT is pinned at 0.15 by the contract - the fallen loop is a melee
+	-- window until U 0.85 and the recover is what is left - so the recover is
+	-- a DECLARED FAST span at 6.46 studs a step, in the same class as the
+	-- undertow's 4.10 dive. Shortening it further would mean lifting the bar
+	-- off the sand while the window is still open, which is worse.
+	coilslam = { mode = "coilslam", entry = 0.35, exit = 0.15 },
+	bite = { mode = "neck", span = 0.20, entry = 0.10, exit = 0.25, arch = 3.0, level = 0.22 },
 }
 
 -- Where the aim point may be. The head cannot reach the tower's own foot and
@@ -419,9 +568,16 @@ BrinejawPath.LUNGE_COCK_U = 0.35 -- rear/aim ends, the strike begins
 BrinejawPath.LUNGE_IMPACT_U = 0.50 -- the skull lands HERE, not at windup's end
 BrinejawPath.LUNGE_COCK_R = 16.0 -- how far out it draws the head back to
 BrinejawPath.LUNGE_RISE = 12.0 -- how far above the rest head it cocks
-BrinejawPath.LUNGE_SIT = 2.4 -- skull centre above the sand once planted:
--- low enough that an R15 root at ~3.0 is level with it, which is the whole
--- point of the punish window. Raise this and melee starts whiffing upward.
+-- LUNGE_SIT IS GONE, and its 2.4 with it. It was the skull CENTRE's height
+-- above the sand, picked so an R15 root at ~3.0 was level with it - but the
+-- centre it moved was the NECK JOINT's, and the client hangs the skull 8.9
+-- studs further along the tangent with the mesh's own 4.73 below that. The
+-- planted head therefore sat at Y = 0.37 against a beach at 1.60: the punish
+-- window's jaw was 4.5 studs inside the sand. The plant now lands on
+-- `headSitY(aimR)`, which is derived from the mesh, and the neck's `level`
+-- run keeps the lead from diving into the beach on the way. The window's
+-- meaning survives intact - the JAW is what melee swings at and it is now the
+-- thing at root height.
 
 -- THE BLOW'S FOOTPRINT, and the bulge's. These are radii the SERVER passes to
 -- `lungeHits` / `undertowHits` and the CLIENT draws its countdown ring and its
@@ -429,8 +585,8 @@ BrinejawPath.LUNGE_SIT = 2.4 -- skull centre above the sand once planted:
 -- this file does: a book row carrying its own radius would put the drawn
 -- circle and the lethal one in two files, and the drawn one is a promise.
 -- Pass these to the hit twins; do not pass a row's own number.
--- 9.0 is a little over the planted skull's own width (LUNGE_SIT sits it 2.4
--- studs up and the head mesh is ~15 long at HEAD_SCALE 1.35), so the disc
+-- 9.0 is a little over the planted skull's own width (the head mesh is ~15
+-- long at HEAD_SCALE 1.35 and `headSitY` rests it on the beach), so the disc
 -- reads as "where the head is" rather than as an invisible splash; 7.5 is the
 -- bulge's crest, whose gaussian (UNDER_SIGMA 6.0) is still 2.6 studs proud at
 -- 6 studs off centre and buried by 9.
@@ -483,6 +639,56 @@ BrinejawPath.UNDER_HUMP = 7.1 -- so the crest sits 2.6 PROUD of the sand
 BrinejawPath.UNDER_SIGMA = 6.0 -- the hump's width; wider reads as a swell
 
 BrinejawPath.SPIRAL_CLOSE = 8.0 -- the arm's final reach is SWEEP_INNER + this
+
+-- ---------------------------------------------------------------- the slam
+--
+-- THE COIL SLAM's numbers. The loop is the body between SLAM_T0 and SLAM_T1 -
+-- the span just behind the neck, so the head is still free to watch the arena
+-- while its own middle is lying on the beach, and so the span the `undertow`
+-- owns (0.34..0.67) is not the one this kind reaches for. Overlapping spans
+-- would be harmless (only one kind is ever live) but they would make two
+-- attacks look like the same attack.
+BrinejawPath.SLAM_T0 = 0.26
+BrinejawPath.SLAM_T1 = 0.60
+BrinejawPath.SLAM_INNER = 14.0 -- where the legs leave the tower's foot
+BrinejawPath.SLAM_OUTER = 62.0 -- how far down the aim line the tip reaches
+-- Half the angle between the loop's two legs: 3.5 degrees, so the legs run
+-- 3.8 studs either side of the aim line at the tip and converge on the
+-- tower's foot. An ANGLE rather than a width - see `coilslamCyl`.
+BrinejawPath.SLAM_SPLAY = math.rad(3.5)
+BrinejawPath.SLAM_LIFT = 26.0 -- how high the loop rises before it crashes
+-- The fallen loop's CENTRE height: the drawn vertebra's own half-girth at
+-- mid-body (2.5 authored, 2.0 after the client's taper at t ~ 0.45), so the
+-- body lies ON the beach. Measured over the whole fallen span (the loop
+-- proper, inside the 0.06 edge blends that reach back up to the coils): at
+-- 2.2 the underside ran -0.37..0.18, i.e. a third of a stud of body inside
+-- the sand at the near end where the beach is highest; at 2.7 it runs
+-- 0.13..0.68 studs proud along the whole bar.
+BrinejawPath.SLAM_SIT = 2.7
+BrinejawPath.SLAM_RISE_U = 0.40 -- the loop is at full height here
+BrinejawPath.SLAM_IMPACT_U = 0.50 -- IT LANDS HERE; the countdown ends here
+BrinejawPath.SLAM_LIE_U = 0.85 -- the melee window closes and the recover starts
+-- HOW WIDE THE BAR IS, and the one number the marker and the damage share.
+-- 5.0 is a little over the legs' own half-spread plus a vertebra's girth, so
+-- the lethal band is the drawn loop and not a studs-wide invisible margin.
+-- The client resolves this name; do not give the row its own.
+BrinejawPath.COILSLAM_BAND = 5.0
+BrinejawPath.COILSLAM_HALF = BrinejawPath.COILSLAM_BAND -- the other name the client tries
+
+-- ---------------------------------------------------------------- the bite
+--
+-- THE REACTIVE SNAP. It is not in any phase list (Bosses' own header says so):
+-- it fires when somebody stands inside ~14 studs of the tower for two seconds,
+-- so its aim is always close in and `aimCyl` clamps it to AIM_MIN anyway.
+BrinejawPath.BITE_REAR_U = 0.30 -- the head cocks over the aim
+BrinejawPath.BITE_IMPACT_U = 0.45 -- THE JAWS SHUT HERE
+BrinejawPath.BITE_HANG_U = 0.75 -- the low hang ends; the recover begins
+BrinejawPath.BITE_COCK_R = 18.0
+BrinejawPath.BITE_RISE = 8.0 -- a short rear, not the lunge's 12
+-- The snap's footprint, passed to `biteHits` by the server and drawn by the
+-- client. Small: this is a bite, and its whole read is "do not stand on the
+-- tower's foot", not "leave the arena".
+BrinejawPath.BITE_RADIUS = 6.0
 
 -- ---------------------------------------------------------------- the whip
 --
@@ -548,6 +754,56 @@ function BrinejawPath.sweepBearingAt(state, r: number): number
 	local rate = math.clamp(state.sweepRate or 0, -BrinejawPath.WHIP_RATE_MAX, BrinejawPath.WHIP_RATE_MAX)
 	local lead = math.max(r - BrinejawPath.SWEEP_INNER, 0)
 	return (state.sweepAngle or 0) - BrinejawPath.WHIP_DRAG * lead * rate
+end
+
+-- WHICH WAY ROUND THE TAIL IS WOUND, and why it may not be re-decided
+-- mid-sweep. `sweptCyl` has to express the arm's bearing on the same
+-- unwrapped branch as the three-turn helix it is blending away from, and the
+-- shipped code picked that branch by ROUNDING to the nearest turn every
+-- frame. Rounding is a step function: measured on a plain `whip` (arc 340
+-- degrees, 3.4 s) the branch fell from 5 to 4 as the arm passed the coil's
+-- antipode at t = 1.083 s, and in that ONE FRAME the drawn body moved 20.75
+-- studs at link 35 and the chain's own length jumped to 310. That is the
+-- user's "the tail swipe's animation is not smooth at all", and it happens
+-- once in every whip in the book, because every one of them sweeps more than
+-- 180 degrees.
+--
+-- The jump size is not tunable, either: a branch change rotates the blended
+-- bearing by 2*pi*w, so it is invisible where the weight is 0 or 1 and worst
+-- (a diameter) at w = 0.5, which is the middle of the peel band. No choice of
+-- anchor removes it - the arm genuinely travels more than half a turn.
+--
+-- SO THE TAIL WINDS INSTEAD, which is also what a tail attached to a coil
+-- does: the branch is LATCHED while any of the body is off the tower and only
+-- re-taken when the tail is home (unwind at rest), where the peel weight is
+-- ~0 and re-taking it costs 0.004 * 2*pi*r = under a stud. Both sides may
+-- call this; the CLIENT must, because it draws the band. The server does not
+-- have to and today does not: it reads `pointAt` only at t = 0 (the head) and
+-- the peel never reaches past t = 0.6, and NO HIT TEST READS THE BRANCH -
+-- `sweepHits` asks `sweepBearingAt`, which has no branch in it. A caller that
+-- never steps it gets the old per-frame rounding, unchanged.
+--
+-- Derived, not replicated, for the same reason `sweepRate` is: it is a
+-- function of SweepAngle and Unwind, both of which already cross the wire.
+BrinejawPath.SWEEP_BRANCH_HOLD = 0.004 -- unwind at or below this is "home"
+-- ...and the safety valve. A latched branch lets the tail wind with the arm,
+-- which is right for one sweep and for a chained pair (the longest in the
+-- book is doublewhip + whipback, 600 degrees = 1.67 turns). Past 2.5 turns
+-- something is driving the arm in one direction forever, and a tail wound
+-- three times round its own peel band is worse than the snap.
+BrinejawPath.SWEEP_WIND_MAX = 2.5
+function BrinejawPath.stepSweepBranch(state): number
+	local reach = BrinejawPath.sweepReach(state)
+	local ideal = (restBearingRef(1.0) - BrinejawPath.sweepBearingAt(state, reach)) / TAU
+	local held = state.sweepBranch
+	if
+		held == nil
+		or (state.unwind or 0) <= BrinejawPath.SWEEP_BRANCH_HOLD
+		or math.abs(ideal - held) > BrinejawPath.SWEEP_WIND_MAX
+	then
+		state.sweepBranch = math.round(ideal)
+	end
+	return state.sweepBranch
 end
 
 -- A fresh pose state. `coil` counts DOWN as it loses its grip.
@@ -651,28 +907,55 @@ local function restPoint(state, t: number): Vector3
 
 	-- Slack: the tail leaves the tower, spirals down and lies on the sand.
 	--
-	-- A HERMITE, so it leaves on the coil's heading too. The old form put the
-	-- radius on k^0.75 and the height on k^0.6, and both of those have an
-	-- INFINITE derivative at k=0: the tail left the bottom coil at 85.8
-	-- degrees to it, the sharpest corner anywhere on the body. Starting from
-	-- `helix(1)` rather than a re-derived point also closes a smaller gap -
-	-- the old `inner` ignored the coils' tightening, so the two ends drifted
-	-- apart by up to a third of a stud whenever the tail was unwinding.
+	-- A HERMITE IN CYLINDRICAL SPACE, and the space is the fix. The Hermite
+	-- itself was already right about the JOIN - it leaves on the coil's own
+	-- heading, where the k^0.75 / k^0.6 form it replaced left the bottom coil
+	-- at 85.8 degrees - but it ran in world XYZ, and a cubic in XZ whose start
+	-- tangent is TANGENTIAL (the coil is going round the tower at that
+	-- instant) and whose endpoint is 31 studs out cannot help bulging and then
+	-- cutting back. Measured on the shipped curve at rest, radius by body
+	-- position: 11.33 at t=0.74, out to 13.29 at 0.78, back IN to 9.77 at 0.86
+	-- (1.53 studs off the masonry, tighter than the coils' own 3.4), and only
+	-- then out to 31. That S is the user's "the last coil of the tail isn't
+	-- around the building": the body swings off the drum, comes back at it,
+	-- and leaves - one loop that visibly grips nothing. It is also the whole
+	-- reason the bottom coil READS as detached while measuring fine: the three
+	-- turns on the drum are within 3.35..3.43 of clearance at every stance,
+	-- so nothing was ever wrong with them.
+	--
+	-- In (theta, r, y) the same four boundary conditions describe a continuing
+	-- SPIRAL: bearing keeps winding, radius grows monotonically off the drum,
+	-- height falls to the sand. Same tangent at the join (the helix's own
+	-- cylindrical derivatives, taken numerically so the piecewise
+	-- `spireRadius` is differentiated correctly), same endpoint, no bulge and
+	-- no cut-back - the tail leaves only after the third turn is complete.
 	local k = (t - rest.HELIX_END) / (1 - rest.HELIX_END)
 	local kScale = (1 - rest.HELIX_END) / (rest.HELIX_END - rest.NECK_END)
 	local p0 = helix(1)
-	local m0 = helixTangent(1) * kScale
-	local endTheta = rest.BEARING + rest.TURNS * TAU + rest.TAIL_TURN * TAU
-	local p1 = Vector3.new(
-		math.cos(endTheta) * rest.TAIL_OUT,
-		BrinejawPath.sandY(rest.TAIL_OUT) + 1.2,
-		math.sin(endTheta) * rest.TAIL_OUT
-	)
-	-- The rattle still swings with the spiral as it settles, and lies flat.
-	local swing = rest.TAIL_TURN * TAU * rest.TAIL_OUT * 0.35
-	local m1 = Vector3.new(-math.sin(endTheta) * swing, 0, math.cos(endTheta) * swing)
+	local theta0 = rest.BEARING + rest.TURNS * TAU
+	local r0 = math.sqrt(p0.X * p0.X + p0.Z * p0.Z)
+	local y0 = p0.Y
+	-- The helix's own rates, expressed per unit of the SLACK parameter.
+	local dTheta = rest.TURNS * TAU * kScale
+	local dY = (bottomY - topY) * kScale
+	local rEps = 0.05
+	local dR = ((BrinejawPath.spireRadius(y0 + rEps) - BrinejawPath.spireRadius(y0 - rEps)) / (2 * rEps)) * dY
+	local theta1 = theta0 + rest.TAIL_TURN * TAU
+	local r1 = rest.TAIL_OUT
+	local y1 = BrinejawPath.sandY(rest.TAIL_OUT) + 1.2
+	-- The tip still swings with the spiral as it settles, and lies flat: it
+	-- keeps the nominal winding rate, has stopped reaching outward, and has
+	-- stopped falling.
 	local k2, k3 = k * k, k * k * k
-	return p0 * (2 * k3 - 3 * k2 + 1) + m0 * (k3 - 2 * k2 + k) + p1 * (3 * k2 - 2 * k3) + m1 * (k3 - k2)
+	local h00, h10, h01, h11 = 2 * k3 - 3 * k2 + 1, k3 - 2 * k2 + k, 3 * k2 - 2 * k3, k3 - k2
+	local theta = theta0 * h00 + dTheta * h10 + theta1 * h01 + (rest.TAIL_TURN * TAU) * h11
+	local r = r0 * h00 + dR * h10 + r1 * h01
+	local y = y0 * h00 + dY * h10 + y1 * h01
+	-- A guard, not a shape: the slack never wants to be inside the masonry,
+	-- and after this rewrite it never is (measured minimum clearance 3.43 at
+	-- the join, growing from there). It costs one compare and it is the only
+	-- thing standing between a future TAIL_TURN edit and a tail through a wall.
+	return fromCyl(theta, math.max(r, BrinejawPath.spireRadius(y) + rest.CLEARANCE), y)
 end
 
 -- The swept pose: the tail laid out along one bearing, at sweep height. `t`
@@ -690,7 +973,12 @@ local function sweptCyl(state, t: number, blendStart: number): (number, number, 
 	local k = math.clamp((t - blendStart) / math.max(1 - blendStart, 1e-3), 0, 1)
 	local reach = BrinejawPath.sweepReach(state)
 	local r = BrinejawPath.SWEEP_INNER + (reach - BrinejawPath.SWEEP_INNER) * k
-	local turns = math.round((restBearingRef(1.0) - BrinejawPath.sweepBearingAt(state, reach)) / TAU)
+	-- THE BRANCH IS LATCHED FOR THE WHOLE SWEEP - see `stepSweepBranch`. The
+	-- `round` below is the fallback for a caller that never steps it, and it
+	-- is exactly what shipped; the fallback is also what every hit test still
+	-- gets, because none of them reads this number at all.
+	local turns = state.sweepBranch
+		or math.round((restBearingRef(1.0) - BrinejawPath.sweepBearingAt(state, reach)) / TAU)
 	local y = BrinejawPath.sandY(r) + (state.sweepHeight or BrinejawPath.SWEEP_LOW)
 	return BrinejawPath.sweepBearingAt(state, r) + turns * TAU, r, y
 end
@@ -709,8 +997,53 @@ function BrinejawPath.fallAmount(state): number
 	return math.clamp(state.fall or 0, 0, 1)
 end
 
+-- How much of the slump's span runs FLAT before the neck starts climbing back
+-- to the coil. k is the fraction of the front 30% of the body, so 0.22 is
+-- about 4 studs of arc - four times ChainPose's own 1-stud tangent step,
+-- which is the thing that has to see a level curve. At 0.10 the step still
+-- reached into the climb and left tangent.Y = -0.082, which is 0.73 studs of
+-- lead dropped and two thirds of the daylight under the jaw.
+BrinejawPath.SLUMP_LEVEL = 0.22
+-- What the drawn skull loses to the lead riding the ambient breath's own
+-- slope: measured 0.73 studs at tangent.Y = -0.082 over HEAD_LEAD 8.9, less
+-- the 0.55 the damped ambient gives back. TUNED AGAINST THE DRAWN SKULL, not
+-- against the joint: with the lift at 0.20 the jaw's clearance runs 0.34 at
+-- the bottom of the breath to 1.60 at the top, so the head rests on the beach
+-- through the whole cycle and never intersects it.
+BrinejawPath.SLUMP_LIFT = 0.20
+-- How far the death collapse settles the resting head: it presses into the
+-- beach as the grip finally goes, and 0.25 is what the jaw has to give -
+-- the collapse's own reach carries the skull out to r 43 where the beach is
+-- 0.09 lower again, so a deeper settle would bury it at U = 1.
+BrinejawPath.SLUMP_SETTLE = 0.25
+
 -- Where the head slumps when it loses its grip: off the tower, onto the sand,
 -- jaw within reach. The neck drags after it, so the front of the body follows.
+--
+-- THE SKULL RESTS ON THE BEACH, WHICH IS NOT THE SAME THING AS THE JOINT
+-- DOING SO, and the user found the difference: "the serpent's head stays
+-- under the sand when it's stunned". Two compounding causes, both measured on
+-- the shipped pose at slump = 1, coil = 3, faceAngle 250 degrees:
+--
+--   * THE LEAD RODE THE TANGENT DOWNWARD. The old y term put the joint at
+--     sandY(r) + 2.6, but the curve CLIMBED steeply out of it (the front of
+--     the body has to get back to a coil 8 studs up), so the drawn frame -
+--     8.9 studs further along that tangent - came out at Y = -0.44 against a
+--     beach at 1.56: the joint itself was already 2.0 studs underground.
+--   * AND THE BLEND LEAKED THE REARED POSE IN. The slump's weight was
+--     smoothstep((0.34 - t) / 0.34), which is 1 at exactly t = 0 and 0.9993
+--     one stud of arc later - and the rest pose's head is 55 studs higher, so
+--     that 0.07% tilted the front of the body by half a stud per stud:
+--     tangent.Y = -0.541. The lead alone therefore dropped the skull 4.81
+--     studs before the mesh's own 4.73 was subtracted. Total: the skull's
+--     lowest point sat 10.11 studs UNDER the sand, which is the whole head.
+--
+-- So the pose now runs LEVEL for its first SLUMP_LEVEL of span (the lead has
+-- nothing to dive along), sits the joint at `headSitY` (the mesh's own depth
+-- plus daylight, derived - not a hand-picked 2.6), and the blend that
+-- consumes it holds full weight over the same flat stretch instead of easing
+-- from the first frame. Measured after: +0.95 of clearance under the jaw at
+-- every slump value from 0.9 up and at every coil stance.
 local function slumpPoint(state, t: number): Vector3
 	local rest = BrinejawPath.REST
 	-- It slumps toward whoever it was facing, so the punish window opens
@@ -723,7 +1056,22 @@ local function slumpPoint(state, t: number): Vector3
 	local k = math.clamp(t / 0.30, 0, 1) -- the front 30% of the body comes down
 	local bottomY = rest.BOTTOM_Y - coilOffset(state)
 	local r = reach - (reach - (BrinejawPath.spireRadius(bottomY) + rest.CLEARANCE)) * k
-	local y = BrinejawPath.sandY(r) + 2.6 - 1.8 * fall + 9.0 * k ^ 1.5
+	-- The sit is measured where the SKULL ends up, not where the joint is:
+	-- the lead carries it HEAD_LEAD studs further out over a beach that
+	-- slopes, and reading the sand under the joint would hold the jaw 0.1
+	-- studs high at r = 26 and 0.3 low out at the collapse's r = 34.
+	local level = BrinejawPath.SLUMP_LEVEL
+	local climb = 9.0 * (math.max(k - level, 0) / (1 - level)) ^ 1.5
+	-- ...plus what the LEAD still costs. The ambient breath is added outside
+	-- every pose (deliberately - see `pointAt`), and its own gradient at the
+	-- snout is 0.45 * 9 per unit t, which tilts the front of the body by
+	-- tangent.Y = -0.082 however level the pose itself is. Over the 8.9-stud
+	-- lead that is 0.73 studs of skull, so the joint is lifted by the measured
+	-- amount rather than the clearance being quietly eaten.
+	local y = BrinejawPath.headSitY(reach + BrinejawPath.HEAD_LEAD)
+		+ BrinejawPath.SLUMP_LIFT
+		- BrinejawPath.SLUMP_SETTLE * fall
+		+ climb
 	return Vector3.new(math.cos(theta) * r, y, math.sin(theta) * r)
 end
 
@@ -769,12 +1117,37 @@ end
 -- inherits the coil's winding and cannot flip branch. A head aiming behind
 -- the tower therefore reaches round it rather than snapping through it, and
 -- the neck carries whatever fraction of a turn that costs.
-local function neckArc(state, target: Vector3, targetTheta: number, span: number, arch: number, t: number)
+-- `level` (see ATTACK) FLATTENS THE HEAD END ONLY, and it is the other half
+-- of the buried-skull fix: the height terms run on a parameter that does not
+-- start moving until the arc is `level` of the way along, while theta and r
+-- stay linear in k. So the neck leaves a planted head HORIZONTALLY - which
+-- is what the client's HEAD_LEAD needs, and what a serpent with its jaw on
+-- the sand looks like - and only then climbs. The header's warning about
+-- easing the parameter is about the FAR end: ease all three terms and the arc
+-- stands itself vertical at the joint. This eases neither theta nor r, and it
+-- eases the height only away from the joint, where the arch's own derivative
+-- is what shapes the curve. Measured over both planted kinds x 240 steps of
+-- U x 121 body points x 4 aim bearings, the steepest tangent the change
+-- produces is 81.6 degrees (lunge, t = 0.14; the bite's is 78.2) - inside
+-- ChainPose's ~85 limit, against the rest pose's own 77.8 at the snout. Raise
+-- `arch` or shorten a span and re-measure: this is the number that decides
+-- whether a neck can get one frame of arbitrary roll.
+local function neckArc(
+	state,
+	target: Vector3,
+	targetTheta: number,
+	span: number,
+	arch: number,
+	t: number,
+	level: number?
+)
 	local k = math.clamp(t / math.max(span, 1e-3), 0, 1)
 	local aWrapped, r1, y1 = cylOf(restPoint(state, span))
 	local t1 = restBearing(span, aWrapped)
 	local _, r0, y0 = cylOf(target)
-	local y = y0 + (y1 - y0) * k + arch * math.sin(math.pi * k)
+	local flat = math.clamp(level or 0, 0, 0.5)
+	local ky = math.clamp((k - flat) / (1 - flat), 0, 1)
+	local y = y0 + (y1 - y0) * ky + arch * math.sin(math.pi * ky)
 	local r = r0 + (r1 - r0) * k
 	-- A guard, not a shape: both endpoints stand clear of the masonry, so
 	-- this only ever fires if someone widens AIM_MIN past its comment.
@@ -805,7 +1178,7 @@ local function lungeTarget(state, u: number): (number, Vector3)
 	end
 	local b = smoothstep(math.clamp((u - cock) / (BrinejawPath.LUNGE_IMPACT_U - cock), 0, 1))
 	local yTop = y0 + BrinejawPath.LUNGE_RISE
-	local yLand = BrinejawPath.sandY(aimR) + BrinejawPath.LUNGE_SIT
+	local yLand = BrinejawPath.headSitY(aimR)
 	return th0 + swing,
 		fromCyl(0, BrinejawPath.LUNGE_COCK_R + (aimR - BrinejawPath.LUNGE_COCK_R) * b, yTop + (yLand - yTop) * b)
 end
@@ -867,6 +1240,401 @@ local function undertowCyl(state, t: number): (number, number, number)
 	return ref + wrapAngle(aimT - ref), r, BrinejawPath.sandY(r) - BrinejawPath.UNDER_DEPTH + hump
 end
 
+-- THE BITE'S HEAD TARGET. A short reactive snap: rear a little, snap down
+-- onto the aim, HANG THERE with the jaw on the sand (the mini punish window),
+-- then peel back up. Like every other target function it returns the rest
+-- head at U = 0 and again at U = 1, and expresses its bearing as the rest
+-- head's plus a swing that never wraps.
+--
+-- THE HANG LANDS ON `headSitY`, NOT ON A PICKED HEIGHT. That is the whole
+-- point of the kind - a head hanging low enough to hit is worth nothing if it
+-- hangs INSIDE the beach, which is what the stagger and the lunge were both
+-- doing when this was written.
+local function biteTarget(state, u: number): (number, Vector3)
+	local aimT, aimR = aimCyl(state)
+	local th0, r0, y0 = headRestCyl(state)
+	local swing = wrapAngle(aimT - th0)
+	local rear, impact, hang = BrinejawPath.BITE_REAR_U, BrinejawPath.BITE_IMPACT_U, BrinejawPath.BITE_HANG_U
+	local yLand = BrinejawPath.headSitY(aimR)
+	if u <= rear then
+		-- The rear is short and mostly UP: the head cocks over the aim rather
+		-- than drawing back off it, because the whole read of a bite is that
+		-- it is already on top of you.
+		local a = smoothstep(u / rear)
+		return th0 + swing * a, fromCyl(0, r0 + (BrinejawPath.BITE_COCK_R - r0) * a, y0 + BrinejawPath.BITE_RISE * a)
+	elseif u <= impact then
+		local b = smoothstep((u - rear) / (impact - rear))
+		local yTop = y0 + BrinejawPath.BITE_RISE
+		return th0 + swing,
+			fromCyl(0, BrinejawPath.BITE_COCK_R + (aimR - BrinejawPath.BITE_COCK_R) * b, yTop + (yLand - yTop) * b)
+	elseif u <= hang then
+		return th0 + swing, fromCyl(0, aimR, yLand)
+	end
+	local c = smoothstep((u - hang) / (1 - hang))
+	return th0 + swing * (1 - c), fromCyl(0, aimR + (r0 - aimR) * c, yLand + (y0 - yLand) * c)
+end
+
+-- THE COIL SLAM, in UNWRAPPED cylindrical form. A mid-body loop lifts off the
+-- tower, crashes along the line the aim points down, and LIES THERE - a bar
+-- of serpent across the arena that you have to be off, and a melee window on
+-- the body while it lasts.
+--
+-- THE SHAPE IS A HAIRPIN, and it has to be: both ends of the affected span
+-- are still gripping the tower, so the loop leaves the drum, runs out along
+-- the aim bearing, and comes back. The two legs are SLAM_SPREAD apart at the
+-- tower and meet at the tip, which is what makes it read as a dropped loop
+-- rather than as one thick line - and it is why `coilslamHits` tests a RAY and
+-- not the infinite line through the tower: the far side of the tower has no
+-- body on it, and this file does not damage ground it has not drawn.
+--
+-- THE FALLEN SPAN LIES ON THE SAND. `SLAM_SIT` is the body's own half-girth
+-- at mid-body plus the daylight that keeps it out of the beach, and it is
+-- measured rather than guessed: over U 0.5..0.85 the loop's underside runs
+-- 0.13..0.68 studs proud of the sand along the whole bar, and never inside
+-- it. Same standard as the slumped head, and for the same reason - this span
+-- is a MELEE WINDOW, so half a body buried in the beach is half a window.
+local function coilslamCyl(state, t: number): (number, number, number)
+	local aimT = aimCyl(state)
+	local u = attackProgress(state)
+	local k = math.clamp((t - BrinejawPath.SLAM_T0) / (BrinejawPath.SLAM_T1 - BrinejawPath.SLAM_T0), 0, 1)
+	-- s = -1 at the near end of the first leg, 0 at the tip, +1 at the near
+	-- end of the second: r is a parabola in s (inner at the ends, outer at the
+	-- tip) and the lateral offset is linear, so the two legs converge.
+	local s = 2 * k - 1
+	-- THE LOOP GROWS OUT AND IS DRAGGED BACK IN; it does not exist at full
+	-- length from the first frame. This is the `UNDER_OVERRUN` lesson one
+	-- attack over: laying all 62 studs of bar out at U = 0 moved the body
+	-- 12.26 studs in one step of U at 240 steps, because the mid-body had to
+	-- unwind off the drum AND reach the reef before the loop had begun to
+	-- rise; the recover snapped 8.21 studs back the same way.
+	local inner = BrinejawPath.SLAM_INNER
+	local near = inner + 8.0
+	local grow = smoothstep(math.clamp(u / BrinejawPath.SLAM_RISE_U, 0, 1))
+	-- The drag-back finishes EARLY inside the recover (60% of it), so the
+	-- envelope's own fade happens with the loop already near the tower: the
+	-- fade's cost is a bearing swing of up to half a turn, and half a turn at
+	-- r = 22 is a third of what it is at r = 62.
+	local back = smoothstep(math.clamp((u - BrinejawPath.SLAM_LIE_U) / (0.60 * (1 - BrinejawPath.SLAM_LIE_U)), 0, 1))
+	local outer = near + (BrinejawPath.SLAM_OUTER - near) * grow * (1 - back)
+	-- The legs are split by a fixed ANGLE, not by a fixed lateral offset. Both
+	-- forms draw the same V from the tower, but an offset in studs has to be
+	-- turned into a bearing by atan2, and atan2 of a constant offset SWINGS as
+	-- the loop's length changes - which put 40.91 studs of body in one step of
+	-- U while the loop was still growing. At SLAM_SPLAY the legs are 3.8 studs
+	-- off the aim line at the tip, inside the COILSLAM_BAND the damage uses.
+	local r = inner + (outer - inner) * (1 - s * s)
+	local ref = restBearingRef(0.5 * (BrinejawPath.SLAM_T0 + BrinejawPath.SLAM_T1))
+	local theta = ref + wrapAngle(aimT + BrinejawPath.SLAM_SPLAY * s - ref)
+	-- The lift: up over the rise, down through the crash, and nothing at all
+	-- from the blow onward - the loop is on the ground for the whole window.
+	local lift
+	if u <= BrinejawPath.SLAM_RISE_U then
+		lift = BrinejawPath.SLAM_LIFT * smoothstep(u / BrinejawPath.SLAM_RISE_U)
+	elseif u <= BrinejawPath.SLAM_IMPACT_U then
+		lift = BrinejawPath.SLAM_LIFT
+			* (1 - smoothstep((u - BrinejawPath.SLAM_RISE_U) / (BrinejawPath.SLAM_IMPACT_U - BrinejawPath.SLAM_RISE_U)))
+	else
+		lift = 0
+	end
+	return theta, r, BrinejawPath.sandY(r) + BrinejawPath.SLAM_SIT + lift
+end
+
+-- ------------------------------------------------------- the ENTRY channel
+--
+-- ONE CUTSCENE-ONLY ATTRIBUTE, `Entry`, a level in 0..1 on the model: HOW FAR
+-- ALONG ITS ARRIVAL THIS ANIMAL IS. Absent (nil) means "use the fight pose",
+-- and that is not a default - it is the whole safety property. THE SERVER
+-- NEVER SETS IT AND CANNOT: it builds its own state with `newState` (which
+-- has no `entry` field) and publishes the ten attributes above, so
+-- `state.entry` is nil on every server frame of every fight, `pointAt`
+-- returns `restPoint` by the SAME code path it always did, and none of the
+-- arc-length tables below are ever even built. `Entry` is written only by a
+-- client cutscene onto a client-only stand-in (BrinejawIntro/CutsceneKit),
+-- and BrinejawBodyController collapses it back to nil at >= 0.995 so the
+-- handoff to the real rig is enforced by code rather than argued from a limit.
+--
+-- WHY THE RIG NEEDED IT (docs/boss-cutscenes-redesign.md SS1.4). This module
+-- exposes exactly one topology - a serpent wrapped round the lighthouse - and
+-- ten scalars that deform it. At `unwind = 1` the peel only reaches
+-- `blendStart = 1 - 0.40` = t 0.6, so the front 61% of the body (measured)
+-- cannot be asked to go anywhere, and there is no parameter whose meaning is
+-- "how far along its journey is this animal". So the intro could not show the
+-- serpent arriving, and faked the eruption with eight glass columns.
+--
+-- THE PARAMETRISATION, AND WHY THE TRACK RUNS TAIL-END FIRST. Work in a track
+-- coordinate `x`:
+--
+--     J(x) = R(1 - x)   for x >= 0    -- the rest path, walked TAIL-end first
+--     J(x) = E(-x)      for x <  0    -- the entry spline, E(0) = R(1)
+--
+-- with the head at `x_head = A + (1 - A) * Entry` and the body occupying
+-- x in [x_head - 1, x_head] in head->tail order (one body length of track).
+-- At `Entry = 1`, `x_head = 1`, so `J(1 - t) = R(1 - (1 - t)) = R(t)` - the
+-- same call with the same argument, which is why the guard in `pointAt` is
+-- `entry < 1` and the rest pose is reached by FALLING THROUGH it rather than
+-- by a curve that converges on it.
+--
+-- The rest pose's head is at the TOP of the tower (HEAD_Y 60) and its tail is
+-- on the beach (TAIL_OUT 31), and the helix ascends as `t` DECREASES. So
+-- walking the rest path from t = 1 to t = 0 IS the path a serpent climbing
+-- the lighthouse head-first takes: beach, up the slack spiral, three turns of
+-- helix, over the gallery, snout. The rest pose is already a record of the
+-- arrival. Join a spline to R(1), walk the whole thing forward, and three of
+-- the four things the brief asks for fall out for free: every vertebra traces
+-- the head's exact path (which is what a serpent does), head-first sequential
+-- surfacing is automatic because each link crosses the water plane when the
+-- head parameter reaches that link's own offset, and "curling around the
+-- lighthouse" needs no new geometry at all - the last body length of the
+-- track IS the helix.
+--
+-- THE KNOTS ARE CYLINDRICAL, and that is this file's oldest lesson (see the
+-- cylindrical-space note above, and the slack Hermite): a positional lerp
+-- between two bearings passes straight THROUGH the masonry - measured 7.98
+-- studs inside it - while the same interpolation in (theta, r, y) never comes
+-- nearer than 5.04 studs outside. The radius carries the same
+-- `spireRadius(y) + CLEARANCE` floor the slack already carries.
+--
+-- KNOTS 1 AND 2 ARE COMPUTED AT RUN TIME, NEVER PASTED. Knot 2 is the JOIN,
+-- `cylOf(restPoint(t = 1))`, and knot 1 is the Catmull-Rom ghost that supplies
+-- the arrival tangent, `cylOf(restPoint(t = 0.90))` - so the join is C1
+-- against the rest path BY CONSTRUCTION, and a future REST edit moves the
+-- spline's mouth with it instead of leaving a pasted pair of numbers behind
+-- (this codebase's most expensive defect class, and `tools/check_brinejaw_entry.py`
+-- asserts exactly this). ENTRY_KNOTS below is therefore the AUTHORED tail of
+-- the table, from the sand outward; `entryKnots()` returns all 18.
+--
+-- AND `Entry` IS RE-PARAMETRISED BY ARC LENGTH, in units of body-lengths.
+-- This is the step that makes it work and the first draft failed without it:
+-- with knots spaced by hand-chosen sigma the drawn `chain.length` swung from
+-- 546 studs down to 212 as `Entry` advanced - the serpent visibly stretched to
+-- double length and then shrank to two thirds. The spline is built on a
+-- uniform auxiliary parameter, its arc length is integrated ONCE into a
+-- table, and E(sigma) is the point at cumulative length sigma * L_rest, so
+-- |dE/dsigma| = L_rest by construction and the body holds its length to
+-- within the +-5% gate.
+--
+-- EVERYTHING HERE IS LAZY AND CACHED IN ONE TABLE FIELD. No new top-level
+-- local (the 200-register limit that took the game down 2026-09-06 is
+-- invisible to four of the five gates), and no cost at all on a server that
+-- never reads the channel.
+
+-- The arena-local height of the water plane. NOT an assumption: for this boss
+-- `state.center` IS the waterline. CreatureService's `colossusState` builds
+-- brinejaw's pose as `BrinejawPath.newState(Vector3.new(anchor.X,
+-- World.WATER_Y, anchor.Z))` - snapped to the waterline on purpose, with its
+-- own note saying why - and `World.WATER_Y` is 0, so arena-local y = world y -
+-- WATER_Y and the plane is at 0.0 exactly. The cutscene side agrees by a
+-- different route: `kit.center` is `BossArenaService.floorY(arenaKey, radius)`,
+-- which returns `World.WATER_Y` unchanged for every sea-level arena, and
+-- `kit.waterY` is `World.WATER_Y` itself. BrinejawIntro reads `kit.waterY -
+-- kit.center.Y` and warns if the two ever disagree rather than trusting this
+-- constant - if that warning ever fires, re-run tools/check_brinejaw_entry.py
+-- with the new plane, because the breach sigma and ENTRY_A move with it.
+BrinejawPath.ENTRY_WATER_Y = 0.0
+
+-- How far under the plane the head starts, in body-lengths of track (0.10 is
+-- 29 studs). It is what makes `Entry = 0` genuinely invisible rather than
+-- merely level with the surface.
+BrinejawPath.ENTRY_SUBMERGE = 0.10
+
+-- Arc-length table sizes. 4000 over 782 studs is a 0.2-stud step, well inside
+-- the 0.5-stud resolution any of the six gates measures at; the rest-length
+-- integration matches the redesign doc's 2000-sample figure (288.47) rather
+-- than ChainPose's own 160 (288.15), and the +-5% body-length gate is stated
+-- against the 160 - see the harness.
+BrinejawPath.ENTRY_SAMPLES = 4000
+BrinejawPath.ENTRY_REST_SAMPLES = 2000
+
+-- THE AUTHORED TAIL OF THE SPLINE: { bearing DEGREES (unwrapped, continuing
+-- from the join's own 180.4), radius, arena-local y }. Bearings 240..270 are
+-- kept from the shipped script for the reason its `N.sea` comment gives - the
+-- party ring puts a challenger at bearing 0, so the arc sweeps ACROSS the
+-- camera rather than at it, and the arrival lands short of where the head
+-- rests (342).
+BrinejawPath.ENTRY_KNOTS = {
+	{ 196.000, 46.000, 11.000 }, -- the head lands on the sand, still moving inward
+	{ 210.000, 70.000, 38.000 }, -- the descent limb of the arc
+	{ 224.000, 96.000, 62.000 },
+	{ 236.000, 122.000, 72.000 }, -- APEX, out over open water
+	{ 244.000, 146.000, 46.000 },
+	{ 248.000, 162.000, 0.000 }, -- THE BREACH: crosses the water plane
+	{ 251.000, 178.000, -20.000 },
+	{ 262.000, 190.000, -34.000 },
+	{ 250.000, 196.000, -44.000 }, -- the submerged body is sinuous, which is
+	{ 264.000, 206.000, -50.000 }, -- how it holds 288 studs of length without
+	{ 252.000, 214.000, -54.000 }, -- running out to r 500
+	{ 266.000, 224.000, -56.000 },
+	{ 250.000, 232.000, -58.000 },
+	{ 268.000, 242.000, -60.000 },
+	{ 252.000, 252.000, -62.000 },
+	{ 270.000, 262.000, -64.000 },
+}
+
+-- The 18 knots the spline is actually built on, in RADIANS: the two computed
+-- anchors and then the authored table. Unwrapped forward from the first
+-- authored bearing, because `cylOf` answers in (-pi, pi] and the join sits at
+-- 180.4 - one ulp the wrong side of the branch cut would send the first
+-- segment 359 degrees round the tower.
+function BrinejawPath.entryKnots()
+	local state = BrinejawPath.newState(Vector3.zero)
+	local gTheta, gR, gY = cylOf(restPoint(state, 0.90))
+	local jTheta, jR, jY = cylOf(restPoint(state, 1.00))
+	local first = math.rad(BrinejawPath.ENTRY_KNOTS[1][1])
+	jTheta = first + wrapAngle(jTheta - first)
+	gTheta = jTheta + wrapAngle(gTheta - jTheta)
+	local knots = { { gTheta, gR, gY }, { jTheta, jR, jY } }
+	for _, knot in BrinejawPath.ENTRY_KNOTS do
+		table.insert(knots, { math.rad(knot[1]), knot[2], knot[3] })
+	end
+	return knots
+end
+
+-- The spline's world point at auxiliary parameter `s` in [0, segments].
+-- Uniform Catmull-Rom per component, in cylindrical space, with the radius
+-- floored off the masonry exactly as the slack tail's guard does.
+function BrinejawPath.entryAux(knots, s: number): Vector3
+	local segments = #knots - 2
+	local i = math.clamp(math.floor(s), 0, segments - 1)
+	local u = math.clamp(s - i, 0, 1)
+	local p0 = knots[i + 1]
+	local p1 = knots[i + 2]
+	local p2 = knots[i + 3]
+	-- The far end has no knot beyond it, so its ghost is the last segment
+	-- continued straight: a reflected tangent, which keeps the final metre of
+	-- track from curling back on itself.
+	local p3 = knots[i + 4]
+		or {
+			2 * knots[#knots][1] - knots[#knots - 1][1],
+			2 * knots[#knots][2] - knots[#knots - 1][2],
+			2 * knots[#knots][3] - knots[#knots - 1][3],
+		}
+	local u2, u3 = u * u, u * u * u
+	local out = {}
+	for c = 1, 3 do
+		out[c] = 0.5
+			* (
+				2 * p1[c]
+				+ (-p0[c] + p2[c]) * u
+				+ (2 * p0[c] - 5 * p1[c] + 4 * p2[c] - p3[c]) * u2
+				+ (-p0[c] + 3 * p1[c] - 3 * p2[c] + p3[c]) * u3
+			)
+	end
+	local y = out[3]
+	return fromCyl(out[1], math.max(out[2], BrinejawPath.spireRadius(y) + BrinejawPath.REST.CLEARANCE), y)
+end
+
+-- Built ONCE, on the first frame that reads the channel, and cached here.
+-- Holds the sampled spline, its cumulative arc length, the rest path's length
+-- (the unit `Entry` is measured in), the breach sigma and A.
+function BrinejawPath.entryData()
+	local data = BrinejawPath.entryCache
+	if data then
+		return data
+	end
+
+	local knots = BrinejawPath.entryKnots()
+	local segments = #knots - 2
+	local steps = BrinejawPath.ENTRY_SAMPLES
+	local points, cumulative = {}, {}
+	points[1] = BrinejawPath.entryAux(knots, 0)
+	cumulative[1] = 0
+	for i = 1, steps do
+		points[i + 1] = BrinejawPath.entryAux(knots, segments * i / steps)
+		cumulative[i + 1] = cumulative[i] + (points[i + 1] - points[i]).Magnitude
+	end
+
+	-- The rest path's own length, integrated the same way, at newState's
+	-- defaults - which is where the entry holds Coil and Slump throughout.
+	local state = BrinejawPath.newState(Vector3.zero)
+	local restLength = 0
+	local previous = restPoint(state, 0)
+	for i = 1, BrinejawPath.ENTRY_REST_SAMPLES do
+		local point = restPoint(state, i / BrinejawPath.ENTRY_REST_SAMPLES)
+		restLength += (point - previous).Magnitude
+		previous = point
+	end
+
+	-- WHERE THE HEAD BREAKS THE SURFACE, found rather than authored: the track
+	-- crosses the plane exactly once (it leaves the sand, arcs over the water
+	-- and dives), so the first downward crossing IS the breach. Everything
+	-- timed off it - A, the per-link surfacing order, the splash cues - moves
+	-- with the knots and with the plane instead of being remembered.
+	local water = BrinejawPath.ENTRY_WATER_Y
+	local breach = nil
+	for i = 2, steps + 1 do
+		if points[i].Y < water and points[i - 1].Y >= water then
+			local span = points[i - 1].Y - points[i].Y
+			local frac = if span > 1e-9 then (points[i - 1].Y - water) / span else 0
+			breach = (cumulative[i - 1] + (cumulative[i] - cumulative[i - 1]) * frac) / restLength
+			break
+		end
+	end
+
+	data = {
+		knots = knots,
+		segments = segments,
+		points = points,
+		cumulative = cumulative,
+		total = cumulative[steps + 1],
+		restLength = restLength,
+		breach = breach or 0,
+		sigmaMax = cumulative[steps + 1] / restLength,
+	}
+	data.a = -(data.breach + BrinejawPath.ENTRY_SUBMERGE)
+	BrinejawPath.entryCache = data
+	return data
+end
+
+-- The entry spline at `sigma` body-lengths out from the join, arena-local.
+function BrinejawPath.entrySpline(sigma: number): Vector3
+	local data = BrinejawPath.entryData()
+	local distance = math.clamp(sigma, 0, data.sigmaMax) * data.restLength
+	local cumulative, points = data.cumulative, data.points
+	-- Binary search: the table is 4001 entries and this is called 160 times a
+	-- frame by ChainPose alone.
+	local lo, hi = 1, #points
+	while hi - lo > 1 do
+		local mid = (lo + hi) // 2
+		if cumulative[mid] <= distance then
+			lo = mid
+		else
+			hi = mid
+		end
+	end
+	local span = cumulative[hi] - cumulative[lo]
+	local frac = if span > 1e-9 then (distance - cumulative[lo]) / span else 0
+	return points[lo]:Lerp(points[hi], frac)
+end
+
+-- THE JOINED TRACK, arena-local. `x >= 0` is the rest path walked tail-end
+-- first - the LIVE one, so the mouth of the spline stays attached to whatever
+-- the rest pose currently is - and `x < 0` is the spline.
+function BrinejawPath.entryJoined(state, x: number): Vector3
+	if x >= 0 then
+		return restPoint(state, 1 - math.min(x, 1))
+	end
+	return BrinejawPath.entrySpline(-x)
+end
+
+-- Where the head sits on the track at this `Entry`. A is one body-length of
+-- track short of nothing: at Entry 0 the snout is ENTRY_SUBMERGE under the
+-- plane and the whole 288 studs is behind it, at sea.
+function BrinejawPath.entryHead(entry: number): number
+	local a = BrinejawPath.entryData().a
+	return a + (1 - a) * math.clamp(entry, 0, 1)
+end
+
+-- The `Entry` at which body position `t` crosses the water plane, or nil when
+-- it never does inside 0..1. Closed form, because the track crosses the plane
+-- once: link `t` breaches when `x_head = -breach + t`. Linear in `t`, which is
+-- what makes the surfacing order monotonic in link index and the splash cues
+-- computable before the run starts.
+function BrinejawPath.entryOfBreach(t: number): number?
+	local data = BrinejawPath.entryData()
+	local entry = (t - data.breach - data.a) / (1 - data.a)
+	return if entry > 0 and entry < 1 then entry else nil
+end
+
 -- ---------------------------------------------------------------- public
 
 -- Where body position `t` (0 = snout, 1 = rattle) is right now, in world
@@ -874,6 +1642,22 @@ end
 -- rest -> attack for whichever span the current kind owns.
 function BrinejawPath.pointAt(state, t: number): Vector3
 	t = math.clamp(t, 0, 1)
+
+	-- THE ENTRY CHANNEL IS FIRST, AND THE ORDER IS THE CONTRACT. It returns
+	-- before the unwind/sweep blend, before the slump, before every attack
+	-- mode and before anything that reads `state.sweepBranch` or
+	-- `state.sweepRate` - so a body on its way in is never half-peeled off a
+	-- tower it has not reached, and a cutscene can never trip the latched
+	-- branch the fight's whip depends on. `entry == nil` (the server, always)
+	-- and `entry >= 1` (the handoff) both FALL THROUGH to the code below
+	-- unchanged, which is why `Entry = 1` is not a curve that converges on the
+	-- rest pose - it IS the rest pose, same call, same argument.
+	local entry = state.entry
+	if entry and entry < 1 then
+		local x = BrinejawPath.entryHead(entry) - t
+		return (state.center or Vector3.zero) + BrinejawPath.entryJoined(state, x)
+	end
+
 	local point = restPoint(state, t)
 
 	local kind = state.attackKind or ""
@@ -908,22 +1692,50 @@ function BrinejawPath.pointAt(state, t: number): Vector3
 
 	local slump = state.slump or 0
 	if slump > 0 and t < 0.34 then
-		local w = smoothstep((0.34 - t) / 0.34) * slump
+		-- A PLATEAU, NOT A RAMP FROM THE FIRST FRAME. Dividing by (0.34 -
+		-- SLUMP_LEVEL * 0.30) holds the weight FULL over the same flat stretch
+		-- `slumpPoint` runs level through, and only then eases out to the coil.
+		-- At the old (0.34 - t) / 0.34 the head carried 0.07% of a pose whose
+		-- head is 55 studs higher one stud of arc in - a half-stud-per-stud
+		-- tilt, which the 8.9-stud lead turned into 4.81 studs of buried skull.
+		local w = smoothstep((0.34 - t) / (0.34 - BrinejawPath.SLUMP_LEVEL * 0.30)) * slump
 		point = point:Lerp(slumpPoint(state, t), w)
 	end
 
 	if mode == "neck" then
 		local u = attackProgress(state)
-		local w = attackEnvelope(u, shape.entry, shape.exit) * smoothstep((shape.span - t) / shape.span)
+		-- THE SAME PLATEAU THE SLUMP GETS, for the same measured reason: over
+		-- the arc's flat `level` run the neck must carry the attack's pose at
+		-- FULL weight, because the rest head is 52 studs higher and a 0.27%
+		-- leak one stud of arc in tilts the front of the body by 0.14 - which
+		-- the client's 8.9-stud lead turns into 1.2 studs of skull, and the
+		-- bite's jaw was 0.34 studs inside the beach with the level run
+		-- already in place. A kind with no `level` (belltoll) is unchanged.
+		local w = attackEnvelope(u, shape.entry, shape.exit)
+			* smoothstep((shape.span - t) / (shape.span * (1 - (shape.level or 0))))
 		if w > 0 then
 			local targetTheta, target
 			if kind == "lunge" then
 				targetTheta, target = lungeTarget(state, u)
+			elseif kind == "bite" then
+				targetTheta, target = biteTarget(state, u)
 			else
 				targetTheta, target = bellTarget(state, u)
 			end
 			local theta, r, y = cylOf(point)
-			local aTheta, aR, aY = neckArc(state, target, targetTheta, shape.span, shape.arch, t)
+			local aTheta, aR, aY = neckArc(state, target, targetTheta, shape.span, shape.arch, t, shape.level)
+			point = cylBlend(restBearing(t, theta), r, y, aTheta, aR, aY, w)
+		end
+	elseif mode == "coilslam" and t > BrinejawPath.SLAM_T0 and t < BrinejawPath.SLAM_T1 then
+		-- Same edge treatment as the undertow: the loop's two ends have to
+		-- reach the coils they are still attached to, so the weight tapers over
+		-- `edge` of body at each end rather than starting at full strength.
+		local edge = 0.06
+		local w = attackEnvelope(attackProgress(state), shape.entry, shape.exit)
+			* smoothstep(math.min((t - BrinejawPath.SLAM_T0) / edge, (BrinejawPath.SLAM_T1 - t) / edge))
+		if w > 0 then
+			local theta, r, y = cylOf(point)
+			local aTheta, aR, aY = coilslamCyl(state, t)
 			point = cylBlend(restBearing(t, theta), r, y, aTheta, aR, aY, w)
 		end
 	elseif mode == "undertow" and t > BrinejawPath.UNDER_T0 and t < BrinejawPath.UNDER_T1 then
@@ -966,7 +1778,20 @@ function BrinejawPath.pointAt(state, t: number): Vector3
 		local flat = Vector3.new(point.X, 0, point.Z)
 		local side = if flat.Magnitude > 0.01 then Vector3.new(-flat.Z, 0, flat.X).Unit else Vector3.new(0, 0, 1)
 		point += side * (math.sin(time * 0.55) * 2.1 * k)
-		point += Vector3.new(0, math.sin(time * 0.83) * 1.25 * k, 0)
+		-- THE VERTICAL AMBIENT IS DAMPED WHEN THE HEAD IS DOWN, AND THE SWAY
+		-- IS NOT. A skull lying on the beach cannot rise and fall: with the
+		-- bob (1.25) and the snout's share of the breath (0.45) both live, the
+		-- drawn jaw swung between 0.75 and 2.50 studs off the sand every
+		-- breath - a resting head that floats a stud and a half, which reads
+		-- as hovering rather than as lying down. Both vertical terms therefore
+		-- fade to 15% at full slump (the breath by CANCELLING the share this
+		-- region already took, so the body-wide term is untouched behind the
+		-- neck), while the 2.1-stud lateral heave and the client's jaw are
+		-- left at full strength - those are what keep the punish window alive,
+		-- and this file's header is emphatic that killing the ambient there is
+		-- the oldest bug in the fight. Idle (slump 0) is bit-identical.
+		local settle = 0.85 * (state.slump or 0)
+		point += Vector3.new(0, (math.sin(time * 0.83) * 1.25 * (1 - settle) - breath * settle) * k, 0)
 	end
 
 	-- The last tenth flicks sideways: the rattle twitches. This is not
@@ -1114,6 +1939,71 @@ function BrinejawPath.rearHeadPosition(state): Vector3
 	return BrinejawPath.pointAt(state, 0)
 end
 
+-- WHERE THE FALLEN LOOP IS, in world space: the tip of the hairpin, on the
+-- sand, on the aim line. The server parks the damageable proxy here for the
+-- melee window and the client hangs the marker's far end off it - one point,
+-- so the thing you swing at is the thing you can see lying there.
+--
+-- Analytic (no ambient breath), for the same reason `lungeImpactPoint` is:
+-- a hit proxy that inherits a 2-stud ripple makes melee feel haunted.
+function BrinejawPath.coilslamPoint(state): Vector3
+	local aimT = aimCyl(state)
+	local center = state.center or Vector3.zero
+	local outer = BrinejawPath.SLAM_OUTER
+	return center + fromCyl(aimT, outer, BrinejawPath.sandY(outer) + BrinejawPath.SLAM_SIT)
+end
+
+-- Caught by the bar? A band along the aim RAY - not the infinite line through
+-- the tower, because the loop is a hairpin and the far side of the tower has
+-- no body on it (see `coilslamCyl`).
+--
+-- Live from the crash's start rather than from the blow, so a server sampling
+-- at its own tick rate cannot step over SLAM_IMPACT_U and miss it; the
+-- attack's `hit` table is what makes it fire once. Vertically generous: the
+-- loop falls from SLAM_LIFT and a player under it is crushed, not brushed.
+function BrinejawPath.coilslamHits(state, position: Vector3, girth: number): boolean
+	if (state.attackKind or "") ~= "coilslam" or attackProgress(state) < BrinejawPath.SLAM_RISE_U then
+		return false
+	end
+	local center = state.center or Vector3.zero
+	local aimT = aimCyl(state)
+	local dx, dz = position.X - center.X, position.Z - center.Z
+	local along = dx * math.cos(aimT) + dz * math.sin(aimT)
+	if along < BrinejawPath.SLAM_INNER or along > BrinejawPath.SLAM_OUTER + 2.0 then
+		return false
+	end
+	local side = math.abs(-dx * math.sin(aimT) + dz * math.cos(aimT))
+	if side > (girth or BrinejawPath.COILSLAM_BAND) then
+		return false
+	end
+	local barY = center.Y + BrinejawPath.sandY(along) + BrinejawPath.SLAM_SIT
+	return math.abs(position.Y - barY) <= 7.0
+end
+
+-- Where the biting skull is: the head of the body curve, sway and all - the
+-- same point the client draws, so the authority model stands in the mouth.
+function BrinejawPath.biteHeadPoint(state): Vector3
+	return BrinejawPath.pointAt(state, 0)
+end
+
+-- Caught by the snap? A small disc at the aim, live from the snap's start.
+-- The aim is where the JAWS land, which `aimCyl` clamps to the reachable ring
+-- exactly as the lunge's is - a bite that fires at somebody hugging the
+-- masonry lands at AIM_MIN, which is where the head can actually reach.
+function BrinejawPath.biteHits(state, position: Vector3, radius: number): boolean
+	if (state.attackKind or "") ~= "bite" or attackProgress(state) < BrinejawPath.BITE_REAR_U then
+		return false
+	end
+	local aimT, aimR = aimCyl(state)
+	local center = state.center or Vector3.zero
+	local at = center + fromCyl(aimT, aimR, BrinejawPath.sandY(aimR))
+	local dx, dz = position.X - at.X, position.Z - at.Z
+	if dx * dx + dz * dz > radius * radius then
+		return false
+	end
+	return math.abs(position.Y - at.Y) <= 7.0
+end
+
 -- ====================================================================== --
 -- THE EVENT SHAPES
 -- ====================================================================== --
@@ -1209,6 +2099,127 @@ function BrinejawPath.waveSheltered(cover, center: Vector3, bearing: number, wor
 		end
 	end
 	return false
+end
+
+-- ------------------------------------------------------- the wave, RING FORM
+--
+-- THE RIPTIDE IS NOW A RING, and this pair replaces `waveFront`/
+-- `waveSheltered` above (which stay, working, for one commit while the client
+-- is swapped over - delete them next pass). The old wave was a directional
+-- wall of slabs and the user read it as scenery; the coils HEAVE THE SEA, so
+-- the wave leaves the tower as an expanding ring with TWO GAP ARCS you run
+-- to. The read is angular, not lateral, which is why the shelter test is now
+-- the SECONDARY answer and the gaps are the primary one.
+
+-- Where the ring is at `now`, or nil before it launches and once it is past
+-- `outer`. The whole of the wave's clock, both sides: the server damages a
+-- player in the frame the ring crosses their radius and the client draws its
+-- crest at the same number.
+function BrinejawPath.waveRing(start: number, speed: number, inner: number, outer: number, now: number): number?
+	local r = inner + speed * (now - start)
+	if r < inner or r > outer then
+		return nil
+	end
+	return r
+end
+
+-- IS `worldPos` SAFE FROM THE RING? Two ways, and the first is the one the
+-- fight teaches:
+--
+--   * THE GAPS. Two arcs of calm, open water at bearings `gapA` and `gapB`,
+--     each `gapHalf` wide either side of its centre. The player's BEARING
+--     from the tower is what matters - not their distance, because the ring
+--     is TALL and reaches every radius eventually. The client draws foam
+--     markers on these arcs before the wave moves, so the answer exists
+--     before the question does.
+--   * AND THE LEE, kept. A reef stone still blocks water: the ring travels
+--     radially outward, so the shelter direction at a point is that point's
+--     OWN bearing from the tower, and with that the existing rectangle test
+--     is exactly right. Reusing `waveSheltered` rather than restating it is
+--     the point - the client shades the same ground the server forgives, and
+--     WAVE_SHELTER_DEPTH / _PAD stay the one copy of how deep a lee is.
+--
+-- `cover` may be nil for a caller that has no arena list to hand (the marker
+-- code that only wants the gap read); the gaps still answer.
+function BrinejawPath.waveSafe(
+	gapA: number,
+	gapB: number,
+	gapHalf: number,
+	cover,
+	center: Vector3,
+	worldPos: Vector3
+): boolean
+	local dx, dz = worldPos.X - center.X, worldPos.Z - center.Z
+	local bearing = if (dx * dx + dz * dz) > 1e-8 then math.atan2(dz, dx) else 0
+	if math.abs(wrapAngle(bearing - gapA)) <= gapHalf or math.abs(wrapAngle(bearing - gapB)) <= gapHalf then
+		return true
+	end
+	if not cover then
+		return false
+	end
+	return BrinejawPath.waveSheltered(cover, center, bearing, worldPos)
+end
+
+-- -------------------------------------------------------------- the spines
+--
+-- A RADIAL VOLLEY WITH SAFE LANES: spines fly outward along `lanes` evenly
+-- spaced bearings, and the ground BETWEEN them is safe. Both sides derive the
+-- lane bearings from the same two payload fields - lane k's centre is
+-- `bearing0 + k * TAU / lanes` - so nothing about where a spine is has to
+-- cross the wire.
+--
+-- How thick a spine is when it passes you. It has to cover the distance the
+-- volley travels between two of the CALLER's ticks, not between two frames: at
+-- the book's 55 studs/second a 0.1 s server tick moves the front 5.5 studs, so
+-- a caller slower than that must sample the interval the way the sweep's wedge
+-- does rather than trusting one call.
+BrinejawPath.SPINE_GIRTH = 4.0
+
+-- How far out the volley has got, or nil before it launches and once it is
+-- past its reach. Same clock rule as every other event helper: `start` is a
+-- server-time value, so a client that adopts the fight mid-volley agrees.
+function BrinejawPath.spineFront(payload, now: number): number?
+	local r = (payload.speed or 55) * (now - (payload.start or 0))
+	if r < 0 or r > (payload.reach or 70) then
+		return nil
+	end
+	return r
+end
+
+-- AM I IN A LANE'S PATH? The bearing half of the test, on its own, because
+-- the client's marker wants the lanes without a front and the server wants
+-- both. Returns the lane index too, so a caller can colour the one that is
+-- about to arrive.
+function BrinejawPath.spineLane(payload, center: Vector3, worldPos: Vector3): (boolean, number)
+	local lanes = math.max(math.floor(payload.lanes or 10), 1)
+	local half = payload.laneHalf or math.rad(7)
+	local dx, dz = worldPos.X - center.X, worldPos.Z - center.Z
+	if (dx * dx + dz * dz) < 1e-8 then
+		return true, 0 -- standing on the axis, where every lane starts
+	end
+	local bearing = math.atan2(dz, dx)
+	local step = TAU / lanes
+	-- Which lane is nearest, by rounding the offset from lane 0 - one modulo
+	-- instead of a loop over ten bearings, and identical on both sides.
+	local k = math.round(wrapAngle(bearing - (payload.bearing0 or 0)) / step)
+	local delta = math.abs(wrapAngle(bearing - ((payload.bearing0 or 0) + k * step)))
+	return delta <= half, (k % lanes + lanes) % lanes
+end
+
+-- Caught by the volley right now? The lane test and the front's crossing,
+-- together - grounded or airborne, because a spine is as tall as the arena's
+-- read needs it to be.
+function BrinejawPath.spineHits(payload, center: Vector3, worldPos: Vector3, now: number): boolean
+	local front = BrinejawPath.spineFront(payload, now)
+	if not front then
+		return false
+	end
+	local dx, dz = worldPos.X - center.X, worldPos.Z - center.Z
+	local r = math.sqrt(dx * dx + dz * dz)
+	if math.abs(r - front) > (payload.girth or BrinejawPath.SPINE_GIRTH) then
+		return false
+	end
+	return (BrinejawPath.spineLane(payload, center, worldPos))
 end
 
 -- --------------------------------------------------------------- the rain

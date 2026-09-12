@@ -587,26 +587,54 @@ def build_island_base(base_name, material_names):
 ROCK_FOOTPRINTS = []
 
 
+# The arch is a WALK-THROUGH: the strip between its two legs, traversed along
+# z, is a route the player uses and no rock may stand in it. Half-width /
+# half-length of that keep-clear, in island-scale units about (ax, az).
+ARCH_CORRIDOR_HALF_W = 5.5  # * SCALE; the legs pinch the walkable slot to ~9 studs
+ARCH_CORRIDOR_HALF_L = 14.0  # * SCALE; the whole approach, both mouths
+
+
 def build_rocks():
     bm = bmesh.new()
     ROCK_FOOTPRINTS.clear()
-
-    def rock(center, scale, roughness, salt, yaw=0.0):
-        add_blob(bm, center, scale, roughness, salt, yaw)
-        r_xy = max(scale[0], scale[1]) * (1 + roughness)
-        ROCK_FOOTPRINTS.append((center[0], center[1], r_xy, center[2] - scale[2], center[2] + scale[2]))
 
     # --- the arch massif: two leaning pillars and a capstone spanning them.
     ROCK_SCALE = SCALE * 1.45
 
     ax, az = -2.0 * SCALE, 12.0 * SCALE
     ground = height_at(ax, az)
+
+    def clear_of_arch(x, z, r_xy):
+        """True when a footprint of radius `r_xy` at (x, z) stays out of the
+        arch's walk-through corridor. Circle-vs-rectangle, exact."""
+        dx = max(0.0, abs(x - ax) - ARCH_CORRIDOR_HALF_W * SCALE)
+        dz = max(0.0, abs(z - az) - ARCH_CORRIDOR_HALF_L * SCALE)
+        return math.hypot(dx, dz) >= r_xy
+
+    def rock(center, scale, roughness, salt, yaw=0.0, structural=False):
+        """One boulder. `structural=True` is ONLY for the arch's own legs and
+        capstone - they define the corridor, so they cannot be tested against
+        it. Every other rock is refused if its footprint reaches into the
+        walk-through, so no future ring entry, scatter or re-seat can block it.
+        The test is HERE rather than at the call sites so the RNG stream is
+        untouched by a rejection (the ring draws its yaw before calling)."""
+        r_xy = max(scale[0], scale[1]) * (1 + roughness)
+        if not structural and not clear_of_arch(center[0], center[1], r_xy):
+            print(
+                f"[island_gen] ARCH KEEP-CLEAR: rock at ({center[0]:.1f}, {center[1]:.1f}) "
+                f"r={r_xy:.1f} reaches into the arch walk-through - SKIPPED"
+            )
+            return
+        add_blob(bm, center, scale, roughness, salt, yaw)
+        ROCK_FOOTPRINTS.append((center[0], center[1], r_xy, center[2] - scale[2], center[2] + scale[2]))
+
     rock(
         (ax - 9.5 * SCALE, az - 1 * SCALE, ground + 9.0 * ROCK_SCALE),
         (6.4 * ROCK_SCALE, 5.6 * ROCK_SCALE, 11.5 * ROCK_SCALE),
         0.26,
         11.0,
         yaw=0.25,
+        structural=True,
     )
     rock(
         (ax + 9.0 * SCALE, az + 2 * SCALE, ground + 8.5 * ROCK_SCALE),
@@ -614,6 +642,7 @@ def build_rocks():
         0.26,
         23.0,
         yaw=-0.35,
+        structural=True,
     )
     rock(
         (ax - 0.5 * SCALE, az + 0.5 * SCALE, ground + 18.0 * ROCK_SCALE),
@@ -621,8 +650,18 @@ def build_rocks():
         0.30,
         37.0,
         yaw=0.1,
+        structural=True,
     )
-    # boulders piled at the feet so the arch grows out of a massif
+    # boulders piled at the feet so the arch grows out of a massif. All three
+    # sit BESIDE the legs, never in the gap between them: the second and third
+    # used to stand at (ax + 12, az + 7) and (ax + 2, az + 9), which put a
+    # 16-stud boulder against the east leg's inner face and a 12-stud one dead
+    # centre in the north mouth - the walk-through was blocked and the player
+    # read the pair as two rocks that "appeared out of nowhere" under the arch
+    # (user report 2026-09-12; the geometry was unchanged since the initial
+    # commit, it was the re-import of the pack that made it visible). They are
+    # now at the east leg's north and south FEET - outside the corridor, and
+    # behind that leg from inside it, so the massif still reads as one pile.
     rock(
         (ax - 14 * SCALE, az - 5 * SCALE, ground + 2.2 * ROCK_SCALE),
         (4.2 * ROCK_SCALE, 3.8 * ROCK_SCALE, 3.4 * ROCK_SCALE),
@@ -630,15 +669,17 @@ def build_rocks():
         51.0,
         yaw=1.2,
     )
+    bx, bz = ax + 16.0 * SCALE, az + 7 * SCALE
     rock(
-        (ax + 12 * SCALE, az + 7 * SCALE, ground + 2.6 * ROCK_SCALE),
+        (bx, bz, height_at(bx, bz) + 2.6 * ROCK_SCALE),
         (4.8 * ROCK_SCALE, 4.2 * ROCK_SCALE, 3.8 * ROCK_SCALE),
         0.32,
         63.0,
         yaw=2.1,
     )
+    cx, cz = ax + 14.5 * SCALE, az - 4 * SCALE
     rock(
-        (ax + 2 * SCALE, az + 9 * SCALE, ground + 1.8 * ROCK_SCALE),
+        (cx, cz, height_at(cx, cz) + 1.8 * ROCK_SCALE),
         (3.4 * ROCK_SCALE, 3.0 * ROCK_SCALE, 2.8 * ROCK_SCALE),
         0.34,
         71.0,
@@ -741,10 +782,24 @@ def build_palm(trunk_bm, frond_bm, coco_bm, label, px, pz, h, lean_deg, dir_deg)
     base = Vector((px, pz, height_at(px, pz) - 0.6))
     spine = trunk_spine(base, h, math.radians(lean_deg), math.radians(dir_deg))
 
-    rings = []
+    crown = spine[-1] + Vector((0, 0, 0.4 * TREE_SCALE))
+
+    # The trunk runs UP INTO the crown and a little past it. The fronds are
+    # struck from `crown` and the coconuts hang off the shaft just under it,
+    # so the wood has to actually REACH there: with the trunk stopping at
+    # spine[-1] the whole crown - 12 fronds and 3 coconuts per palm - stood
+    # about a stud clear of the top cap with sky showing through the gap
+    # (2026-09-09). The last two rings are the crownshaft: a slight swelling
+    # at the frond ring, then a taper the frond bases bite into.
+    stations = []
     for i, p in enumerate(spine):
         t = i / (len(spine) - 1)
-        radius = (0.62 * (1 - t) + 0.34 * t) * TREE_SCALE
+        stations.append((p, (0.62 * (1 - t) + 0.34 * t) * TREE_SCALE))
+    stations.append((crown, 0.40 * TREE_SCALE))
+    stations.append((crown + Vector((0, 0, 0.62 * TREE_SCALE)), 0.16 * TREE_SCALE))
+
+    rings = []
+    for p, radius in stations:
         ring = []
         for s in range(TRUNK_SIDES):
             a = (s / TRUNK_SIDES) * math.tau
@@ -755,8 +810,6 @@ def build_palm(trunk_bm, frond_bm, coco_bm, label, px, pz, h, lean_deg, dir_deg)
             s2 = (s + 1) % TRUNK_SIDES
             trunk_bm.faces.new((rings[i][s], rings[i + 1][s], rings[i + 1][s2], rings[i][s2]))
     trunk_bm.faces.new(tuple(reversed(rings[-1])))
-
-    crown = spine[-1] + Vector((0, 0, 0.4 * TREE_SCALE))
 
     PALM_CHECKPOINTS.append((f"{label}/base", base.x, base.y, 0.0, base.z + h * 0.5))
     PALM_CHECKPOINTS.append((f"{label}/crown", crown.x, crown.y, crown.z - 4.0, crown.z + 4.0))
@@ -801,7 +854,10 @@ def build_palm(trunk_bm, frond_bm, coco_bm, label, px, pz, h, lean_deg, dir_deg)
 
     for c in range(3):
         a = (c / 3) * math.tau + 0.5
-        pos = crown + Vector((math.cos(a) * 1.0 * TREE_SCALE, math.sin(a) * 1.0 * TREE_SCALE, -0.7 * TREE_SCALE))
+        # Slung against the shaft, not orbiting it: at 1.0 they hung a clear
+        # half-stud off the trunk (0.40 nut + 0.34 trunk < 1.0), which reads
+        # as three balls floating in the crown once the fronds part.
+        pos = crown + Vector((math.cos(a) * 0.66 * TREE_SCALE, math.sin(a) * 0.66 * TREE_SCALE, -0.7 * TREE_SCALE))
         add_blob(coco_bm, tuple(pos), (0.4 * TREE_SCALE, 0.4 * TREE_SCALE, 0.44 * TREE_SCALE), 0.05, 100 + c * 7.0)
 
 
@@ -941,16 +997,73 @@ def build_dock(plank_name="Dock_Planks", post_name="Dock_Posts", plank_mat="M_Pl
 # ---------------------------------------------------------------- foam
 
 
-def build_foam(foam_name, material_name):
+FOAM_SCAN_SPAN = 0.20  # the crossing is hunted over +-this fraction of the analytic radius
+FOAM_SCAN_STEPS = 64  # coarse samples across that span, then bisection
+FOAM_BISECT = 14
+
+
+def _foam_shore_radius(ground, theta, analytic):
+    """The radius at which the REAL ground crosses z=0 on this bearing.
+
+    The analytic `ring_radius(1.0, theta)` is the shoreline of the SMOOTH
+    profile. Every island displaces that profile with crag/jitter after the
+    fact, which moves the true z=0 crossing - outward on the volcano by a
+    median 25 studs, so a rim placed analytically sat 25 studs INLAND of the
+    water and 505 of 624 sampled points landed on dry rock (2026-09-09).
+    So the rim is hunted on the raycast surface instead: sample outward and
+    inward of the analytic radius, take the OUTERMOST land->water transition
+    in the window, and bisect it. Returns `analytic` unchanged when no
+    crossing is in the window (or when there is no ground BVH to ask).
+    """
+    if ground is None:
+        return analytic
+    c, sn = math.cos(theta), math.sin(theta)
+    span = max(analytic * FOAM_SCAN_SPAN, 12.0)
+
+    def wet(r):
+        """True where the real surface is below the waterline (or absent)."""
+        h = _drop_to_ground(ground, c * r, sn * r)
+        return h is None or h < 0.0
+
+    lo, hi = max(analytic - span, 1.0), analytic + span
+    step = (hi - lo) / FOAM_SCAN_STEPS
+    cross = None
+    r = lo
+    dry_r = None
+    while r <= hi + 1e-6:
+        if wet(r):
+            if dry_r is not None:
+                cross = (dry_r, r)  # keep going: we want the OUTERMOST one
+        else:
+            dry_r = r
+        r += step
+    if cross is None:
+        return analytic
+    a, b = cross
+    for _ in range(FOAM_BISECT):
+        m = (a + b) / 2
+        if wet(m):
+            b = m
+        else:
+            a = m
+    return (a + b) / 2
+
+
+def build_foam(foam_name, material_name, ground=None):
     """The white rim + dock-post collars, following the actual shoreline ring.
-    Must run after build_dock() (reads DOCK_POST_POSITIONS)."""
+    Must run after build_dock() (reads DOCK_POST_POSITIONS).
+
+    `ground` is the caller's landform BVH (`_ground_bvh(base)`). With it the
+    rim and the post collars are placed against the REAL, displaced surface;
+    without it both fall back to the analytic profile, which is wrong by the
+    crag amplitude on every island that displaces its coast."""
     foam_bm = bmesh.new()
 
     inner, outer = [], []
     for s in range(FOAM_SEGMENTS):
         theta = (s / FOAM_SEGMENTS) * math.tau
         c, sn = math.cos(theta), math.sin(theta)
-        shore = ring_radius(1.0, theta)
+        shore = _foam_shore_radius(ground, theta, ring_radius(1.0, theta))
         r_in = shore - FOAM_INSET
         r_out = shore + ragged(theta, FOAM_WIDTH, FOAM_EDGE)
         inner.append((c * r_in, sn * r_in))
@@ -960,7 +1073,12 @@ def build_foam(foam_name, material_name):
 
     collars = 0
     for px, py in DOCK_POST_POSITIONS:
-        if height_at(px, py) > -0.3:
+        # The same correction as the rim: height_at is the smooth profile, and
+        # a post standing in the real wash reads as dry to it (and vice versa).
+        h = _drop_to_ground(ground, px, py) if ground is not None else None
+        if h is None:
+            h = height_at(px, py)
+        if h > -0.3:
             continue
         points = []
         for s in range(POST_FOAM_SEGMENTS):
@@ -1070,10 +1188,19 @@ def _jagged_disc(bm, cx, cy, rx, ry, z_top, thickness, salt, seg=26):
 
 LAVA_LAKE_LEVEL = 842.0  # crater lake surface; dish floor 830-836, inner lip 852
 LAVA_LAKE_R = 48.0
-LAVA_LIFT = 3.6  # base ride height above the raycast rock: a THICK visible
+LAVA_LIFT = 6.4  # base ride height above the raycast rock: a THICK visible
 # layer (user round 3: "a thicker sheet... its own object layered on top of
 # the rock") - the exposed side wall under the top surface is what sells the
 # lava as a distinct slab resting on the mountain rather than paint on it.
+# Raised 3.6 -> 6.4 on 2026-09-09. The sheet samples the rock on a 3.5-stud x
+# ~8-stud grid, but `crag` displaces the cone at a finer wavelength than
+# that, so spurs standing INSIDE a cell (all four of its corners down in the
+# gullies either side, which is why the slope-scaled term below could not see
+# them) punched clean through the ribbon: from the flank the main rivers read
+# as a shredded band of orange and grey rather than a flow. Lifting the whole
+# sheet clears those spurs, and the underside is still 3.6 studs inside the
+# rock at every sampled vertex (thickness 10). The delta and the crater lake
+# are _jagged_disc, at fixed levels, and are unaffected.
 LAVA_COLUMNS = 7  # lateral samples per row - every one conforms to the ground
 
 # (bearing_deg, notch_half_width_deg, notch_depth, width_scale). Deliberately
@@ -1121,6 +1248,32 @@ def _lava_sheet(bm, rows, thickness):
     bm.faces.new([bot[n - 1][j] for j in range(m)] + [top[n - 1][j] for j in range(m - 1, -1, -1)])  # end cap
 
 
+def _lava_river_t(r, bearing_deg):
+    """The river's own path parameter at radius `r` - the inverse of the
+    r = r0 + (r_end - r0) * t that _lava_river walks."""
+    theta0 = math.radians(bearing_deg)
+    r0 = LAVA_LAKE_R * 0.72
+    r_end = ring_radius(1.0, theta0) + 52.0
+    return min(1.0, max(0.0, (r - r0) / (r_end - r0)))
+
+
+def _lava_river_half_width(t, width_scale):
+    """The half-width _lava_river actually draws at t - the SAME expression
+    the sheet is built from, so a keep-out asking this question gets the real
+    answer instead of a flat guess."""
+    w = width_scale * (7.0 + 20.0 * t + 6.0 * math.sin(math.pi * t))
+    if t > 0.86:
+        w += width_scale * 18.0 * (t - 0.86) / 0.14
+    return w
+
+
+def _lava_river_centre_angle(t, bearing_deg, half_width_deg):
+    """The bearing of the river's centreline at t, wander and all - the SAME
+    expression _lava_river walks its rows along."""
+    wander = min(math.radians(half_width_deg) * 0.55, 0.075)
+    return math.radians(bearing_deg) + wander * math.sin(bearing_deg * 0.37 + t * 6.2)
+
+
 def _lava_river(bm, ground, bearing_deg, half_width_deg, width_scale):
     """One river, source to sea, as a single draped sheet resting ON the rock:
     a steps x LAVA_COLUMNS grid where EVERY vertex raycasts its own ground and
@@ -1133,10 +1286,10 @@ def _lava_river(bm, ground, bearing_deg, half_width_deg, width_scale):
     r0 = LAVA_LAKE_R * 0.72  # starts INSIDE the lake so the join is seamless
     r_end = ring_radius(1.0, theta0) + 52.0  # well past the shore, into the sea
     steps = 168  # ~3.5-stud rows: on a 70-deg wall a coarser grid lets facets clip through mid-cell
-    # The wander is bounded by the notch's half-width so the river can't climb
-    # out of its own carved channel on the way through the rim.
-    wander = min(math.radians(half_width_deg) * 0.55, 0.075)
-    phase = bearing_deg * 0.37
+    # The wander (bounded by the notch's half-width so the river can't climb
+    # out of its own carved channel) and the width both come from the helpers
+    # above - the prop keep-out asks the SAME two functions, so a river can
+    # never be drawn wider than the ground the scatter believes it covers.
 
     rows = []
     pool_at = None
@@ -1144,15 +1297,13 @@ def _lava_river(bm, ground, bearing_deg, half_width_deg, width_scale):
     raws = [0.0] * LAVA_COLUMNS
     for i in range(steps + 1):
         t = i / steps
-        theta = theta0 + wander * math.sin(phase + t * 6.2)
+        theta = _lava_river_centre_angle(t, bearing_deg, half_width_deg)
         r = r0 + (r_end - r0) * t
         cx, cy = math.cos(theta) * r, math.sin(theta) * r
 
         # Widths: a tight chute up top, broadening down the flank, fanning
         # hard over the last stretch into the sea.
-        w = width_scale * (7.0 + 20.0 * t + 6.0 * math.sin(math.pi * t))  # bulges mid-flank
-        if t > 0.86:
-            w += width_scale * 18.0 * (t - 0.86) / 0.14
+        w = _lava_river_half_width(t, width_scale)  # bulges mid-flank, fans at the delta
         px, py = -math.sin(theta), math.cos(theta)
         row = []
         for j in range(LAVA_COLUMNS):
@@ -1235,16 +1386,27 @@ def _volcano_clear_of_hut(x, y, pad=0.0):
 
 
 def _volcano_clear_of_rivers(x, y, margin):
-    """True when (x, y) sits at least `margin` studs LATERALLY off every lava
-    river's centreline (approximated as the radial ray at its bearing - the
-    authored wander is under 0.075 rad, folded into the margin)."""
+    """True when (x, y) sits at least `margin` studs clear of the lava sheet
+    every river actually draws.
+
+    It used to model a river as the straight radial ray at its bearing with a
+    flat 30 * ws half-width, and that lie cost on both counts: down at the
+    shore the flow fans to ~45 * ws (its delta stretch), and the authored
+    wander - "folded into the margin" - is an ANGLE, so at r = 550 its 0.075
+    rad throws the centreline 40 studs sideways, four times the margin it was
+    folded into. Boulders and dead giants were being planted inside the
+    molten sheet (2026-09-09 preview review: rocks rafting down a river, a
+    charred trunk standing in one). Ask the river's own width and wander
+    formulas instead, so the keep-out is the geometry, not a guess."""
     r = math.hypot(x, y)
     if r < 1.0:
         return True
     theta = math.atan2(y, x)
-    for bearing, _hw, _depth, ws in LAVA_FLOWS:
-        da = abs(((theta - math.radians(bearing) + math.pi) % math.tau) - math.pi)
-        if r * da < margin + 30.0 * ws:  # river half-width at the apron, scaled
+    for bearing, half_w, _depth, ws in LAVA_FLOWS:
+        t = _lava_river_t(r, bearing)
+        centre = _lava_river_centre_angle(t, bearing, half_w)
+        da = abs(((theta - centre + math.pi) % math.tau) - math.pi)
+        if r * da < margin + _lava_river_half_width(t, ws):
             return False
     return True
 
@@ -1299,8 +1461,12 @@ def _dead_tree(bm, x, y, base_z, h, salt):
             add_cone(bm, tuple(child), limb_r * 0.5, 0.14, length * rng.uniform(0.35, 0.55), sides=4, tilt=ct, yaw=0.0)
 
 
+_VOLCANO_TREES = []  # (x, y, radius): the dead giants' plots, honoured by the rock scatter
+
+
 def build_volcano_trees(ground):
     bm = bmesh.new()
+    _VOLCANO_TREES.clear()  # this island's records only (shared-registry rule)
     placed = []
     made, attempts = 0, 0
     while made < 60 and attempts < 3400:  # density held as the apron grew
@@ -1327,6 +1493,12 @@ def build_volcano_trees(ground):
         h = random.uniform(40.0, 64.0) if random.random() < 0.7 else random.uniform(64.0, 95.0)
         _dead_tree(bm, x, y, base - 0.8, h, salt=attempts * 3.7 + made)
         placed.append((x, y))
+        # The plot the boulder scatter must leave alone. A snag is a trunk,
+        # three root flares and 4-6 limbs flung 50-80 deg off vertical, so
+        # the ground it occupies grows with its height; the boulder scatter
+        # had no test against it at all and dropped 26-stud rocks onto
+        # trunks and through limbs (2026-09-09).
+        _VOLCANO_TREES.append((x, y, max(15.0, 0.26 * h)))
         made += 1
     print(f"[island_gen] HANDOFF volcano trees: {made} dead giants on the apron (heights 40-95)")
     return object_from_bmesh("Volcano_DeadTrees", bm, ["M_Charred"])
@@ -1409,8 +1581,31 @@ def build_volcano_rocks(ground):
             size = random.uniform(size_lo, size_hi) if random.random() > giant_chance else random.uniform(size_hi, giant_hi)
             if any((x - px) ** 2 + (y - py) ** 2 < (spacing + size) ** 2 for px, py, _ps in placed):
                 continue
+            # ...and off the dead giants' plots. Tested HERE rather than in
+            # spot() so a rejected attempt consumes exactly the draws it did
+            # before: every boulder that was already clear of the trees keeps
+            # its old position, and only the ones that were inside one get
+            # re-drawn.
+            if any((x - tx) ** 2 + (y - ty) ** 2 < (tr + size) ** 2 for tx, ty, tr in _VOLCANO_TREES):
+                continue
             surface = _drop_to_ground(ground, x, y)
             if surface is None or surface < 0.3:
+                continue
+            # A boulder needs a LEDGE, not a wall. A downward raycast happily
+            # seats a rock on a near-vertical crag facet, and what you get is
+            # a boulder growing sideways out of the cliff (2026-09-09 preview
+            # review: two of them on the west flank). The talus band rides
+            # u 0.56-0.65 and the radial crag wobble drags parts of that band
+            # up onto the face, so ask the ground how steep it is under the
+            # rock's own footprint and drop the spot if it is a wall.
+            slope = 0.0
+            for ax, ay in ((size, 0.0), (-size, 0.0), (0.0, size), (0.0, -size)):
+                near = _drop_to_ground(ground, x + ax, y + ay)
+                if near is None:
+                    slope = 1e9
+                    break
+                slope = max(slope, abs(near - surface))
+            if slope > size:
                 continue
             builder(bm, x, y, surface, size, salt=salt0 + attempts * 3.1, **kw)
             placed.append((x, y, size))
@@ -1680,12 +1875,16 @@ def build_hut_maren():
     fish_line(PORCH - 0.9, -5.4, PORCH - 0.9, 5.4, FLOOR + 6.9, 6)
     fish_line(FRONT - 0.3, -5.9, PORCH - 0.9, -5.4, FLOOR + 5.9, 4)
 
-    # Stacked crab traps by the ramp, and the rain barrel under the eave.
+    # Stacked crab traps by the ramp, and the water barrel in the back corner.
     first = len(props.faces)
     for k in range(3):  # traps rest ON the deck and ON each other (no gaps)
         B(props, 7.9 + k * 0.3, -4.9 + k * 0.25, FLOOR + 0.72 + k * 1.5, 1.9 - k * 0.12, 1.9 - k * 0.12, 1.6)
         B(props, 7.9 + k * 0.3, -4.9 + k * 0.25, FLOOR + 1.5 + k * 1.5, 2.1 - k * 0.12, 0.22, 0.18)  # slats
-    bx, by, _ = P(-4.4, 5.4, 0)
+    # Clear of BOTH walls it used to be buried in: the interior half is
+    # HW - T = 5.5 and the hoop is 1.38, so the corner it can stand in ends at
+    # 4.12. At (-4.4, 5.4) a third of the barrel came out through the right
+    # wall as a plank-coloured slab (2026-09-09).
+    bx, by, _ = P(-4.0, 4.0, 0)
     add_post(props, bx, by, FLOOR - 0.1, FLOOR + 2.7, 1.25, sides=8)
     add_post(props, bx, by, FLOOR + 2.3, FLOOR + 2.6, 1.38, sides=8)  # the iron hoop
     _hut_maren_paint(props, first, 0)
@@ -1797,14 +1996,18 @@ def build_hut_maren():
 
 
 def build_tropical():
+    # The base is pulled out of the list so the foam can be given its BVH: the
+    # rim is placed on the REAL displaced surface, not the smooth profile.
+    base = build_island_base("Island_Base", ["M_Grass", "M_Sand", "M_WetSand"])
+    ground = _ground_bvh(base)
     objects = [
-        build_island_base("Island_Base", ["M_Grass", "M_Sand", "M_WetSand"]),
+        base,
         build_rocks(),
         *build_palms(),
         build_bushes(),
         *build_dock(),
         *build_hut_maren(),  # Old Maren's stilt shack, on the sand by the spawn
-        build_foam("Island_Foam", "M_Foam"),
+        build_foam("Island_Foam", "M_Foam", ground),
     ]
     validate_placement(PALM_CHECKPOINTS, BUSH_CHECKPOINTS)
     print(f"[island_gen] placement OK: {len(PALM_CHECKPOINTS)} palm points, {len(BUSH_CHECKPOINTS)} bushes clear")
@@ -2020,7 +2223,11 @@ def build_volcano_hut(ground):
     # upper half of the mouth with light over the anvil counter.
     _hut_b_cone(glow, site, hearth, -6.4, z0 + 0.85, 2.4, 1.9, 2.4, sides=9)
     _hut_b_cone(glow, site, hearth, -6.4, z0 + 3.0, 1.55, 0.35, 2.4, sides=6)  # the flame off it
-    _hut_b_cone(glow, site, hearth, -4.4, top + 9.6, 1.4, 1.2, 0.7, sides=6)  # ember at the lip
+    # The ember at the chimney lip STANDS ON the cap course (which spans
+    # top+9.45..top+10.35): at top+9.6 the whole 0.7-stud disc was entombed
+    # inside that block and the forge's chimney showed no fire at all
+    # (2026-09-09). It now bites 0.2 into the cap and stands 0.5 proud.
+    _hut_b_cone(glow, site, hearth, -4.4, top + 10.15, 1.4, 1.2, 0.7, sides=6)  # ember at the lip
     # Trench lips, and the rill's banks out on the slope: laid stone kerbs
     # that sit on their own ground for the whole run.
     for sx in (-1.0, 1.0):
@@ -2080,7 +2287,11 @@ def build_volcano_hut(ground):
             _hut_b_box(trim, site, bx, by, z0 + 0.35 + c * 0.62, (2.6, 1.6, 0.7),
                        spin=rng.uniform(-0.12, 0.12))
     for k in range(4):  # slumped sacks of sulfur, not traffic cones
-        sx, sy = -8.8 + k * 1.6, 4.6 + (k % 2) * 1.9  # the back-west corner, out of the walk
+        # Along the BACK WALL, in the clear run between Brakk's bed (its
+        # slab ends at x -3.4) and the magma trench (its slot starts at
+        # x 3.7). The old back-west spot put all four INSIDE the bed: two
+        # impaled on its legs, two shut under its slab (2026-09-09).
+        sx, sy = -2.4 + k * 1.45, 5.9 + (k % 2) * 0.8
         _hut_b_cone(trim, site, sx, sy, z0, rng.uniform(0.95, 1.25),
                     rng.uniform(0.72, 0.95), rng.uniform(1.0, 1.4), sides=6,
                     spin=rng.uniform(0, 1.0))
@@ -2184,7 +2395,7 @@ def build_volcano():
     rocks = build_volcano_rocks(ground)  # step 4: same keep-clears
     hut = build_volcano_hut(ground)  # step 7: in the plot claimed above
     dock = build_dock("Volcano_Dock_Planks", "Volcano_Dock_Posts", "M_VolPlank", "M_VolPost")  # step 5
-    foam = build_foam("Volcano_Foam", "M_VolFoam")  # step 6: after the dock - it collars the wet posts
+    foam = build_foam("Volcano_Foam", "M_VolFoam", ground)  # step 6: after the dock - it collars the wet posts
     shore = ring_radius(1.0, math.radians(270))
     dock_start = ring_radius(DOCK_START_U, math.radians(270))
     dock_end = dock_start + DOCK_LENGTH + DOCK_END_LENGTH
@@ -2544,7 +2755,9 @@ def build_swamp_smalls():
             add_disc_slab(lily_bm, points, SWAMP_WATER_Z + 0.08, 0.1)
             if rng.random() < 0.16:
                 blooms += 1
-                add_cone(bloom_bm, (x, y, SWAMP_WATER_Z + 0.1), 0.28, 0.05, rng.uniform(0.4, 0.6), sides=5)
+                # Rooted INSIDE the pad slab (top face SWAMP_WATER_Z + 0.08,
+                # 0.1 thick), not balanced 0.02 studs above it.
+                add_cone(bloom_bm, (x, y, SWAMP_WATER_Z + 0.02), 0.28, 0.05, rng.uniform(0.4, 0.6), sides=5)
 
     # Half-sunken logs: lying in the shallows and on the low banks, tilted
     # nearly flat, a couple of stub branches each.
@@ -2630,7 +2843,15 @@ def build_swamp_smalls():
     #   - mushroom clusters riding logs, stumps and banks (the colour pop)
     detail_spots = []  # (x, y, kind) - printed as HANDOFF so previews can find them
 
-    def ground_spot(tries=60):
+    # Every set piece below claims its spot here, and the next one has to keep
+    # its distance: the shipped build dropped two stump+log pairs 7.1 studs
+    # apart (rel X=-42 Z=-92 and X=-49 Z=-91) and their 8-12 stud trunks lay
+    # through each other, which reads as one duplicated prop rather than two
+    # trees that came down. A fallen log is 12 studs long, so 15 studs of
+    # separation is the smallest that keeps two of them from touching.
+    taken = []
+
+    def ground_spot(tries=200, sep=15.0):
         for _ in range(tries):
             theta = rng.uniform(0, math.tau)
             u = rng.uniform(0.10, SWAMP_RIM_U + 0.03)
@@ -2638,20 +2859,34 @@ def build_swamp_smalls():
             x, y = math.cos(theta) * r_world, math.sin(theta) * r_world
             g = _swamp_height(x, y)
             if SWAMP_WATER_Z + 0.15 <= g <= SWAMP_WATER_Z + 2.2 and clear(x, y, 5):
+                if any(math.hypot(x - px, y - py) < sep for px, py in taken):
+                    continue
+                taken.append((x, y))
                 return x, y, g
         return None
 
     shroom_bm = bmesh.new()
     shroom_anchors = []
 
-    def mushrooms(x, y, z, n):
+    def mushrooms(x, y, z, n, reach=1.4, on_ground=False):
+        """A cluster of caps seated on whatever holds them. `reach` is how far
+        the cluster may wander from (x, y) - it must be the SUPPORT's radius,
+        not a constant: the shipped build let a cluster spread 1.4 studs from a
+        0.9-stud stump, so half of every ridden cluster hung off the side in
+        mid-air (checker: 18 mushroom pieces unsupported, 2 of them a full
+        stud clear, plus the 6 tiny fragments). On loose ground the caps are
+        re-seated on the ground under each one instead of on the cluster's
+        centre height, which is what left the 0.02-0.2 stud hovers on slopes."""
         for _ in range(n):
             a = rng.uniform(0, math.tau)
-            d = rng.uniform(0.2, 1.4)
+            d = rng.uniform(0.2, 1.4) * (reach / 1.4)
             mx_, my_ = x + math.cos(a) * d, y + math.sin(a) * d
+            mz_ = (_swamp_height(mx_, my_) - 0.05) if on_ground else z
             stem_h = rng.uniform(0.35, 0.7)
-            add_cone(shroom_bm, (mx_, my_, z), 0.12, 0.09, stem_h, sides=4)
-            add_cone(shroom_bm, (mx_, my_, z + stem_h), rng.uniform(0.35, 0.6), 0.06, rng.uniform(0.28, 0.45), sides=5)
+            add_cone(shroom_bm, (mx_, my_, mz_), 0.12, 0.09, stem_h, sides=4)
+            add_cone(
+                shroom_bm, (mx_, my_, mz_ + stem_h), rng.uniform(0.35, 0.6), 0.06, rng.uniform(0.28, 0.45), sides=5
+            )
 
     def fallen_log(x, y, g, yaw, length, r0, stubs=True):
         pitch = rng.uniform(1.46, 1.6)  # ~horizontal
@@ -2698,11 +2933,17 @@ def build_swamp_smalls():
         x, y, g = spot
         yaw = rng.uniform(0, math.tau)
         r0 = rng.uniform(0.7, 0.95)
-        stump(x, y, g, r0 * 1.15, rng.uniform(1.2, 2.0))
+        stump_r = r0 * 1.15
+        stump_h = rng.uniform(1.2, 2.0)  # hoisted: the caps have to know the real top
+        stump(x, y, g, stump_r, stump_h)
         lx, ly = x + math.cos(yaw) * (r0 + 1.6), y + math.sin(yaw) * (r0 + 1.6)
         fallen_log(lx, ly, _swamp_height(lx, ly), yaw, rng.uniform(8.0, 12.0), r0)
         if rng.random() < 0.8:
-            shroom_anchors.append((x, y, g + rng.uniform(1.2, 1.9)))
+            # ON the stump's cut top face (stump() draws it at g + h, top
+            # radius 0.85 of the base), inside its rim. The old anchor drew a
+            # height of its own that had nothing to do with the stump it was
+            # meant to ride, so the caps sat up to 0.7 studs above the wood.
+            shroom_anchors.append((x, y, g + stump_h - 0.15, stump_r * 0.85 * 0.75))
         detail_spots.append((x, y, "stump+log"))
 
     # Lone fallen logs.
@@ -2713,9 +2954,24 @@ def build_swamp_smalls():
             break
         lone_logs += 1
         x, y, g = spot
-        fallen_log(x, y, g, rng.uniform(0, math.tau), rng.uniform(6.0, 10.0), rng.uniform(0.55, 0.8))
+        yaw = rng.uniform(0, math.tau)
+        length = rng.uniform(6.0, 10.0)
+        r0 = rng.uniform(0.55, 0.8)
+        axis = fallen_log(x, y, g, yaw, length, r0)
         if rng.random() < 0.5:
-            shroom_anchors.append((x, y, g + 0.9))
+            # ON the log's back, a third of the way along it. The old anchor
+            # stood at the log's BUTT at a fixed g + 0.9 - beside a log whose
+            # back is at g + 1.55*r0 - so the caps floated off the side of it
+            # (checker: the 0.92-stud mushroom hover at rel X=-18 Z=48).
+            t = 0.35
+            shroom_anchors.append(
+                (
+                    x + axis.x * length * t,
+                    y + axis.y * length * t,
+                    g + r0 * 0.55 + axis.z * length * t + r0 * 0.75,
+                    r0 * 0.7,
+                )
+            )
         detail_spots.append((x, y, "log"))
 
     # Lone stumps.
@@ -2754,8 +3010,8 @@ def build_swamp_smalls():
 
     # Mushroom clusters: on the logs/stumps recorded above plus a few bank
     # spots of their own.
-    for ax_, ay_, az_ in shroom_anchors:
-        mushrooms(ax_, ay_, az_, rng.randint(2, 4))
+    for ax_, ay_, az_, ar_ in shroom_anchors:
+        mushrooms(ax_, ay_, az_, rng.randint(2, 4), reach=ar_)
     shroom_clusters = 0
     while shroom_clusters < 6:
         spot = ground_spot()
@@ -2763,7 +3019,7 @@ def build_swamp_smalls():
             break
         shroom_clusters += 1
         x, y, g = spot
-        mushrooms(x, y, g, rng.randint(3, 6))
+        mushrooms(x, y, g, rng.randint(3, 6), on_ground=True)
         detail_spots.append((x, y, "mushrooms"))
 
     for dx_, dy_, kind in detail_spots:
@@ -2788,7 +3044,13 @@ def _tilt_toward(direction):
     its intended direction while children attached at the intended tip:
     the floating-branch bug (user screenshots, 2026-08-28). Now solved
     exactly for the true axis Rx(a)Ry(b) @ +Z, and VERIFIED on every
-    call: the produced axis must match the request or this raises."""
+    call: the produced axis must match the request or this raises.
+
+    The `direction` you pass is the AXIS, which for a cone is the way it
+    POINTS - so a DISC (a flat, near-zero-height cone) built with this tilt
+    leans about an axis PERPENDICULAR to the lean you want: pass the disc's
+    normal, not the downhill direction it should slope toward. An islet pass
+    got that backwards and tilted its discs 90 degrees out of plane."""
     # cone_axis applies Rx(a) @ Ry(b) @ +Z = (sin b, -sin a cos b,
     # cos a cos b): b = asin(dx) keeps cos b >= 0, and a = atan2(-dy, dz)
     # covers every quadrant - downward directions included - exactly.
@@ -2951,15 +3213,17 @@ def build_swamp_trees():
                 if rng.random() < 0.22:
                     vl = rng.uniform(6.0, 12.0)
                     va = rng.uniform(0, math.tau)
-                    add_cone(
-                        vine_bm,
-                        (t_.x, t_.y, t_.z - vl),
-                        0.08,
-                        0.05,
-                        vl,
-                        sides=3,
-                        tilt=(math.cos(va) * rng.uniform(0.03, 0.12), math.sin(va) * rng.uniform(0.03, 0.12)),
-                    )
+                    v_tilt = (math.cos(va) * rng.uniform(0.03, 0.12), math.sin(va) * rng.uniform(0.03, 0.12))
+                    # add_cone grows from its BASE along the TILTED axis, so a
+                    # vine whose base was dropped straight under the tip had
+                    # its top walk off the branch by vl*sin(tilt) - measured on
+                    # the shipped build: 526 of 679 vines hung more than 0.3
+                    # studs clear of any wood, 248 of them clear of the canopy
+                    # too, i.e. dangling in open air (up to 1.27 studs off).
+                    # Hang it FROM the tip: base = tip - axis * length, the way
+                    # the untilted moss ribbons above already do.
+                    v_base = t_ - cone_axis(v_tilt, 0.0) * vl
+                    add_cone(vine_bm, tuple(v_base), 0.08, 0.05, vl, sides=3, tilt=v_tilt)
 
     # The runtime trunk-collider table (src/Shared/Data/SwampTrees.luau):
     # every tree MESH is pass-through in game (an imported multi-tree mesh
@@ -3282,7 +3546,13 @@ def build_hut_morra():
     shelf_r = shell_r(4.2, False) - 0.35
     lf, ls = lean_at(4.2)
     shelf_f, shelf_s = math.cos(shelf_ang) * shelf_r + lf, math.sin(shelf_ang) * shelf_r + ls
-    B(props, shelf_f, shelf_s, FLOOR + 4.2, 1.5, 5.2, 0.3, turn=shelf_ang + math.pi / 2)
+    # add_box lays its FIRST size along the yaw direction, so `turn` is the
+    # RADIAL bearing here: the shelf is 1.5 deep out of the wall and 5.2 long
+    # ALONG it. Turned a further 90 degrees (as it was) the plank ran radially
+    # instead - 2.6 studs out through the wattle and 2.6 into the room - while
+    # the bottles and both brackets, which are offset along the tangent, hung
+    # in mid-air beside a shelf only 1.5 studs wide.
+    B(props, shelf_f, shelf_s, FLOOR + 4.2, 1.5, 5.2, 0.3, turn=shelf_ang)
     for br in (-1.9, 1.9):  # brackets down to the wall
         B(
             props,
@@ -3292,7 +3562,7 @@ def build_hut_morra():
             1.2,
             0.24,
             0.7,
-            turn=shelf_ang + math.pi / 2,
+            turn=shelf_ang,
         )
     stump_f, stump_s = inner_c[0] + 1.6, inner_c[1] - 2.4
     add_cone(props, P(stump_f, stump_s, FLOOR - 0.2), 1.25, 1.0, 2.8, sides=6)
@@ -3315,9 +3585,16 @@ def build_hut_morra():
         add_cone(props, (p.x, p.y, p.z - drop - 1.5), 0.1, 0.55, 1.6, sides=4)
     _hut_maren_paint(props, first, 1)
     first = len(props.faces)
+    # The jars hang off the SAME two rafters as the herb bundles, so they are
+    # spaced into the gaps BETWEEN them: on its own (k + 0.3) / 4.6 run, the
+    # third jar landed 0.15 studs from a bundle (a 0.45 jar inside a 0.55
+    # bundle - one fused lump in mid-air) and a second pair overlapped at 0.76.
+    # These four fractions keep every jar 1.28 studs or more off its
+    # neighbours, which clears 0.45 + 0.55 with room to spare.
+    JAR_T = (0.100, 0.216, 0.620, 0.757)
     for k in range(4):  # leech jars, hung off the same rafters
         p0, p1 = rafters[(k + 1) % 2]
-        p = p0 + (p1 - p0) * ((k + 0.3) / 4.6)
+        p = p0 + (p1 - p0) * JAR_T[k]
         drop = rng.uniform(0.6, 1.2)
         add_cone(props, (p.x, p.y, p.z - drop), 0.05, 0.05, drop, sides=3)
         add_post(props, p.x, p.y, p.z - drop - 1.5, p.z - drop + 0.05, 0.45, sides=5)
@@ -3357,7 +3634,7 @@ def build_hut_morra():
     ]
 
 
-def build_swamp_foam():
+def build_swamp_foam(ground=None):
     """The scummy pale rim where the fen meets the sea - the shared
     shoreline-foam builder on the standard coast ring. The swamp has NO
     sea dock, and build_foam collars whatever DOCK_POST_POSITIONS holds -
@@ -3366,12 +3643,14 @@ def build_swamp_foam():
     is cleared first or the fen's rim grows phantom collars out at the
     volcano's dock coordinates."""
     DOCK_POST_POSITIONS.clear()
-    return build_foam("Swamp_Foam", "M_SwampFoam")
+    return build_foam("Swamp_Foam", "M_SwampFoam", ground)
 
 
 def build_swamp():
+    base = build_swamp_base()
+    ground = _ground_bvh(base)
     objects = [
-        build_swamp_base(),
+        base,
         build_swamp_water(),
         # Morra's hut BEFORE the scatter: it registers its keep-clear circle
         # (LAVA_PONDS + _hut_morra_clear) that the trees/reeds/smalls respect.
@@ -3379,7 +3658,7 @@ def build_swamp():
         *build_swamp_trees(),
         *build_swamp_cattails(),
         *build_swamp_smalls(),
-        build_swamp_foam(),
+        build_swamp_foam(ground),
     ]
     # The same guard the wreck island runs. It was Wreckwater-only, and a
     # floating mangrove limb shipped on THIS island because nothing checked
@@ -4131,11 +4410,27 @@ def build_ice_berg(ground):
         if random.random() > 0.28 + 0.62 * bell:
             continue
         k = random.choice(_OVERHANG_DRIP)
-        p = _overhang_point(s, k, bases[int(s * STATIONS)])
-        p = p + Vector((math.cos(theta), math.sin(theta), 0.0)) * random.uniform(-1.2, 1.2)
+        # Seat the drip on the SAME surface the ice was lofted from. The base
+        # is per-station and the cornice can fall several studs between two
+        # stations, so bases[int(s * STATIONS)] - the station BELOW s - hung
+        # icicles off a height the ice does not have there; interpolate the
+        # two the loft itself would have used.
+        fi = s * STATIONS
+        i0 = min(int(fi), STATIONS)
+        i1 = min(i0 + 1, STATIONS)
+        p = _overhang_point(s, k, bases[i0] + (bases[i1] - bases[i0]) * (fi - i0))
+        # Wander the root INBOARD only. r = rad - u * uscale, so a bigger r is
+        # further back under the body of the lip; the old two-sided jitter
+        # could push a drip off the NOSE of the cornice (profile index 9 is
+        # the nose itself) and leave it hanging in open air - which is where
+        # the one FLOATING piece on this island came from (2026-09-09).
+        p = p + Vector((math.cos(theta), math.sin(theta), 0.0)) * random.uniform(0.25, 2.0)
         length = random.uniform(2.0, 8.0) * (0.55 + 0.45 * bell)
         rb = length * random.uniform(0.09, 0.17) + 0.22
-        add_cone(bm, p, rb, rb * 0.10, length, sides=random.choice((4, 5, 6)),
+        # ...and root the cone INSIDE the ice instead of exactly on its skin,
+        # so the fluting jitter on the face cannot open a hairline gap.
+        add_cone(bm, p + Vector((0.0, 0.0, 1.1)), rb, rb * 0.10, length + 1.1,
+                 sides=random.choice((4, 5, 6)),
                  tilt=(math.pi, 0.0), yaw=random.uniform(0, math.tau))
         drips += 1
 
@@ -4798,8 +5093,12 @@ def build_ice_hut(ground):
             gun = _hut_lerp(m, _HUT_H_GUNLINE)
             h = (gun + 1.95) * 0.5
             for c in range(2):
+                # 4.3 long on a 3.25 pitch: the courses still overlap by more
+                # than half a stud after the +-0.2 laying jitter at BOTH ends.
+                # At 3.6 the worst pair fell 0.05 short of touching and you
+                # could see daylight - and the lit interior - through the wall.
                 _hut_h_box(snow, site, m + rng.uniform(-0.2, 0.2), y - s * 0.10,
-                           z0 - 1.6 + h * (c + 0.5), (3.6, 2.1, h * 1.06),
+                           z0 - 1.6 + h * (c + 0.5), (4.3, 2.1, h * 1.06),
                            spin=rng.uniform(-0.05, 0.05))
     # The bow half-buried: wind drifts banked over the nose of the boat. Every
     # lobe is drawn from BELOW the ground up, never hung at a height (the
@@ -4892,9 +5191,12 @@ def build_ice_hut(ground):
     rack_z = min(gz(-16.4, -13.5), gz(-16.4, -7.1))
     for k in (-1.0, 1.0):
         _hut_h_cone(props, site, -16.4, -10.3 + k * 3.2, rack_z - 0.7, 0.45, 0.34, 5.7, sides=5)
-    _hut_h_box(props, site, -16.4, -10.3, rack_z + 4.5, (0.55, 7.4, 0.6))
+    _hut_h_box(props, site, -16.4, -10.3, rack_z + 4.5, (0.9, 7.4, 0.6))
     for k in range(8):
-        y = -13.55 + k * 0.93
+        # Inside the POSTS (y -13.5 and -7.1), not merely inside the rail: at
+        # 0.93 pitch from -13.55 the last fish stood at -6.04, a stud past the
+        # end of the rail, standing in the snow beside the rack.
+        y = -13.1 + k * 0.85
         _hut_h_cone(trim, site, -16.35 + rng.uniform(-0.10, 0.10), y, gz(-16.35, y) - 0.45,
                     rng.uniform(0.55, 0.78), 0.20, rng.uniform(5.4, 6.1), sides=4,
                     tilt=(rng.uniform(0.10, 0.20), rng.uniform(-0.08, 0.08)),
@@ -4961,7 +5263,7 @@ def build_frostmaw():
         build_ice_litter(ground),  # last: fills in around everything placed
         *build_ice_hut(ground),  # Halvard's upturned hull, in its swept yard
         *build_dock("Frostmaw_Dock_Planks", "Frostmaw_Dock_Posts", "M_FrostPlank", "M_FrostPost"),
-        build_foam("Frostmaw_Foam", "M_FrostFoam"),
+        build_foam("Frostmaw_Foam", "M_FrostFoam", ground),
     ]
     # Every SNOW stratum the berg, walls, mesas and arches laid down, emitted
     # as the one snow object (one material per object).
@@ -5059,6 +5361,27 @@ def _gloom_fin(bm, x, y, surface, half_w, half_h, salt, yaw, thin=0.42):
     add_blob(bm, (x, y, surface + half_h * 0.78), (half_w, half_w * thin, half_h), 0.5, salt, yaw=yaw)
 
 
+def _gloom_fin_anchor(x, y, surface, half_w, half_h, yaw, thin, du=0.0, dv=0.0, fz=1.30):
+    """A point INSIDE a `_gloom_fin`, for hanging a glow-vine off.
+
+    A fin is an ellipsoid of half-extents (half_w, half_w*thin, half_h) centred
+    at surface + 0.78*half_h and YAWED, so an offset written in world X/Y is
+    measured against whichever of the two half-widths happens to face that way
+    - which is how the gate and cathedral anchors ended up several studs
+    outside their own rock, hanging their vines on nothing. `du`/`dv` are
+    fractions of the fin's own half-width ALONG and ACROSS its yaw, and `fz`
+    is the height in units of half_h above `surface`; the ellipsoid narrows on
+    the way up, so that narrowing is applied here."""
+    shrink = math.sqrt(max(0.05, 1.0 - (fz - 0.78) ** 2))
+    ru = half_w * shrink * du
+    rv = half_w * thin * shrink * dv
+    return (
+        x + math.cos(yaw) * ru - math.sin(yaw) * rv,
+        y + math.sin(yaw) * ru + math.cos(yaw) * rv,
+        surface + half_h * fz,
+    )
+
+
 def _gloom_arch(bm, cx, cy, surface, span, height, thick, yaw, salt):
     """Two leaning legs and a capstone - a sea-arch of trench rock."""
     dx, dy = math.cos(yaw), math.sin(yaw)
@@ -5072,10 +5395,17 @@ def _gloom_arch(bm, cx, cy, surface, span, height, thick, yaw, salt):
             yaw=yaw,
         )
     add_blob(bm, (cx, cy, surface + height * 1.0), (span * 1.22, thick * 0.85, thick * 0.7), 0.3, salt + 7.0, yaw=yaw)
-    # the span is a natural place to hang glow-vines from
+    # the span is a natural place to hang glow-vines from - anchored INSIDE
+    # the capstone (it is centred on surface + height and only thick*0.7 deep,
+    # so an anchor at 0.94*height was below the stone on a tall arch).
     for f in (-0.55, 0.0, 0.6):
         GLOOM_VINE_ANCHORS.append(
-            (cx + dx * span * f, cy + dy * span * f, surface + height * 0.94, height * random.uniform(0.34, 0.6))
+            (
+                cx + dx * span * f,
+                cy + dy * span * f,
+                surface + height - thick * 0.25,
+                height * random.uniform(0.34, 0.6),
+            )
         )
 
 
@@ -5113,9 +5443,13 @@ def build_gloom_spires(ground):
                 w = random.uniform(3.2, 7.0)
                 h = w * random.uniform(2.4, 4.4)
                 thin = random.uniform(0.35, 0.7)
-            _gloom_fin(bm, x, y, surface, w, h, 150 + c * 17.3 + k * 5.1, yaw=theta + random.uniform(-0.6, 0.6), thin=thin)
+            fin_yaw = theta + random.uniform(-0.6, 0.6)
+            _gloom_fin(bm, x, y, surface, w, h, 150 + c * 17.3 + k * 5.1, yaw=fin_yaw, thin=thin)
             if h > 22.0:  # tall enough to hang a curtain of glow-vines from
-                GLOOM_VINE_ANCHORS.append((x, y, surface + h * 1.42, min(h * 0.62, 24.0)))
+                GLOOM_VINE_ANCHORS.append(
+                    _gloom_fin_anchor(x, y, surface, w, h, fin_yaw, thin, 0.0, 0.0, 1.32)
+                    + (min(h * 0.62, 24.0),)
+                )
 
     # --- the gate: two monoliths either side of the way in, the tallest rock
     #     on the island, so the entrance reads from out at sea.
@@ -5126,11 +5460,14 @@ def build_gloom_spires(ground):
         surface = _drop_to_ground(ground, gx, gy)
         if surface is None:
             continue
-        _gloom_fin(bm, gx, gy, surface, 6.8, 42.0, 40 + sgn * 11, yaw=a + 0.22 * sgn, thin=0.5)
+        mono_yaw = a + 0.22 * sgn
+        _gloom_fin(bm, gx, gy, surface, 6.8, 42.0, 40 + sgn * 11, yaw=mono_yaw, thin=0.5)
         _gloom_fin(bm, gx + 7.0 * sgn, gy - 7.0, surface, 5.0, 14.0, 60 + sgn * 5, yaw=a - 0.4 * sgn, thin=0.8)
-        # vines hang off the INNER face of each monolith, framing the gate
-        GLOOM_VINE_ANCHORS.append((gx - 5.0 * sgn, gy, surface + 42.0 * 1.5, 26.0))
-        GLOOM_VINE_ANCHORS.append((gx - 2.0 * sgn, gy + 5.0, surface + 42.0 * 1.35, 20.0))
+        # vines hang off the INNER face of each monolith, framing the gate.
+        # The monolith is only 3.4 studs half-thick ACROSS its yaw, so these
+        # offsets are written in its own frame, not in world X/Y.
+        GLOOM_VINE_ANCHORS.append(_gloom_fin_anchor(gx, gy, surface, 6.8, 42.0, mono_yaw, 0.5, 0.0, -0.5 * sgn, 1.30) + (26.0,))
+        GLOOM_VINE_ANCHORS.append(_gloom_fin_anchor(gx, gy, surface, 6.8, 42.0, mono_yaw, 0.5, -0.55, -0.3 * sgn, 1.22) + (20.0,))
 
     # --- the cathedral: three towers leaning together on the far shoulder,
     #     the tallest thing on the island and the landmark off the open sea.
@@ -5142,9 +5479,12 @@ def build_gloom_spires(ground):
         surface = _drop_to_ground(ground, px, py)
         if surface is None:
             continue
-        _gloom_fin(bm, px, py, surface, w, h, 3100 + k * 12.5, yaw=th_c + 0.3 * k, thin=0.52)
+        tower_yaw = th_c + 0.3 * k
+        _gloom_fin(bm, px, py, surface, w, h, 3100 + k * 12.5, yaw=tower_yaw, thin=0.52)
         for s in (-1, 1):
-            GLOOM_VINE_ANCHORS.append((px + w * 0.8 * s, py + w * 0.5 * s, surface + h * 1.45, h * 0.6))
+            GLOOM_VINE_ANCHORS.append(
+                _gloom_fin_anchor(px, py, surface, w, h, tower_yaw, 0.52, 0.45 * s, 0.3 * s, 1.32) + (h * 0.6,)
+            )
 
     # --- arches: two on the apron beside the dock (seen from the boat), one
     #     riding the crown on the far shoulder.
@@ -5269,33 +5609,49 @@ def _gloom_coral(bm, x, y, surface, size, salt, yaw=None):
 def _gloom_vine(bm, x, y, z_top, drop, salt, yaw=None):
     """One drooping glow-vine: a chain of thin tapering segments sagging from a
     high anchor down toward nothing, so the tall silhouettes CARRY light
-    without themselves becoming lamps."""
+    without themselves becoming lamps.
+
+    Each segment is hung from the TIP OF THE ONE ABOVE IT and made longer than
+    the step it advances, so the chain is one connected strand. (It used to
+    place every segment at a nominal height and then shuffle x/y by a guess
+    that did not match the tilt: with a lean of half a radian the joints
+    missed each other by more than a segment's radius and a vine exported as
+    a column of loose blocks hanging in the air - 2026-09-09.)"""
     yaw = random.uniform(0, math.tau) if yaw is None else yaw
     n = max(3, min(7, int(drop / 4.0)))
     seg = drop / n
-    px, py = x, y
+    px, py, pz = x, y, z_top
+    dxu, dyu = math.cos(yaw), math.sin(yaw)
     for k in range(n):
         t = k / n
         r0 = 1.05 * (1.0 - 0.62 * t)
         lean = 0.5 * (1.0 - t) ** 2  # swings out under the anchor, then hangs plumb
+        phi = lean * 0.55
+        # unit vector DOWN the segment, matching add_cone's tilt of (0, -phi)
+        ax, ay, az = math.sin(phi) * dxu, math.sin(phi) * dyu, -math.cos(phi)
+        h = seg * 1.22  # longer than the step: consecutive joints overlap
         add_cone(
             bm,
-            (px, py, z_top - seg * (k + 1)),
+            (px + ax * h, py + ay * h, pz + az * h),
             max(0.11, r0 * 0.72),
             max(0.09, r0),
-            seg * 1.06,
+            h,
             sides=4,
-            tilt=(0.0, lean * 0.55),
+            tilt=(0.0, -phi),
             yaw=yaw,
         )
-        px += math.cos(yaw) * seg * lean * 0.5
-        py += math.sin(yaw) * seg * lean * 0.5
-    add_cone(bm, (px, py, z_top - drop - 2.2), 0.3, 1.35, 2.2, sides=5, yaw=yaw)  # the bud on the tip
+        px, py, pz = px + ax * seg, py + ay * seg, pz + az * seg
+    add_cone(bm, (px, py, pz - 2.2), 0.3, 1.35, 2.2, sides=5, yaw=yaw)  # the bud on the tip
 
 
 def _gloom_hang_vines(cyan_bm, violet_bm, limit=64):
     """Hang vines off every recorded high anchor (crown fins, the gate
-    monoliths, the cathedral, every arch)."""
+    monoliths, the cathedral, every arch).
+
+    Every anchor is a point INSIDE the rock it belongs to, so the jitter has
+    to stay inside that rock too and the top of the vine is pushed UP into the
+    stone rather than dropped below it - otherwise the strand starts in the
+    air a couple of studs off the face it is supposed to grow from."""
     anchors = GLOOM_VINE_ANCHORS[:]
     random.shuffle(anchors)
     hung = 0
@@ -5304,9 +5660,9 @@ def _gloom_hang_vines(cyan_bm, violet_bm, limit=64):
             bm = cyan_bm if (i + k) % 3 else violet_bm
             _gloom_vine(
                 bm,
-                x + random.uniform(-2.6, 2.6),
-                y + random.uniform(-2.6, 2.6),
-                z - random.uniform(0.0, 3.0),
+                x + random.uniform(-1.0, 1.0),
+                y + random.uniform(-1.0, 1.0),
+                z + random.uniform(0.0, 2.2),
                 max(5.0, drop * random.uniform(0.7, 1.15)),
                 20.0 + i * 3.3 + k,
             )
@@ -5409,24 +5765,31 @@ def build_gloom_rift(ground, stalk_bm, cyan_bm, violet_bm):
             # near one is a low broken shoulder, so the glow floor spills out
             # over it and the crack reads as light from off the island.
             wall_h = (13.0 + 11.0 * math.sin(math.pi * t) + random.uniform(-1.5, 4.5)) * (1.0 if sgn > 0 else 0.36)
+            lip_anchor = None
             for j in range(2):  # two offset slabs per station - torn, not extruded
                 jx = wx + px * random.uniform(-1.0, 4.0) * sgn + math.cos(theta) * random.uniform(-3.0, 3.0)
                 jy = wy + py * random.uniform(-1.0, 4.0) * sgn + math.sin(theta) * random.uniform(-3.0, 3.0)
                 jh = wall_h * (1.0 if j == 0 else random.uniform(0.45, 0.85))
+                slab_l, slab_w = random.uniform(8.0, 13.0), random.uniform(8.0, 14.0)
                 add_box(
                     bm,
                     (jx, jy, ws + jh * 0.5 - 2.6),
-                    (random.uniform(8.0, 13.0), random.uniform(8.0, 14.0), jh + 5.2),
+                    (slab_l, slab_w, jh + 5.2),
                     yaw=theta + random.uniform(-0.42, 0.42),
                 )
+                if j == 0:
+                    # a point INSIDE the tall slab: a third of the way in from
+                    # its rift-facing face, a stud and a half under its top.
+                    lip_anchor = (jx - px * slab_w * 0.30 * sgn, jy - py * slab_w * 0.30 * sgn, ws + jh - 1.5)
             _gloom_fin(  # a ragged shard lip riding the wall top
                 bm, wx + px * 2.2 * sgn, wy + py * 2.2 * sgn, ws + wall_h - 3.4,
                 random.uniform(2.2, 5.0), random.uniform(4.5, 11.0), 60.0 + i * 7.7 + sgn * 3.0,
                 yaw=theta + random.uniform(-0.5, 0.5), thin=random.uniform(0.4, 0.85),
             )
-            GLOOM_VINE_ANCHORS.append(  # vines drip off the rift lip into the glow
-                (x + px * (half - 0.5) * sgn, y + py * (half - 0.5) * sgn, ws + wall_h - 1.0, wall_h * 0.62)
-            )
+            # Vines drip off the rift lip into the glow. The lip is the WALL
+            # SLAB, which stands 8.5 studs outboard of the crack's edge - the
+            # anchor used to sit on that edge, i.e. in mid-air over the floor.
+            GLOOM_VINE_ANCHORS.append(lip_anchor + (wall_h * 0.62,))
             if i % 2 == 0:  # crystal veins bleeding down the wall faces
                 _gloom_crystals(
                     violet_bm, ground, wx + px * 3.0 * sgn, wy + py * 3.0 * sgn, 3.4,
@@ -5444,7 +5807,8 @@ def build_gloom_rift(ground, stalk_bm, cyan_bm, violet_bm):
         # shards spiking out of the glowing floor, so the crack reads from above
         _gloom_crystals(
             violet_bm if i % 2 else cyan_bm, ground, x, y, half * 0.7,
-            random.randint(3, 5), random.uniform(4.5, 9.0), 1700.0 + i * 5.5, base=surface + 0.7,
+            # rooted INSIDE the 1.1-thick glow-vein floor slab, not on top of it
+            random.randint(3, 5), random.uniform(4.5, 9.0), 1700.0 + i * 5.5, base=surface - 0.1,
         )
         if i % 2 == 0:  # molten-looking glow pools puddled along the floor
             pr = half * random.uniform(0.35, 0.6)
@@ -5477,7 +5841,10 @@ def build_gloom_path(ground):
 def _gloom_mushroom(stalk_bm, cap_bm, x, y, surface, cap_r, stem_h, salt):
     """A glowing trench mushroom: a dark stem carrying a big luminous cap."""
     stem_r = max(0.45, cap_r * 0.20)
-    add_cone(stalk_bm, (x, y, surface - 0.8), stem_r * 1.35, stem_r * 0.75, stem_h, sides=6)
+    # The stem runs 1.2 studs PAST the cap's centre height. It used to stop at
+    # the cap's centre, where a squashed ellipsoid has zero radius at its lower
+    # pole - so a small mushroom's cap met its stem at a single point.
+    add_cone(stalk_bm, (x, y, surface - 0.8), stem_r * 1.35, stem_r * 0.75, stem_h + 1.2, sides=6)
     squash = 0.42 if (int(salt) % 3) else 0.85  # parasols, and rounder domes
     add_blob(cap_bm, (x, y, surface + stem_h), (cap_r, cap_r * 0.94, cap_r * squash), 0.16, salt)
 
@@ -5891,7 +6258,10 @@ def build_gloom_lighthouse(ground):
     add_cone(roof, (cx, cy, zg + 8.2), 5.7, 0.85, 3.5, sides=8, yaw=door)  # the cap
     add_post(roof, cx, cy, zg + 11.5, zg + 13.4, 0.28, sides=4)  # finial
     add_box(roof, (cx + math.cos(door) * 0.9, cy + math.sin(door) * 0.9, zg + 13.2), (2.4, 0.24, 1.0), yaw=door)
-    add_box(roof, (cx - math.cos(door) * 1.5, cy - math.sin(door) * 1.5, zg + 13.2), (1.0, 0.22, 1.5), yaw=door)
+    # the vane's tail: 1.5 studs back put its inner edge a clear 0.7 studs off
+    # a finial only 0.28 studs thick, so the tail hung in the air behind the
+    # fish. 0.75 lands it on the body and the post.
+    add_box(roof, (cx - math.cos(door) * 0.75, cy - math.sin(door) * 0.75, zg + 13.2), (1.0, 0.22, 1.5), yaw=door)
 
     # --- 6. THE BEACON. A wisp caged in the lamp room: the light body, the
     #     lens band around it, and the pool of light it throws on the gallery
@@ -5935,7 +6305,10 @@ def build_gloom_lighthouse(ground):
     for k in range(3):
         a = door + 1.1 + k * 2.2
         r = 7.4 + 1.5 * math.sin(k * 2.0)
-        z = zg + 4.4 + (1.9, -1.6, 3.4)[k]
+        # all three orbit CLEAR of the gallery rail (its cap is at zg+3.3):
+        # the middle one used to sit at zg+2.8 on a radius of 8.8, i.e. driven
+        # straight through the handrail.
+        z = zg + 4.4 + (1.9, 0.5, 3.4)[k]
         fx, fy = cx + math.cos(a) * r, cy + math.sin(a) * r
         add_blob(glow, (fx, fy, z), (1.55, 0.62, 0.8), 0.12, 700 + k * 11.0, yaw=a + math.pi / 2)
         add_box(glow, (fx - math.cos(a + math.pi / 2) * 1.55, fy - math.sin(a + math.pi / 2) * 1.55, z),
@@ -5981,12 +6354,27 @@ def build_gloom_lighthouse(ground):
             if (k + j) % 2 == 0:  # a couple of them still have a wisp in
                 add_blob(glow, (px, py, sz_ + 0.75), (0.3, 0.3, 0.34), 0.1, 800 + k * 3 + j)
     n_tread = 14  # the stair, hugging the wall (decorative: the shaft is not a play space)
+    # 23 degrees at r=6.1 is 2.44 studs of arc and 0.65 studs of rise between
+    # treads: at 1.7 x 0.34 they touched neither each other nor - where the
+    # helix crosses the DOORWAY, and there is no wall to bite - anything at
+    # all, and read as a stack of loose planks. 2.7 wide x 0.75 thick makes the
+    # flight one continuous helix of cut stone.
     for k in range(n_tread):
         a = door + math.radians(205) + k * math.radians(23.0)
         z = floor + 0.9 + k * (LUMEN_ROOM_H - 1.4) / (n_tread - 1)
         r = LUMEN_R_OUT[0] - LUMEN_WALL_T - 1.35
-        add_box(props, (cx + math.cos(a) * r, cy + math.sin(a) * r, z), (2.9, 1.7, 0.34), yaw=a)
-    a_cot = door + math.radians(243)
+        add_box(props, (cx + math.cos(a) * r, cy + math.sin(a) * r, z), (3.1, 2.7, 0.75), yaw=a)
+    # The cot goes UNDER the stair, and "under" has to mean under a tread that
+    # is actually overhead. At 243 degrees it sat beside the flight's first
+    # three treads, which are only 0.9-2.2 studs off the floor: once those
+    # treads were widened to 2.7 x 0.75 (so the helix reads as cut stone
+    # rather than loose planks) the bottom two ran straight THROUGH the cot
+    # frame and its bedding - 0.55 studs of overlap, a stone step growing out
+    # of the mattress at eye level. 310 degrees parks it under treads 4-6, at
+    # floor+3.5 to floor+4.8: 1.1 studs of clear headroom over the blanket and
+    # nothing touching, with the desk (150) and the lantern shelves (88) still
+    # well clear.
+    a_cot = door + math.radians(310)
     ctx = cx + math.cos(a_cot) * 5.6
     cty = cy + math.sin(a_cot) * 5.6
     add_box(props, (ctx, cty, floor + 1.05), (2.6, 5.4, 0.45), yaw=a_cot)  # cot frame
@@ -6045,7 +6433,7 @@ def build_gloomtrench():
         build_gloom_path(ground),
         *build_gloom_glow(ground, stalk_bm, cyan_bm, violet_bm),
         *build_dock("Gloomtrench_Dock_Planks", "Gloomtrench_Dock_Posts", "M_GloomPlank", "M_GloomPost"),
-        build_foam("Gloomtrench_Foam", "M_GloomFoam"),
+        build_foam("Gloomtrench_Foam", "M_GloomFoam", ground),
         # Lumen's lighthouse runs LAST and off its own RNG stream, so every
         # scatter above it keeps the exact placement it had before the hut.
         *build_gloom_lighthouse(ground),
@@ -6344,7 +6732,12 @@ def _wr_mast(wood_bm, glow_bm, sail_bm, frame, base, lean, dir_ang, height, snap
 def _wr_bow_section(wood_bm, glow_bm, sail_bm, pos, yaw, pitch, length, beam, depth, ghost=True):
     """THE LANDMARK: a bow reared out of the lagoon, keel to the sky - hull
     shell, exposed ribs along the torn break, a bowsprit and its dolphin
-    striker, and sea-fire down both gunwales."""
+    striker, and sea-fire down both gunwales.
+
+    Shared by Wreckwater and the Maelstrom. The striker seating below was
+    briefly a `seat_striker=False` flag so the Maelstrom would not move under
+    the Wreckwater pass; the Maelstrom has since been re-baselined against it
+    and the fix is unconditional (2026-09-09)."""
     frame = _wr_frame(pos, yaw=yaw, pitch=pitch)
     st = _wr_stations(length, beam, depth, freeboard=beam * 0.42, n=10, bow_rise=1.25)
     _wr_hull_shell(wood_bm, frame, st, cap_break=True)
@@ -6353,7 +6746,14 @@ def _wr_bow_section(wood_bm, glow_bm, sail_bm, pos, yaw, pitch, length, beam, de
     tip = Vector((length * 1.34, 0.0, st[-1][3] + length * 0.10))
     stem = Vector((length * 0.96, 0.0, st[-1][3] - 0.4))
     _wr_spar(wood_bm, frame, stem, tip, 0.75, 0.28)
-    _wr_beam(wood_bm, frame, Vector((length * 1.12, 0, st[-1][3] - 0.2)), Vector((length * 1.14, 0, st[-1][3] - 3.2)), 0.5, 0.5)
+    # The striker braces the BOWSPRIT, so its head comes off that spar's line.
+    # It used to be taken from the stem's sheer height (st[-1][3] - 0.2), which
+    # the rising bowsprit has already climbed length*0.04 above by the time it
+    # reaches x = 1.12*length: the strut hung 2-3 studs under the spar it is
+    # supposed to hold, and on the bay flagship that was a FLOATING cluster of
+    # its own (2026-09-09).
+    striker_head = stem.lerp(tip, 0.42)
+    _wr_beam(wood_bm, frame, striker_head, striker_head + Vector((length * 0.02, 0, -3.0)), 0.5, 0.5)
     # Wales: the heavy longitudinal strakes that break up a bare hull side.
     for wf, wl in ((0.30, 0.92), (0.62, 0.80)):
         for side in (1, -1):
@@ -6382,14 +6782,20 @@ def _wr_bow_section(wood_bm, glow_bm, sail_bm, pos, yaw, pitch, length, beam, de
         _wr_beam(wood_bm, frame, (x, hb * 0.95, sz - 0.2), (x, -hb * 0.95, sz - 0.2), 1.0, 0.55)
     if ghost:
         _wr_gunwale_glow(glow_bm, frame, st, lo=0.35, hi=1.0)
-        _wr_orb(glow_bm, frame, tip + Vector((0, 0, -0.8)), 1.15)
+        # -0.8 -> -0.4: a 1.15-radius orb slung 0.8 under a 0.28-radius spar
+        # cleared it by 0.27 and read as a lamp adrift off the bowsprit; at
+        # -0.4 the orb swallows the spar and hangs ON it.
+        _wr_orb(glow_bm, frame, tip + Vector((0, 0, -0.4)), 1.15)
     _wr_mast(wood_bm, glow_bm if ghost else None, sail_bm, frame, (length * 0.30, 0, st[3][3]), 0.28, math.pi, length * 0.85, snapped=True, sail=length * 0.16)
     return frame
 
 
 def _wr_stern_section(wood_bm, glow_bm, sail_bm, pos, yaw, pitch, roll, length, beam, depth, ghost=True):
     """The other half of a ship: the stern, settled low and heeled, its transom
-    and quarterdeck still standing over a rotted-open waist."""
+    and quarterdeck still standing over a rotted-open waist.
+
+    Shared by Wreckwater and the Maelstrom; the lantern seating below is
+    unconditional since the Maelstrom was re-baselined (2026-09-09)."""
     frame = _wr_frame(pos, yaw=yaw, pitch=pitch, roll=roll)
     st = _wr_stations(length, beam, depth, freeboard=beam * 0.46, n=8, bow_rise=0.15, fullness=1.2)
     _wr_hull_shell(wood_bm, frame, st, cap_break=True)
@@ -6413,14 +6819,23 @@ def _wr_stern_section(wood_bm, glow_bm, sail_bm, pos, yaw, pitch, roll, length, 
     if ghost:
         _wr_gunwale_glow(glow_bm, frame, st, lo=0.0, hi=0.6)
         for side in (1, -1):
-            _wr_orb(glow_bm, frame, (x0 - 0.9, side * hb0 * 0.75, sz0 + beam * 0.74), 0.85)
+            # ON the taffrail post head built just above. The old literal sat
+            # 1.1 abaft and 0.2*hb0 inboard of the post, which on a 23-stud
+            # beam is 2.6 studs of clear air: two lanterns adrift over the bay,
+            # and two more near-misses on the beached hulk and the sea fleet
+            # (2026-09-09).
+            _wr_orb(glow_bm, frame, (x0 + 0.2, side * hb0 * 0.95, sz0 + house_h + beam * 0.22 + 0.30), 0.85)
     _wr_mast(wood_bm, glow_bm if ghost else None, sail_bm, frame, (length * 0.62, 0, st[5][3] - 0.5), 0.52, 0.6, length * 1.15, snapped=True, sail=length * 0.20)
     return frame
 
 
 def _wr_ribcage(wood_bm, glow_bm, pos, yaw, pitch, roll, length, beam, depth):
     """A hull picked clean: keelson, stem and sternpost, and bare frames arcing
-    out of the water. Pure silhouette, almost no surface."""
+    out of the water. Pure silhouette, almost no surface.
+
+    The floor timbers below carry each frame DOWN over the keel; they were a
+    `floors=False` flag while the Maelstrom shared this helper unrebaselined,
+    and are unconditional since (2026-09-09)."""
     frame = _wr_frame(pos, yaw=yaw, pitch=pitch, roll=roll)
     st = _wr_stations(length, beam, depth, freeboard=beam * 0.36, n=11, bow_rise=1.0)
     # Keel + keelson.
@@ -6432,6 +6847,27 @@ def _wr_ribcage(wood_bm, glow_bm, pos, yaw, pitch, roll, length, beam, depth):
             if prev is not None:
                 _wr_beam(wood_bm, frame, prev, p, 1.1, 1.0)  # the wale, tying the frames
             prev = p
+    # FLOOR TIMBERS AND FUTTOCKS. Without them this was a comb: _wr_ribs
+    # starts each frame at the SHEER, the wale ties the frames of one side
+    # to each other, and nothing joined either side to the keel far below -
+    # so the port and starboard rib chains were two 48-piece clusters
+    # hanging 2-9 studs over open water, the biggest floaters on the island
+    # (2026-09-09). Each frame now runs from the keel out through the turn
+    # of the bilge to its own foot, on the same section _wr_hull_shell
+    # lofts, so the hull it came off still reads in the bones. Most of it
+    # is under the waterline; what shows is the arc the docstring promises.
+    n_st = len(st)
+    for i, (x, hb, kz, sz) in enumerate(st):
+        t = i / (n_st - 1)
+        if t < 0.05 or t > 0.95:
+            continue
+        h = sz - kz
+        for side in (1, -1):
+            prev = Vector((x, 0.0, kz))
+            for wf, hf in ((0.56, 0.07), (0.94, 0.36), (1.0, 1.0)):
+                nxt = Vector((x, side * hb * wf, kz + h * hf))
+                _wr_beam(wood_bm, frame, prev, nxt, 1.0, 0.9)
+                prev = nxt
     _wr_ribs(wood_bm, frame, st, (0.05, 0.95), rise=beam * 0.78, thick=1.15, glow_bm=glow_bm, glow_every=2)
     # Stempost rearing at the bow end.
     x, hb, kz, sz = st[-1]
@@ -7397,14 +7833,23 @@ def build_wreck_salvage(wood_bm, ground):
         ident = Matrix.Identity(4)
         if pick < 0.42:  # a crate stack
             n = random.randint(1, 3)
+            # Seat each crate on the RUNNING TOP of the one under it. The old
+            # form spaced them by `k * sz * 0.92` using the crate's OWN size -
+            # and sz is redrawn every k, so a taller crate on top of a shorter
+            # one started above where the shorter one ended: three stacks on the
+            # rim had a 0.3-0.6 stud gap of daylight in them (2026-09-09). The
+            # random draws are unchanged in count and order, so the rest of the
+            # island's scatter is untouched.
+            top = z
             for k in range(n):
                 sz = random.uniform(2.6, 4.4) * (1.0 - 0.12 * k)
                 add_box(
                     wood_bm,
-                    (x + random.uniform(-1.2, 1.2), y + random.uniform(-1.2, 1.2), z + sz / 2 + k * sz * 0.92),
+                    (x + random.uniform(-1.2, 1.2), y + random.uniform(-1.2, 1.2), top + sz / 2 - 0.12),
                     (sz, sz * random.uniform(0.85, 1.15), sz),
                     yaw=random.uniform(0, math.tau),
                 )
+                top += sz - 0.24
         elif pick < 0.72:  # barrels, most on their sides
             for _k in range(random.randint(1, 3)):
                 bx = x + random.uniform(-3.0, 3.0)
@@ -7786,19 +8231,34 @@ def build_wreck_sterncastle(ground):
     add_box(props, (lam[0], lam[1], top_z + 0.85), (1.4, 1.4, 1.5), yaw=yaw)
     _wr_orb(glow, world, (lam[0], lam[1], top_z + 0.85), 0.7)
     crates = ((2.6, 7.4, 0), (5.4, 8.2, 0), (3.2, 10.4, 0), (3.0, 8.0, 1))
-    stack_top = {}
+    # A tier-1 crate has to stand on the crate it is actually ON. `stack_top`
+    # was keyed by TIER, so tier 1 read whichever tier-0 crate happened to be
+    # laid down LAST - the one at port 10.4 - while it physically sits on the
+    # one at port 7.4, three studs away across sloping sand. Measured on the
+    # built island: it took base 3.99 from the far crate and stood on a crate
+    # whose top is 4.10, so it was buried 0.11 studs into the lid, and had the
+    # beach fallen the other way it would have hung in daylight instead. Key
+    # the running tops by CRATE and pick the nearest one of the tier below.
+    tops = []  # (up_beach offset, port offset, tier, top z)
     for cx_, cy_, tier in crates:  # wares, resting on the sand (or on the crate below)
         wx = sill.x + up_beach[0] * cx_ + port[0] * cy_
         wy = sill.y + up_beach[1] * cx_ + port[1] * cy_
         gz = _hut_hollow_ground(ground, wx, wy)
-        base_z = stack_top.get(tier - 1, gz) if tier else gz
+        under = [t for t in tops if t[2] == tier - 1] if tier else []
+        base_z = min(under, key=lambda t: (t[0] - cx_) ** 2 + (t[1] - cy_) ** 2)[3] if under else gz
         h = 2.6 if tier == 0 else 2.1
         add_box(props, (wx, wy, base_z + h / 2 - 0.15), (2.9, 2.9, h), yaw=yaw + rng.uniform(-0.3, 0.3))
         add_box(props, (wx, wy, base_z + h - 0.25), (3.1, 3.1, 0.3), yaw=yaw + rng.uniform(-0.3, 0.3))
-        stack_top[tier] = base_z + h - 0.3
-    net_x = sill.x + up_beach[0] * 4.4 + port[0] * -5.0
-    net_y = sill.y + up_beach[1] * 4.4 + port[1] * -5.0
-    net_z = stack_top.get(1, _hut_hollow_ground(ground, net_x, net_y) + 2.4)
+        tops.append((cx_, cy_, tier, base_z + h - 0.3))
+    # OVER THE STACK, which is what net_z has always assumed: it reads the
+    # tier-1 crate top out of the running tops, but the net itself was pegged out at
+    # port -5.0 while every crate stands at port +7.4 to +10.4 - twelve studs
+    # away, so the cross strands hung a third of a stud over bare sand with
+    # nothing under them at all (2026-09-09). Centre it on the tier-1 crate.
+    net_x = sill.x + up_beach[0] * 3.0 + port[0] * 8.0
+    net_y = sill.y + up_beach[1] * 3.0 + port[1] * 8.0
+    net_tops = [t[3] for t in tops if t[2] == 1]
+    net_z = max(net_tops) if net_tops else _hut_hollow_ground(ground, net_x, net_y) + 2.4
     for k in range(5):  # the net, draped over the stack and pegged to the sand
         f = -2.6 + 1.3 * k
         a0 = (net_x + port[0] * f - up_beach[0] * 2.6, net_y + port[1] * f - up_beach[1] * 2.6)
@@ -7862,7 +8322,7 @@ def build_wreckwater():
         # deliberate structure, before the dock/foam.
         *build_wreck_sterncastle(ground),
         *build_dock("Wreckwater_Dock_Planks", "Wreckwater_Dock_Posts", "M_WreckPlank", "M_WreckPost"),
-        build_foam("Wreckwater_Foam", "M_WreckFoam"),
+        build_foam("Wreckwater_Foam", "M_WreckFoam", ground),
     ]
     validate_no_floaters(objects, ground, exempt=WRECK_FLOAT_EXEMPT, label="wreckwater")
     # The fixture disc is the NPC house's ground: the house itself and the
@@ -7931,6 +8391,10 @@ def build_wreckwater():
 #                        shards on spires + platform rims (Neon, NON_COLLIDE)
 
 _MAEL_SPIRE_TOPS = []  # (x, y, z_top) of built spires, for chains + glow
+# (x, y, cap_top_z, cap_r) of the built fight stacks, so the rim storm-fire
+# can be seated on a REAL cap instead of re-guessing the ring band. The spawn
+# stack is deliberately NOT recorded: its cap is the landing and stays bare.
+_MAEL_PLATFORM_RIMS = []
 
 
 def _mael_cap_points(cx, cy, r, salt, seg=14):
@@ -7971,6 +8435,7 @@ def build_mael_platforms():
     crosses the spawn stack's bearing - they read as the gateway flanking the
     landing instead of crowding it."""
     bm = bmesh.new()
+    _MAEL_PLATFORM_RIMS.clear()
 
     # Spawn stack: Roblox rel +Z 44 = Blender (0, -44); top exactly 6.0 (the
     # Islands entry's spawn Y fallback). Chunky, with two step blobs down
@@ -7988,7 +8453,10 @@ def build_mael_platforms():
         else:
             r = random.uniform(38.0, 52.0)
         top = random.uniform(3.6, 6.0)
-        _mael_platform(bm, math.cos(angle) * r, math.sin(angle) * r, top, random.uniform(7.0, 10.0), salt=23.0 + i * 7.7)
+        cap_r = random.uniform(7.0, 10.0)
+        px, py = math.cos(angle) * r, math.sin(angle) * r
+        _mael_platform(bm, px, py, top, cap_r, salt=23.0 + i * 7.7)
+        _MAEL_PLATFORM_RIMS.append((px, py, top, cap_r))
     return object_from_bmesh("Maelstrom_Platforms", bm, ["M_StormRock"])
 
 
@@ -8094,12 +8562,19 @@ def build_mael_wrecks():
                 length=length * 0.85, beam=beam * 0.92, depth=beam * 0.45, ghost=True,
             )
         else:  # the innermost hull, picked clean - shortest reach of the lot
+            # A ribcage's frames and wales sit a good 3 studs ABOVE its pos
+            # (the stations are measured from the sheer, not the keel), so the
+            # old -1.0..-2.0 hung the whole picked hull a stud and a half CLEAR
+            # of the sea, shadow and all. Drop it until the frames are awash -
+            # and take the same amount off its draft, because the keel already
+            # reaches -11.7 and the island's meshBottom HANDOFF (-11.95, which
+            # Islands.luau keys off) must not move.
             _wr_ribcage(
                 wood_bm, glow_bm,
-                pos=(x, y, -random.uniform(1.0, 2.0)), yaw=yaw,
+                pos=(x, y, -random.uniform(6.2, 7.2)), yaw=yaw,
                 pitch=math.radians(random.uniform(-4.0, 6.0)),
                 roll=math.radians(random.uniform(-18.0, 18.0)),
-                length=length * 0.9, beam=beam * 0.85, depth=beam * 0.42,
+                length=length * 0.9, beam=beam * 0.85, depth=beam * 0.28,
             )
     # Two half-drowned rib rings further out - the storm's older kills.
     for theta, r in ((2.6, 218.0), (5.1, 205.0)):
@@ -8151,7 +8626,10 @@ def build_mael_chains(glow_bm):
             else:
                 _wr_beam(bm, ident, prev, pt, 0.7, 2.2)
             prev = pt
-        _wr_orb(glow_bm, ident, (sx, sy, sz + 0.8), 1.0)
+        # The anchor orb swallows the tooth's tip rather than hovering over it:
+        # at sz + 0.8 the 1.0-radius ball cleared the (0.4-0.6 radius) tip by
+        # 0.7-0.8 studs and read as a bead floating above the spire.
+        _wr_orb(glow_bm, ident, (sx, sy, sz - 0.45), 1.0)
     return object_from_bmesh("Maelstrom_Chains", bm, ["M_StormIron"])
 
 
@@ -8181,8 +8659,11 @@ def build_mael_debris():
     for i in range(52):
         angle = random.uniform(0, math.tau)
         r = random.uniform(85.0, 238.0)
+        # Flotsam rides AT the waterline: the frame origin sits just under it
+        # (0.12 above put a plank's whole underside in the air once the pitch
+        # lifted both ends - it came back FLOATING 3.6 studs over the shoal).
         frame = _wr_frame(
-            (math.cos(angle) * r, math.sin(angle) * r, 0.12),
+            (math.cos(angle) * r, math.sin(angle) * r, -0.30),
             yaw=random.uniform(0, math.tau),
             pitch=math.radians(random.uniform(-7.0, 7.0)),
             roll=math.radians(random.uniform(-7.0, 7.0)),
@@ -8190,7 +8671,7 @@ def build_mael_debris():
         roll_die = random.random()
         if roll_die < 0.5:  # drift planks
             L = random.uniform(4.0, 9.0)
-            _wr_beam(bm, frame, (-L / 2, 0, 0.2), (L / 2, random.uniform(-1.0, 1.0), 0.2 + random.uniform(-0.3, 0.5)), random.uniform(0.8, 1.5), 0.45, twist=random.uniform(0, 1.0))
+            _wr_beam(bm, frame, (-L / 2, 0, 0.2), (L / 2, random.uniform(-1.0, 1.0), 0.2 + random.uniform(-0.3, 0.3)), random.uniform(0.8, 1.5), 0.45, twist=random.uniform(0, 1.0))
         elif roll_die < 0.75:  # barrels
             _wr_spar(bm, frame, (0, 0, 0.2), (random.uniform(1.8, 2.6), random.uniform(-0.8, 0.8), random.uniform(0.6, 1.4)), 1.3, 1.05, sides=8)
         elif roll_die < 0.92:  # crates
@@ -8221,12 +8702,23 @@ def build_mael_glow(glow_bm, ground):
                 rng.uniform(0.35, 0.7), 0.06, rng.uniform(1.6, 4.2),
                 sides=4, tilt=(rng.uniform(-0.3, 0.3), rng.uniform(-0.3, 0.3)), yaw=rng.uniform(0, math.tau),
             )
-    # Charged shards on the fight platforms' rims (positions re-derived from
-    # the same ring band; exact platform centres don't matter for a rim spark).
-    for i in range(14):
-        angle = rng.uniform(0, math.tau)
-        r = rng.uniform(40.0, 58.0)
-        add_cone(glow_bm, (math.cos(angle) * r, math.sin(angle) * r, rng.uniform(2.2, 5.4)), rng.uniform(0.25, 0.45), 0.05, rng.uniform(0.9, 1.8), sides=4, tilt=(rng.uniform(-0.4, 0.4), rng.uniform(-0.4, 0.4)), yaw=rng.uniform(0, math.tau))
+    # Charged shards on the fight platforms' rims. These used to be re-derived
+    # from the ring BAND (a random bearing at r 40-58, a random height 2.2-5.4)
+    # on the theory that "exact platform centres don't matter for a rim spark" -
+    # they do: six of the fourteen came out standing in open air over the water
+    # between the stacks, 9-13 studs above the shoal, and the rest near-missed a
+    # cap by half a stud. Seat them on the RECORDED caps instead: on the ragged
+    # outline's inner side, rooted through the slab's top face.
+    for (px, py, top, cap_r) in _MAEL_PLATFORM_RIMS:
+        for _ in range(rng.randint(1, 2)):
+            a = rng.uniform(0, math.tau)
+            rr = cap_r * rng.uniform(0.62, 0.80)  # inside the raggedest cap point
+            add_cone(
+                glow_bm,
+                (px + math.cos(a) * rr, py + math.sin(a) * rr, top - 0.35),
+                rng.uniform(0.25, 0.45), 0.05, rng.uniform(0.9, 1.8),
+                sides=4, tilt=(rng.uniform(-0.25, 0.25), rng.uniform(-0.25, 0.25)), yaw=rng.uniform(0, math.tau),
+            )
     return object_from_bmesh("Maelstrom_StormGlow", glow_bm, ["M_StormGlow"])
 
 
@@ -8622,8 +9114,11 @@ def build_islet_lampwork():
             yb, zb = SY + s * EAVE_Y * t1, RIDGE_Z + (EAVE_Z - RIDGE_Z) * t1
             slab(shop, [(RX0, ya, za), (RX1, ya, za), (RX1, yb, zb), (RX0, yb, zb)], 0.34, SLATE)
     box(shop, (SX, SY, RIDGE_Z + 0.18), (2 * HX + 1.6, 1.5, 0.55), SLATE)
-    for gx in (LEFT + 0.4, RIGHT - 0.4):  # gable tie beams, stopped inside the eaves
-        box(shop, (gx, SY, FLOOR + WH + 0.6), (0.5, 2 * HY - 0.4, 0.5), TIMBER)
+    # Gable tie beams, stopped inside the eaves. They SIT ON the wall head: at
+    # +0.6 they cleared it by 0.35 studs and touched only the slate at their
+    # ends, so end-on from the yard each one read as a brown box in the sky.
+    for gx in (LEFT + 0.4, RIGHT - 0.4):
+        box(shop, (gx, SY, FLOOR + WH + 0.25), (0.5, 2 * HY - 0.4, 0.5), TIMBER)
 
     # ---- the annealing kiln, COLD: no ember, no glow. Only the window burns.
     KX, KY = LEFT + 2.6, BACK - 2.4
@@ -8685,7 +9180,9 @@ def build_islet_lampwork():
     for k in range(4):  # the +x end wall, stepped up under the rake
         ya = LTY0 + (LTY1 - LTY0) * k / 4.0
         yb = LTY0 + (LTY1 - LTY0) * (k + 1) / 4.0
-        top = lt_roof_z((ya + yb) / 2) - 0.30
+        # measured at the LOW end of the step: the midpoint height left each
+        # step's downslope corner poking a tab of boarding through the slate.
+        top = lt_roof_z(yb) - 0.30
         box(shop, (LTX1 - 0.3, (ya + yb) / 2, (FLOOR + top) / 2), (0.6, yb - ya, top - FLOOR), TIMBER)
     for py in (LTY0 + 0.4, LTY1 - 0.4):  # the open -x end keeps its two posts
         box(shop, (LTX0 + 0.35, py, (FLOOR + lt_roof_z(py) - 0.3) / 2), (0.7, 0.7, lt_roof_z(py) - 0.3 - FLOOR), TIMBER)
@@ -8708,7 +9205,10 @@ def build_islet_lampwork():
     box(yard, (BKX, BKY, FLOOR + 1.95), (6.2, 2.7, 0.5), ROPE)  # the straw pallet
     box(shop, (BKX - 3.2, BKY, FLOOR + 2.6), (0.4, 3.0, 2.5), TIMBER)  # headboard
     box(yard, (BKX + 1.6, BKY, FLOOR + 2.45), (2.6, 2.6, 0.55), ROPE)  # the blanket, thrown back
-    cone(yard, (BKX - 2.2, BKY - 1.0, FLOOR + 2.3), 0.5, 0.5, 1.9, ROPE, sides=6, tilt=(math.pi / 2, 0.0))
+    # the bolster, ACROSS the head end. tilt=(pi/2,0) lays it along -y, so
+    # starting at BKY-1.0 ran it 1.9 studs out past the foot of the bunk and
+    # left it hanging over the floor.
+    cone(yard, (BKX - 2.2, BKY + 0.95, FLOOR + 2.3), 0.5, 0.5, 1.9, ROPE, sides=6, tilt=(math.pi / 2, 0.0))
     # the stove: a squat stone box, an iron plate, and a pipe out through the slate
     STX, STY = LTX1 - 2.6, LTY0 + 2.4
     box(shop, (STX, STY, FLOOR + 1.25), (2.4, 2.4, 2.5), WALL)
@@ -8729,9 +9229,12 @@ def build_islet_lampwork():
     _islet_lamp_lamp(lamps, TBX, TBY, FLOOR + 2.2, 1.7, 0.45, BRASS, GLASS)
     # a shelf over the table, two jars on it, and one more lamp on a rafter
     # hook - the room a man keeps when every lamp he owns is one he failed at
-    box(shop, (TBX, LTY1 - 0.75, FLOOR + 5.0), (4.6, 1.1, 0.28), TIMBER)
+    # The shelf drops to 4.55 and the jars shrink to 0.9: this is the low end
+    # of a mono-pitch, and at 5.0 the jars had the shelf board running through
+    # their middles and their lids out through the slate.
+    box(shop, (TBX, LTY1 - 0.75, FLOOR + 4.55), (4.6, 1.1, 0.28), TIMBER)
     for jx_ in (TBX - 1.4, TBX + 1.2):
-        box(yard, (jx_, LTY1 - 0.75, FLOOR + 5.14), (1.0, 0.9, 1.3), CLAY)
+        box(yard, (jx_, LTY1 - 0.75, FLOOR + 5.14), (1.0, 0.9, 0.90), CLAY)
     box(shop, (LTX0 + 4.2, (LTY0 + LTY1) / 2, lt_roof_z((LTY0 + LTY1) / 2) - 1.0), (0.18, 0.18, 1.3), IRON)
     _islet_lamp_lamp(lamps, LTX0 + 4.2, (LTY0 + LTY1) / 2,
                      lt_roof_z((LTY0 + LTY1) / 2) - 1.65 - 1.9, 1.9, 0.5, BRASS, GLASS)
@@ -8815,9 +9318,12 @@ def build_islet_lampwork():
             aa = k * math.tau / LH_FACES
             box(shop, (LHX + math.cos(aa) * (r_out - 0.35), LHY + math.sin(aa) * (r_out - 0.35),
                        LH_G + h1 - 0.16), (0.75, r_out * 0.46, 0.32), WALL, yaw=aa)
+    # The door lintel, IN the head of the door. The opening is course 0 only
+    # (0 -> 2.8); at 4.1 the lintel sat halfway up a solid course and read as a
+    # plank driven into the tower for no reason.
     box(shop, (LHX + math.cos(math.pi * 1.5625) * 4.1, LHY + math.sin(math.pi * 1.5625) * 4.1,
-               LH_G + 4.1), (1.4, 2.8, 0.5), TIMBER, yaw=math.pi * 1.5625)  # the door lintel
-    post(shop, LHX, LHY, LH_G, LH_G + 6.6, 0.8, WALL, sides=8)  # the newel
+               LH_G + 2.35), (1.4, 2.8, 0.5), TIMBER, yaw=math.pi * 1.5625)
+    post(shop, LHX, LHY, LH_G, LH_G + 7.4, 0.8, WALL, sides=8)  # the newel, up past the last tread
     for k in range(9):  # a stair to nowhere
         aa = math.pi * 1.5625 + 0.52 * (k + 1)
         box(shop, (LHX + math.cos(aa) * 2.05, LHY + math.sin(aa) * 2.05, LH_G + 0.55 + k * 0.68),
@@ -8843,8 +9349,16 @@ def build_islet_lampwork():
     for gx_ in (GA0, GA1):
         post(shop, gx_, GAY, gz(gx_, GAY) - 0.4, GA_TOP, 0.45, TIMBER, sides=6)
         for s in (-1, 1):  # sole braces, so it does not read as two poles
-            box(shop, (gx_ + (1.6 if gx_ == GA0 else -1.6), GAY + s * 1.5, gz(gx_, GAY) + 1.5),
-                (3.6, 0.34, 0.34), TIMBER, yaw=0.0)
+            # They used to be horizontal timbers offset 1.5 studs in y from a
+            # 0.45-radius leg - 0.88 studs of clear air between brace and post,
+            # the three WARNs the float checker reported. Now each one is a
+            # real rake: a foot on the rock, a head into the leg.
+            fx = gx_ + (2.6 if gx_ == GA0 else -2.6)
+            fy = GAY + s * 2.0
+            fg = gz(fx, fy)
+            d = Vector((gx_ - fx, GAY - fy, gz(gx_, GAY) + 3.2 - fg))
+            cone(shop, (fx, fy, fg - 0.3), 0.30, 0.24, d.length, TIMBER, sides=4,
+                 tilt=_tilt_toward(d.normalized()))
     box(shop, ((GA0 + GA1) / 2, GAY, GA_TOP - 0.25), (GA1 - GA0 + 1.4, 0.5, 0.5), TIMBER)
     for s_, bx_ in ((1, GA0), (-1, GA1)):  # knee braces under the beam
         box(shop, (bx_ + s_ * 1.3, GAY, GA_TOP - 1.55), (3.4, 0.3, 0.3), TIMBER, yaw=0.0)
@@ -8874,16 +9388,23 @@ def build_islet_lampwork():
                      tilt=_tilt_toward(d.normalized()))
             box(shop, (f.x, f.y, g + 0.35), (0.34 + abs(across.x) * h * 0.6, 0.34 + abs(across.y) * h * 0.6, 0.34),
                 TIMBER, yaw=yaw_ + math.pi / 2)
+        # The ridge pole the sheets actually lean on, carried by the two
+        # A-frame heads. Without it the stock leaned on nothing: round 1 spread
+        # the sheets along their own WIDTH at 0.66-stud steps (so they piled
+        # into one solid black slab) and alternated the lean +/- across, which
+        # crossed every other pane through its neighbour in a broad X.
+        box(shop, (c.x, c.y, g + h), (2 * (count * 0.36 + 0.9) + 0.8, 0.34, 0.34),
+            TIMBER, yaw=yaw_)
         for k in range(count):
-            u = (k - (count - 1) / 2.0) * 0.66
-            lean = across * ((0.55 if k % 2 == 0 else -0.55) + (0.10 * k))
-            b = c + along * u
-            p0 = b - along * 0.0 + across * 0.0
+            # face to face, feet walking OUT across the yard, heads all on the
+            # pole - a stack of glass, which is how sheet is racked on edge.
+            foot = across * (h * 0.24 + 0.24 * k)
+            head = across * (0.05 * k)
             corners = [
-                (p0 + along * (-w / 2)).to_tuple(),
-                (p0 + along * (w / 2)).to_tuple(),
-                (p0 + along * (w / 2) + lean + Vector((0.0, 0.0, h))).to_tuple(),
-                (p0 + along * (-w / 2) + lean + Vector((0.0, 0.0, h))).to_tuple(),
+                (c + along * (-w / 2) + foot).to_tuple(),
+                (c + along * (w / 2) + foot).to_tuple(),
+                (c + along * (w / 2) + head + Vector((0.0, 0.0, h))).to_tuple(),
+                (c + along * (-w / 2) + head + Vector((0.0, 0.0, h))).to_tuple(),
             ]
             slab(lamps, corners, 0.16, GLASS)
 
@@ -8910,12 +9431,24 @@ def build_islet_lampwork():
     LNX, LNY = RIGHT + 1.7, SY + HY - 1.2
     lng = gz(LNX, LNY)
     LEAN = 0.30  # radians off vertical, leaning into the gable
-    cone(lamps, (LNX, LNY, lng + 0.15), 2.95, 2.75, 0.55, GLASS, sides=14,
-         tilt=_tilt_toward(Vector((-math.sin(LEAN), 0.0, math.cos(LEAN)))))
-    for kk, (off, tl) in enumerate(((0.0, 0.55), (0.9, -0.9))):  # the cracks
-        box(lamps, (LNX - math.sin(LEAN) * 2.9 + off * 0.2, LNY + off, lng + 2.9),
-            (0.20, 5.0, 0.20), BRASS, yaw=tl)
     box(shop, (LNX + 0.9, LNY, lng + 0.35), (2.2, 5.2, 0.7), TIMBER)  # the batten it rests its foot on
+    # A disc leaning on a wall stands on its RIM, so its axis is horizontal -
+    # near enough. Round 1 handed _tilt_toward the near-vertical lean vector
+    # instead, which is the disc's AXIS, and the cartwheel came out lying flat
+    # on the ground like a manhole cover with its two leadwork cracks left
+    # hanging 2.5 studs over it in mid-air, stabbed through the gable boarding.
+    LN_R = 2.95
+    axis = Vector((math.cos(LEAN), 0.0, math.sin(LEAN)))  # out of the glass, away from the gable
+    up_f = Vector((-math.sin(LEAN), 0.0, math.cos(LEAN)))  # up the face
+    across_f = Vector((0.0, 1.0, 0.0))  # across the face
+    centre = Vector((LNX, LNY, lng + 0.62)) + up_f * LN_R  # foot on the batten, head on the gable
+    cone(lamps, (centre - axis * 0.275).to_tuple(), LN_R, LN_R - 0.20, 0.55, GLASS, sides=14,
+         tilt=_tilt_toward(axis))
+    for off, tl in ((0.0, 0.35), (0.9, -0.62)):  # the two shakes, ON the glass
+        d = (across_f * math.cos(tl) + up_f * math.sin(tl)).normalized()
+        mid = centre + axis * 0.34 + up_f * (off * 0.5) + across_f * (off * 0.4)
+        cone(lamps, (mid - d * 2.2).to_tuple(), 0.17, 0.15, 4.4, BRASS, sides=4,
+             tilt=_tilt_toward(d))  # short of the rim: a shake IN the glass, not a bar across it
 
     # ---- THE COLD FORGE. Stone hearth, iron hood, a chimney, an anvil, a
     # quench trough and the bellows - and no fire in it, because nothing on
@@ -8988,8 +9521,10 @@ def build_islet_lampwork():
         cone(yard, (WKX + 3.9 + (k - 1) * 0.4, WKY + (k % 2) * 0.4, wkg + 2.4), 0.55, 0.5, 0.35, ROPE, sides=8)
     for k in range(5):  # hanks hanging under the shop eave
         hx = LEFT + 1.6 + k * 3.4
-        box(yard, (hx, FRONT + 0.05, FLOOR + WH - 2.2), (0.36, 0.36, 2.0), ROPE)
-        cone(yard, (hx, FRONT + 0.05, FLOOR + WH - 2.5), 0.42, 0.10, 0.42, ROPE, sides=6)
+        # up INTO the header (it bottoms at WH-1.0): at WH-1.2 every hank hung
+        # with a fifth of a stud of daylight over its own hook.
+        box(yard, (hx, FRONT + 0.05, FLOOR + WH - 2.0), (0.36, 0.36, 2.2), ROPE)
+        cone(yard, (hx, FRONT + 0.05, FLOOR + WH - 3.1), 0.42, 0.10, 0.42, ROPE, sides=6)
 
     def oil_jar(x, y, z, s):
         post(yard, x, y, z, z + s * 0.35, s * 0.55, CLAY, sides=8)
@@ -9064,8 +9599,13 @@ def build_islet_lampwork():
         box(shop, (0.0, py, min(z_top - 1.6, 1.2)), (4.6, 0.34, 0.34), TIMBER)  # a cross tie in the water
     for k in range(len(PILE_Y) - 1):  # raking braces between the bents
         pa, pb = PILE_Y[k], PILE_Y[k + 1]
+        # The brace runs from a foot on pile A up to the STRINGER over pile B.
+        # Round 1 gave it a fixed 3.2-stud rise and the length of that vector,
+        # so it stopped ~0.7 studs under the deck and ~5 studs short in y: four
+        # timbers raking out of the water into open air (user's "random bits").
+        top_z = (ramp_z(pb) if pb > y_mid else DECK1) - 1.05
         for sx_ in (-2.2, 2.2):
-            d = Vector((0.0, pb - pa, 3.2))
+            d = Vector((0.0, pb - pa, top_z + 1.4))
             cone(shop, (sx_, pa, -1.4), 0.22, 0.18, d.length, TIMBER, sides=4,
                  tilt=_tilt_toward(d.normalized()))
     for k in range(7):  # handrail down the ramp and along the deck, one side
@@ -9124,8 +9664,19 @@ def build_islet_lampwork():
     for th_deg, out, s, h in ((-118.0, 9.0, 3.2, 9.0), (-72.0, 15.0, 2.4, 7.2), (-46.0, 8.5, 2.8, 8.4)):
         th = math.radians(th_deg)
         rr = lip_at(th) + out
-        blob(rock, (math.cos(th) * rr, math.sin(th) * rr, h * 0.5 - 4.0),
-             (s, s * 0.8, h * 0.62), 0.28, 150.0 + th_deg, STONE, yaw=th)
+        # They keep the head they had; the FOOT now reaches the trench floor.
+        # At (h*0.5-4, half=h*0.62) the tallest of them stopped 3.9 studs above
+        # the bottom - three rocks hung in the water, saved from the float
+        # checker only because they happen to cross the waterline.
+        # add_blob noises a UNIT sphere by +/-roughness BEFORE the scale, so the
+        # real extreme is centre -/+ 1.28*half; solve for the nominal bottom
+        # that puts the noisy one just clear of the trench floor and no lower
+        # (this islet's mesh bottom is a HANDOFF and must stay exactly -9.00).
+        top = h * 1.12 - 4.0
+        foot = (SKIRT_BOTTOM + 0.2 + 0.14 * top) / 1.14
+        half = (top - foot) / 2.0
+        blob(rock, (math.cos(th) * rr, math.sin(th) * rr, top - half),
+             (s, s * 0.8, half), 0.28, 150.0 + th_deg, STONE, yaw=th)
 
     stand = _ISLET_LAMP_STAND
     keep_out = [(stand[0], stand[1], 8.0), (GX, GY, 8.5), (LHX, LHY, 12.0), (FGX, FGY, 8.0),
@@ -9151,6 +9702,12 @@ def build_islet_lampwork():
         if not clear(bx, byy, s * 1.4):
             continue
         g = gz(bx, byy)
+        # The WHOLE footprint has to be on high rock, not just the centre: a
+        # centre-only test let 4-stud boulders straddle the lip and hang half
+        # their bulk out over the trench.
+        if min(gz(bx + dx, byy + dy) for dx in (-s * 1.7, 0.0, s * 1.7)
+               for dy in (-s * 1.35, 0.0, s * 1.35)) < 5.0:
+            continue
         if g < 5.0:
             continue
         blob(rock, (bx, byy, g + s * 0.42), (s * 1.7, s * 1.35, s * 0.95), 0.32, 120.0 + placed,
@@ -9161,7 +9718,7 @@ def build_islet_lampwork():
     # and three more at the wall foot. The only things on this rock that hover.
     wx, wy, wz = RIGHT + 0.5, SY, (W0 + W1) / 2
     for k in range(30):
-        mx = wx + 0.55 + (rng.random() ** 1.5) * 4.0
+        mx = wx + 0.55 + (rng.random() ** 1.5) * 3.0
         my = wy + max(-2.4, min(2.4, rng.gauss(0.0, 1.15)))
         mz = wz + max(-2.3, min(2.3, rng.gauss(0.0, 1.05)))
         _islet_lamp_moth(moths, mx, my, mz, rng.uniform(0.46, 0.78), rng.uniform(0, math.tau), rng.uniform(0.35, 1.15))
@@ -9269,7 +9826,28 @@ _BBY_CUTS = (1.85, -0.15, -1.9, -4.6)
 _BBY_NOTCH_X, _BBY_NOTCH_D, _BBY_NOTCH_W = -8.0, 4.4, 7.5
 
 # The rock pools scooped out of the lee shelf: (x, y, rim radius).
-_BBY_POOLS = ((15.0, 7.6, 3.6), (18.0, -8.6, 3.0), (7.5, 10.4, 2.8), (2.0, -11.0, 2.2))
+#
+# THE TWO RULES A BASIN HAS TO OBEY, both of them broken by the round-1 hand
+# placement and both invisible to the float checker (a ring of rim stones is
+# a chain, and a chain launders support along itself):
+#
+#   * A BASIN MAY NOT REACH OVER A CLEFT RIM. The cleft is an open slot with
+#     the sea running through it, so there is no rock under anything inside
+#     it. (18.0, -8.6, 3.0) sat 1.0 stud off the -y wall and threw rim stones
+#     to y = -5.6, two studs INTO the slot: from a boat in the cleft you
+#     looked up at four rock boxes and a slab of standing pool water with
+#     8 studs of daylight under them. A rim stone's outermost reach is
+#     r * 1.24 (the ring's noise) + 0.67 (half a yawed 0.95 box), so the
+#     centre has to clear the wall by that much and it never did.
+#   * A BASIN MAY NOT SHARE GROUND WITH THE SALVAGE DUMP. (15.0, 7.6, 3.6)
+#     was 3.8 studs from the dump at (17.5, 10.5), whose crates reach 4.4 and
+#     whose netting reaches 4.7 - so half the lashed pile stood in standing
+#     water and the net was pegged down through it.
+#
+# Measured against _bby_top_z, every basin here keeps the loop's own "does the
+# rim run off the shore break" guard (worst ring drop 0.92 of the 1.1 it
+# allows), clears both cleft walls, and clears both crate dumps.
+_BBY_POOLS = ((10.0, 4.5, 2.8), (21.0, -12.0, 2.6), (7.5, 10.4, 2.8), (2.0, -11.8, 2.2))
 
 # The x stations the wedge is sliced at - dense over the cliff end, where the
 # silhouette is doing the most work.
@@ -9474,6 +10052,18 @@ def _bby_hull(bm, cx, cy, deck, length, beam, rise):
         grid.append(row)
     top = [[bm.verts.new(Vector(p)) for p in row] for row in grid]
     bot = [[bm.verts.new(Vector((p[0], p[1], deck - 0.5))) for p in row] for row in grid]
+    # The two lines the caller has to dress ALONG rather than across: the
+    # gunwale (x, half-beam, deck) and the keel ridge (x, ridge z). A straight
+    # strake laid at a constant y and z misses both - the hull narrows to a
+    # point at the stem and its ridge falls 1.2 studs to the transom, so the
+    # eaves floated clear of the hull for its whole length.
+    edges = []
+    for i in range(rows):
+        s = i / (rows - 1)
+        x = cx - length / 2.0 + length * s
+        wide = beam / 2.0 * min(1.0, (0.10 + 1.9 * s) ** 0.55, 1.06 - 0.22 * s)
+        h = rise * (0.74 + 0.34 * (1.0 - s) ** 1.5)
+        edges.append((x, wide, deck + h))
     keel = []
     for i in range(rows - 1):
         for j in range(cols - 1):
@@ -9488,7 +10078,7 @@ def _bby_hull(bm, cx, cy, deck, length, beam, rise):
     for j in range(cols - 1):
         bm.faces.new((top[0][j + 1], top[0][j], bot[0][j], bot[0][j + 1]))
         bm.faces.new((top[rows - 1][j], top[rows - 1][j + 1], bot[rows - 1][j + 1], bot[rows - 1][j]))
-    return keel
+    return keel, edges
 
 
 def _bby_crate(bm, cx, cy, cz, w, d, h, yaw):
@@ -9542,12 +10132,25 @@ def build_islet_bellbuoy():
     # Boulders shed off the cliff and piled at its foot on the weather side,
     # plus two leaning stacks that break the cliff's straight top line.
     for _ in range(14):
-        bx = rng.uniform(-31.0, -17.0)
-        by = _bby_out_y(bx, rng.choice((1, -1))) * rng.uniform(0.88, 1.18)
+        # ON the rock, not at an arbitrary height beside it. The old placement
+        # took the PLAN edge times up to 1.18 and a free-floating z, which put
+        # half the pile out in open water off the cliff foot with nothing under
+        # it; the tideline contour walks the real surface, so every boulder
+        # lands on the apron it is supposed to have rolled onto.
+        bx = rng.uniform(-29.2, -17.5)
+        sign = rng.choice((1, -1))
+        band = 1.4 - (rng.uniform(0.88, 1.18) - 0.88) * 4.6  # a talus band through the tide
         s = rng.uniform(1.3, 3.1)
-        add_blob(wedge, (bx, by, rng.uniform(-1.6, 1.6)), (s, s * 0.85, s * 0.7), 0.26, rng.uniform(0, 40), yaw=rng.uniform(0, 3))
-    add_blob(wedge, (-29.4, -11.5, 2.2), (2.3, 2.0, 4.6), 0.30, 12.0, yaw=0.5)
-    add_blob(wedge, (-28.2, 9.4, 1.8), (2.0, 1.8, 3.8), 0.28, 19.0, yaw=1.1)
+        by = _bby_tide_y(bx, sign, band)
+        if by is None:
+            by = _bby_out_y(bx, sign) * 0.97
+        bz = _bby_top_z(bx, by) + s * 0.30 + rng.uniform(-0.3, 0.3)
+        add_blob(wedge, (bx, by, bz), (s, s * 0.85, s * 0.7), 0.26, rng.uniform(0, 40), yaw=rng.uniform(0, 3))
+    # The two leaning stacks stand ON the deck near the cliff edge - at a fixed
+    # z they were buried whole, 8 studs inside a rock face 12 studs high, and
+    # broke no skyline at all.
+    add_blob(wedge, (-26.9, -10.2, _bby_top_z(-26.9, -10.2) + 1.05), (2.3, 2.0, 4.6), 0.30, 12.0, yaw=0.5)
+    add_blob(wedge, (-26.1, 8.2, _bby_top_z(-26.1, 8.2) + 0.85), (2.0, 1.8, 3.8), 0.28, 19.0, yaw=1.1)
     # Buttress ribs pressed FLAT against the weather face - each one runs from
     # the water up to the rock behind it, so the end cap is a fluted cliff
     # instead of one bare grey plane. (They must sit INSIDE the plan: pushed a
@@ -9558,10 +10161,20 @@ def build_islet_bellbuoy():
         crest = _bby_top_z(bx + 0.9, by)
         if crest < 1.0:
             continue
-        add_box(wedge, (bx, by, (crest - 2.2) / 2.0), (2.4, 1.5, crest + 2.2), yaw=rng.uniform(-0.12, 0.12))
+        yaw = rng.uniform(-0.12, 0.12)
+        # The cleft is a SLOT open at the weather end, so on those rows there is
+        # no face to rib - and _bby_top_z hands back the full ridge height in
+        # there, so the rib came out as a 17-stud slab standing in open water.
+        # Three of the nine did that: the cleft mouth rendered as prison bars.
+        if _BBY_CLEFT_N - 0.4 < by < _BBY_CLEFT_P - 0.05:
+            continue
+        add_box(wedge, (bx, by, (crest - 2.2) / 2.0), (2.4, 1.5, crest + 2.2), yaw=yaw)
     for k in range(3):  # ledges stepping down the face
         by = -6.0 + k * 6.5
-        add_box(wedge, (_BBY_XS[0] + 1.6, by, 2.6 + k * 2.6), (3.6, 4.4, 0.8), yaw=rng.uniform(-0.15, 0.15))
+        yaw = rng.uniform(-0.15, 0.15)
+        if _BBY_CLEFT_N - 0.4 < by < _BBY_CLEFT_P - 0.05:
+            continue  # same slot: a ledge on this row hangs in the gap
+        add_box(wedge, (_BBY_XS[0] + 1.6, by, 2.6 + k * 2.6), (3.6, 4.4, 0.8), yaw=yaw)
 
     # The deck is a big flat plateau now, and a big flat plateau is BLAND: break
     # it with tilted slabs of shed basalt and low steps of the bedding plane.
@@ -9592,6 +10205,19 @@ def build_islet_bellbuoy():
     # Rock pools on the lee shelf: a ragged basin rim built in the rock, with
     # still water standing in it.
     for px, py, pr in _BBY_POOLS:
+        # RAISE, do not skip: a basin over the slot is not a basin that can be
+        # quietly dropped, it is a coordinate that is wrong, and the float
+        # checker cannot see it (the rim is a ring of touching boxes, so every
+        # stone is "supported" by its neighbour all the way back to the rock).
+        # _bby_top_z is no help either - asked for a height inside the cleft it
+        # clamps t to 0 and hands back the full ridge, which is why a basin
+        # placed there looked seated to every test the generator had.
+        reach = pr * 1.24 + 0.67  # ring noise, plus half a yawed 0.95 rim stone
+        if not ((py + reach) < _BBY_CLEFT_N or (py - reach) > _BBY_CLEFT_P):
+            raise RuntimeError(
+                f"[island_gen] bellbuoy: rock pool ({px}, {py}, r{pr}) reaches {reach:.2f} studs and "
+                f"crosses a cleft rim ({_BBY_CLEFT_N}..{_BBY_CLEFT_P}) - its stones would hang in the slot"
+            )
         surf = _bby_top_z(px, py)
         if min(_bby_top_z(px + math.cos(a) * pr, py + math.sin(a) * pr) for a in
                (k / 8.0 * math.tau for k in range(8))) < surf - 1.1:
@@ -9742,7 +10368,10 @@ def build_islet_bellbuoy():
     add_cone(gantry, (BX, BY, BEAM_Z + 4.5), 1.60, 0.10, 2.7, sides=7)
     _bby_paint(gantry, first, 1)
     # The one lamp's housing, on a bracket off the dinghy's door post.
-    LAMP = (23.6, -0.9, BENCH_TOP + 3.55)
+    # Low enough that the bracket arm crosses the door post it is bolted to:
+    # at the old height the arm cleared the post's head by a stud and the whole
+    # lamp hung on a 0.2-stud near-miss.
+    LAMP = (23.6, -0.9, BENCH_TOP + 2.40)
     add_box(gantry, (LAMP[0] - 0.9, LAMP[1], LAMP[2] + 0.85), (2.0, 0.22, 0.22))
     add_box(gantry, LAMP, (0.62, 0.62, 0.20))
     add_box(gantry, (LAMP[0], LAMP[1], LAMP[2] + 0.95), (0.72, 0.72, 0.26))
@@ -9792,12 +10421,25 @@ def build_islet_bellbuoy():
     # ------------------------------------------------------- the dinghy hut
     HULL_X, HULL_L, HULL_B, HULL_H = 16.4, 12.6, 4.7, 3.55
     DECK = BENCH_TOP + 0.05
-    for f in _bby_hull(dinghy, HULL_X, BENCH_Y, DECK, HULL_L, HULL_B, HULL_H):
+    keel_faces, hull_edges = _bby_hull(dinghy, HULL_X, BENCH_Y, DECK, HULL_L, HULL_B, HULL_H)
+    for f in keel_faces:
         f.material_index = 1  # the keel, now the ridge beam: bare timber on tar
     first = len(dinghy.faces)
-    add_box(dinghy, (HULL_X, BENCH_Y, DECK + HULL_H * 0.99), (HULL_L * 0.86, 0.5, 0.40))
-    for sy in (-1, 1):  # gunwale strakes, now the eaves
-        add_box(dinghy, (HULL_X + 0.4, BENCH_Y + sy * (HULL_B / 2.0 - 0.1), DECK + 0.55), (HULL_L * 0.78, 0.34, 0.44))
+    # Both of these follow the hull now. The ridge cap used to sit at one
+    # height over a ridge that falls 1.2 studs to the transom (it hung clear of
+    # the timber at the stern), and the eaves ran at a constant half-beam past
+    # a hull that pinches to nothing at the stem - a plank floating alongside
+    # the hut for its whole length.
+    for (x0, w0, r0), (x1, w1, r1) in zip(hull_edges, hull_edges[1:]):
+        add_box(dinghy, ((x0 + x1) / 2.0, BENCH_Y, (r0 + r1) / 2.0 - 0.02), (x1 - x0 + 0.08, 0.5, 0.40))
+        for sy in (-1, 1):
+            dy = sy * (w1 - w0)
+            add_box(
+                dinghy,
+                ((x0 + x1) / 2.0, BENCH_Y + sy * (w0 + w1) / 2.0, DECK + 0.06),
+                (math.hypot(x1 - x0, w1 - w0) + 0.08, 0.34, 0.44),
+                yaw=math.atan2(dy, x1 - x0),
+            )
     _bby_paint(dinghy, first, 1)
     STEM_X, TRANS_X = HULL_X - HULL_L / 2.0, HULL_X + HULL_L / 2.0
     first = len(dinghy.faces)  # the stove pipe, elbowing out through the transom
@@ -9822,19 +10464,31 @@ def build_islet_bellbuoy():
     _bby_paint(salvage, first, 0)
 
     shelf_crates = []
+    def crate_seat(cx, cy, half):
+        """The LOWEST rock under a crate's footprint. Seating on the height at
+        the centre alone leaves the downhill corner of every crate on a facet
+        hanging, which on this deck of tilted slabs is most of them."""
+        return min(
+            _bby_top_z(cx + dx, cy + dy)
+            for dx in (-half, 0.0, half)
+            for dy in (-half, 0.0, half)
+        )
+
     for _ in range(7):  # a lashed dump of salvage on the lee shelf by the pad
         cx, cy = 17.5 + rng.uniform(-3.0, 3.0), 10.5 + rng.uniform(-3.0, 3.0)
-        cz = _bby_top_z(cx, cy) + 0.85
+        cz = crate_seat(cx, cy, 1.1) + 0.85
         _bby_crate(salvage, cx, cy, cz, 2.0, 1.9, 1.7, rng.uniform(0, 3))
         shelf_crates.append((cx, cy, cz))
     for _ in range(4):
         cx, cy = 12.0 + rng.uniform(-3.0, 3.0), -12.5 + rng.uniform(-2.6, 2.6)
-        _bby_crate(salvage, cx, cy, _bby_top_z(cx, cy) + 0.85, 1.9, 1.8, 1.7, rng.uniform(0, 3))
+        _bby_crate(salvage, cx, cy, crate_seat(cx, cy, 1.05) + 0.85, 1.9, 1.8, 1.7, rng.uniform(0, 3))
 
     first = len(salvage.faces)  # ---- rope: the run along the rim, lanyards, lashings
     for k in range(17):
+        # Laid ON the rim it runs along. At +0.78 with nothing standing under
+        # it, this was a 30-stud rope hovering over bare rock.
         x0 = -3.0 + k * 1.75
-        z0, z1 = _bby_top_z(x0, _BBY_CLEFT_P) + 0.78, _bby_top_z(x0 + 1.75, _BBY_CLEFT_P) + 0.78
+        z0, z1 = _bby_top_z(x0, _BBY_CLEFT_P + 0.55) + 0.14, _bby_top_z(x0 + 1.75, _BBY_CLEFT_P + 0.55) + 0.14
         d = Vector((1.75, 0.0, z1 - z0))
         add_cone(salvage, (x0, _BBY_CLEFT_P + 0.55, z0), 0.13, 0.13, d.length, sides=4, tilt=_tilt_toward(d.normalized()))
     fenders = []
@@ -9846,43 +10500,63 @@ def build_islet_bellbuoy():
             add_cone(salvage, (fx, wy, rim - 2.5), 0.13, 0.13, 2.8, sides=4)
             fenders.append((fx, wy, rim - 2.5))
     for cx, cy, cz in shelf_crates:  # lashings pinning the dump to the rock
-        add_cone(salvage, (cx - 1.6, cy, cz + 1.0), 0.11, 0.11, 3.3, sides=4, tilt=(0.0, math.pi / 2))
+        # From the crate's head DOWN to the rock. Level, they were 3.3-stud
+        # spikes standing straight out of the crates into open air.
+        top = Vector((cx - 0.9, cy, cz + 0.85))
+        d = Vector((cx - 2.7, cy, _bby_top_z(cx - 2.7, cy) - 0.15)) - top
+        add_cone(salvage, tuple(top), 0.11, 0.11, d.length, sides=4, tilt=_tilt_toward(d.normalized()))
     _bby_paint(salvage, first, 1)
 
     first = len(salvage.faces)  # ---- cork: floats on the rope run, fender bodies
     for k in range(14):
         fx = -2.3 + k * 2.1
         add_cone(
-            salvage, (fx, _BBY_CLEFT_P + 0.52, _bby_top_z(fx, _BBY_CLEFT_P) + 0.52), 0.21, 0.21, 0.52,
+            salvage, (fx, _BBY_CLEFT_P + 0.52, _bby_top_z(fx, _BBY_CLEFT_P + 0.52) + 0.24), 0.21, 0.21, 0.52,
             sides=6, tilt=(math.pi / 2, 0.0), yaw=rng.uniform(0, 1.0),
         )
     for fx, wy, fz in fenders:
         add_cone(salvage, (fx, wy, fz - 1.7), 0.40, 0.52, 0.85, sides=7)
         add_cone(salvage, (fx, wy, fz - 0.85), 0.52, 0.34, 0.85, sides=7)
     for k in range(9):  # a bundle of spare floats heaped by the door
+        # On the rock outside the door, seated on what is actually under each
+        # one. The old heap was centred past the END of the bench and out over
+        # the cleft: two thirds of it hung in the slot with the sea beneath.
+        fx = 22.6 + rng.uniform(-0.9, 0.9)
+        fy = 0.15 + rng.uniform(-0.55, 0.55)
         add_cone(
-            salvage, (24.3 + rng.uniform(-1.3, 1.3), -4.6 + rng.uniform(-1.3, 1.3), BENCH_TOP + 0.4 + rng.uniform(0, 0.9)),
+            salvage, (fx, fy, _bby_top_z(fx, fy) + 0.33 + rng.uniform(0, 0.9) * 0.45),
             0.33, 0.33, 0.7, sides=6, tilt=(math.pi / 2, 0.0), yaw=rng.uniform(0, 3),
         )
     _bby_paint(salvage, first, 2)
 
     first = len(salvage.faces)  # ---- netting stretched over the shelf dump
-    NET_X, NET_Y = 17.5, 10.5
+    # A NET, not a bed of rods. Each string used to be one rigid 8.8-stud bar
+    # held at the average of its two end heights plus a drape - so it covered
+    # the dump but also ran 4.4 studs past it on every side, and the outer ends
+    # sailed off the shore break to hang 5 studs over open water. Now each
+    # string is a run of short segments that follows the rock under it and sags
+    # to it at both ends, over a footprint that matches the pile it covers.
+    NET_X, NET_Y, NET_H = 17.5, 10.5, 3.3
+
+    def net_z(px, py, s, t):
+        sag = max(0.0, 1.0 - (abs(s) / NET_H) ** 2) ** 1.15
+        span = max(0.0, 1.0 - (abs(t) / (NET_H + 1.1)) ** 2)
+        return _bby_top_z(px, py) + 0.16 + 1.55 * span * sag
+
     for k in range(7):
-        t = (k - 3) * 1.35
+        t = (k - 3) * 1.05
         for along_x in (True, False):
-            a = (NET_X + t, NET_Y - 4.4) if along_x else (NET_X - 4.4, NET_Y + t)
-            b = (NET_X + t, NET_Y + 4.4) if along_x else (NET_X + 4.4, NET_Y + t)
-            za, zb = _bby_top_z(*a) + 0.5, _bby_top_z(*b) + 0.5
-            mid = ((a[0] + b[0]) / 2.0, (a[1] + b[1]) / 2.0)
-            drape = 0.85 - abs(t) * 0.12
-            add_box(
-                salvage,
-                (mid[0], mid[1], (za + zb) / 2.0 + drape),
-                (0.10 if along_x else 8.8, 8.8 if along_x else 0.10, 0.10),
-            )
+            pts = []
+            for j in range(7):
+                s = -NET_H + j * (NET_H / 3.0)
+                px = NET_X + (t if along_x else s)
+                py = NET_Y + (s if along_x else t)
+                pts.append(Vector((px, py, net_z(px, py, s, t))))
+            for p0, p1 in zip(pts, pts[1:]):
+                d = p1 - p0
+                add_cone(salvage, tuple(p0), 0.07, 0.07, d.length, sides=4, tilt=_tilt_toward(d.normalized()))
     for sx, sy in ((-1, -1), (-1, 1), (1, -1), (1, 1)):  # pegged down at the corners
-        add_box(salvage, (NET_X + sx * 4.4, NET_Y + sy * 4.4, _bby_top_z(NET_X + sx * 4.4, NET_Y + sy * 4.4) + 0.4), (0.3, 0.3, 1.4))
+        add_box(salvage, (NET_X + sx * NET_H, NET_Y + sy * NET_H, _bby_top_z(NET_X + sx * NET_H, NET_Y + sy * NET_H) + 0.4), (0.3, 0.3, 1.4))
     _bby_paint(salvage, first, 3)
 
     # ---- the one lamp, burning in its housing at the door
@@ -9891,12 +10565,13 @@ def build_islet_bellbuoy():
     # ---- tally marks: two years of swells, scratched into the rock as thin dark
     # grooves. On the cleft wall the boat looks straight out at, and on the pad.
     def tally_group(x0, z0, on_wall):
+        # CUT INTO the wall face - the groove straddles it, half in the rock.
+        # At 0.52 off the face these were 18 groups of dark bars hanging in the
+        # air a half-stud in front of the wall they are scratched into - every
+        # one of the checker's twelve warnings on this islet.
+        wy = _BBY_CLEFT_P if on_wall else _BBY_CLEFT_N
         for k in range(4):
-            if on_wall:
-                add_box(tally, (x0 + k * 0.26, _BBY_CLEFT_P - 0.52, z0), (0.055, 0.10, 0.52))
-            else:
-                add_box(tally, (x0 + k * 0.26, _BBY_CLEFT_N + 0.52, z0), (0.055, 0.10, 0.52))
-        wy = (_BBY_CLEFT_P - 0.52) if on_wall else (_BBY_CLEFT_N + 0.52)
+            add_box(tally, (x0 + k * 0.26, wy, z0), (0.055, 0.10, 0.52))
         add_box(tally, (x0 + 0.39, wy, z0), (1.10, 0.10, 0.055))
 
     for row in range(3):
@@ -10172,7 +10847,14 @@ def build_islet_rookery():
         packed guano thick enough to read as a lip from the water, and the bird
         stands on the guano, not on the rock."""
         li, lo = [], []
-        for i in range(0, len(inner), 2):  # every other sample: the cap is a LID, not a detail
+        # EVERY sample, not every other one. The lid used to be built from
+        # samples 0/2/4 of a five-sample ledge, so its chords cut inside the
+        # scalloped lip and the ledge was bare rock 0.46 studs lower exactly
+        # where the odd-numbered perches stand - the birds and their feathers
+        # there had no guano under them, which is the near-miss the float
+        # checker reports on this islet. The stated invariant is that the bird
+        # stands on the guano; this is what makes it true.
+        for i in range(len(inner)):
             d = (outer[i] - inner[i])
             d.normalize()
             li.append(inner[i] + d * inset + Vector((0.0, 0.0, 0.46)))
@@ -10413,17 +11095,75 @@ def build_islet_rookery():
             fishbones(litter, px + rng.uniform(-1.6, 1.6), py + rng.uniform(-1.6, 1.6), pz + 0.05,
                       rng.uniform(0.0, math.tau))
 
-    # Drifting feathers in the air of the channel, and gulls working it.
+    # MOULTED FEATHERS, lodged about the colony. These 16 used to be hung in
+    # the AIR of the channel ("drifting", z 6-34 over open water) and they are
+    # 15 of the islet's 25 reported floaters: from the water they read as a
+    # cloud of splinters hanging under the arch, which is the exact complaint
+    # this pass exists to answer. A feather is off a bird, so it lies where the
+    # bird is - each one now takes a perch (every perch is raycast-verified
+    # against real rock further down) and settles beside it.
     for _ in range(16):
-        feather(litter, rng.uniform(-6.0, 12.0), rng.uniform(-16.0, 20.0), rng.uniform(6.0, 34.0), rng.uniform(0.8, 1.3))
-    for _ in range(7):
-        a = rng.uniform(0.0, math.tau)
-        rr = rng.uniform(34.0, 52.0)
-        gull(birds, math.cos(a) * rr + 1.0, math.sin(a) * rr, rng.uniform(20.0, 48.0), rng.uniform(0.0, math.tau),
-             flying=True)
-    for _ in range(3):  # threading the arch itself
-        gull(birds, rng.uniform(-2.0, 10.0), rng.uniform(-12.0, 16.0), rng.uniform(12.0, 30.0),
-             rng.uniform(0.0, math.tau), flying=True)
+        fpx, fpy, fpz, _fpa = perches[rng.randrange(len(perches))]
+        feather(litter, fpx + rng.uniform(-1.2, 1.2), fpy + rng.uniform(-1.2, 1.2), fpz + 0.05,
+                rng.uniform(0.8, 1.3))
+
+    # THE BIRDS IN FLIGHT - the one group meant to be off the rock, and the
+    # only floaters left on this islet. Round 4 sprayed them to a radius of 52
+    # with an independent random heading each, and from above that read as
+    # gulls stuck to the sky at random rather than a colony: a wheeling flock
+    # all turns the SAME way, and it wheels around its own stack, not out over
+    # empty water. So the ring is pulled in to 26-38 (10-18 studs off the
+    # stacks' faces, all of it inside the registry radius) and every bird's
+    # heading is the tangent of its own circle, all anticlockwise.
+    def flight_clear(x, y, z):
+        """Is a bird here actually flying, rather than embedded in something?
+        A ring drawn round the islet's centre cuts through BOTH stacks (the big
+        one's flare reaches out 23 studs at z 38) and straight through the
+        eyrie - measured on round 4: one gull 0.32 studs off the deck rail. So
+        ask the same surface functions the rock is lofted from, and treat the
+        small stack as platform-wide above its landing."""
+        ba = math.atan2(y - BY, x - BX)
+        # 8 studs off the LOFT, because the ledges jut up to 3.4 past it.
+        if math.dist((x, y), (BX, BY)) - _rook_big_r(min(z, ROOK_BIG_TOP - 1.0), ba) < 8.0:
+            return False
+        sa = math.atan2(y - SY, x - SX)
+        keep = _rook_small_r(min(z, ROOK_SMALL_TOP), sa)
+        if z > ROOK_SMALL_TOP - 4.0:
+            keep = max(keep, 11.0)  # the eyrie's deck, mast and crane arm
+        return math.dist((x, y), (SX, SY)) - keep >= 6.0
+
+    in_flight = 0
+    for i in range(7):
+        a = (i / 7.0) * math.tau + rng.uniform(-0.35, 0.35)
+        rr = rng.uniform(26.0, 38.0)
+        z = rng.uniform(24.0, 46.0)
+        bx_ = by_ = 0.0
+        for _ in range(16):  # push the arc out until the bird is in open air
+            bx_, by_ = math.cos(a) * rr + 1.0, math.sin(a) * rr
+            if flight_clear(bx_, by_, z):
+                break
+            if rr < 40.0:
+                rr += 2.0
+            else:
+                # Already at the edge of the registry radius: drop UNDER the
+                # flare instead of flying the bird off the island's map.
+                z = max(14.0, z - 3.0)
+        # +-0.55 of jitter on the tangent, not +-0.25: a ring of perfectly
+        # tangent birds is seen exactly nose-on from the two bearings on its
+        # own axis, and a gull nose-on is a blob.
+        gull(birds, bx_, by_, z, a + math.pi * 0.5 + rng.uniform(-0.55, 0.55), flying=True)
+        in_flight += 1
+    for _ in range(3):  # threading the channel under the arch, ALONG its run
+        cx_, cy_ = rng.uniform(-2.0, 10.0), rng.uniform(-12.0, 16.0)
+        cz_ = rng.uniform(12.0, 28.0)
+        for _ in range(8):  # and out of the rock either side of it
+            if flight_clear(cx_, cy_, cz_):
+                break
+            cx_ += (2.0 - cx_) * 0.35
+        # The channel is rowed ALONG, so a bird flying exactly along it is
+        # nose-on to the player the whole way: they criss-cross it instead.
+        gull(birds, cx_, cy_, cz_, math.pi * 0.5 + rng.choice((0.0, math.pi)) + rng.uniform(-0.9, 0.9), flying=True)
+        in_flight += 1
 
     # ================================================ PIP'S TRADE ON THE ROCK
     # A rope ladder up the big stack's channel face, an iron peg line beside
@@ -10499,16 +11239,53 @@ def build_islet_rookery():
 
     first = len(eyrie.faces)
     stilt_top = DECK_Z - 0.44
+    # WHERE EACH LEG REALLY LANDS. The deck is CANTILEVERED past the small
+    # stack's cap on its seaward side, and the line that used to choose a
+    # foot height read `A if dist < 9.0 else A` - the same expression in both
+    # branches, so the test did nothing and every leg was cut off at cap
+    # level. Measured 2026-09-09: the two seaward legs (x=30.5) ended 8.5 and
+    # 12.5 studs above the nearest rock, with their braces hanging off them.
+    # The float checker cannot see it - the legs are welded to the deck, so
+    # the eyrie reaches the ground through its inboard legs and the whole
+    # component passes. So ask the rock: cast down at the leg, and if there is
+    # no cap under it, walk the foot IN toward the stack until there is and
+    # rake the leg out to its deck corner.
+    rock_bm = bmesh.new()
+    rock_bm.from_mesh(stack_obj.data)
+    rock_bvh = BVHTree.FromBMesh(rock_bm)
+    rock_bm.free()
+
+    def stilt_foot(px, py):
+        touched = False
+        for k in range(13):
+            t = k / 12.0
+            fx, fy = px + (SX - px) * t, py + (SY - py) * t
+            hit = rock_bvh.ray_cast(Vector((fx, fy, 200.0)), Vector((0.0, 0.0, -1.0)))
+            if hit[0] is not None and hit[0].z > ROOK_SMALL_TOP - 1.5:
+                if k == 0 or touched:
+                    return fx, fy, hit[0].z - 0.8
+                # The FIRST step that finds cap is standing on its very lip -
+                # the post is 0.84 wide and half of it would still be over the
+                # drop. Take one more step in and plant it properly.
+                touched = True
+        return DECK_X, DECK_Y, ROOK_SMALL_TOP - 0.8
+
     stilts = []
     for sx_ in (-DW + 0.7, 0.0, DW - 0.7):
         for sy_ in (-DH + 0.7, DH - 0.7):
             px, py = DECK_X + sx_, DECK_Y + sy_
-            foot = ROOK_SMALL_TOP - 0.8 if math.dist((px, py), (SX, SY)) < 9.0 else ROOK_SMALL_TOP - 0.8
-            add_post(eyrie, px, py, foot, stilt_top, 0.42, sides=6)
-            stilts.append((px, py, foot))
-    for px, py, foot in stilts:  # splayed braces, so it reads as built not floated
-        _rook_stick(eyrie, (px + (DECK_X - px) * 0.55, py + (DECK_Y - py) * 0.55, foot + 0.2), (px, py, stilt_top - 0.4),
-                    0.19, sides=4)
+            fx, fy, foot = stilt_foot(px, py)
+            if math.dist((fx, fy), (px, py)) < 0.05:
+                add_post(eyrie, px, py, foot, stilt_top, 0.42, sides=6)
+            else:  # a raking leg back to real rock, not a post sawn off in mid-air
+                _rook_stick(eyrie, (fx, fy, foot), (px, py, stilt_top), 0.42, sides=6)
+            stilts.append((fx, fy, foot, px, py))
+    for fx, fy, foot, px, py in stilts:  # splayed braces, so it reads as built not floated
+        # The knee meets the leg where the leg actually is at that height, so a
+        # raked leg gets a brace against it and not a stick beside it.
+        t = 0.90
+        _rook_stick(eyrie, (fx + (DECK_X - fx) * 0.55, fy + (DECK_Y - fy) * 0.55, foot + 0.2),
+                    (fx + (px - fx) * t, fy + (py - fy) * t, foot + (stilt_top - foot) * t - 0.4), 0.19, sides=4)
     # the shack: four walls, a doorway gap on the channel side, a pitched cap
     SHX, SHY, SH0 = DECK_X + 1.1, DECK_Y, DECK_Z + 0.02
     SHW, SHH, SHT = 3.5, 3.6, 5.4
@@ -10682,7 +11459,7 @@ def build_islet_rookery():
     )
     print(
         f"[island_gen] HANDOFF rookery: {len(perches)} gulls seated on built geometry ({nested} of them "
-        f"in nests), every one raycast-verified; Rookery_Birds also carries 13 gulls in flight - the "
+        f"in nests), every one raycast-verified; Rookery_Birds also carries {in_flight} gulls in flight - the "
         f"ONE intended floating group. Arch crown clearance over the channel ~{_rook_arch_frame(0.4).z - _rook_arch_size(0.4)[1] * 0.5:.1f}."
     )
     # The pack's poly print is PRE-triangulation, and this islet is nearly all
@@ -11121,7 +11898,19 @@ def build_islet_chapel():
     # The east gable: the wall the roof dies into, and it stays UNDER the
     # ridge's last height - stood any taller it reads as a dark plank
     # floating off the end of the church.
-    add_box(drowned, (NX1 + 0.7, RY, -4.6), (1.5, HALF * 2 + 1.6, 8.0))
+    # (-4.6 -> -5.1: its head stood 0.4 PROUD of the ridge's last height, and
+    # the roof has frayed away over it there, so it was the dark plank.)
+    # Its FOOT is clamped to the skirt: dropping the head 0.5 took an 8.0-deep
+    # box to z=-9.10, and the islet's mesh bottom is a HANDOFF that must stay
+    # -9.00 (Islands.luau has no meshBottom for chapel, so WorldService would
+    # hoist the whole islet by the 0.10 overshoot and float everything keyed to
+    # the waterline). The head is unchanged; only the buried foot moves.
+    _GABLE_TOP = -1.1
+    _GABLE_FOOT = SKIRT_BOTTOM + 0.05
+    add_box(
+        drowned, (NX1 + 0.7, RY, (_GABLE_TOP + _GABLE_FOOT) / 2),
+        (1.5, HALF * 2 + 1.6, _GABLE_TOP - _GABLE_FOOT),
+    )
 
     # ------------------------------------------------------- the drowned nave
     # The floor, the arcade columns and the pews - all of it read through the
@@ -11141,6 +11930,12 @@ def build_islet_chapel():
         px = 3.6 + k * 3.9
         for s in (-1, 1):
             py = RY + s * 2.7
+            # The columns already refuse to stand where the nave has no height
+            # left; the pews did not, and the seaward pair pushed its backs up
+            # THROUGH the sunken roof and out of the water - the two dark bars
+            # lying off the church's east end in every wide shot.
+            if roof_z(px, py) < NAVE_FLOOR + 3.5:
+                continue
             add_box(drowned, (px, py, NAVE_FLOOR + 0.9), (1.2, 3.4, 1.8))  # the seat
             add_box(drowned, (px - 0.6, py, NAVE_FLOOR + 2.2), (0.5, 3.4, 2.6))  # the back
     # A fallen roof truss lying across the nave floor under the great tear.
@@ -11207,13 +12002,18 @@ def build_islet_chapel():
         ],
         0.16,
     )
+    # The east sheet runs the SAME length of plank as the west one. It used to
+    # be laid three and a third studs further south (PY0-3.4 .. PY1-3.2): that
+    # left four studs of plank bare at the back and carried the sheet 1.8 studs
+    # past the last plank and 4.4 past the last purlin, so from the churchyard
+    # a pale slab hung in the air over the door step with nothing under it.
     _chap_quad(
         hut,
         [
-            (2.6, PY0 - 3.4, plank_z(PY0 - 3.4) + 0.24),
-            (PX1 + 0.6, PY0 - 3.6, plank_z(PY0 - 3.6) + 0.20),
-            (PX1 + 0.6, PY1 - 3.2, plank_z(PY1 - 3.2) + 0.22),
-            (2.6, PY1 - 3.2, plank_z(PY1 - 3.2) + 0.26),
+            (2.6, PY0 - 1.8, plank_z(PY0 - 1.8) + 0.24),
+            (PX1 + 0.6, PY0 - 2.0, plank_z(PY0 - 2.0) + 0.20),
+            (PX1 + 0.6, PY1 - 1.7, plank_z(PY1 - 1.7) + 0.22),
+            (2.6, PY1 - 1.7, plank_z(PY1 - 1.7) + 0.26),
         ],
         0.16,
     )
@@ -11234,7 +12034,9 @@ def build_islet_chapel():
             add_box(hut, (LANT_X + sx * 0.34, LANT_Y + sy * 0.34, LANT_Z), (0.14, 0.14, 1.1))
     add_box(hut, (LANT_X, LANT_Y, LANT_Z + 0.62), (0.95, 0.95, 0.30))
     add_box(hut, (LANT_X, LANT_Y, LANT_Z - 0.60), (0.85, 0.85, 0.22))
-    KET_X, KET_Y, KET_Z = 4.4, PY1 - 1.6, 1.80
+    # ON the step, not over it: the landing's top face is at 1.25 and the
+    # kettle used to stand half a stud above it with daylight underneath.
+    KET_X, KET_Y, KET_Z = 4.4, PY1 - 1.6, 1.25
     add_cone(hut, (KET_X, KET_Y, KET_Z), 0.60, 0.52, 0.72, sides=8)
     add_cone(hut, (KET_X, KET_Y, KET_Z + 0.72), 0.34, 0.22, 0.22, sides=6)
     _chap_beam(hut, (KET_X + 0.4, KET_Y - 0.2, KET_Z + 0.45), (KET_X + 1.15, KET_Y - 0.5, KET_Z + 0.80), 0.18, 0.18)
@@ -11258,7 +12060,11 @@ def build_islet_chapel():
     _chap_rope(hut, [(LANT_X, LANT_Y, 4.38), (LANT_X, LANT_Y, LANT_Z + 0.75)], radius=0.08)
     for py in (PY0 - 1.4, PY0 - 4.6, PY1 + 0.6):
         _chap_rope(hut, [(PX0 - 0.7, py, plank_z(py) + 0.42), (PX1 + 0.7, py, plank_z(py) + 0.38)], radius=0.09)
-    _chap_rope(hut, [(PX1 + 0.7, PY1 + 0.6, plank_z(PY1 + 0.6) + 0.38), (PX1 + 0.9, PY1 + 0.4, 1.9)], radius=0.09)
+    # ...and the guy that holds the east eave down, made off INTO the porch's
+    # front wall (x 2.15..6.0, y -13.0..-11.8). It used to end at PX1+0.9,
+    # three tenths of a stud outside the wall's east face, so its foot stopped
+    # in mid-air with five studs of nothing under it.
+    _chap_rope(hut, [(PX1 + 0.7, PY1 + 0.6, plank_z(PY1 + 0.6) + 0.38), (PX1 + 0.2, PY1 + 0.2, 1.9)], radius=0.09)
     _chapel_paint(hut, first, 3)
 
     # ------------------------------------------------------- the churchyard
@@ -11297,11 +12103,21 @@ def build_islet_chapel():
                 yard, (fx, fy, rng.uniform(-0.20, 0.55) - 1.30),
                 (rng.uniform(2.5, 3.3), rng.uniform(2.5, 3.3), 2.6), yaw=rng.uniform(0, 1.57),
             )
-    # The path from the boundary wall in to the porch step, still readable.
+    # The path from the boundary wall in to the porch step, still readable. It
+    # STOPS at the wall: at a three-stud stride it ran ten studs out past the
+    # churchyard and the last four flags stood on nothing, a stud and three
+    # quarters of open water under them, which from the south read as a jetty
+    # going nowhere. And they are as deep as the terrace's own flags, so their
+    # feet are in the silt where the shoal falls away under the far end.
     for k in range(8):
         px = PAD_X + math.sin(k * 0.7) * 1.6
-        py = PAD_Y - 4.4 - k * 3.0
-        add_box(yard, (px, py, -1.05 + k * 0.02), (4.6, 3.2, 2.6), yaw=rng.uniform(-0.12, 0.12))
+        py = PAD_Y - 4.4 - k * 1.5
+        # Top unchanged; the foot is clamped to the skirt so a thicker flag can
+        # never push the islet's mesh bottom past the -9.00 HANDOFF.
+        ftop = -1.75 + k * 0.02 + 2.0
+        ffoot = max(-1.75 + k * 0.02 - 2.0, SKIRT_BOTTOM + 0.05)
+        add_box(yard, (px, py, (ftop + ffoot) / 2), (4.6, 3.2, ftop - ffoot),
+                yaw=rng.uniform(-0.12, 0.12))
     # The step down out of the porch, and the flag Odd stands on: one broad dry
     # landing kept clear of every prop, because the NPC ray lands on it.
     add_box(yard, (0.4, PY1 - 1.6, -0.05), (9.4, 3.0, 2.6))
@@ -11448,23 +12264,64 @@ def build_islet_chapel():
     # built low - and every patch is laid FLAT ON A FACE. Round one scattered
     # them on a circle of radius r and they came out as green and orange cubes
     # floating an arm's length off the tower.
-    def face_patch(bm, cx, cy, hw, z_lo, z_hi, count, thick=0.5, lo=1.0, hi=2.2):
+    # `hw` is the half-width of the thing being dressed ALONG X (pass None when
+    # `hw_at` supplies it), `hw_y` the half-width along Y (a porch pier is 1.2
+    # by 6.9, not a square post), `hw_at` gives the half-width per height for a
+    # shaft that steps in as it rises, and `faces` picks which of the four
+    # sides actually exist. Round two took none of that: one hw for everything
+    # put sixteen crusts a third of a stud clear of the tower's top courses,
+    # drove slabs straight through the porch piers, and hung three in the
+    # middle of the doorway, which has no wall in it at all.
+    def face_patch(
+        bm, cx, cy, hw, z_lo, z_hi, count, thick=0.5, lo=1.0, hi=2.2,
+        hw_y=None, hw_at=None, faces=(0, 1, 2, 3),
+    ):
         for k in range(count):
-            face = (k + int(rng.random() * 4)) % 4
-            off = rng.uniform(-hw * 0.86, hw * 0.86)
+            face = faces[(k + int(rng.random() * 4)) % len(faces)]
+            u = rng.uniform(-0.86, 0.86)
             zc = rng.uniform(z_lo, z_hi)
             sz, sh = rng.uniform(lo, hi), rng.uniform(0.45, 1.15)
+            hx = hw_at(zc) if hw_at else hw
+            hy = hx if hw_y is None else hw_y
             if face == 0:
-                add_box(bm, (cx + hw, cy + off, zc), (thick, sz, sh))
+                ox, oy, size = hx, u * hy, (thick, sz, sh)
             elif face == 1:
-                add_box(bm, (cx - hw, cy + off, zc), (thick, sz, sh))
+                ox, oy, size = -hx, u * hy, (thick, sz, sh)
             elif face == 2:
-                add_box(bm, (cx + off, cy + hw, zc), (sz, thick, sh))
+                ox, oy, size = u * hx, hy, (sz, thick, sh)
             else:
-                add_box(bm, (cx + off, cy - hw, zc), (sz, thick, sh))
+                ox, oy, size = u * hx, -hy, (sz, thick, sh)
+            add_box(bm, (cx + ox, cy + oy, zc), size)
+
+    def lean_patch(bm, origin, courses, z_lo, z_hi, count, thick, lo, hi, yaw, lean, lean_dir):
+        """The same crusts, but on a prop that was drawn with _chap_parts - a
+        stepped, yawed, LEANING stone. Laid in the prop's own frame, because
+        squaring them off to the world puts them a stud out in mid-air by the
+        time the lean has carried the stone that far over. `courses` is the
+        prop's (local top height, half-width) list, low course first."""
+        for k in range(count):
+            zl = rng.uniform(z_lo, z_hi)
+            hw = next((h for top, h in courses if zl <= top), courses[-1][1])
+            sz, sh = rng.uniform(lo, hi), rng.uniform(0.45, 1.15)
+            u = rng.uniform(-0.45, 0.45)
+            face = k % 4
+            if face < 2:
+                off = ((1 if face == 0 else -1) * (hw + 0.06), u * hw, zl)
+                size = (thick, sz, sh)
+            else:
+                off = (u * hw, (1 if face == 2 else -1) * (hw + 0.06), zl)
+                size = (sz, thick, sh)
+            _chap_parts(bm, origin, [(off, size)], yaw=yaw, lean=lean, lean_dir=lean_dir)
+
+    def shaft_half(z):
+        """The tower shaft's half-width at height z. It steps in a quarter of a
+        stud every course, so a crust placed at one fixed half-width sits on
+        the bottom of the shaft and hangs in the air at the top of it."""
+        k = min(max(int((z - TOWER_FOOT) // COURSE), 0), NCOURSE - 1)
+        return (10.0 - k * 0.25) / 2 + 0.05
 
     face_patch(weed, TOWER_X, TOWER_Y, 5.62, -0.55, 0.95, 16)  # on the plinth
-    face_patch(weed, TOWER_X, TOWER_Y, 4.98, 0.90, 2.90, 14)  # and up the shaft
+    face_patch(weed, TOWER_X, TOWER_Y, None, 0.90, 2.90, 14, hw_at=shaft_half)  # and up the shaft
     for sx, sy in ((-1, -1), (-1, 1), (1, -1)):  # and on the buttresses
         face_patch(weed, TOWER_X + sx * 4.1, TOWER_Y + sy * 4.1, 2.25, -0.5, 1.9, 4, lo=0.7, hi=1.5)
     for s in (-1, 1):  # the nave walls, following the eave down into the water
@@ -11477,9 +12334,15 @@ def build_islet_chapel():
                     weed, (xm + rng.uniform(-0.7, 0.7), ywall + s * 0.82, top - rng.uniform(0.4, 1.7)),
                     (rng.uniform(1.6, 2.8), 0.55, rng.uniform(0.5, 1.1)),
                 )
-    for px in (PX0, PX1):  # the porch
-        face_patch(weed, px, (PY0 + PY1) / 2, 0.62, -0.4, 1.3, 5, lo=1.2, hi=2.4)
-    add_box(weed, (0.4, PY1 - 0.62, 0.35), (7.2, 0.5, 0.9))
+    # The porch piers are 1.2 by 6.9: only their two long faces are outside
+    # air, and a patch laid on the short ones punches straight through them.
+    for px in (PX0, PX1):
+        face_patch(weed, px, (PY0 + PY1) / 2, 0.62, -0.4, 1.3, 5, lo=1.2, hi=2.4, hw_y=2.2, faces=(0, 1))
+    # The tide line on the porch front, on the two wall panels either side of
+    # the doorway - laid across the whole front it either buried itself in the
+    # step or hung across an open door.
+    for wx in (-3.28, 4.08):
+        add_box(weed, (wx, PY1 - 0.62, 1.55), (3.4, 0.5, 0.9))
     for mx, my, mh in marks:  # a collar of weed at every marker's foot
         for k in range(3):
             a = rng.uniform(0, math.tau)
@@ -11504,14 +12367,22 @@ def build_islet_chapel():
     # only warm colour on the masonry, and the thing that keeps forty studs of
     # pale limestone from reading as flat grey.
     first_lichen = len(weed.faces)
-    face_patch(weed, TOWER_X, TOWER_Y, 4.90, 3.4, BELFRY - 1.6, 16, thick=0.34, lo=0.9, hi=2.0)
+    face_patch(weed, TOWER_X, TOWER_Y, None, 3.4, BELFRY - 1.6, 16, thick=0.34, lo=0.9, hi=2.0, hw_at=shaft_half)
     face_patch(weed, TOWER_X, TOWER_Y, 4.32, cap - 0.6, cap + 0.2, 3, thick=0.30, lo=0.8, hi=1.6)
     for px in (PX0, PX1):
-        face_patch(weed, px, (PY0 + PY1) / 2, 0.60, 2.0, 4.4, 4, thick=0.30, lo=1.0, hi=2.2)
-    face_patch(weed, 0.4, PY1, 0.62, 2.2, 4.4, 3, thick=0.30, lo=1.0, hi=2.0)
-    face_patch(weed, OB_X, OB_Y, 2.05, 1.4, 4.6, 5, thick=0.28, lo=0.7, hi=1.4)
+        face_patch(weed, px, (PY0 + PY1) / 2, 0.60, 2.0, 4.4, 4, thick=0.30, lo=1.0, hi=2.2, hw_y=2.2, faces=(0, 1))
+    # The porch front, panel by panel: its middle is the doorway, and a crust
+    # aimed at the middle of a doorway hangs in the opening.
+    for wx in (-3.28, 4.08):
+        face_patch(weed, wx, PY1, 1.9, 2.2, 4.4, 2, thick=0.30, lo=1.0, hi=2.0, hw_y=0.62, faces=(2, 3))
+    # The obelisk is stepped, yawed and leaning; the lychgate's posts are yawed
+    # to the wall and leaning too. Both get their crusts in their OWN frame.
+    lean_patch(weed, (OB_X, OB_Y, -1.8), ((4.1, 1.55), (7.5, 1.10)), 3.3, 7.0, 5, 0.28, 0.6, 1.2, 0.4, 0.07, 1.2)
     for s in (-1, 1):
-        face_patch(weed, LG_X + tx * s * 3.2, LG_Y + ty * s * 3.2, 0.88, 1.6, 4.6, 3, thick=0.26, lo=0.6, hi=1.2)
+        lean_patch(
+            weed, (LG_X + tx * s * 3.2, LG_Y + ty * s * 3.2, -1.8), ((7.2, 0.9),),
+            3.4, 6.4, 3, 0.26, 0.6, 1.2, LG_A, 0.05, LG_A,
+        )
     _chapel_paint(weed, first_lichen, 1)
 
     objects = [
@@ -11735,6 +12606,24 @@ def _whale_banks(bm, rng):
         _whale_paint(bm, first, 0)
 
 
+def _whale_spine_r(f):
+    """Vertebra radius at spine fraction `f` (0 = skull end, 1 = tail)."""
+    return 1.65 - 1.10 * f
+
+
+def _whale_spine_dz(f):
+    """Height of the backbone's CENTRELINE above the sand at fraction `f`.
+
+    The old form was a flat 1.45 plus a 1.15 sine bow, which is a height the
+    vertebrae get THINNER under: by mid-column the bone's underside stood 1.55
+    studs clear of the sand and the whole backbone hung in the air, held up
+    only by the skull driven in at the west end. (The float checker cannot see
+    it - skull, spine and ribs are one connected component, so the skull's
+    contact roots the lot.) Seat it off the radius instead, so the underside
+    is always 0.30 studs INTO the sand, and keep whatever bow that leaves."""
+    return _whale_spine_r(f) - 0.30 + math.sin(f * math.pi) * 0.55
+
+
 def _whale_arch_pts(half_span, apex, segs, shoulder=0.78, rise=0.92):
     """Half of a rib arch as (across, z) in hut-local studs: from a foot at
     `half_span` up to the apex over the centreline. The exponents give it round
@@ -11780,7 +12669,15 @@ def _whale_fish(bm, x, y, z_top, yaw, rng):
 
 
 def _whale_gull(bm, x, y, z, yaw, sc=1.0):
-    """A perched gull. Body/head/tail/wings white (slot 0), beak yellow (1)."""
+    """A perched gull standing ON `z`. Body/head/tail/wings white (slot 0),
+    beak yellow (1).
+
+    The body box is centred 0.46*sc up and is 0.50*sc deep, so its underside
+    used to end up 0.21*sc ABOVE whatever it was standing on - every gull on
+    the islet hovered by that much, which is what the float checker's one
+    surviving WARN was (0.39 studs over the whetstone collar). Drop the whole
+    bird so `z` is the surface its belly rests on."""
+    z -= 0.21 * sc
     c, sn = math.cos(yaw), math.sin(yaw)
     add_box(bm, (x, y, z + 0.46 * sc), (1.10 * sc, 0.50 * sc, 0.50 * sc), yaw=yaw)
     add_box(bm, (x + c * 0.60 * sc, y + sn * 0.60 * sc, z + 0.74 * sc), (0.40 * sc, 0.38 * sc, 0.40 * sc), yaw=yaw)
@@ -11843,7 +12740,9 @@ def _whale_rack(camp, fish, gull_pts, s0, s1, across, rng, heights=(2.7, 3.9)):
             s = s0 + (s1 - s0) * f
             x, y, z = _whale_pt(s, across + rng.uniform(-0.18, 0.18), h - 0.08)
             _whale_fish(fish, x, y, z, s * _WH_A + math.pi * 0.5, rng)
-    gull_pts.append((_whale_pt(s0 + (s1 - s0) * 0.5, across, max(heights) + 0.62), s0 * _WH_A + math.pi))
+    # ...+0.55, which is exactly `top`: the gull stands on the middle post's
+    # cap. At +0.62 it hung 0.07 clear of it.
+    gull_pts.append((_whale_pt(s0 + (s1 - s0) * 0.5, across, max(heights) + 0.55), s0 * _WH_A + math.pi))
 
 
 def build_islet_whalefall():
@@ -11869,12 +12768,12 @@ def build_islet_whalefall():
     for k in range(NV + 1):
         f = k / NV
         s = _WH_CS0 + (_WH_CS1 - _WH_CS0) * f
-        x, y, z = _whale_pt(s, 0.6, 1.45 + math.sin(f * math.pi) * 1.15)
+        x, y, z = _whale_pt(s, 0.6, _whale_spine_dz(f))
         spine.append((x, y, z))
     for k in range(NV):
         p0, p1 = Vector(spine[k]), Vector(spine[k + 1])
         d = p1 - p0
-        r = 1.65 - 1.10 * (k / NV)
+        r = _whale_spine_r(k / NV)
         add_cone(bone, tuple(p0), r, r * 0.93, d.length, sides=6, tilt=_tilt_toward(d.normalized()))
         # vertebral spines standing off the backbone
         if k % 2 == 0:
@@ -11885,7 +12784,10 @@ def build_islet_whalefall():
         f = 0.12 + k * 0.072
         s = _WH_CS0 + (_WH_CS1 - _WH_CS0) * f
         _bx, _by, _tg, nm, _a = _whale_axis(s)
-        bx, by, bz = _whale_pt(s, 0.6, 1.35)
+        # the ribs hang off the BACKBONE, so their feet have to follow it down
+        # (0.50 below its centreline, the same bite they always took out of it)
+        # instead of sitting at a fixed 1.35 the spine has left behind.
+        bx, by, bz = _whale_pt(s, 0.6, _whale_spine_dz(f) - 0.50)
         span = 7.2 * math.sin(f * math.pi) + 2.4
         for side in (-1, 1):
             segs, pts = 6, []
@@ -11911,7 +12813,10 @@ def build_islet_whalefall():
     # and the camp - blades edge-on to the length of the spit.
     FS = 0.345
     for k in range(14):
-        across = -9.5 + k * 1.55 + rng.uniform(-0.2, 0.2)
+        # -8.2..+10.3, not -9.5..+10.6: at this station the bar is only dry
+        # from -8.46 to +10.70, and the old lagoon-end plate stood 0.8 studs
+        # under the sea with nothing but water round it.
+        across = -8.2 + k * 1.42 + rng.uniform(-0.2, 0.2)
         s = FS + rng.uniform(-0.006, 0.006)
         x, y, z = _whale_pt(s, across)
         h = rng.uniform(2.1, 3.4)
@@ -11942,11 +12847,18 @@ def build_islet_whalefall():
     # the busiest corner of the camp so the hole in it is the first thing read.
     WS, WA = 0.472, 8.0
     wx, wy, wz = _whale_pt(WS, WA)
-    add_post(camp, wx, wy, wz - 0.6, wz + 3.3, 0.42, sides=6)
+    # The head runs up to 3.55 so the collar band (3.24..3.66) CLASPS it. At
+    # 3.3 the post stopped six hundredths of a stud inside the band.
+    add_post(camp, wx, wy, wz - 0.6, wz + 3.55, 0.42, sides=6)
     first = len(camp.faces)
     for k in range(8):
         ang = k * math.tau / 8
-        add_box(camp, (wx + math.cos(ang) * 0.72, wy + math.sin(ang) * 0.72, wz + 3.45), (0.30, 0.16, 0.42), yaw=ang)
+        # Each strap reaches from INSIDE the shaft (0.29 of the axis, well
+        # under the post's 0.36 flat) out to the same 0.87 the ring always
+        # stood at. Laid 0.30 long at radius 0.72 they spanned 0.57..0.87 -
+        # a fifth of a stud of daylight all the way round the post, and the
+        # whole ring read as eight iron blocks hanging in the air beside it.
+        add_box(camp, (wx + math.cos(ang) * 0.58, wy + math.sin(ang) * 0.58, wz + 3.45), (0.58, 0.16, 0.42), yaw=ang)
     _whale_paint(camp, first, 2)
     first = len(camp.faces)  # the strop, and the lanyard the stone hung on
     add_box(camp, (wx + 0.5, wy - 0.2, wz + 2.35), (0.16, 0.62, 1.5), yaw=0.4)
@@ -11957,16 +12869,24 @@ def build_islet_whalefall():
     perches.append(((wx, wy, wz + 3.7), 2.4))
 
     # Salt: her second trade. Barrels stacked on the lagoon side, one open.
-    for s, across, h, salty in ((0.452, -5.6, 2.4, True), (0.470, -8.2, 2.4, False), (0.436, -8.6, 2.4, False), (0.453, -8.4, 2.3, False)):
+    # The lagoon waterline is at across -7.9 here, so -8.2/-8.6/-8.4 stood
+    # three of the four barrels in the sea (sand at +0.07..+0.31 against a sea
+    # of 0.55) - salt barrels, of all things. Pulled up onto dry sand.
+    for s, across, h, salty in ((0.452, -5.6, 2.4, True), (0.470, -6.2, 2.4, False), (0.436, -6.6, 2.4, False), (0.453, -6.4, 2.3, False)):
         x, y, z = _whale_pt(s, across)
         if s == 0.453:
-            z = _whale_ground(0.470, -8.2) + 2.4  # the stacked one, up on the pair
+            z = _whale_ground(0.470, -6.2) + 2.4  # the stacked one, up on the pair
         _whale_barrel(camp, x, y, z - 0.1, h=h, salt_top=salty, yaw=rng.uniform(0, math.tau))
 
     # Drying racks: three of them, because there is always more fish than day.
-    _whale_rack(camp, fish, perches, 0.598, 0.688, -6.4, rng)
+    # across -5.6 / +7.2 / +9.0: the third rack used to stand at +11.4, which
+    # at its stations is a full stud OUTSIDE the seaward waterline - three
+    # posts, two lines, six split fish and a gull, all of it out in the sea.
+    # The first rack's feet (posts start 0.7 below the sand) were in the water
+    # at -6.4 too.
+    _whale_rack(camp, fish, perches, 0.598, 0.688, -5.6, rng)
     _whale_rack(camp, fish, perches, 0.585, 0.672, 7.2, rng)
-    _whale_rack(camp, fish, perches, 0.414, 0.478, 11.4, rng, heights=(2.6, 3.7))
+    _whale_rack(camp, fish, perches, 0.414, 0.478, 9.0, rng, heights=(2.6, 3.7))
 
     # The rendering cauldron over a driftwood fire: where the blubber goes.
     CS, CA = 0.582, -2.6
@@ -12055,7 +12975,10 @@ def build_islet_whalefall():
 
     for k in range(10):
         across = -4.6 + k * 1.02
-        add_box(camp, hp(0.0, across, 0.0), (9.4, 0.94, 0.24), yaw=ha)
+        # 10.0 long, not 9.4: the back-wall barrels (below) reach along +4.85
+        # and the old deck stopped at +4.7, so the bottom course overhung its
+        # own floor and hung in the air over the sand.
+        add_box(camp, hp(0.0, across, 0.0), (10.0, 0.94, 0.24), yaw=ha)
     for along in (-3.9, 0.0, 3.9):
         for across in (-4.2, 0.0, 4.2):
             px, py, _pz = hp(along, across, 0.0)
@@ -12067,7 +12990,13 @@ def build_islet_whalefall():
             pts = [hp(along, side * ac, z) for ac, z in ARCH]
             _whale_bonechain(bone, pts, 0.80, 0.36)
             fx, fy, _fz = pts[0]
-            add_cone(bone, (fx, fy, _whale_ground(_WH_HUT + along / 100.0, side * 4.9) - 0.9), 0.85, 0.80, 1.3, sides=5)
+            # The footing has to REACH the arch. The arch springs from deck
+            # level; the sand at the arch feet (they stand 4.9 out, past the
+            # deck's own edge) is 1.4-2.3 studs lower, and a fixed 1.3-tall
+            # pad topped out a full stud short - it read as a stray block
+            # dropped beside the hut. Run it from the sand up INTO the foot.
+            _gz = _whale_ground(_WH_HUT + along / 100.0, side * 4.9) - 0.9
+            add_cone(bone, (fx, fy, _gz), 0.95, 0.80, (deck + 0.35) - _gz, sides=5)
     # ridge pole and purlins
     _whale_bonechain(bone, [hp(-4.7, 0.0, 6.88), hp(4.7, 0.0, 6.88)], 0.30, 0.30, sides=5)
     for side in (-1, 1):
@@ -12117,13 +13046,21 @@ def build_islet_whalefall():
     for side in (-1, 1):
         for k in range(8):
             along = -2.8 + k * 1.0
-            add_box(camp, hp(along, side * 5.05, 1.05), (0.92, 0.20, 2.1 + 0.3 * (k % 2)), yaw=ha)
+            # These boards hang OUTSIDE the deck (5.05 vs the deck's 4.58), so
+            # a fixed height in deck-local z left every one of them stopping
+            # at deck level with 1.5-2.1 studs of daylight under it - a row of
+            # planks floating round the hut. Run each board from the sand it
+            # actually stands on up to where it always ended.
+            px, py, _bz = hp(along, side * 5.05, 0.0)
+            gz = _whale_ground(_WH_HUT + along / 100.0, side * 5.05) - 0.2
+            top = deck + 2.1 + 0.3 * (k % 2)
+            add_box(camp, (px, py, (gz + top) * 0.5), (0.92, 0.20, top - gz), yaw=ha)
     # the back wall: her salt barrels, stacked two high
     for across in (-3.4, -1.1, 1.1, 3.4):
-        px, py, pz = hp(4.15, across, -0.35)
+        px, py, pz = hp(3.6, across, -0.35)
         _whale_barrel(camp, px, py, pz, h=2.5, yaw=rng.uniform(0, math.tau))
     for across in (-2.2, 0.0, 2.2):
-        px, py, pz = hp(4.15, across, 2.15)
+        px, py, pz = hp(3.6, across, 2.15)
         _whale_barrel(camp, px, py, pz, h=2.3, r=1.15, salt_top=(across == 0.0), yaw=rng.uniform(0, math.tau))
 
     # The door: the whale's lower JAW, teeth and all, stood on end in front of
@@ -12144,19 +13081,26 @@ def build_islet_whalefall():
     add_cone(camp, hp(1.4, -2.4, 0.15), 0.85, 0.85, 3.6, sides=6, tilt=(math.pi * 0.5, ha))
     _whale_paint(camp, first, 1)
     add_box(camp, hp(2.2, 2.3, 0.85), (1.7, 1.7, 1.7), yaw=ha + 0.3)
-    perches.append((hp(0.9, 0.0, 7.45), ha + math.pi))
-    perches.append((hp(-3.2, 5.2, 0.30), ha + 0.9))
+    perches.append((hp(0.9, 0.0, 7.28), ha + math.pi))  # on the ridge canvas, not 0.15 over it
+    # ...and on the porch DECK (which reaches 4.58), not 0.6 out past its edge
+    # and 1.8 studs above the sand.
+    perches.append((hp(-3.2, 4.2, 0.12), ha + 0.9))
 
     # ------------------------------------------------------------ the yard
     # A working shore is never tidy: hauled driftwood, a plank stack, crates,
     # a rope coil and the offcuts nobody carried away.
-    for s, across, ln, ang in ((0.512, 9.6, 5.5, 0.6), (0.652, -9.6, 4.4, 2.1), (0.702, 9.0, 6.2, 1.2), (0.392, -6.4, 4.8, 2.6)):
+    # Everything in this yard used to be laid out at |across| 8.6-11.4, and by
+    # the camp's stations the bar has already shelved under the sea by 8: the
+    # plank stack, two of the four hauled logs and all three crates stood in
+    # open water off the edge of the spit. Pulled onto the dry crown - a
+    # working shore is untidy, not amphibious.
+    for s, across, ln, ang in ((0.512, 8.4, 5.5, 0.6), (0.652, -6.4, 4.4, 2.1), (0.702, 7.4, 6.2, 1.2), (0.392, -6.4, 4.8, 2.6)):
         x, y, z = _whale_pt(s, across)
         add_cone(camp, (x, y, z + 0.35), 0.58, 0.44, ln, sides=5, tilt=_tilt_toward(Vector((math.cos(ang), math.sin(ang), 0.05)).normalized()))
-    px, py, pz = _whale_pt(0.556, 10.0)
+    px, py, pz = _whale_pt(0.556, 8.2)
     for k in range(4):
         add_box(camp, (px, py, pz + 0.22 + k * 0.34), (4.6, 2.0 - 0.18 * k, 0.32), yaw=0.556 * _WH_A + 0.1 * k)
-    for s, across, up in ((0.534, -8.6, 0.0), (0.556, -8.9, 1.55), (0.520, -10.4, 0.0)):
+    for s, across, up in ((0.534, -6.2, 0.0), (0.540, -6.3, 1.55), (0.520, -7.0, 0.0)):
         x, y, z = _whale_pt(s, across)
         add_box(camp, (x, y, z + 0.78 + up), (1.6, 1.6, 1.6), yaw=rng.uniform(0, math.tau))
     first = len(camp.faces)
@@ -12241,7 +13185,9 @@ def build_islet_whalefall():
 
     # The west arm is hers too, just colder: marker poles with rag flags where
     # the bar shelves off, and the bones she has already gathered into a heap.
-    for s, across, lean in ((-0.52, 5.2, 0.22), (-0.74, -4.4, 0.30), (-0.90, 3.0, 0.18)):
+    # (-0.86, 2.0), not (-0.90, 3.0): out there the bar is only dry to +2.6 and
+    # the third pole was planted in the sea.
+    for s, across, lean in ((-0.52, 5.2, 0.22), (-0.74, -4.4, 0.30), (-0.86, 2.0, 0.18)):
         x, y, z = _whale_pt(s, across)
         ang = rng.uniform(0, math.tau)
         d = Vector((math.cos(ang) * lean, math.sin(ang) * lean, 1.0)).normalized()
@@ -12368,8 +13314,12 @@ def _anch_seg(bm, p, q, r0, r1=None, sides=4, twist=0.0):
     ln = d.length
     if ln < 1e-4:
         return
+    # As in _anch_chain: add_cone rolls by `twist` OUTSIDE the tilt, so the
+    # tilt has to be solved in the frame the roll rotates into, or a twisted
+    # bar comes out pointing somewhere else entirely. Inert at twist=0.
+    aim = Matrix.Rotation(-twist, 3, "Z") @ d.normalized()
     add_cone(bm, tuple(p), r0, r0 if r1 is None else r1, ln, sides=sides,
-             tilt=_tilt_toward(d.normalized()), yaw=twist)
+             tilt=_tilt_toward(aim), yaw=twist)
 
 
 def _anch_ring(bm, centre, up, e1, R, r, seg=7):
@@ -12532,8 +13482,15 @@ def _anch_chain(bm, p, q, sag=0.0, links=9, r=0.28, i0=0):
         ln = d.length
         if ln < 1e-4:
             continue
-        add_cone(bm, a0, r, r * 0.92, ln * 1.05, sides=4, tilt=_tilt_toward(d.normalized()),
-                 yaw=0.0 if (i + i0) % 2 else math.pi * 0.25)
+        # Alternate links are rolled 45 degrees so the square bar reads as
+        # interlocking. add_cone composes Rz(yaw) OUTSIDE the tilt, so a tilt
+        # solved for the bare direction comes out swung 45 degrees about Z and
+        # the run walks off its own line - every second link left hanging in
+        # open water (the whole chain read as a dotted line, 2026-09-09).
+        # Solve the tilt in the frame the yaw will rotate INTO instead.
+        yaw = 0.0 if (i + i0) % 2 else math.pi * 0.25
+        aim = Matrix.Rotation(-yaw, 3, "Z") @ d.normalized()
+        add_cone(bm, a0, r, r * 0.92, ln * 1.05, sides=4, tilt=_tilt_toward(aim), yaw=yaw)
 
 
 def _anch_heap(bm, cx, cy, rad, rng, loops=3):
@@ -12861,13 +13818,21 @@ def build_islet_anchorage():
         _anch_buried(chain, bx0, by0, ang, blen, rng.uniform(0.0, 6.0), rng)
 
     # walkway handrails and the porch rail - chain, so they stay pass-through.
-    FX = _ANCH_MOUNDS[0][0] + math.cos(to_hum + math.pi) * 7.0
-    FY = _ANCH_MOUNDS[0][1] + math.sin(to_hum + math.pi) * 7.0
+    # The gangway's FOOT. It has to stand ON the flat crown of the landing
+    # hummock: at 7.0 studs out the foot was already off the flat and the deck
+    # was seated at FZ + 3.4, so the bottom plank ended four studs in the air
+    # over open sand with the two chain handrails diving past it and stopping
+    # in mid-air below - a staircase you could see the underside of from Coil's
+    # pad. Pulled in to the flat crown so the same slope now reaches the ground.
+    FOOT_OUT = 2.5
+    FOOT_UP = 0.30  # the deck's own thickness, so the slab beds into the sand
+    FX = _ANCH_MOUNDS[0][0] + math.cos(to_hum + math.pi) * FOOT_OUT
+    FY = _ANCH_MOUNDS[0][1] + math.sin(to_hum + math.pi) * FOOT_OUT
     FZ = _anch_ground(FX, FY)
     for sb, far, near in ((-1, rail_far[0], rail_near[0]), (1, rail_far[1], rail_near[1])):
         off = (math.cos(to_hum + math.pi * 0.5) * 2.6 * sb, math.sin(to_hum + math.pi * 0.5) * 2.6 * sb)
         _anch_chain(chain, near, far, sag=0.35, links=4, r=0.26)
-        _anch_chain(chain, far, (FX + off[0], FY + off[1], FZ + 3.2), sag=1.1, links=16, r=0.28)
+        _anch_chain(chain, far, (FX + off[0], FY + off[1], FZ + FOOT_UP + 3.2), sag=1.1, links=16, r=0.28)
 
     # mooring buoys on their rodes
     first = len(chain.faces)
@@ -12912,7 +13877,7 @@ def build_islet_anchorage():
     # ---------------------------------------------------------------- the walkway
     # A chain-and-plank gangway from the landing hummock up to the porch.
     first = len(shack.faces)
-    run = Vector((landing[0] - FX, landing[1] - FY, landing[2] - FZ - 3.4))
+    run = Vector((landing[0] - FX, landing[1] - FY, landing[2] - FZ - FOOT_UP))
     horiz = math.hypot(run.x, run.y)
     wyaw = math.atan2(run.y, run.x)
     across = Vector((-math.sin(wyaw), math.cos(wyaw), 0.0))
@@ -12920,14 +13885,14 @@ def build_islet_anchorage():
     N = 26
     for i in range(N + 1):
         t = i / N
-        p = Vector((FX, FY, FZ + 3.4)) + run * t
+        p = Vector((FX, FY, FZ + FOOT_UP)) + run * t
         p.z -= math.sin(t * math.pi) * 0.5
         left.append(p + across * 2.1)
         right.append(p - across * 2.1)
     add_strip_slab(shack, left, right, 0.45)
     for i in range(N):
         t = (i + 0.5) / N
-        p = Vector((FX, FY, FZ + 3.4)) + run * t
+        p = Vector((FX, FY, FZ + FOOT_UP)) + run * t
         p.z -= math.sin(t * math.pi) * 0.5
         add_box(shack, (p.x, p.y, p.z + 0.22), (horiz / N * 0.62, 4.5, 0.34), yaw=wyaw)
     _anch_paint(shack, first, 0)
@@ -13151,11 +14116,16 @@ def _shoal_terrace(terr, glow, steam, vents, rng, cx, cy, bearing, levels, r0, g
             water = _shoal_lobed(qx, qy, q, salt + k * 0.9 + j, seg=10, lobes=4, amp=0.16)
             dam = _shoal_lobed(qx, qy, q * 1.34, salt + k * 0.9 + j, seg=10, lobes=4, amp=0.16)
             f = len(terr.faces)
-            add_ring_slab(terr, water, dam, z + 0.78, 1.0)
+            # The dam skirt runs down past the NEXT step's top (+ step), not
+            # just into this one. A pool sits partly out over the downhill lip,
+            # and a 1.0-stud skirt left that overhang with its underside in the
+            # air a whole step above the chalk below - a shelf of rimstone
+            # apparently floating off the side of the cascade.
+            add_ring_slab(terr, water, dam, z + 0.78, 1.0 + step)
             if wet:
                 _shoal_paint(terr, f, 1)
             f = len(terr.faces)
-            add_disc_slab(terr, water, z + 0.50, 0.7)
+            add_disc_slab(terr, water, z + 0.50, 0.7 + step)
             _shoal_paint(terr, f, 2)
     # The spring itself, on the crown.
     _shoal_chimney(vents, glow, steam, rng, cx, cy, top_z + 0.5, rng.uniform(1.8, 3.0), 1.6, 0.9, plume=3)
@@ -13236,7 +14206,12 @@ def build_islet_boilshoal():
         # Obsidian shards standing off the crest, catching the light.
         for _ in range(rng.randint(0, 2) if gate > 0.4 else 0):
             sa = theta + rng.uniform(-0.05, 0.05)
-            sr = r + rng.uniform(-4.5, 4.5)
+            # The shard's BASE z is `top` - the crest of the block behind it -
+            # so its foot has to stay ON that block. A flat +-4.5 stud radial
+            # jitter walked it off the slab onto the bank three studs below and
+            # left it hanging in the air (the one FLOATING cluster, 2026-09-09);
+            # jittering by a fraction of the block's own thickness cannot.
+            sr = r + thick * rng.uniform(-0.40, 0.40)
             sx, sy = math.cos(sa) * sr, math.sin(sa) * sr
             h = rng.uniform(1.8, 4.6)
             add_cone(
@@ -13270,10 +14245,17 @@ def build_islet_boilshoal():
             continue  # the pad, the walk-up and the hut footprint all stay clear
         if 33.5 < rr < 50.5 and abs(oo) < 8.4:
             continue  # the hut walls
+        # The draw that used to LIFT the slab's CENTRE off the shelf now BEDS
+        # it: a slab is seated by its own half-height and sunk a little into
+        # the apron. Lifting the centre by up to 1.4 while the slab could be
+        # only 0.7 thick left the thin ones hovering a stud clear of the stone,
+        # held in the checker's contact graph only by touching a neighbour.
+        bed = rng.uniform(0.1, 1.4)
+        s_rad, s_off, s_up = rng.uniform(2.4, 6.0), rng.uniform(2.0, 5.0), rng.uniform(0.7, 2.4)
         add_box(
             apron,
-            _shoal_hut_pt(rr, oo, APRON_Z + rng.uniform(0.1, 1.4)),
-            (rng.uniform(2.4, 6.0), rng.uniform(2.0, 5.0), rng.uniform(0.7, 2.4)),
+            _shoal_hut_pt(rr, oo, APRON_Z + s_up * 0.5 - 0.25 * bed),
+            (s_rad, s_off, s_up),
             yaw=_SHOAL_HUT_A + rng.uniform(-0.5, 0.5),
         )
     first = len(apron.faces)
@@ -13311,7 +14293,10 @@ def build_islet_boilshoal():
     for oo in (3.4, -3.4):
         x, y, _ = _shoal_hut_pt(HR - 7.1, oo, 0.0)
         add_post(hut, x, y, FLOOR, EAVE, 0.34, sides=4)
-    _shoal_hut_box(hut, HR - 7.1, 0.0, EAVE - 0.2, (0.7, 5.2, 0.7))
+    # The door lintel has to REACH the two door posts it spans (they stand at
+    # off +-3.4): at 5.2 it stopped half a stud short of each and hung in the
+    # doorway on nothing - the one WARN the checker put on the hut.
+    _shoal_hut_box(hut, HR - 7.1, 0.0, EAVE - 0.2, (0.7, 7.4, 0.7))
     _shoal_paint(hut, first, 2)
 
     # Roof: scavenged copper sheet gone verdigris, a shallow gable pitched
@@ -13364,7 +14349,9 @@ def build_islet_boilshoal():
     # Steam off the tub: a wisp inside, seen through the doorway, and the mass
     # of it escaping over the open back of the ridge.
     tbx, tby, _ = _shoal_hut_pt(TUB_R, 0.0, 0.0)
-    _shoal_plume(steam, rng, tbx, tby, TUB_TOP + 0.9, 1.1, 2, drift=0.4)
+    # Off the WATER, not off thin air: the tub surface is at TUB_TOP - 0.4, and
+    # starting the wisp at +0.9 left its first puff floating clear of it.
+    _shoal_plume(steam, rng, tbx, tby, TUB_TOP + 0.1, 1.1, 2, drift=0.4)
     _shoal_plume(steam, rng, tbx, tby, RIDGE + 0.6, 1.9, 6, drift=1.4)
     add_cone(glow, (tbx, tby, TUB_TOP - 1.6), 2.3, 2.7, 0.5, sides=8)  # the feed, under the water
 
@@ -13375,10 +14362,12 @@ def build_islet_boilshoal():
     first = len(hut.faces)
     add_cone(hut, (cvx, cvy, APRON_Z + 2.4), 1.7, 2.35, 2.1, sides=8)
     add_cone(hut, (cvx, cvy, APRON_Z + 4.4), 2.45, 2.15, 0.4, sides=8)
-    for hs in (1, -1):  # a bail handle over the mouth
+    for hs in (1, -1):  # a bail handle: two arms that MEET over the mouth
+        # At 1.5 studs the arms stopped two studs short of each other and read
+        # as a pair of horns stuck on the pot rather than as a handle.
         add_cone(
-            hut, (cvx + hs * 1.9, cvy, APRON_Z + 4.7), 0.22, 0.18, 1.5, sides=4,
-            tilt=(0.0, math.radians(-38 * hs)),
+            hut, (cvx + hs * 2.05, cvy, APRON_Z + 4.5), 0.22, 0.18, 3.0, sides=4,
+            tilt=(0.0, math.radians(-43 * hs)),
         )
     _shoal_paint(hut, first, 4)
 
@@ -13394,11 +14383,22 @@ def build_islet_boilshoal():
         (40.0, -2.60, 5, 3.2, 1.35, 5.4, 1.10),
     ]
     terrace_spots = []
+    terrace_toes = []
     for rr, aa, levels, r0, grow, top_z, step in TERRACES:
         cx, cy = math.cos(aa) * rr, math.sin(aa) * rr
         bearing = math.atan2(-cy, -cx)  # downhill = toward the middle of the lagoon
         _shoal_terrace(terr, glow, steam, vents, rng, cx, cy, bearing, levels, r0, grow, top_z, step, rr * 0.7)
-        terrace_spots.append((cx, cy, r0 + levels * grow + 3.0))
+        # A cascade is NOT a disc around its crown - it runs thirty studs
+        # downhill and widens the whole way. One keep-clear circle on the crown
+        # left the entire lower stack unguarded, and the lagoon scatters
+        # (shards, dead fish, crusts) were dropping into the middle of the
+        # chalk, poking through the terraces from inside.
+        bx, by = math.cos(bearing), math.sin(bearing)
+        run = levels * (grow + 1.9)
+        for k in range(levels):
+            f = k / max(levels - 1, 1)
+            terrace_spots.append((cx + bx * run * f, cy + by * run * f, r0 + k * grow + 2.5))
+        terrace_toes.append((cx + bx * (run + 9.0), cy + by * (run + 9.0)))
 
     # ------------------------------------------------------------------ the vents
     def clear_of(x, y, pad):
@@ -13429,7 +14429,10 @@ def build_islet_boilshoal():
     # Short drowned chimneys out in the lagoon - some just breaking the milky
     # surface, some entirely under it with the glow showing through.
     drowned = []
-    for _ in range(160):
+    # The attempt budget has to cover the keep-clear: the cascades now guard
+    # their whole run, not just their crowns, so more candidates are rejected
+    # and 160 tries no longer filled the quota.
+    for _ in range(300):
         if len(drowned) >= 15:
             break
         a = rng.uniform(0.0, math.tau)
@@ -13447,7 +14450,7 @@ def build_islet_boilshoal():
     # bleached fish floating belly-up on it, so the wading water is not blank.
     first = len(smalls.faces)
     shards = 0
-    for _ in range(120):
+    for _ in range(240):
         if shards >= 14:
             break
         a, r = rng.uniform(0.0, math.tau), rng.uniform(0.14, 0.74) * ISLAND_RADIUS
@@ -13461,7 +14464,7 @@ def build_islet_boilshoal():
         )
     _shoal_paint(smalls, first, 1)
     floaters = 0
-    for _ in range(120):
+    for _ in range(240):
         if floaters >= 12:
             break
         a, r = rng.uniform(0.0, math.tau), rng.uniform(0.16, 0.76) * ISLAND_RADIUS
@@ -13490,9 +14493,12 @@ def build_islet_boilshoal():
         if not clear_of(x, y, 1.0):
             continue
         _shoal_fish(smalls, rng, x, y, _shoal_ground(x, y) + 0.15, rng.uniform(0.7, 1.35))
-    for cx, cy, _r in terrace_spots[:2]:
+    # Belly-up in the water off the FOOT of the first two cascades. These used
+    # to be seeded on the crown coordinates at lagoon height - which is seven
+    # studs inside a solid chalk column, so all four fish were simply buried.
+    for tx, ty in terrace_toes[:2]:
         for _ in range(2):
-            _shoal_fish(smalls, rng, cx + rng.uniform(-6.0, 6.0), cy + rng.uniform(-6.0, 6.0), _SHOAL_LAGOON_Z + 0.25, rng.uniform(0.7, 1.1))
+            _shoal_fish(smalls, rng, tx + rng.uniform(-6.0, 6.0), ty + rng.uniform(-6.0, 6.0), _SHOAL_LAGOON_Z + 0.25, rng.uniform(0.7, 1.1))
     first = len(smalls.faces)
     for _ in range(26):
         a = rng.uniform(0.0, math.tau)
@@ -13765,10 +14771,14 @@ def _raft_bridge(plank_bm, rope_bm, a, b, width, planks=None):
     for k in range(n):
         p = a.lerp(b, (k + 0.5) / n)
         add_box(plank_bm, (p.x, p.y, p.z + 0.24), (width * 0.94, 0.95, 0.34), yaw=yaw)
+    # The posts stand INBOARD of the deck edge by their own radius. Authored
+    # ON the edge, half of every post hung over open water with nothing under
+    # it, which is what the underside pass kept reporting on these four spans.
+    rail = side * ((width * 0.5 - 0.26) / (width * 0.5))
     for sign in (-1, 1):
         tops = []
         for t in (0.0, 0.34, 0.67, 1.0):
-            p = a.lerp(b, t) + side * sign
+            p = a.lerp(b, t) + rail * sign
             add_cone(plank_bm, (p.x, p.y, p.z), 0.22, 0.18, 2.5, sides=5)
             tops.append((p.x, p.y, p.z + 2.35))
         for u, v in zip(tops, tops[1:]):
@@ -13796,6 +14806,21 @@ def build_islet_ferryraft():
         (-12.0, 5.9), (-16.0, 4.4), (-19.5, 2.7), (-22.0, 1.2), (-23.5, 0.35),
     ]
     DECK = 3.7  # walking surface of the bow platform
+
+    def on_bow(x, y, half=0.0, span=0.0):
+        """Pull a bow-deck fixture inboard until it stands on the DECK.
+
+        The hull tapers hard forward - half-width 8.6 aft, 2.7 at station
+        -19.5 - and several fixtures were authored at x values the hull has
+        already left behind, so they hung over open water (a water barrel
+        3.9 studs outboard, a cleat 1.4 outboard, a crate, a lantern post).
+        `half` is the fixture's own x half-extent and `span` its y half-extent:
+        the hull is measured at whichever end of the fixture is narrowest,
+        which is what a long deck spar needs. 0.55 is the deck plank inset."""
+        hw = min(_raft_hw(STATIONS, y - span), _raft_hw(STATIONS, y + span))
+        lim = max(0.0, hw - 0.55 - half)
+        return CX + max(-lim, min(lim, x - CX))
+
     _raft_hull(bow, CX, STATIONS, DECK - 0.4, 6.4)
     first = len(bow.faces)
     _raft_deck_planks(bow, CX, STATIONS, -22.6, 7.7, DECK)
@@ -13836,13 +14861,21 @@ def build_islet_ferryraft():
     ]
     add_disc_slab(barge, BARGE, BARGE_DECK - 0.35, 3.9)
     first = len(barge.faces)
-    for k in range(15):
-        add_box(barge, (17.0, -19.2 + k * 2.4, BARGE_DECK - 0.18), (17.2, 2.05, 0.36))
+    # Eight planks, and no more: the deck they are laid on ends at y = 0. The
+    # old count ran to y = +14.4, so six of them lay flat on the open water
+    # between the barge and the barrel platform with nothing under them.
+    for k in range(8):
+        add_box(barge, (17.0, -18.4 + k * 2.4, BARGE_DECK - 0.18), (17.2, 2.05, 0.36))
     _raft_paint(barge, first, 1)
-    for x in (8.4, 25.6):  # coamings, so the cargo does not simply wash off
-        add_box(barge, (x, -10.0, BARGE_DECK + 0.45), (0.5, 19.0, 0.9))
-    for y in (-0.4, -19.6):
-        add_box(barge, (17.0, y, BARGE_DECK + 0.45), (17.6, 0.5, 0.9))
+    # Coamings, so the cargo does not simply wash off - with a gangway port cut
+    # in each one where a bridge lands, the way the bow's bulwark has them.
+    # Without the ports the two bridges dead-end into a wall.
+    add_box(barge, (25.6, -10.0, BARGE_DECK + 0.45), (0.5, 19.0, 0.9))
+    for y0, y1 in ((-19.5, -10.6), (-6.4, -0.5)):
+        add_box(barge, (8.4, (y0 + y1) * 0.5, BARGE_DECK + 0.45), (0.5, y1 - y0, 0.9))
+    add_box(barge, (17.0, -19.6, BARGE_DECK + 0.45), (17.6, 0.5, 0.9))
+    for x0, x1 in ((8.2, 12.2), (15.8, 25.8)):
+        add_box(barge, ((x0 + x1) * 0.5, -0.4, BARGE_DECK + 0.45), (x1 - x0, 0.5, 0.9))
     first = len(barge.faces)
     for pt in _raft_edge_points(BARGE, 2.8):  # weed up the sides
         add_box(barge, (pt[0], pt[1], SEA - 0.15), (1.9, 1.9, 0.9), yaw=rng.uniform(0, 1.5))
@@ -13877,8 +14910,10 @@ def build_islet_ferryraft():
                 continue
             _raft_barrel(barrels, 5.6 + gx * 2.95, 10.6 + gy * 3.0, -1.35, 1.42, 3.9, iron_index=3)
     _raft_board_field(barrels, 4.2, 21.0, 9.4, 23.8, BARREL_DECK, rng, 1, 2)
-    for x in (4.3, 20.9):
-        add_box(barrels, (x, 16.6, BARREL_DECK + 0.4), (0.45, 14.6, 0.8))
+    # The starboard coaming starts north of the gangway landing - the bow
+    # bridge comes ashore at that corner and used to butt into the boards.
+    add_box(barrels, (4.3, 18.2, BARREL_DECK + 0.4), (0.45, 11.4, 0.8))
+    add_box(barrels, (20.9, 16.6, BARREL_DECK + 0.4), (0.45, 14.6, 0.8))
     for y in (10.4, 16.6, 22.8):
         _raft_line(rig, (4.0, y, 1.2), (21.2, y, 1.2), sag=0.2, steps=5, r=0.15)
 
@@ -13902,7 +14937,7 @@ def build_islet_ferryraft():
         add_box(cabin, (x, (CAB_Y0 + CAB_Y1) / 2, FLOOR + 3.25), (WALL, 10.5, 6.5))
     for x, w in ((-16.35, 4.3), (-5.9, 0.8)):
         add_box(cabin, (x, CAB_Y0 + WALL / 2, FLOOR + 3.25), (w, WALL, 6.5))
-    add_box(cabin, (-9.65, CAB_Y0 + WALL / 2, FLOOR + 5.5), (7.4, WALL, 2.0))  # over the doorway
+    add_box(cabin, (-10.25, CAB_Y0 + WALL / 2, FLOOR + 5.5), (8.3, WALL, 2.0))  # over the doorway, wall to wall
     # The gallery wall, built round five window lights.
     add_box(cabin, (CAB_MID, CAB_Y1 - WALL / 2, FLOOR + 1.05), (13.0, WALL, 2.1))
     add_box(cabin, (CAB_MID, CAB_Y1 - WALL / 2, FLOOR + 5.65), (13.0, WALL, 1.7))
@@ -13928,7 +14963,10 @@ def build_islet_ferryraft():
     add_box(cabin, (CAB_MID, CAB_Y1 - 0.16, FLOOR + 3.35), (13.0, 0.5, 0.22))  # glazing bar
     for k in range(3):  # the carved crest over the middle light
         add_cone(cabin, (CAB_MID, CAB_Y1 + 0.2, FLOOR + 8.0 + k * 0.5), 1.5 - k * 0.42, 1.1 - k * 0.42, 0.6, sides=5)
-    for x in (CAB_X0 + 0.5, CAB_X1 - 0.5):  # wale mouldings down the sides
+    # Wale mouldings down the OUTSIDE of the sides. Authored 0.5 inboard of
+    # the wall line they stood 0.35 studs proud INSIDE the cabin instead, two
+    # rails crossing the room at waist and shoulder height.
+    for x in (CAB_X0 - 0.35, CAB_X1 + 0.35):
         add_box(cabin, (x, (CAB_Y0 + CAB_Y1) / 2, FLOOR + 4.6), (0.8, 10.4, 0.4))
         add_box(cabin, (x, (CAB_Y0 + CAB_Y1) / 2, FLOOR + 2.15), (0.8, 10.4, 0.35))
     _raft_paint(cabin, first, 1)
@@ -13979,10 +15017,14 @@ def build_islet_ferryraft():
     _raft_paint(cabin, first, 5)
 
     # ---------------------------------------------------------------- bridges
-    _raft_bridge(bridges, rig, (-4.3, -8.5, DECK - 0.1), (8.3, -8.5, BARGE_DECK), 3.2)
-    _raft_bridge(bridges, rig, (-15.9, -15.5, DECK - 0.1), (-22.6, -15.0, LOG_DECK), 3.0)
-    _raft_bridge(bridges, rig, (14.0, -0.2, BARGE_DECK), (14.0, 9.2, BARREL_DECK), 3.0)
-    _raft_bridge(bridges, rig, (-2.6, 4.5, DECK - 0.1), (4.6, 10.2, BARREL_DECK), 2.6)
+    # Every span now ENDS ON A DECK. A bridge end point is the middle of the
+    # end edge, so an end authored at the platform's own outline put the whole
+    # slab over water: the log-mat span in particular landed 2.2 studs short of
+    # the log decking and had no contact with either platform.
+    _raft_bridge(bridges, rig, (-5.6, -8.5, DECK - 0.1), (9.8, -8.5, BARGE_DECK), 3.2)
+    _raft_bridge(bridges, rig, (-14.8, -15.5, DECK - 0.1), (-25.6, -15.0, LOG_DECK), 3.0)
+    _raft_bridge(bridges, rig, (14.0, -1.8, BARGE_DECK), (14.0, 10.6, BARREL_DECK), 3.0)
+    _raft_bridge(bridges, rig, (-4.0, 4.5, DECK - 0.1), (6.4, 11.6, BARREL_DECK), 2.6)
 
     # ---------------------------------------------------------------- the rig
     # Four masts, all off different ships, carrying the lantern lines. This is
@@ -14014,7 +15056,7 @@ def build_islet_ferryraft():
     for lx, ly in ((CAB_X0 + 1.2, CAB_Y1 + 0.4), (CAB_X1 - 1.2, CAB_Y1 + 0.4)):
         add_cone(glow, (lx, ly, HEAD + 0.6), 0.5, 0.72, 1.1, sides=6)
         add_cone(glow, (lx, ly, HEAD + 1.7), 0.72, 0.12, 0.7, sides=6)
-    for lx, ly, lz in ((-6.9, POR_Y + 0.15, FLOOR + 2.35), (CX + 2.6, -20.6, DECK)):
+    for lx, ly, lz in ((-6.9, POR_Y + 0.15, FLOOR + 2.35), (on_bow(CX + 2.6, -20.6, half=0.46), -20.6, DECK)):
         add_cone(rig, (lx, ly, lz), 0.22, 0.18, 1.3, sides=5)
         add_cone(glow, (lx, ly, lz + 1.3), 0.34, 0.46, 0.6, sides=6)
         add_cone(glow, (lx, ly, lz + 1.9), 0.46, 0.2, 0.28, sides=6)
@@ -14043,7 +15085,7 @@ def build_islet_ferryraft():
 
     # ---------------------------------------------------------------- fish, everywhere
     for a, b, n in (
-        ((-17.2, -11.6, DECK + 5.2), (-12.2, -11.6, DECK + 5.2), 4),
+        ((-16.2, -11.6, DECK + 5.2), (-12.2, -11.6, DECK + 5.2), 4),
         ((17.0, 11.5, BARREL_DECK + 4.4), (17.0, 21.5, BARREL_DECK + 4.4), 6),
         ((5.6, 11.2, BARREL_DECK + 4.4), (5.6, 22.4, BARREL_DECK + 4.4), 7),
         ((-35.4, -21.4, LOG_DECK + 4.2), (-35.4, -13.0, LOG_DECK + 4.2), 5),
@@ -14051,7 +15093,7 @@ def build_islet_ferryraft():
     ):
         _raft_fish_line(rig, fish, a, b, n=n)
     for px, py, pz, ph in (
-        (-17.2, -11.6, DECK, 5.3), (-12.2, -11.6, DECK, 5.3),
+        (-16.2, -11.6, DECK, 5.3), (-12.2, -11.6, DECK, 5.3),  # the port post was over the side
         (17.0, 11.5, BARREL_DECK, 4.6), (17.0, 21.5, BARREL_DECK, 4.6),
         (5.6, 11.2, BARREL_DECK, 4.6), (5.6, 22.4, BARREL_DECK, 4.6),
         (-35.4, -21.4, LOG_DECK, 4.4), (-35.4, -13.0, LOG_DECK, 4.4),
@@ -14092,19 +15134,32 @@ def build_islet_ferryraft():
         _raft_crate(cargo, rng.uniform(6.0, 19.5), rng.uniform(10.2, 23.0), BARREL_DECK, rng.uniform(1.5, 2.4), rng.uniform(0, 1.5), rng.randint(1, 3))
     _raft_crate(cargo, -16.4, -6.2, DECK, 2.5, 0.2, 2)
     _raft_crate(cargo, -16.3, -6.1, DECK + 2.1, 2.1, 0.55, 3)
-    _raft_crate(cargo, -15.0, -18.6, DECK, 2.3, 1.1, 1)
+    _raft_crate(cargo, on_bow(-15.0, -18.6, half=1.63), -18.6, DECK, 2.3, 1.1, 1)  # was over the port side
 
     # ---------------------------------------------------------------- gear
+    # The two bow-deck water butts were authored where the hull used to be:
+    # the forward one stood 3.9 studs clear of the sheer, on the water.
     for bx, by, bz in ((-17.2, -10.4, DECK), (-3.4, -17.4, DECK), (11.4, -4.6, BARGE_DECK), (19.4, 11.4, BARREL_DECK)):
+        if bz == DECK:
+            bx = on_bow(bx, by, half=1.5)
         _raft_barrel(gear, bx, by, bz, 1.5, 3.4, iron_index=1, open_top=True)
-    first = len(gear.faces)  # the windlass drum
-    add_cone(gear, (CX - 2.4, -19.6, DECK + 0.9), 1.15, 1.15, 4.8, sides=8, tilt=(0.0, 1.5708))
+    first = len(gear.faces)  # the windlass drum, athwartships between its bitts
+    DRUM_Z = DECK + 1.4
+    add_cone(gear, (CX - 2.4, -19.6, DRUM_Z), 1.15, 1.15, 4.8, sides=8, tilt=(0.0, 1.5708))
     _raft_paint(gear, first, 1)
     for sign in (-1, 1):
         add_box(gear, (CX + sign * 2.6, -19.6, DECK + 1.1), (0.9, 1.8, 2.2))
+    # The whelps run WITH the drum. They were built round a vertical axis at
+    # right angles to it, 5.4 studs long fore-and-aft: the lower three were
+    # buried in the deck and their ends stood out over the water either side
+    # of the narrow forebody.
     for k in range(6):
         a = k * math.tau / 6
-        add_box(gear, (CX - 2.4 + math.cos(a) * 1.55, -19.6, DECK + 0.9 + math.sin(a) * 1.55), (0.45, 5.4, 0.45))
+        add_box(
+            gear,
+            (CX, -19.6 + math.cos(a) * 1.35, DRUM_Z + math.sin(a) * 1.35),
+            (3.0, 0.45, 0.45),
+        )
     # Chicken coop on the barge: slatted box, pitched lid, a ramp, three hens.
     first = len(gear.faces)
     add_box(gear, (12.6, -14.4, BARGE_DECK + 1.5), (4.4, 3.4, 3.0))
@@ -14124,23 +15179,36 @@ def build_islet_ferryraft():
     port = [Vector((29.2 - hw, -6.0 + y, 1.55)) for y, hw in SKF]
     stbd = [Vector((29.2 + hw, -6.0 + y, 1.55)) for y, hw in SKF]
     add_strip_slab(gear, port, stbd, 1.9)
-    for ty in (-9.4, -6.0, -2.4):
-        add_box(gear, (29.2, ty, 1.4), (2.1, 0.55, 0.3))
+    for ty in (-9.4, -6.0, -2.4):  # thwarts ACROSS the skiff, not inside it
+        add_box(gear, (29.2, ty, 1.7), (1.9, 0.55, 0.3))
     add_cone(gear, (29.2, -11.0, 1.6), 0.3, 0.22, 7.0, sides=5, tilt=(-1.35, 0.0))
     _raft_paint(gear, first, 4)
     _raft_line(rig, (26.0, -6.0, BARGE_DECK + 0.5), (29.2, -6.0, 2.0), sag=0.5, steps=3, r=0.11)
     first = len(gear.faces)
     for cx_, cy_, cz_ in ((-6.4, -18.4, DECK), (20.4, -4.0, BARGE_DECK), (8.0, 21.4, BARREL_DECK), (-26.6, -13.6, LOG_DECK)):
+        if cz_ == DECK:  # the bow cleat stood 1.4 studs outboard of the sheer
+            cx_ = on_bow(cx_, cy_, half=1.5)
         add_cone(gear, (cx_, cy_, cz_), 1.5, 1.25, 0.55, sides=9)
         add_cone(gear, (cx_, cy_, cz_ + 0.55), 1.2, 0.95, 0.45, sides=9)
+    # Spare spars left lying on deck. deck_spot only guarantees the CENTRE is
+    # inboard, and a spar is up to seven studs long, so an end could - and did
+    # - hang out over the water; seat the whole spar, ends included.
     for _ in range(7):
         x, y = deck_spot(-21.0, 6.0, 2.0, pad=9.5)
-        add_box(gear, (x, y, DECK + 0.2), (rng.uniform(3.5, 7.0), 0.5, 0.4), yaw=rng.uniform(0, 3.1))
+        length, yaw = rng.uniform(3.5, 7.0), rng.uniform(0, 3.1)
+        half_x = abs(math.cos(yaw)) * length * 0.5 + abs(math.sin(yaw)) * 0.25
+        half_y = abs(math.sin(yaw)) * length * 0.5 + abs(math.cos(yaw)) * 0.25
+        add_box(gear, (on_bow(x, y, half=half_x, span=half_y), y, DECK + 0.2), (length, 0.5, 0.4), yaw=yaw)
     _raft_paint(gear, first, 5)
 
     # ---------------------------------------------------------------- fenders
     HULL_EDGE = [(CX - hw, y) for y, hw in STATIONS] + [(CX + hw, y) for y, hw in reversed(STATIONS)]
-    _raft_fenders(fend, _raft_edge_points(HULL_EDGE, 5.0), DECK + 0.6)
+    # HULL_EDGE closes across the SAWN END at y = 8.0, and that closing line is
+    # not a rubbing face - it is the cut, with the raw frames standing in it and
+    # the stern cabin sitting on top of it. Fenders were being hung along it:
+    # two of the three came up through the cabin floor and stood in the middle
+    # of the room, rope and all. The sheer is fendered from y = 6 forward.
+    _raft_fenders(fend, [p for p in _raft_edge_points(HULL_EDGE, 5.0) if p[1] < 7.5], DECK + 0.6)
     _raft_fenders(fend, _raft_edge_points(BARGE, 4.6), BARGE_DECK + 0.8)
     _raft_fenders(fend, _raft_edge_points([(4.0, 9.0), (21.2, 9.0), (21.2, 24.2), (4.0, 24.2)], 4.8), BARREL_DECK + 0.5, r=0.5, h=1.7)
     _raft_fenders(fend, _raft_edge_points([(-37.4, -25.4), (-22.6, -25.4), (-22.6, -10.6), (-37.4, -10.6)], 5.4), LOG_DECK + 0.2, r=0.45, h=1.3)
@@ -14394,6 +15462,18 @@ def build_islet_loadstone():
     rng = random.Random(5508)
     state = random.getstate()
     base = build_island_base("Loadstone_Base", ["M_LoadRock", "M_LoadScorch", "M_LoadWet"])
+    # The REAL surface, not the smooth profile. This island runs CRAG 2.6 with
+    # no RIM_FLAT and no CRAG_CALM, so the built landform disagrees with
+    # height_at by up to the full crag amplitude everywhere between u=0.06 and
+    # the shoreline. Every shard, tube, filing, nail, chain end and gull below
+    # is seated with _gz; seating them on height_at is what left them hovering
+    # over dips and buried to the eyeballs on ridges (2026-09-09).
+    ground = _ground_bvh(base)
+
+    def _gz(x, y):
+        hit = _drop_to_ground(ground, x, y)
+        return height_at(x, y) if hit is None else hit
+
     spires = bmesh.new()
     rubble = bmesh.new()
     fulg = bmesh.new()
@@ -14420,7 +15500,7 @@ def build_islet_loadstone():
     ]
     tips = []
     for x0, y0, h, r0, lean, bear, sides, courses, twist in CLUSTER:
-        z0 = height_at(x0, y0) - 2.2
+        z0 = _gz(x0, y0) - 2.2
         tip, axis, seams = _load_spire(spires, x0, y0, z0, h, r0, lean, bear, sides, courses, twist)
         tips.append((tip, axis, h, r0, x0, y0, z0))
 
@@ -14448,8 +15528,6 @@ def build_islet_loadstone():
     _load_paint(spires, first, 1)
 
     # ---------------------------------------------------------------- rubble field
-    GZ0 = height_at(0.0, 0.0)
-
     # Ansel's plinth: a heap of shards Ansel levelled the top of, NOT a
     # pedestal - the three courses are yawed off each other and the perimeter
     # is broken by loose blocks, so the silhouette never reads as one box. The
@@ -14465,7 +15543,16 @@ def build_islet_loadstone():
         # proud of it - the raycast would then put Ansel on top of a boulder.
         if abs(bx - _LOAD_PAD[0]) < 6.8 and by < _LOAD_PAD[1] + 3.0:
             continue
-        _load_shard(rubble, bx, by, _LOAD_PLINTH_TOP - rng.uniform(0.9, 3.6), rng.uniform(1.5, 3.4), k, rng)
+        drop, size = rng.uniform(0.9, 3.6), rng.uniform(1.5, 3.4)
+        # And on the NORTH arc the plinth edge IS the shack - the ring's top
+        # sits at y = -20, which is Ansel's floor - so a shard there stands up
+        # THROUGH the boards inside the room (k = 6 did, a 5-stud wedge across
+        # a quarter of the floor). Those are SUNK until their tops are under
+        # the floor slab rather than skipped, so the rng stream, and with it
+        # every scatter after this loop, is exactly what it was.
+        if abs(bx - _LOAD_SHACK_X) < 6.2 and abs(by - _LOAD_SHACK_Y) < 6.2:
+            drop = max(drop, size * 1.85 + 0.2)  # 1.85: 1.5 of height plus what the tilt lifts
+        _load_shard(rubble, bx, by, _LOAD_PLINTH_TOP - drop, size, k, rng)
     # The flat shard-slab pad itself, right in front of the chain curtain.
     add_box(rubble, (_LOAD_PAD[0], _LOAD_PAD[1], _LOAD_PLINTH_TOP + 0.09), (11.4, 5.6, 0.36), yaw=0.03)
 
@@ -14485,20 +15572,24 @@ def build_islet_loadstone():
             continue
         placed.append((x, y))
         size = rng.uniform(1.0, 2.3) if rr > 27 else rng.uniform(1.7, 4.6)
-        _load_shard(rubble, x, y, height_at(x, y) - size * 0.35, size, i, rng)
+        _load_shard(rubble, x, y, _gz(x, y) - size * 0.35, size, i, rng)
 
     # Big flat shards tipped up out of the debris - the pieces that came off
     # the needles whole. These are what make the field read SHATTERED.
     for k in range(13):
         a = rng.uniform(0.0, math.tau)
-        rr = rng.uniform(13.0, ISLAND_RADIUS * 0.86)
+        # 0.68, not 0.86: a plate is up to 8.5 studs of RADIUS, so a centre at
+        # 0.86R put its far edge 2 studs past the shoreline and it hung out
+        # over open water like a diving board. 0.68R keeps the whole plate on
+        # the rock. (The draw itself is unchanged, so the rng stream is too.)
+        rr = rng.uniform(13.0, ISLAND_RADIUS * 0.68)
         x, y = math.cos(a) * rr, math.sin(a) * rr
         if _load_reserved(x, y):
             continue
         w = rng.uniform(4.0, 8.5)
         add_cone(
             rubble,
-            (x, y, height_at(x, y) - 1.2),
+            (x, y, _gz(x, y) - 1.2),
             w,
             w * rng.uniform(0.45, 0.8),
             rng.uniform(1.0, 2.0),
@@ -14509,32 +15600,47 @@ def build_islet_loadstone():
 
     # Climbable rubble ramps: stepped slabs off the plinth up into the cluster,
     # and a second run climbing the east shoulder to a flat lookout shard.
+    # The plinth run: it starts on the plinth top and has to END on the real
+    # rubble field, so each step is seated on whichever is LOWER of the plinth
+    # course it is leaving and the ground it is arriving at, minus half its
+    # thickness. Seated on _LOAD_PLINTH_TOP alone the far steps hung over a
+    # crag dip with daylight under them.
     for k in range(6):
         t = k / 5.0
         y = -18.2 + t * 6.8
-        add_box(rubble, (0.6 * k, y, _LOAD_PLINTH_TOP + 0.2 + t * 1.5), (7.4 - k * 0.4, 3.4, 1.6), yaw=0.06 * k)
+        step_top = min(_LOAD_PLINTH_TOP + 1.0 + t * 1.5, _gz(0.6 * k, y) + 1.4)
+        add_box(rubble, (0.6 * k, y, step_top - 0.8), (7.4 - k * 0.4, 3.4, 1.6), yaw=0.06 * k)
+    east_top = 0.0
     for k in range(5):
         t = k / 4.0
         x = 22.0 - t * 6.0
         y = -12.0 + t * 3.0
-        add_box(rubble, (x, y, height_at(x, y) + 0.4 + t * 2.1), (5.6, 5.0, 1.8), yaw=0.5 + 0.2 * k)
-    add_box(rubble, (15.5, -8.4, height_at(15.5, -8.4) + 3.1), (8.6, 7.4, 1.1), yaw=0.42)
+        east_top = _gz(x, y) + 0.4 + t * 2.1 + 0.9
+        add_box(rubble, (x, y, east_top - 0.9), (5.6, 5.0, 1.8), yaw=0.5 + 0.2 * k)
+    # The lookout shard, resting ON the top step rather than hovering three
+    # studs over it: 8.6x7.4 at height_at+3.1 cantilevered clear of everything
+    # that could hold it and read as a slab pinned in mid-air.
+    add_box(rubble, (16.3, -8.9, east_top - 0.15), (6.8, 6.0, 1.1), yaw=0.42)
     for k in range(4):
         t = k / 3.0
         x = -20.0 + t * 5.5
         y = 14.0 - t * 4.0
-        add_box(rubble, (x, y, height_at(x, y) + 0.3 + t * 1.6), (5.2, 4.6, 1.6), yaw=-0.4 - 0.22 * k)
+        add_box(rubble, (x, y, _gz(x, y) + 0.3 + t * 1.6), (5.2, 4.6, 1.6), yaw=-0.4 - 0.22 * k)
 
     # Scorch stars radiating from three strike points, burned flat into the rock.
     first = len(rubble.faces)
     for cx, cy in ((14.0, 16.0), (-18.0, -12.5), (6.0, 26.5)):
-        gz = height_at(cx, cy)
         for k in range(rng.randint(8, 11)):
             a = rng.uniform(0.0, math.tau)
             L = rng.uniform(3.5, 11.0)
+            # Seated at the ray's OWN midpoint, not the star's centre: a
+            # burn 5 studs out on craggy ground shares no height with the
+            # strike point, and one seat for the whole star left half the
+            # rays standing off the rock.
+            mx, my = cx + math.cos(a) * L * 0.5, cy + math.sin(a) * L * 0.5
             add_box(
                 rubble,
-                (cx + math.cos(a) * L * 0.5, cy + math.sin(a) * L * 0.5, gz + 0.10),
+                (mx, my, _gz(mx, my) + 0.10),
                 (L, rng.uniform(0.35, 1.0), 0.14),
                 yaw=a,
             )
@@ -14548,8 +15654,20 @@ def build_islet_loadstone():
         x, y = math.cos(a) * rr, math.sin(a) * rr
         if _load_reserved(x, y):
             continue
-        add_cone(rubble, (x, y, height_at(x, y) - 0.12), rng.uniform(1.6, 3.6), rng.uniform(1.2, 2.8), 0.30, sides=7, yaw=a)
+        add_cone(rubble, (x, y, _gz(x, y) - 0.12), rng.uniform(1.6, 3.6), rng.uniform(1.2, 2.8), 0.30, sides=7, yaw=a)
     _load_paint(rubble, first, 2)
+
+    # The rubble field is finished here, so its top surface is knowable. A
+    # toolkit or a dead gull lying in the yard has to rest on whatever shard
+    # is actually under it - the field is dense enough that most of the island
+    # has one - or it ends up buried inside the shard (seated on bare ground)
+    # or hanging over it (seated on the smooth profile, which is what it did).
+    _load_debris = BVHTree.FromBMesh(rubble)
+
+    def _dz(x, y):
+        hit = _load_debris.ray_cast(Vector((x, y, 900.0)), Vector((0.0, 0.0, -1.0)))
+        g = _gz(x, y)
+        return g if hit[0] is None else max(g, hit[0].z)
 
     # ---------------------------------------------------------------- fulgurite
     # The signature. Hollow white glass tubes, branching like roots, standing
@@ -14564,14 +15682,17 @@ def build_islet_loadstone():
         (2.0, -17.5, 7.5, 0.66),
     ]
     for hx, hy, hh, hr in HERO:
-        _load_fulgurite(fulg, rng, (hx, hy, height_at(hx, hy) - 0.6), hh, hr, mouths, depth=2)
+        _load_fulgurite(fulg, rng, (hx, hy, _gz(hx, hy) - 0.6), hh, hr, mouths, depth=2)
     for _ in range(8):
         a = rng.uniform(0.0, math.tau)
-        rr = rng.uniform(11.0, ISLAND_RADIUS * 0.84)
+        # 0.74, not 0.84: past ~0.78R the profile is under 1.5 studs and the
+        # crag digs below the waterline, so a tube seated out there stood with
+        # its foot in the sea instead of in fused sand.
+        rr = rng.uniform(11.0, ISLAND_RADIUS * 0.74)
         x, y = math.cos(a) * rr, math.sin(a) * rr
         if _load_reserved(x, y):
             continue
-        _load_fulgurite(fulg, rng, (x, y, height_at(x, y) - 0.5), rng.uniform(2.6, 5.4), rng.uniform(0.30, 0.52), mouths, depth=1)
+        _load_fulgurite(fulg, rng, (x, y, _gz(x, y) - 0.5), rng.uniform(2.6, 5.4), rng.uniform(0.30, 0.52), mouths, depth=1)
     # Dark discs down each open mouth - the tubes are HOLLOW.
     first = len(fulg.faces)
     for (mx, my, mz), d, mr in mouths:
@@ -14595,8 +15716,14 @@ def build_islet_loadstone():
             a = fa + t * span
             rr = frr + math.cos(t * 3.0) * 2.2
             px, py = math.cos(a) * rr, math.sin(a) * rr
-            gz = height_at(px, py)
+            gz = _gz(px, py)
             h = rng.uniform(0.7, 1.9) * (1.0 - abs(t) * 0.8)
+            # The fan's CENTRE is tested against the reserved ground, but a fan
+            # is up to 1.3 radians wide and its ends swing well off that centre:
+            # one filing was standing on the shack floor inside the room. Tested
+            # per filing, and AFTER the draw above so the stream is unchanged.
+            if _load_reserved(px, py):
+                continue
             lean = 0.42
             _load_seg(scrap, (px, py, gz - 0.1),
                       (px - math.cos(a) * h * lean, py - math.sin(a) * h * lean, gz + h), 0.13, 0.03, sides=4)
@@ -14608,7 +15735,7 @@ def build_islet_loadstone():
         x, y = math.cos(a) * rr, math.sin(a) * rr
         if _load_reserved(x, y):
             continue
-        gz = height_at(x, y)
+        gz = _gz(x, y)
         na, np_ = rng.uniform(0.0, math.tau), rng.uniform(0.5, 1.25)
         d = _load_dir(np_, na)
         L = rng.uniform(0.9, 2.2)
@@ -14625,23 +15752,44 @@ def build_islet_loadstone():
     anchor_c = (
         ax0 + aax[0] * ah * at + math.cos(flank_a) * frad,
         ay0 + aax[1] * ah * at + math.sin(flank_a) * frad,
-        height_at(ax0, ay0) - 2.2 + aax[2] * ah * at,
+        _gz(ax0, ay0) - 2.2 + aax[2] * ah * at,
     )
     _load_anchor(scrap, anchor_c, flank_a, 1.55)
 
     # Chain welded across the rubble by a strike, and a length still hanging
     # off the big spire.
-    _load_chain(scrap, (-11.0, -14.0, height_at(-11.0, -14.0) + 0.4), (-2.0, -19.5, height_at(-2.0, -19.5) + 0.4), 9, 0.24, sag=0.5)
-    _load_chain(scrap, (5.6, 3.0, GZ0 + 16.0), (9.5, 8.5, height_at(9.5, 8.5) + 0.3), 10, 0.26, sag=1.4)
+    _load_chain(scrap, (-11.0, -14.0, _dz(-11.0, -14.0) + 0.3), (-2.0, -19.5, _dz(-2.0, -19.5) + 0.3), 9, 0.24, sag=0.5)
+    # The hanging length's top end has to be ON the tallest needle, not beside
+    # it: (5.6, 3.0) was 1.9 studs clear of the flank at that height, and a
+    # chain is ONE connected component whose far end is on the ground, so the
+    # float checker could never see it. Derived from the needle's own axis and
+    # profile, the way the anchor above is.
+    hax = _load_dir(math.radians(CLUSTER[0][4]), math.radians(CLUSTER[0][5]))
+    hx0, hy0, hh0, hr0 = CLUSTER[0][0], CLUSTER[0][1], CLUSTER[0][2], CLUSTER[0][3]
+    ht = 0.20
+    hang_a = math.atan2(8.5 - hy0, 9.5 - hx0)  # the flank facing the ground end
+    # 0.85, not the full radius: a 7-sided needle's flat faces sit at
+    # cos(pi/7) = 0.90 of it, so anything past that is outside the rock.
+    hrad = _load_spire_radius(ht, hr0) * 0.85
+    hang = (
+        hx0 + hax[0] * hh0 * ht + math.cos(hang_a) * hrad,
+        hy0 + hax[1] * hh0 * ht + math.sin(hang_a) * hrad,
+        _gz(hx0, hy0) - 2.2 + hax[2] * hh0 * ht,
+    )
+    _load_chain(scrap, hang, (9.5, 8.5, _gz(9.5, 8.5) + 0.3), 10, 0.26, sag=1.4)
 
     # Tools fused flat into a shard by the yard - a hammer, a saw, a kettle.
+    # They lie ON the rock: tz was height_at + 0.6 and the pieces stacked a
+    # further 0.9 on top of that, so on ground that height_at overstated the
+    # whole kit hovered a stud or two up with nothing under it, the saw
+    # standing on air. Seated on the real surface and half-sunk into it.
     first = len(scrap.faces)
     tx, ty = 12.0, -16.6
-    tz = height_at(tx, ty) + 0.6
-    _load_seg(scrap, (tx - 1.6, ty, tz), (tx + 1.2, ty + 0.4, tz + 0.5), 0.14, 0.12, sides=4)
-    add_box(scrap, (tx + 1.4, ty + 0.5, tz + 0.6), (0.9, 0.4, 0.45), yaw=0.3)
-    add_box(scrap, (tx - 1.0, ty + 2.6, tz + 0.9), (3.4, 0.10, 1.0), yaw=-0.4)
-    add_cone(scrap, (tx + 2.6, ty + 2.2, tz - 0.4), 0.85, 0.62, 1.3, sides=7, tilt=(0.25, 0.15))
+    tz = _dz(tx, ty)
+    _load_seg(scrap, (tx - 1.6, ty, tz + 0.05), (tx + 1.2, ty + 0.4, tz + 0.30), 0.14, 0.12, sides=4)
+    add_box(scrap, (tx + 1.4, ty + 0.5, tz + 0.34), (0.9, 0.4, 0.45), yaw=0.3)
+    add_box(scrap, (tx - 1.0, ty + 2.6, tz + 0.20), (3.4, 0.10, 1.0), yaw=-0.4)
+    add_cone(scrap, (tx + 2.6, ty + 2.2, tz - 0.55), 0.85, 0.62, 1.3, sides=7, tilt=(0.25, 0.15))
 
     # The lightning rod Ansel built. It is bent, scorched and plainly useless,
     # and the guy chain that once braced it has snapped.
@@ -14664,21 +15812,36 @@ def build_islet_loadstone():
 
     # Two storm-killed gulls.
     first = len(scrap.faces)
-    _load_gull(scrap, -13.6, -16.4, height_at(-13.6, -16.4) + 0.5, 1.9, rng)
-    _load_gull(scrap, 12.5, 4.5, height_at(12.5, 4.5) + 0.4, -0.7, rng)
+    _load_gull(scrap, -13.6, -16.4, _dz(-13.6, -16.4) + 0.1, 1.9, rng)
+    _load_gull(scrap, 12.5, 4.5, _dz(12.5, 4.5) + 0.1, -0.7, rng)
     _load_paint(scrap, first, 2)
 
     # ---------------------------------------------------------------- Faraday shack
     SX, SY = _LOAD_SHACK_X, _LOAD_SHACK_Y
-    FZ = _LOAD_PLINTH_TOP  # floor top sits on the plinth
     HALF = 4.4
+    # The floor was laid flat on _LOAD_PLINTH_TOP, and the plinth is a stack of
+    # boxes, not a cut: this island runs CRAG 2.6 with no RIM_FLAT, so the real
+    # landform under the shack rises to 4.36 and a ridge of black rock came up
+    # THROUGH the boards along the back wall and under the bed. So the floor is
+    # laid on the highest ground the slab actually covers - measured off the
+    # ground BVH, not assumed - plus clearance. Everything in the shack is
+    # FZ-relative, so the sill, the walls, the roof, the chain bands, the door
+    # curtain, the compass board and the bed all come up with it, and the slab
+    # is thickened DOWNWARD by the same lift so it still meets the plinth
+    # instead of hovering over it.
+    FZ = _LOAD_PLINTH_TOP
+    for gi in range(17):
+        for gj in range(17):
+            FZ = max(FZ, _gz(SX + (gi / 8.0 - 1.0) * (HALF + 0.3),
+                             SY + (gj / 8.0 - 1.0) * (HALF + 0.3)) + 0.30)
+    FLOOR_T = 0.36 + (FZ - _LOAD_PLINTH_TOP)
     WALL = 5.2
     DOORW = 2.7
     DOORH = 3.7
     front_y = SY - HALF
     back_y = SY + HALF
 
-    add_box(shack, (SX, SY, FZ - 0.18), (2 * HALF + 0.6, 2 * HALF + 0.6, 0.36))  # floor
+    add_box(shack, (SX, SY, FZ - FLOOR_T / 2), (2 * HALF + 0.6, 2 * HALF + 0.6, FLOOR_T))  # floor
     add_box(shack, (SX - HALF, SY, FZ + WALL / 2), (0.44, 2 * HALF, WALL))
     add_box(shack, (SX + HALF, SY, FZ + WALL / 2), (0.44, 2 * HALF, WALL))
     add_box(shack, (SX, back_y, FZ + WALL / 2), (2 * HALF, 0.44, WALL))
@@ -14724,12 +15887,21 @@ def build_islet_loadstone():
     # Earthing cables: one off each corner, over the plinth edge and down into
     # the sea. Routed on the bearing from the ISLAND centre, so all four run
     # DOWNHILL to open water instead of one burying itself inland.
-    for k, (cxx, cyy) in enumerate(corners):
+    for cxx, cyy in corners:
         a = math.atan2(cyy, cxx)
-        mx, my = math.cos(a) * 12.5, math.sin(a) * 12.5
+        # The kink has to be OUTSIDE the corner it leaves. A fixed 12.5 from
+        # the island centre is inside every one of these corners (they sit at
+        # 21-30), so all four cables ran INLAND first, and the two front ones
+        # did it straight through the shack: in at the roof, down across the
+        # room and out through the back wall. Measured from the corner's own
+        # radius instead, and dropped onto the real surface where the run has
+        # already left the plinth.
+        mr = math.hypot(cxx, cyy) + 8.0
+        mx, my = math.cos(a) * mr, math.sin(a) * mr
+        mz = min(_LOAD_PLINTH_TOP - 0.2, _dz(mx, my) + 0.3)
         ex, ey = math.cos(a) * 49.0, math.sin(a) * 49.0
-        _load_chain(shack, (cxx, cyy, FZ + WALL + 0.4), (mx, my, _LOAD_PLINTH_TOP - 0.2), 6, 0.16, sag=0.9)
-        _load_chain(shack, (mx, my, _LOAD_PLINTH_TOP - 0.2), (ex, ey, -2.8), 8, 0.15, sag=1.4)
+        _load_chain(shack, (cxx, cyy, FZ + WALL + 0.4), (mx, my, mz), 6, 0.16, sag=0.9)
+        _load_chain(shack, (mx, my, mz), (ex, ey, -2.8), 8, 0.15, sag=1.4)
     _load_paint(shack, first, 2)
 
     # Through the open door: the bed, up on glass insulators.
@@ -14745,26 +15917,31 @@ def build_islet_loadstone():
     # Nailed to the wall beside the door: twelve compasses, every one of them
     # pointing somewhere else. Wall-mounted rather than free-standing, so it
     # sits flat against the boards and never encroaches on Ansel's pad.
-    BX, BY, BZ = SX - 3.5, front_y - 0.30, FZ + 1.0
-    add_box(compass, (BX, BY, BZ + 1.85), (4.6, 0.22, 3.9))
+    # Sized to the wall it is nailed to. The front panel beside the door is
+    # 3.05 studs wide and the board was 4.6: 1.4 studs of it - the whole left
+    # column of compasses - hung off the shack's front corner in mid-air.
+    PANEL = (2 * HALF - DOORW) / 2
+    BW = PANEL - 0.15
+    BX, BY, BZ = SX - (DOORW / 2 + PANEL / 2), front_y - 0.30, FZ + 1.0
+    add_box(compass, (BX, BY, BZ + 1.85), (BW, 0.22, 3.9))
     for k in range(2):
-        add_box(compass, (BX, BY - 0.14, BZ + 0.35 + k * 3.0), (4.6, 0.12, 0.20))
+        add_box(compass, (BX, BY - 0.14, BZ + 0.35 + k * 3.0), (BW, 0.12, 0.20))
     for row in range(3):
         for col in range(4):
-            cx = BX - 1.62 + col * 1.08
+            cx = BX - 1.05 + col * 0.70
             cz = BZ + 0.75 + row * 1.10
             cy = BY - 0.11
             first = len(compass.faces)
-            add_cone(compass, (cx, cy, cz), 0.44, 0.44, 0.14, sides=9, tilt=(1.5708, 0.0))  # brass case
+            add_cone(compass, (cx, cy, cz), 0.32, 0.32, 0.14, sides=9, tilt=(1.5708, 0.0))  # brass case
             _load_paint(compass, first, 1)
             first = len(compass.faces)
-            add_cone(compass, (cx, cy - 0.14, cz), 0.37, 0.37, 0.05, sides=9, tilt=(1.5708, 0.0))  # dial
+            add_cone(compass, (cx, cy - 0.14, cz), 0.26, 0.26, 0.05, sides=9, tilt=(1.5708, 0.0))  # dial
             _load_paint(compass, first, 2)
             first = len(compass.faces)
             nphi = rng.uniform(0.0, math.tau)  # every needle points somewhere else
             nd = (math.sin(nphi), 0.0, math.cos(nphi))
-            _load_seg(compass, (cx - nd[0] * 0.30, cy - 0.22, cz - nd[2] * 0.30),
-                      (cx + nd[0] * 0.30, cy - 0.22, cz + nd[2] * 0.30), 0.06, 0.025, sides=4)
+            _load_seg(compass, (cx - nd[0] * 0.26, cy - 0.22, cz - nd[2] * 0.26),
+                      (cx + nd[0] * 0.26, cy - 0.22, cz + nd[2] * 0.26), 0.06, 0.025, sides=4)
             _load_paint(compass, first, 3)
 
     # ---------------------------------------------------------------- heat + St Elmo
@@ -14778,7 +15955,7 @@ def build_islet_loadstone():
             py = y0 + axis[1] * h * t + math.sin(a) * rr
             add_box(glow, (px, py, z0 + axis[2] * h * t), (0.42, 0.22, rng.uniform(2.2, 5.0)), yaw=a)
     for cx, cy in ((14.0, 16.0), (-18.0, -12.5), (6.0, 26.5)):
-        add_box(glow, (cx, cy, height_at(cx, cy) + 0.16), (2.2, 0.5, 0.16), yaw=rng.uniform(0, 3.1))
+        add_box(glow, (cx, cy, _gz(cx, cy) + 0.16), (2.2, 0.5, 0.16), yaw=rng.uniform(0, 3.1))
 
     # A violet St Elmo's fire crawling on the tips of the tallest needles. It
     # must HUG the needle - a cone wider than the tip reads as a party hat, so

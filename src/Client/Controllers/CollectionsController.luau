@@ -20,6 +20,7 @@ local Theme = require(script.Parent.Parent.UI.Theme)
 local Kit = require(script.Parent.Parent.UI.Kit)
 local CameraController = require(script.Parent.CameraController)
 local ProgressionController = require(script.Parent.ProgressionController)
+local Sfx = require(script.Parent.Parent.Modules.Sfx)
 
 local CollectionsController = {}
 
@@ -189,6 +190,11 @@ function CollectionsController.setOpen(open: boolean)
 	if not modal then
 		return
 	end
+	-- Guarded on a real state change: N re-pressed while open, or the
+	-- backdrop click that follows a close, would otherwise click twice.
+	if modal.backdrop.Visible ~= open then
+		Sfx.play(if open then "uiOpen" else "uiClose")
+	end
 	modal.backdrop.Visible = open
 	CameraController.setCursorFree(open)
 	if open then
@@ -234,7 +240,8 @@ function CollectionsController.start()
 					tostring(delta.completedWaters),
 					tonumber(delta.coins) or 0
 				),
-				Theme.Color.green
+				Theme.Color.green,
+				"collectionComplete"
 			)
 			return
 		end
@@ -249,7 +256,8 @@ function CollectionsController.start()
 			local row = Creatures.items[delta.speciesId]
 			ProgressionController.pop(
 				string.format("New species: %s!", row and row.name or tostring(delta.speciesId)),
-				Theme.Color.green
+				Theme.Color.green,
+				"newSpecies"
 			)
 		end
 		if CollectionsController.isOpen() then

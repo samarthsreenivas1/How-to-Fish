@@ -35,3 +35,10 @@ Thumbs.db
 # Python bytecode cache: boss_gen imports arena_gen for its staged render,
 # which makes Blender leave one of these behind in assets/.
 __pycache__/
+
+# Generated audio previews and the render cache. `assets/audio_gen/build.py`
+# rewrites both at any time; the SHIPPED audio (assets/audio/sfx, music,
+# ambience) IS committed, because that is what gets bulk-imported to Roblox.
+assets/audio/preview/
+assets/audio/.cache/
+assets/audio/tracks/

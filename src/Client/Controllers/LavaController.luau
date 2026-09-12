@@ -13,6 +13,7 @@
 -- rest of the game and needs no re-import (works on whatever lava is already
 -- in the world). Islands without lava (the starter) simply have none to find.
 
+local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
@@ -21,6 +22,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local World = require(Shared.Config.World)
 local Lava = require(Shared.Config.Lava)
+
+local Sfx = require(script.Parent.Parent.Modules.Sfx)
 
 local LavaController = {}
 
@@ -37,6 +40,16 @@ local dressed: { [BasePart]: boolean } = {}
 -- Scrolling texture layers on the lava surface; animated (drift + churn) so the
 -- molten crust flows instead of sitting still. { tex, vx, vy, phase }.
 local flowLayers: { { tex: Texture, vx: number, vy: number, phase: number } } = {}
+
+-- ONE ambient bubble loop for the whole lake, never one per part or per vent.
+-- Sfx.loop hands back a part that plays forever until stopLoop is called, so a
+-- second handle assigned over the first is a sound nothing can ever reach
+-- again - audible for the rest of the session. Everything below goes through
+-- this single variable for exactly that reason.
+local bubbleAmbience: BasePart? = nil
+local LAVA_EARSHOT = 150 -- studs; past this the lake is silent and the loop is stopped
+local LAVA_EARSHOT_OUT = 175 -- a wider stop radius so standing on the edge doesn't stutter it on and off
+local AMBIENCE_INTERVAL = 0.5 -- seconds between distance checks; the loop only needs to track a walker
 
 -- ============================================================ 3D bubbles
 
@@ -143,6 +156,10 @@ local function spawnBubble(pos: Vector3)
 		local top = pos + Vector3.new(0, height * 0.8, 0) -- the dome's crown, where it vents
 		steamPuff(top, maxD)
 		splash(top, maxD * 0.6)
+		-- The pop itself, 3D at the crown, so it comes from the bubble that
+		-- burst rather than the middle of the lake. One-shot: the standing
+		-- lavaBubble loop is the bed under it, this is the transient on top.
+		Sfx.play("lavaBurst", top)
 		local pop = TweenService:Create(
 			bubble,
 			TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
@@ -317,6 +334,64 @@ local function bubbleLoop()
 	end
 end
 
+-- Where the local player is standing, or nil while they have no character
+-- (respawning, first frame). Falls back to the camera so the lake is still
+-- audible in the death/spectate moment rather than cutting to silence.
+local function listenerAt(): Vector3?
+	local character = Players.LocalPlayer and Players.LocalPlayer.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if root and root:IsA("BasePart") then
+		return root.Position
+	end
+	local cam = Workspace.CurrentCamera
+	return cam and cam.CFrame.Position or nil
+end
+
+-- The nearest vent to `at`, and how far away it is. Vents are already points
+-- ON the real lava surface (ventsFor raycasts them), so the nearest one is the
+-- closest audible bit of lake without needing any extra geometry.
+local function nearestVent(at: Vector3): (Vector3?, number)
+	local best, bestD = nil, math.huge
+	for _, v in vents do
+		local d = (v - at).Magnitude
+		if d < bestD then
+			best, bestD = v, d
+		end
+	end
+	return best, bestD
+end
+
+-- The standing bed of bubbling lava. ONE loop handle for the whole controller:
+-- it is started when the player comes within LAVA_EARSHOT of any vent, MOVED
+-- to whichever vent is nearest as they walk the rim (so the sound tracks the
+-- lake edge instead of a fixed point they might walk behind), and stopped when
+-- they leave. The stop radius is deliberately wider than the start radius -
+-- with one threshold, a player standing exactly on it retriggers the loop
+-- twice a second and it audibly chatters. Stopping is what keeps the handle
+-- unique: a start without the matching stop leaks a sound that no code can
+-- reach again, and it plays for the rest of the session.
+local function ambienceLoop()
+	while true do
+		task.wait(AMBIENCE_INTERVAL)
+		local at = listenerAt()
+		local vent: Vector3? = nil
+		local distance = math.huge
+		if at and #vents > 0 then
+			vent, distance = nearestVent(at)
+		end
+		if vent and distance <= LAVA_EARSHOT then
+			if bubbleAmbience then
+				Sfx.moveLoop(bubbleAmbience, vent)
+			else
+				bubbleAmbience = Sfx.loop("lavaBubble", vent)
+			end
+		elseif bubbleAmbience and (not vent or distance > LAVA_EARSHOT_OUT) then
+			Sfx.stopLoop(bubbleAmbience)
+			bubbleAmbience = nil
+		end
+	end
+end
+
 -- Slow molten shimmer across the whole pool - pulses the glowing mesh lava
 -- (the base + the rim/outflows the textured disc doesn't cover).
 local function shimmer()
@@ -361,6 +436,7 @@ function LavaController.start()
 	end
 
 	task.spawn(bubbleLoop) -- its own thread; errors there can't halt the boot
+	task.spawn(ambienceLoop) -- ditto; owns the single lavaBubble loop handle
 	RunService.Heartbeat:Connect(shimmer) -- runs in its own thread too
 	RunService.RenderStepped:Connect(flow) -- smooth per-frame texture scroll
 end

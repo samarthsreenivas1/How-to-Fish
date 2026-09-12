@@ -18,6 +18,7 @@ local ORDER = {
 	"DataService", -- first: owns persistence; later services register their slices in init()
 	"WorldService",
 	"BossArenaService", -- after WorldService (waterline/world conventions): builds each boss's lair arena out in the ocean
+	"FloeService", -- after BossArenaService: owns the 43 shards of Rimefang's floe (the parts that arena just placed), their refreeze clocks and the Frozen meters
 	"InventoryService",
 	"PlayerService", -- before CreatureService: the rusher's contact damage routes through it
 	"RodService", -- after InventoryService: reads the equipped rod

@@ -13,7 +13,7 @@
 -- MAP REDESIGN (2026-08-27, user: "huge huge huge ocean... they just take the
 -- boat"): the islands no longer sit on a straight 3000-stud line along X.
 -- They are scattered across one vast open sea in a voyage ARC that wraps
--- around Starter Cove - each leg of the saga is a real boat crossing, longer
+-- around Archway Cove - each leg of the saga is a real boat crossing, longer
 -- than the last (~4,000 studs for the first, ~8,700 for the run to the
 -- Maelstrom), tuned so every leg takes ~90s at the boat tier that unlocks it.
 -- Boats.luau's speed/seaworthiness ladder is keyed to these legs - move an
@@ -71,7 +71,13 @@ Islands.order = { "tropical", "swamp", "ice", "volcano", "gloom", "wreck" }
 --                   travel menu never lists it, and the only way to reach one
 --                   is to sail there. WorldService has a separate pass for
 --                   these; without the flag an islet would build in Blender
---                   and never appear in the world.
+--                   and never appear in the world. An islet's POSITION is a
+--                   gate, not decoration: the only way there is by boat, so
+--                   it must sit inside the seaworthiness of some place the
+--                   player can already stand on by the level its resident's
+--                   quests are gated to, or the NPC can never be met and
+--                   those quests are never offered. tools/check_quest_reach.py
+--                   FAILS on a stranded giver - run it after moving one.
 --   radius        - nominal shoreline radius (the generator's ISLAND_RADIUS);
 --                   used to space islands and to size the ocean around them.
 --   spawn         - world position a teleport drops the player on. Only X/Z
@@ -87,8 +93,8 @@ Islands.order = { "tropical", "swamp", "ice", "volcano", "gloom", "wreck" }
 --                   `Cleared_<islandId>` attribute, set by BossService).
 Islands.items = {
 	tropical = {
-		name = "Starter Cove",
-		blurb = "The home island - calm water, easy fish.",
+		name = "Archway Cove",
+		blurb = "The home island. Calm water, easy fish, and the stone arch on the beach.",
 		model = "Island",
 		worldPosition = Vector3.new(0, 0, 0),
 		radius = World.ISLAND_RADIUS,
@@ -380,7 +386,7 @@ Islands.items = {
 			reflectance = 0.05,
 			seabed = Color3.fromRGB(30, 42, 40),
 		},
-		spawn = Vector3.new(12500, 4, -9333), -- X/Z: shore before the dock (planks run rel Z=185..231); Y is the probe's fallback
+		spawn = Vector3.new(12500, 4, -9322), -- X/Z: shore before the dock (planks run rel Z=185..231); Y is the probe's fallback. Was rel Z=167, which is over Wreckwater_Bay (M_BayWater, top Y=0.17) - the landing stood the player on the harbour water. rel Z=178 is dry beach, ground Y=1.34
 		unlockLevel = 36,
 		boss = "admiral_wrack",
 		ambient = {
@@ -456,6 +462,12 @@ Islands.items = {
 
 	-- ============================================================ THE ISLETS
 	-- Nine tiny places scattered BETWEEN the six islands on the voyage arc.
+	-- "Between" is load-bearing, not flavour: an islet inside the arc's empty
+	-- middle is outside every seaworthiness circle and its resident is
+	-- unmeetable (the Ferryman and Ansel both were, until 2026-09-12 - see
+	-- their MOVED notes). Each one below is placed at ~85% of the range of the
+	-- boat tier its quests' level can own, measured from a place reachable at
+	-- that level, and off the legs so it stays optional.
 	-- Every one carries `islet = true`: they are deliberately absent from
 	-- Islands.order, so nothing gates them, the travel menu never lists them,
 	-- and the only way to reach one is to sail there. Each holds a single NPC
@@ -496,7 +508,7 @@ Islands.items = {
 		islet = true,
 		worldPosition = Vector3.new(9500, 0, 4200),
 		radius = 46,
-		spawn = Vector3.new(9518.5, 34.02, 4198.5),
+		spawn = Vector3.new(9519.5, 34.02, 4199.0), -- X/Z moved 1.1 studs off the generator's mark (rel X=18.5 Z=-1.5): there the stack's own rock rises through the arriving body (check_npc_placement (c)). rel X=19.5 Z=-1.0 is the flat landing, ground Y=34.00
 	},
 
 	boilshoal = {
@@ -544,9 +556,21 @@ Islands.items = {
 		blurb = "Someone lives out here on purpose, and will trade with whoever gets this far.",
 		model = "Ferryraft",
 		islet = true,
-		worldPosition = Vector3.new(7000, 0, -5000),
+		-- MOVED 2026-09-12 (quest-reach audit): was (7000, -5000), inside the
+		-- arc's empty southern void - 6,895 studs from the nearest shelter,
+		-- which is past EVERY tier's seaworthiness, so the Ferryman could not
+		-- be met at any level and `the_long_way_round` (L20) could never be
+		-- offered. Now 3,100 studs due north of Frostmaw Reach (gap 2,810
+		-- after both radii): a L20 player owns the tier-3 Iceberg Cutter
+		-- (L15, seaworthiness 3,300), so the crossing lands with 490 studs of
+		-- hull to spare - 85% of the range. First sailable at L15, when the
+		-- Reach itself opens. Deliberately OFF every leg of the voyage arc
+		-- (the legs run NE to the Reach and then SE to the Caldera; this is
+		-- the empty water beyond the shelf), so the raft stays optional and
+		-- still reads as the remotest place anyone lives.
+		worldPosition = Vector3.new(6800, 0, 8300),
 		radius = 60,
-		spawn = Vector3.new(6990.35, 3.7, -4998.5),
+		spawn = Vector3.new(6793.35, 3.7, 8308.5), -- X/Z: the OPEN bow deck (rel X=-6.65 Z=8.5, same Ferryraft_Bow, Y=3.70) - the generator's mark (rel X=-9.65 Z=1.5) is the Ferryman's slot between his counter and the cabin and landed every visitor inside him. Moved with worldPosition by the same delta (-200, +13300); the offsets relative to the islet are unchanged
 	},
 
 	loadstone = {
@@ -554,9 +578,19 @@ Islands.items = {
 		blurb = "A black needle that pulls the storm onto itself. Your compass gives up here.",
 		model = "Loadstone",
 		islet = true,
-		worldPosition = Vector3.new(3000, 0, -8000),
+		-- MOVED 2026-09-12 (quest-reach audit): was (3000, -8000), 5,527
+		-- studs off the Maelstrom's rim and nothing else within reach - and
+		-- the Maelstrom itself needs L43, so Ansel could not be met at any
+		-- level and `struck_twice` (L38) could never be offered. Now 4,300
+		-- studs west of the Whale Fall (gap 4,135 after both radii), which is
+		-- first sailable at L36 off Wreckwater: a L38 player owns the tier-6
+		-- Dreadnought (L36, seaworthiness 4,900), so the run out leaves 765
+		-- studs of hull - 84% of the range. Still the deepest, loneliest
+		-- water on the map (2,300 studs off the Maelstrom, 2,275 studs off
+		-- leg 6's line), so the needle keeps its storm and stays optional.
+		worldPosition = Vector3.new(4100, 0, -11300),
 		radius = 45,
-		spawn = Vector3.new(3000, 4.27, -7966.8),
+		spawn = Vector3.new(4100, 4.27, -11266.8), -- moved with worldPosition by the same delta (+1100, -3300); the pad offset relative to the islet is unchanged
 	},
 }
 

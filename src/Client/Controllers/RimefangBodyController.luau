@@ -25,6 +25,15 @@
 --   * The far-side flipper is a HALF TURN about the body axis, never a
 --     mirrored scale - negative scale flips normals and renders inside-out.
 --
+-- UNDER THE ICE, this file does NOTHING, and that is load-bearing. While
+-- `Submerge` is high - and through the whole dive half of an ice breach - the
+-- body is drawn below the floe mesh and the floe is what hides it. So the rig
+-- never forces a piece visible and never floors a Y coordinate: it writes
+-- CFrame, Size, Material and (fallback pieces only, once, at construction)
+-- Color, and no Transparency at all. The single Y-clamping-looking thing in
+-- here is the -5000 park for surplus vertebrae, which is deliberate. Add a
+-- "keep it above the floor" rule and the breach stops being a breach.
+--
 -- Pieces come from ReplicatedStorage/Assets/RimefangPack (assets/boss_gen.py)
 -- and fall back to plain tinted blocks until that import lands, so the fight
 -- is never invisible. The pack is still a PENDING Studio import, so the
@@ -37,6 +46,7 @@ local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local ChainPose = require(Shared.Modules.ChainPose)
+local MeshColors = require(Shared.Config.MeshColors)
 local RimefangPath = require(Shared.Modules.RimefangPath)
 
 local RimefangBodyController = {}
@@ -96,6 +106,12 @@ local FITTING_SCALE = 1.0
 -- the game agree.
 local FIN_AT = 0.42
 local FIN_LIFT = 6.6
+-- The saddle patch, just behind the dorsal and on the same kind of mount -
+-- RF_SADDLE_LIFT in boss_gen, where the piece is authored around a point
+-- 6.4 studs above the spine. It used to be a crust of ice parked on the
+-- SKULL, which is the white mass that read as an anchor bolted to its head.
+local RIME_AT = 0.50
+local RIME_LIFT = 6.4
 local PEC_AT = 0.20
 local PEC_LIFT = -3.6
 -- NEGATIVE, and this was verified from the exported GLB rather than reasoned:
@@ -126,6 +142,18 @@ local EASE = {
 	rise = 4.5,
 	roll = 5.0,
 	arch = 18.0,
+	-- SAME BAND AS `arch`, AND FOR THE SAME REASON. `burst` (the dive-and-erupt
+	-- through the floe) and `skyfall` (the 70-stud launch, topple and slam) are
+	-- PROGRESS channels, not targets: RimefangPath turns the number into a
+	-- position on a trajectory and the SERVER owns the easing of the progress
+	-- itself. Easing them slowly here would not soften anything - it would make
+	-- the drawn whale lag its own leap, so the body would be metres from where
+	-- the authority model (and therefore the hitbox and the shadow on the ice)
+	-- says it is, mid-air, where that gap is most visible. 18 tracks the
+	-- trajectory nearly rigidly while still being an exponential, so a frame
+	-- hitch cannot snap it.
+	burst = 18.0,
+	skyfall = 18.0,
 	beached = 4.0,
 	-- IN THE LUNGE BAND, not the drift band, because `flukeUp` stopped being a
 	-- lift and became a SWING: RimefangPath reads it as progress through the
@@ -169,6 +197,27 @@ local LAG_RATE_TAIL = 7.0
 -- almost identically - the target motion and the rate profile are both smooth
 -- in u - so the differential that could open a seam is a fraction of this cap.
 local LAG_MAX = 1.8
+-- ...EXCEPT DURING THE VERTICAL ATTACKS, where the cap has to come down.
+--
+-- The whip filter lags by roughly (target speed / rate), so at the tail rate
+-- of 7 a body climbing at SKY_HEIGHT-in-a-second lags order TEN studs - five
+-- times the cap. Saturated lag is the one regime where the "neighbours lag
+-- almost identically" argument fails: once every link is pinned at the cap,
+-- what survives is only the DIRECTION of each link's offset, and two adjacent
+-- links pointing different ways differ by up to 2 * LAG_MAX = 3.6 studs. That
+-- is four times the 0.875 studs of joint overlap, i.e. an open seam, and it
+-- would rubber-band as the direction swung through the topple.
+--
+-- A pure vertical translation is mostly harmless on its own - the body axis is
+-- vertical too, so the perpendicular projection throws nearly all of it away -
+-- but the PITCH-OVER at the top of a skyfall and the topple after a burst
+-- rotate the axis fast while the speed is still high, and that is exactly when
+-- the projection stops saving us. So the cap is divided down by the vertical
+-- progress speed, smoothly and never to zero: full 1.8 studs of whip at rest,
+-- about a third of that at a typical attack speed, less if the server drives it
+-- harder. The lag stays first-order and stays perpendicular; only its ceiling
+-- moves, so it can still trail - it just cannot saturate into a kink.
+local LAG_VERT_FALLOFF = 2.0
 
 -- BANK ON TURN. A lean into heading changes, derived from the turn RATE (the
 -- differentiated, eased faceAngle) and laid on top of RimefangPath.rollAt so a
@@ -189,6 +238,60 @@ local BREATH_ROLL_RATE = 0.55
 local BREATH_BOB_AMP = 0.35
 local BREATH_BOB_RATE = 0.8
 
+-- THE BREATH RUNS ON AN INTEGRATED PHASE, NOT ON `now * RATE`, and it has to
+-- from the moment anything can change the rate. `sin(now * rate)` is only
+-- continuous while `rate` is constant: enrage multiplies it, the multiplier
+-- eases in over about a third of a second, and with a bare `now * rate` every
+-- one of those frames would evaluate the sine at a DIFFERENT point of a
+-- twenty-minute-old clock - the body would jitter violently for the whole
+-- transition and then settle. Advancing a phase by `dt * rate` instead moves
+-- the frequency without ever moving the argument.
+--
+-- The cost of that is that the phase is now per-body and no longer shared
+-- between clients (it used to ride GetServerTimeNow). Breathing is ambient
+-- life, not a hit test - nothing reads it, nothing is timed against it - so
+-- two players seeing the whale inhale a quarter-second apart is not
+-- observable. The TREMOR below deliberately keeps the server clock for the
+-- opposite reason: its rate is constant, so it costs nothing to keep in step.
+
+-- ENRAGE. At 50% the server flips `Enraged` and the fight changes shape; the
+-- BODY has to say so on its own, because a red HUD bar is not on screen when
+-- the player is looking at the whale.
+--
+-- Three levers, and none of them writes a part's Color: CombatFeedbackController
+-- caches and restores the creature's colours to flash a hit, and a controller
+-- that repaints underneath it either loses its own paint or poisons the cache.
+--   THE EYES: a pooled PointLight parented to `_Eyes` - the white eye patch.
+--     What makes it read hot is the red-orange it throws onto the skull
+--     around it, not the piece's own material (SmoothPlastic since the patch
+--     replaced the old Neon bead).
+--   THE SADDLE: `_Rime` goes Neon while enraged. A material swap rather than
+--     a repaint, applied only on the crossing frame, and it works on a
+--     fallback block exactly as it does on the mesh. It used to be a crust of
+--     ice on the head; as the saddle it lights up ON THE BACK, which is the
+--     part of a swimming whale the camera can actually see.
+--   THE MOTION: the breath runs half again as fast and a constant fine tremor
+--     rides underneath it - the animal is not resting any more.
+-- All eased exponentially off one 0..1 blend, so a boss adopted mid-rage
+-- fades in rather than snapping, and nothing here allocates per frame.
+local ENRAGE_ATTR = "Enraged"
+local ENRAGE_EASE = 3.2 -- the 0..1 blend's exponential rate
+local ENRAGE_BREATH = 1.55 -- breath rate multiplier at full rage
+local ENRAGE_TREMOR_RATE = 9.5
+local ENRAGE_TREMOR_ROLL = math.rad(0.5)
+local ENRAGE_TREMOR_BOB = 0.1
+local ENRAGE_LIGHT_COLOR = Color3.fromRGB(255, 108, 38)
+local ENRAGE_LIGHT_RANGE = 18
+local ENRAGE_LIGHT_BRIGHT = 2.4
+-- ...and it breathes with the animal, so the heat is alive rather than a lamp
+-- bolted to its face. Riding the SAME phase as the breath, at twice its rate.
+local ENRAGE_LIGHT_PULSE = 0.22
+-- THE TRANSITION FRAME. One flare when the attribute turns over: the light
+-- overshoots and the tremor spikes, both decaying exponentially. `TAU` is the
+-- decay constant, not a duration - at 0.34 it is down to 5% inside a second.
+local ENRAGE_FLARE_GAIN = 2.6
+local ENRAGE_FLARE_TAU = 0.34
+
 -- IMPACT SETTLE. One damped harmonic oscillator per body, kicked whenever a
 -- fast motion STOPS (a breach re-entry, a lobtail slam), so the body rings
 -- down instead of halting dead. It feeds the fin and fluke flutter, the jaw
@@ -204,6 +307,33 @@ local SETTLE_MAX_DT = 1 / 45
 -- How hard a stopping motion kicks the spring, per unit of lost speed.
 local SETTLE_KICK_ARCH = 5.0
 local SETTLE_KICK_FLUKE = 4.0
+-- THE SKYFALL LANDING IS THE BIGGEST KICK IN THIS FILE, deliberately and by a
+-- wide margin: fifty-six studs of whale, dropped seventy studs onto sea ice.
+-- A breach re-entry (arch) rings the body; this has to look like the floe
+-- absorbed it. The burst topple is between the two - it is a real impact, but
+-- an eruption's momentum is spent by the time the body comes over.
+--
+-- Both are gated on PROGRESS as well as on lost speed (see *_KICK_AT below):
+-- these channels also decelerate at the START of a move, as the eased progress
+-- settles into its ramp, and a ring at the launch would read as the animal
+-- flinching before it jumped.
+local SETTLE_KICK_BURST = 6.5
+local SETTLE_KICK_SKYFALL = 11.0
+local BURST_KICK_AT = 0.55 -- past the apex, where the body topples over
+local SKYFALL_KICK_AT = 0.75 -- the last quarter: the descent into the ice
+-- Ceiling on a single frame's kick. Every kick here is proportional to a
+-- DIFFERENCE of eased velocities, so in normal play it is small and spread
+-- over several frames; but a server that steps a progress channel 0 -> 1 in
+-- one tick would spike the differentiated velocity, and with the skyfall
+-- multiplier that spike would drive a ring the size of the animal. The
+-- deceleration is bounded by its own peak speed either way, so clipping the
+-- one spiked frame costs nothing real.
+local SETTLE_KICK_MAX = 16.0
+-- Ceiling on what the ring DRIVES. The spring's own state is left alone (so it
+-- still rings down truthfully); this only bounds what the fins, flukes, jaw and
+-- body swell read off it, so no derived angle can run away no matter how the
+-- kicks land.
+local SETTLE_CLAMP = 1.2
 -- What the ring drives.
 local SETTLE_BOB = 0.9 -- studs of body swell per unit of settle
 local SETTLE_FIN = math.rad(9) -- dorsal flutter
@@ -212,6 +342,20 @@ local SETTLE_JAW = 0.06 -- jaw chatter, as a fraction of a full gape
 
 -- FIN & FLUKE TRAIL. The dorsal and flukes lag the body's angular velocity:
 -- they lead into a turn and trail out of it. Derived from the turn rate.
+--
+-- THE VERTICAL ATTACKS CANNOT BLOW THESE OUT, and it is worth saying why
+-- rather than adding a rule. The ascent and the slam carry a lot of angular
+-- velocity, but none of it arrives here: the trail reads `turnRate`, which is
+-- the differentiated HEADING (faceAngle), and a burst or a skyfall is pitch,
+-- not yaw - the pitch lives in RimefangPath and the fittings inherit it
+-- through their link's CFrame, which is exactly right (a fin bolted to a
+-- vertical body should be vertical). What does reach them is the settle ring,
+-- through SETTLE_FIN / SETTLE_FLUKE, and the skyfall kick is the largest in
+-- the file - so the ring is bounded (SETTLE_CLAMP) before it is read. With
+-- that, every term feeding a fin or fluke angle is a hard-capped constant:
+-- worst case a fluke sits at FLUKE_TRAIL_MAX + FLUKE_FOLLOW_MAX +
+-- SETTLE_CLAMP * SETTLE_FLUKE, about 51 degrees off its peduncle, which is a
+-- hard flick and not a dislocation.
 local FIN_TRAIL = 0.9
 local FIN_TRAIL_MAX = math.rad(20)
 local FLUKE_TRAIL = 0.8
@@ -245,7 +389,9 @@ end
 -- The tooth rows are SEPARATE objects in the pack, so the lower row hinges
 -- with the jaw and the mouth can open properly. As one object it had to ride
 -- the skull and the gape was capped to hide the seam.
-local HEAD_PIECES = { "Head", "TeethUpper", "Eyes", "Rime" }
+-- `Rime` IS NOT HERE ANY MORE. It is the saddle patch now, a body fitting
+-- stationed at RIME_AT with the dorsal, not a lump riding the skull.
+local HEAD_PIECES = { "Head", "TeethUpper", "Eyes" }
 local JAW_PIECES = { "Jaw", "TeethLower" }
 
 local FALLBACK_COLOR = {
@@ -253,11 +399,11 @@ local FALLBACK_COLOR = {
 	Jaw = Color3.fromRGB(26, 31, 38),
 	TeethUpper = Color3.fromRGB(219, 212, 184),
 	TeethLower = Color3.fromRGB(219, 212, 184),
-	Eyes = Color3.fromRGB(184, 224, 255),
-	Rime = Color3.fromRGB(230, 237, 242),
+	Eyes = Color3.fromRGB(230, 237, 242),
+	Rime = Color3.fromRGB(200, 208, 214),
 	Body = Color3.fromRGB(26, 31, 38),
 	Belly = Color3.fromRGB(230, 237, 242),
-	Fin = Color3.fromRGB(158, 204, 224),
+	Fin = Color3.fromRGB(26, 31, 38),
 	Pec = Color3.fromRGB(26, 31, 38),
 	Fluke = Color3.fromRGB(26, 31, 38),
 }
@@ -268,31 +414,32 @@ local FALLBACK_COLOR = {
 -- nominal radius at the poles, so _Belly's authored 6.0-stud spread arrives
 -- as 5.1.
 local FALLBACK_SIZE = {
-	Head = Vector3.new(15.1, 10.0, 13.8),
-	Jaw = Vector3.new(14.0, 4.6, 12.4),
-	TeethUpper = Vector3.new(12.7, 3.0, 13.0),
-	TeethLower = Vector3.new(12.7, 3.0, 11.7),
-	Eyes = Vector3.new(1.1, 1.0, 13.9),
-	-- NOT the mesh's bounding box, and the one deliberate departure in this
-	-- table. _Rime is two eye patches on opposite flanks plus a throat panel,
-	-- so its bbox is the whole head - a block that size simply ENCLOSES the
-	-- skull and the stand-in turns into a white boulder. This is the eye
-	-- patch itself instead (_rf_patch: 8.6 long, 3.8 high, at x -4.1, z 2.3),
-	-- run wide enough through the head to surface as a white slab on each
-	-- flank, which is the marking that carries the whole orca read.
-	Rime = Vector3.new(8.6, 3.8, 14.0),
-	Body = Vector3.new(5.4, 13.7, 13.2),
-	Belly = Vector3.new(11.1, 2.2, 5.1),
-	Fin = Vector3.new(9.2, 14.1, 1.5),
-	Pec = Vector3.new(9.3, 3.7, 13.0),
-	Fluke = Vector3.new(8.0, 2.8, 23.0),
+	Head = Vector3.new(16.4, 9.9, 13.9),
+	Jaw = Vector3.new(15.2, 4.8, 12.4),
+	TeethUpper = Vector3.new(12.7, 3.0, 13.1),
+	TeethLower = Vector3.new(12.7, 3.0, 11.8),
+	-- THE EYE PATCH, and the one row that is a slab on purpose. `_Eyes` is now
+	-- the white patch on each flank (the marking that carries the whole orca
+	-- read), so its bbox spans the head from side to side - 14.4 through Z. A
+	-- stand-in block of that size runs THROUGH the skull and surfaces as a
+	-- white patch on both flanks, which is exactly what it has to look like;
+	-- sized to one patch it would vanish inside the head instead.
+	Eyes = Vector3.new(8.0, 3.5, 14.4),
+	-- The saddle: a curved shell over the back, so the block is a wide low
+	-- plate rather than the boulder the ice crust used to make.
+	Rime = Vector3.new(11.8, 3.4, 11.1),
+	Body = Vector3.new(5.4, 14.4, 13.2),
+	Belly = Vector3.new(11.8, 2.2, 6.0),
+	Fin = Vector3.new(13.2, 19.0, 2.9),
+	Pec = Vector3.new(10.4, 4.6, 12.2),
+	Fluke = Vector3.new(8.7, 3.6, 24.0),
 }
 
 -- FALLBACK ONLY, and that is the whole point of it being a separate table.
 --
 -- boss_gen.py's pieces are NOT centred on their attach points: _Belly is
--- authored 6.3 studs under the spine, _Jaw hangs 4.9 below the head's origin,
--- the dorsal rises 5.6 above its mount, the flipper's blade runs 5.1 out its
+-- authored 6.3 studs under the spine, _Jaw hangs 5.0 below the head's origin,
+-- the dorsal rises 9.5 above its mount, the flipper's blade runs 6.1 out its
 -- own flank. An imported piece therefore arrives with the offset already in
 -- its vertices and needs nothing from us. A fallback BLOCK carries no
 -- geometry at all, so drawn on the bare attach point it stacks every piece
@@ -306,22 +453,50 @@ local FALLBACK_SIZE = {
 --
 -- Same source as FALLBACK_SIZE: bbox CENTRE per piece out of the GLB.
 local FALLBACK_OFFSET = {
-	Head = Vector3.new(1.05, 2.8, 0),
-	Jaw = Vector3.new(1.0, -4.9, 0),
+	Head = Vector3.new(1.7, 2.77, 0),
+	Jaw = Vector3.new(1.6, -5.0, 0),
 	TeethUpper = Vector3.new(1.21, -3.31, 0),
 	TeethLower = Vector3.new(1.21, -1.49, 0),
-	Eyes = Vector3.new(-2.6, -1.5, 0),
-	Rime = Vector3.new(-4.1, 2.3, 0),
+	Eyes = Vector3.new(-4.2, 0.9, 0),
+	-- The saddle hangs just under its mount, which is why this is negative:
+	-- the mount is 6.4 above the spine and the shell wraps DOWN around the
+	-- back from there.
+	Rime = Vector3.new(-1.7, -0.73, 0),
 	-- Body is the one piece genuinely centred on its joint (RF_SEG runs
 	-- -2.7..+2.7 about zero), so it has no entry.
 	Belly = Vector3.new(0, -6.3, 0),
-	Fin = Vector3.new(0, 5.56, 0),
+	Fin = Vector3.new(-1.88, 9.5, 0),
 	-- The blade runs OUT from the shoulder it is mounted on, so this stacks
 	-- on top of PEC_SIDE rather than replacing it - exactly as the mesh does.
 	-- Applied inside applyPiece, after the far-side half turn, so the mirrored
 	-- flipper reaches out its own flank instead of back across the body.
-	Pec = Vector3.new(-1.77, -0.61, -5.14),
-	Fluke = Vector3.new(-0.93, 0, 0),
+	Pec = Vector3.new(-1.7, -0.88, -6.1),
+	Fluke = Vector3.new(-1.75, -0.4, 0),
+}
+
+-- WHERE THE MESH ACTUALLY SITS. Roblox re-centres a MeshPart's geometry on
+-- the part when it imports, so a piece authored 6 studs below its joint in
+-- Blender comes back as a part whose CENTRE is the joint - the vertex offset
+-- is gone (kept only as PivotOffset, which `CFrame =` ignores). Setting an
+-- imported clone's CFrame to the joint therefore put the belly ON the spine,
+-- the fin at the spine's centre and the jaw inside the head: the "jumbled
+-- whale" of 2026-09-12. These are the bounding-box centres of each object in
+-- assets/boss_rimefang.glb (tools/check_content.py compares them), applied to
+-- imported clones exactly the way FALLBACK_OFFSET is applied to stand-ins.
+-- The two tables are identical today: every stand-in block sits where its
+-- mesh does. They stay separate because they answer different questions, and
+-- because a block HAS deliberately sat elsewhere before (the old ice crust).
+local MESH_OFFSET = {
+	Head = Vector3.new(1.7, 2.77, 0),
+	Jaw = Vector3.new(1.6, -5.0, 0),
+	TeethUpper = Vector3.new(1.21, -3.31, 0),
+	TeethLower = Vector3.new(1.21, -1.49, 0),
+	Eyes = Vector3.new(-4.2, 0.9, 0),
+	Rime = Vector3.new(-1.7, -0.73, 0),
+	Belly = Vector3.new(0, -6.3, 0),
+	Fin = Vector3.new(-1.88, 9.5, 0),
+	Pec = Vector3.new(-1.7, -0.88, -6.1),
+	Fluke = Vector3.new(-1.75, -0.4, 0),
 }
 
 -- model -> the live body
@@ -334,11 +509,20 @@ local bodies = {}
 -- BossArenaService drives material off the object name - a boss pack has no
 -- name-driven pass at all: the body controller is the only thing that ever
 -- touches these parts. So the rig states them here rather than depending on
--- an import step nobody will remember. Ice on the dorsal matches the four
--- big glacial forms on Frostmaw itself.
+-- an import step nobody will remember.
+--
+-- NEITHER ENTRY IS WHAT IT WAS, and both changed for the same reason: the
+-- whale was reading as hardware rather than as an animal.
+--   * The dorsal was ICE - a pale translucent sail. Next to a white lump on
+--     the skull that silhouette is an anchor, not a whale. It is hide now,
+--     the same black SmoothPlastic as the body.
+--   * `_Eyes` was NEON, which was right for a pale blue eye bead and is wrong
+--     for what the piece is now: the white EYE PATCH. A glowing patch the size
+--     of a dinner plate on each cheek reads as a headlight. SmoothPlastic, and
+--     the enrage tell is the PointLight it still carries (see ENRAGE).
 local PIECE_MATERIAL = {
-	Eyes = Enum.Material.Neon,
-	Fin = Enum.Material.Ice,
+	Eyes = Enum.Material.SmoothPlastic,
+	Fin = Enum.Material.SmoothPlastic,
 }
 
 local function packPiece(name: string): BasePart?
@@ -353,6 +537,22 @@ local function makePiece(name: string, parent: Instance): BasePart
 	local part
 	if template then
 		part = template:Clone()
+		-- The import re-centred the mesh: put its authored offset back (see
+		-- MESH_OFFSET). PivotOffset is cleared so nothing downstream can apply
+		-- the same displacement a second time through PivotTo.
+		part.PivotOffset = CFrame.identity
+		-- A glTF import lands every part the importer's grey; the authored
+		-- Blender colour lives in MeshColors (generated from boss_gen), the
+		-- same pass every other boss body runs. Without it the whale IS the
+		-- mesh but reads as an unpainted stand-in.
+		local color = MeshColors.get("Rimefang_" .. name)
+		if color then
+			part.Color = color
+		end
+		local meshOffset = MESH_OFFSET[name]
+		if meshOffset then
+			part:SetAttribute("PieceOffset", meshOffset)
+		end
 	else
 		part = Instance.new("Part")
 		part.Size = FALLBACK_SIZE[name] or Vector3.new(4, 4, 4)
@@ -389,7 +589,7 @@ local function applyTapered(part: BasePart, cframe: CFrame, spacing: number, gir
 		base = part.Size
 		part:SetAttribute("BaseSize", base)
 	end
-	-- Nil for every imported piece; a fallback block's authored seat otherwise.
+	-- The piece's authored seat: MESH_OFFSET for an imported clone, FALLBACK_OFFSET for a block.
 	-- It rides the CROSS-SECTION axes only, like the size does: the peduncle's
 	-- belly panel has to close in toward the spine as the body pinches, or the
 	-- white runs on into thin air behind the tail.
@@ -404,7 +604,7 @@ local function applyPiece(part: BasePart, cframe: CFrame, scale: number)
 		base = part.Size
 		part:SetAttribute("BaseSize", base)
 	end
-	-- See FALLBACK_OFFSET: nil unless this part is a stand-in block. It scales
+	-- See MESH_OFFSET / FALLBACK_OFFSET. It scales
 	-- with the piece, because scaling a mesh scales it about its own origin
 	-- and carries the geometry's offset along with it.
 	local offset = part:GetAttribute("PieceOffset")
@@ -415,17 +615,32 @@ end
 -- ---------------------------------------------------------------- pose
 
 -- Every pose attribute `rimefangDrive` publishes, checked against it: Swim,
--- Submerge, Rise, Roll, Arch, Beached, FlukeUp, FaceAngle, Gape, Lunge - plus
--- Pose and PoseCenter, read at adopt time, and OpenUntil, which is the punish
--- window's deadline for BossHudController and means nothing to the body. A
--- field with no consumer is the failure this project already shipped once, so
--- if a new one appears there it belongs here too.
+-- Submerge, Rise, Roll, Arch, Burst, Skyfall, Beached, FlukeUp, FaceAngle,
+-- Gape, Lunge - plus Pose and PoseCenter, read at adopt time, and OpenUntil,
+-- which is the punish window's deadline for BossHudController and means
+-- nothing to the body. A field with no consumer is the failure this project
+-- already shipped once, so if a new one appears there it belongs here too.
+--
+-- BURST and SKYFALL are the two vertical attacks, and both are 0..1 PROGRESS
+-- like Arch rather than a level like Rise:
+--   * Burst - Rimefang dives under the floe and erupts vertically through the
+--     ice at the burst point. PoseCenter is that point on the surface and is
+--     FIXED for the move; the path supplies the whole vertical excursion
+--     (BURST_DEPTH under, BURST_HEIGHT over).
+--   * Skyfall - it launches SKY_HEIGHT (~70) studs up, pitches over the top
+--     and slams down. PoseCenter is the ground point under the head, which the
+--     server eases launch -> impact; again the path supplies the vertical.
+-- Both hand off to `beached` at 1, and the path shapes those endpoints to
+-- match the beached shape, so the rig needs nothing at the handoff except to
+-- not snap - which the exponential eases already guarantee.
 local function readTarget(model: Model, target)
 	target.swim = model:GetAttribute("Swim") or 1
 	target.submerge = model:GetAttribute("Submerge") or 0
 	target.rise = model:GetAttribute("Rise") or 0
 	target.roll = model:GetAttribute("Roll") or 0
 	target.arch = model:GetAttribute("Arch") or 0
+	target.burst = model:GetAttribute("Burst") or 0
+	target.skyfall = model:GetAttribute("Skyfall") or 0
 	target.beached = model:GetAttribute("Beached") or 0
 	target.flukeUp = model:GetAttribute("FlukeUp") or 0
 	target.faceAngle = model:GetAttribute("FaceAngle") or 0
@@ -516,8 +731,26 @@ local function adoptBoss(model: Model)
 		archVel = 0,
 		lastFluke = state.flukeUp,
 		flukeVel = 0,
+		-- Seeded from the ADOPTED pose, exactly like the others: a whale adopted
+		-- mid-skyfall starts at zero velocity instead of differentiating its
+		-- entire leap across one frame and ringing the spring on spawn.
+		lastBurst = state.burst,
+		burstVel = 0,
+		lastSkyfall = state.skyfall,
+		skyfallVel = 0,
 		settle = 0,
 		settleVel = 0,
+		-- The breath's own clock (see the note on BREATH_ROLL_RATE) and the
+		-- enrage blend. `rage` is seeded from the attribute rather than from
+		-- zero so a whale adopted mid-phase-two is already hot instead of
+		-- fading up on the frame the player's camera reaches it; `rageOn`
+		-- carries the same value so that seeding is not read as a transition
+		-- and does not fire the flare.
+		breathPhase = 0,
+		rage = if model:GetAttribute(ENRAGE_ATTR) == true then 1 else 0,
+		rageOn = model:GetAttribute(ENRAGE_ATTR) == true,
+		rageHot = false, -- whether _Rime is currently wearing the Neon swap
+		flare = 0,
 	}
 
 	for _, name in HEAD_PIECES do
@@ -527,9 +760,36 @@ local function adoptBoss(model: Model)
 		body.jaw[name] = makePiece(name, folder)
 	end
 	body.fin = makePiece("Fin", folder)
+	-- A BODY FITTING, not a head piece: the saddle rides the spine behind the
+	-- dorsal (RIME_AT), so it banks and bends with the back the way the fin does.
+	body.rime = makePiece("Rime", folder)
 	body.pecLeft = makePiece("Pec", folder)
 	body.pecRight = makePiece("Pec", folder)
 	body.fluke = makePiece("Fluke", folder)
+
+	-- THE EYE LIGHT, built once with the rig and never churned: it lives on
+	-- `_Eyes` for the body's whole life, is Enabled/Brightness-driven per
+	-- frame, and goes with the folder when destroyBody tears the rig down. A
+	-- light created on the enrage frame would be an allocation in a
+	-- RenderStepped path and a leak if the boss died before it was cleaned up.
+	--
+	-- `makePiece` cannot return nil (it falls back to a block), so `_Eyes` is
+	-- always there to hang this on - pack imported or not.
+	local eyeLight = Instance.new("PointLight")
+	eyeLight.Name = "RimefangRage"
+	eyeLight.Color = ENRAGE_LIGHT_COLOR
+	eyeLight.Range = ENRAGE_LIGHT_RANGE
+	eyeLight.Brightness = 0
+	-- No shadows: this is a 56-stud animal lit from inside its own skull, and
+	-- shadow-casting it would put the whole body in its own shade.
+	eyeLight.Shadows = false
+	eyeLight.Enabled = false
+	eyeLight.Parent = body.head.Eyes
+	body.eyeLight = eyeLight
+	-- What `_Rime` wore before the rage swap, so the calm material is restored
+	-- from the piece's OWN authored value rather than from a guess. The pack
+	-- may author it as anything; PIECE_MATERIAL names no entry for it.
+	body.rimeMaterial = body.rime.Material
 
 	bodies[model] = body
 	-- ONE per model, not one per adopt. `adoptBoss` runs again on every Pose
@@ -559,6 +819,8 @@ local function drawBody(model: Model, body, dt: number, now: number)
 	state.rise = approach(state.rise, target.rise, EASE.rise, dt)
 	state.roll = approachAngle(state.roll, target.roll, EASE.roll, dt)
 	state.arch = approach(state.arch, target.arch, EASE.arch, dt)
+	state.burst = approach(state.burst or 0, target.burst, EASE.burst, dt)
+	state.skyfall = approach(state.skyfall or 0, target.skyfall, EASE.skyfall, dt)
 	state.beached = approach(state.beached, target.beached, EASE.beached, dt)
 	state.flukeUp = approach(state.flukeUp, target.flukeUp, EASE.flukeUp, dt)
 	state.faceAngle = approachAngle(state.faceAngle, target.faceAngle, EASE.faceAngle, dt)
@@ -581,33 +843,122 @@ local function drawBody(model: Model, body, dt: number, now: number)
 	-- which is exactly a breach re-entry or the bottom of a lobtail slam.
 	local prevArchSpeed = math.abs(body.archVel)
 	local prevFlukeSpeed = math.abs(body.flukeVel)
+	local prevBurstSpeed = math.abs(body.burstVel)
+	local prevSkyfallSpeed = math.abs(body.skyfallVel)
 	if dt > 0 then
 		body.turnRate = approach(body.turnRate, wrapAngle(state.faceAngle - body.lastFace) / dt, TURN_SMOOTH, dt)
 		body.archVel = approach(body.archVel, (state.arch - body.lastArch) / dt, TURN_SMOOTH, dt)
 		body.flukeVel = approach(body.flukeVel, (state.flukeUp - body.lastFluke) / dt, TURN_SMOOTH, dt)
+		body.burstVel = approach(body.burstVel, (state.burst - body.lastBurst) / dt, TURN_SMOOTH, dt)
+		body.skyfallVel = approach(body.skyfallVel, (state.skyfall - body.lastSkyfall) / dt, TURN_SMOOTH, dt)
 	end
 	body.lastFace = state.faceAngle
 	body.lastArch, body.lastFluke = state.arch, state.flukeUp
+	body.lastBurst, body.lastSkyfall = state.burst, state.skyfall
+	-- How fast the body is travelling VERTICALLY, in progress units per second,
+	-- from either attack. Read twice below: it gates the landing kick and it
+	-- pulls the whip cap down (see LAG_VERT_FALLOFF).
+	local vertSpeed = math.abs(body.burstVel) + math.abs(body.skyfallVel)
 
 	-- IMPACT SETTLE: a damped spring kicked by the lost speed, integrated on a
 	-- CLAMPED step. A gentle deceleration feeds it over several frames (the
 	-- velocities are themselves eased), so the ring builds smoothly rather than
 	-- from one spiked frame; the clamp guarantees the semi-implicit step stays
 	-- stable even on a 100 ms hitch (omega*dt = 0.33 << 2 at the clamp).
+	--
+	-- The two vertical attacks feed the SAME mechanism, gated on progress so
+	-- only the far end of each move can ring: a burst past its apex (the
+	-- topple back onto the floe) and a skyfall in its last quarter (the slam).
+	-- Without the gate the eased progress' own settling at the launch would
+	-- ring the body before it had hit anything.
 	local kick = SETTLE_KICK_ARCH * math.max(0, prevArchSpeed - math.abs(body.archVel))
 		+ SETTLE_KICK_FLUKE * math.max(0, prevFlukeSpeed - math.abs(body.flukeVel))
+	if state.burst > BURST_KICK_AT then
+		kick += SETTLE_KICK_BURST * math.max(0, prevBurstSpeed - math.abs(body.burstVel))
+	end
+	if state.skyfall > SKYFALL_KICK_AT then
+		kick += SETTLE_KICK_SKYFALL * math.max(0, prevSkyfallSpeed - math.abs(body.skyfallVel))
+	end
 	local sdt = math.min(dt, SETTLE_MAX_DT)
-	body.settleVel += (-SETTLE_K * body.settle - SETTLE_C * body.settleVel) * sdt + kick
+	body.settleVel += (-SETTLE_K * body.settle - SETTLE_C * body.settleVel) * sdt + math.min(kick, SETTLE_KICK_MAX)
 	body.settle += body.settleVel * sdt
-	local settle = body.settle
+	-- The spring's own state rings on unclipped; what the fins, flukes, jaw and
+	-- swell read is bounded, so the skyfall's much larger kick cannot push any
+	-- derived angle somewhere the piece was never authored to go.
+	local settle = math.clamp(body.settle, -SETTLE_CLAMP, SETTLE_CLAMP)
+
+	-- ------------------------------------------------------------- enrage
+	-- One attribute read, one exponential blend, and everything below is
+	-- derived from it. Absence-safe by construction: an unpublished attribute
+	-- reads nil, `nil == true` is false, and the whole pass collapses to the
+	-- calm body it has always drawn.
+	local rageOn = model:GetAttribute(ENRAGE_ATTR) == true
+	if rageOn ~= body.rageOn then
+		body.rageOn = rageOn
+		-- THE TRANSITION FRAME, and only the frame it turns ON: coming back
+		-- off rage is a boss being healed or a fresh fight, and neither is a
+		-- moment that wants a flare.
+		if rageOn then
+			body.flare = 1
+		end
+	end
+	body.rage = approach(body.rage or 0, if rageOn then 1 else 0, ENRAGE_EASE, dt)
+	body.flare = (body.flare or 0) * math.exp(-dt / ENRAGE_FLARE_TAU)
+	local rage, flare = body.rage, body.flare
+
+	-- The crust lights up, once per crossing rather than once per frame. Held
+	-- at the halfway point of the blend so it cannot chatter on a body sitting
+	-- exactly at the threshold - the blend only reaches 0.5 while travelling.
+	local rimeHot = rage > 0.5
+	if rimeHot ~= body.rageHot then
+		body.rageHot = rimeHot
+		body.rime.Material = if rimeHot then Enum.Material.Neon else body.rimeMaterial
+	end
+
+	-- The eyes. Off entirely below the blend's noise floor, so a calm whale
+	-- costs one comparison and carries no lit light at all.
+	local eyeLight = body.eyeLight
+	if rage > 0.01 or flare > 0.01 then
+		eyeLight.Enabled = true
+		eyeLight.Brightness = ENRAGE_LIGHT_BRIGHT * rage * (1 + ENRAGE_LIGHT_PULSE * math.sin(body.breathPhase * 2))
+			+ ENRAGE_FLARE_GAIN * flare
+		eyeLight.Range = ENRAGE_LIGHT_RANGE * (1 + 0.3 * flare)
+	elseif eyeLight.Enabled then
+		eyeLight.Enabled = false
+		eyeLight.Brightness = 0
+	end
 
 	-- Bank the forebody into the turn, on top of rollAt, with a slow breathing
 	-- roll underneath so the body is never dead level. A slow vertical swell
 	-- (plus the settle ring) keeps the whole body breathing.
+	--
+	-- The breath's phase is INTEGRATED (see BREATH_ROLL_RATE): rage speeds the
+	-- animal's breathing up and a `now * rate` sine would jump every frame the
+	-- multiplier moved. The two channels share one phase and read it at their
+	-- own ratio, which is what keeps roll and swell locked to each other.
 	local bankTurn = math.clamp(body.turnRate * BANK_PER_TURN, -BANK_MAX, BANK_MAX)
-	local breathRoll = BREATH_ROLL_AMP * math.sin(now * BREATH_ROLL_RATE)
-	local bob = BREATH_BOB_AMP * math.sin(now * BREATH_BOB_RATE) + settle * SETTLE_BOB
+	local breathRate = 1 + (ENRAGE_BREATH - 1) * rage
+	body.breathPhase += dt * BREATH_ROLL_RATE * breathRate
+	local phase = body.breathPhase
+	-- The tremor: a fine constant shiver ON TOP of the breath, not a channel of
+	-- its own - it rides the two the body already has, so nothing downstream
+	-- (the roll falloff, the whip cap, the fittings) learns a new input. On the
+	-- server clock, because its rate never changes and staying in step between
+	-- clients is free.
+	local shiver = rage + ENRAGE_FLARE_GAIN * flare
+	local breathRoll = BREATH_ROLL_AMP * math.sin(phase)
+		+ ENRAGE_TREMOR_ROLL * shiver * math.sin(now * ENRAGE_TREMOR_RATE)
+	local bob = BREATH_BOB_AMP * math.sin(phase * (BREATH_BOB_RATE / BREATH_ROLL_RATE))
+		+ ENRAGE_TREMOR_BOB * shiver * math.sin(now * ENRAGE_TREMOR_RATE * 1.31)
+		+ settle * SETTLE_BOB
 	local bobVec = Vector3.new(0, bob, 0)
+
+	-- The whip ceiling for THIS frame. 1.8 studs at rest, divided down while a
+	-- vertical attack is moving, so the lag can never saturate and turn a
+	-- direction difference between neighbours into an open joint. Computed once
+	-- per frame and read by every vertebra and by the fluke, so the whole body
+	-- shares one ceiling and no two links can be capped differently.
+	local lagMax = LAG_MAX / (1 + LAG_VERT_FALLOFF * vertSpeed)
 
 	-- Body: one CFrame per vertebra, tapered by the girth curve and banked by
 	-- the per-link roll. _Belly rides the same frame.
@@ -625,8 +976,8 @@ local function drawBody(model: Model, body, dt: number, now: number)
 		local off = lagged - targetPos
 		local axis = cframe.RightVector
 		off = off - axis * off:Dot(axis)
-		if off.Magnitude > LAG_MAX then
-			off = off.Unit * LAG_MAX
+		if off.Magnitude > lagMax then
+			off = off.Unit * lagMax
 		end
 		-- Roll: the path's bank plus the turn lean and breathing roll, both
 		-- eased out toward the tail on rollAt's own falloff.
@@ -677,8 +1028,19 @@ local function drawBody(model: Model, body, dt: number, now: number)
 	-- idle working when the mouth is near shut (so it settles rather than
 	-- welding) and the settle spring's chatter; clamped so the teeth can never
 	-- drive through the palate.
+	--
+	-- THE CHATTER FADES OUT INTO A GAPE, on the same (1 - gape) window as the
+	-- idle. The server drives a roar through `Gape`, and a roar is a HELD open
+	-- mouth; a ring riding it would only be visible on the closing side (the
+	-- clamp at 1 eats the opening half), so a landing during a roar read as the
+	-- jaw stuttering shut. The skyfall's much bigger ring made that certain, so
+	-- the mouth now belongs to whoever is asking for it: the spring animates a
+	-- shut jaw and leaves an open one alone.
+	local jawWindow = 1 - state.gape
 	local gapeDraw = math.clamp(
-		state.gape + JAW_IDLE * (0.5 + 0.5 * math.sin(now * JAW_IDLE_RATE)) * (1 - state.gape) + settle * SETTLE_JAW,
+		state.gape
+			+ JAW_IDLE * (0.5 + 0.5 * math.sin(now * JAW_IDLE_RATE)) * jawWindow
+			+ settle * SETTLE_JAW * jawWindow,
 		0,
 		1
 	)
@@ -714,6 +1076,15 @@ local function drawBody(model: Model, body, dt: number, now: number)
 		finFrame * CFrame.new(0, FIN_LIFT * finGirth, 0) * CFrame.Angles(finTrail, 0, settle * SETTLE_FIN),
 		FITTING_SCALE
 	)
+
+	-- The saddle, one station behind the dorsal and mounted the same way: the
+	-- piece is authored around a point RIME_LIFT above the spine, so girth
+	-- moves the MOUNT and never the patch. No trail and no settle ring - it is
+	-- painted on the animal, not hung off it.
+	local rimeGirth = RimefangPath.girth(RIME_AT)
+	local rimeRoll = RimefangPath.rollAt(state, RIME_AT) + (bankTurn + breathRoll) * rollFalloff(RIME_AT)
+	local rimeFrame = CFrame.new(bobVec) * chain:cframeAt(chain.length * RIME_AT) * CFrame.Angles(rimeRoll, 0, 0)
+	applyPiece(body.rime, rimeFrame * CFrame.new(0, RIME_LIFT * rimeGirth, 0), FITTING_SCALE)
 
 	local pecGirth = RimefangPath.girth(PEC_AT)
 	local pecRoll = RimefangPath.rollAt(state, PEC_AT) + (bankTurn + breathRoll) * rollFalloff(PEC_AT)
@@ -765,8 +1136,8 @@ local function drawBody(model: Model, body, dt: number, now: number)
 	local flukeOff = flukeLag - flukeTargetPos
 	local flukeAxis = RimefangPath.tangentAt(state, 1)
 	flukeOff = flukeOff - flukeAxis * flukeOff:Dot(flukeAxis)
-	if flukeOff.Magnitude > LAG_MAX then
-		flukeOff = flukeOff.Unit * LAG_MAX
+	if flukeOff.Magnitude > lagMax then
+		flukeOff = flukeOff.Unit * lagMax
 	end
 	local flukeRoll = RimefangPath.rollAt(state, 1) + (bankTurn + breathRoll) * rollFalloff(1)
 	-- Trail the turn; follow through after a slam (the strike drives flukeVel

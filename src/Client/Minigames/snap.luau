@@ -20,6 +20,7 @@ local SnapMath = require(Shared.Modules.Minigames.snap)
 
 local SnapTargets = require(script.Parent.Parent.UI.SnapTargets)
 local CameraController = require(script.Parent.Parent.Controllers.CameraController)
+local Sfx = require(script.Parent.Parent.Modules.Sfx)
 
 local Snap = {}
 
@@ -60,6 +61,7 @@ local function advance(ctx)
 		view:hideTarget()
 	else
 		view:setTarget(SnapMath.positionFor(cast.seed, cast.mg.round))
+		Sfx.play("snapAppear")
 	end
 end
 
@@ -70,6 +72,7 @@ local function click(ctx)
 	end
 	cast.mg.answered = true
 	view:pop(true)
+	Sfx.play("snapHit")
 	ctx.submit(cast.mg.round, os.clock() - cast.startedAt, SnapMath.HIT)
 	advance(ctx)
 end
@@ -86,6 +89,9 @@ function Snap.onAccepted(ctx)
 	end)
 	view:setTarget(SnapMath.positionFor(cast.seed, 1))
 	view:show()
+	-- The first target doesn't come through advance(), so it needs its own
+	-- appear tick or target one of five would be the silent one.
+	Sfx.play("snapAppear")
 
 	-- Free the cursor so desktop can click the targets (touch taps regardless);
 	-- re-locked in endCast.
@@ -104,6 +110,7 @@ function Snap.update(ctx)
 		-- Too slow: the target's gone. A miss, on to the next.
 		cast.mg.answered = true
 		view:pop(false)
+		Sfx.play("snapMiss")
 		ctx.submit(cast.mg.round, os.clock() - cast.startedAt, SnapMath.MISS)
 		advance(ctx)
 	end

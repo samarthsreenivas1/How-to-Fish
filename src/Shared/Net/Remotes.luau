@@ -95,6 +95,19 @@ local DEFS = {
 	-- Charging / Dashing / Exposed) are attributes on the creature Model.
 	{ name = "CreatureEvent", class = "RemoteEvent" }, -- server -> all clients: kind, position, extra (table)
 
+	-- The Lantern Choir's limbs swinging (CreatureService -> NoctyssBodyController).
+	-- ONE attack descriptor, exactly as documented in Shared/Modules/NoctyssPath
+	-- ("the tentacles attack"): { kind, index, target, start, and the scythe's
+	-- four sweep parameters }. Its own remote rather than a `CreatureEvent`
+	-- kind because there is nothing here for the generic event pipeline to do -
+	-- no fx pool, no position-only payload - and an unhandled kind on that
+	-- remote is a warn on every client.
+	--
+	-- Nothing else about an attack is replicated. `start` is on
+	-- NoctyssPath.clock() (GetServerTimeNow), so both sides derive the phase,
+	-- the pose and the hitbox from this one table and cannot drift.
+	{ name = "ChoirAttack", class = "RemoteEvent" }, -- server -> all clients: attack descriptor (table)
+
 	-- Island travel (IslandsController -> WorldService). The client asks to
 	-- teleport to an island id; the server re-checks it exists, is placed, and
 	-- the player's level clears its unlock, then moves the character there.
@@ -125,6 +138,16 @@ local DEFS = {
 	-- server-side exactly like the other Admin* remotes, so it existing for
 	-- everyone is safe.
 	{ name = "AdminBossStart", class = "RemoteEvent" }, -- client -> server: bossId
+
+	-- The boss intro cinematic (BossCutsceneController + Client/Cutscenes/*).
+	-- The server holds the real rise back until the cinematic's last beat, so
+	-- these two carry the whole handshake: "start" opens the run on every party
+	-- member's client, "raise" re-anchors its final segment to the moment the
+	-- boss actually surfaced. `startsAt` is Workspace:GetServerTimeNow(), never a
+	-- local clock, so every member is on the same frame and a late arrival joins
+	-- the timeline in the middle instead of at the top.
+	{ name = "BossIntro", class = "RemoteEvent" }, -- server -> client: { kind = "start"|"raise", bossId, islandId, center?, startsAt, duration?, riseTime? }
+	{ name = "BossIntroSkip", class = "RemoteEvent" }, -- client -> server: the local player skips the intro
 
 	-- The boat (BoatController -> BoatService). One remote: "summon" builds or
 	-- recalls the player's boat to the nearest shoreline, "dismiss" parks it
@@ -168,6 +191,28 @@ local DEFS = {
 	{ name = "GetCollections", class = "RemoteFunction" }, -- client -> server: () -> { [speciesId] = { n, best, first } }
 	{ name = "CollectionsUpdated", class = "RemoteEvent" }, -- server -> client: the same table (full)
 	{ name = "CollectionGranted", class = "RemoteEvent" }, -- server -> client: { speciesId, n, best, isFirst }
+
+	-- RIMEFANG'S FLOE (FloeService -> FloeController). The breaking ice sheet as
+	-- ONE event: `kind` says what happened to a set of shard ids, and the
+	-- client owns every visual it implies (the crack seam, the sink-and-fade,
+	-- the frost creep, the refreeze glow, the slick shimmer, the banners).
+	-- Shard STATE is not replicated as 43 attributes - the ids are small and
+	-- the transitions are rare - and the sunken parts themselves replicate
+	-- their own CanCollide/CFrame, which is what the drift rides on.
+	--
+	-- Kinds ARE the shard states, so there is no second vocabulary: "cracking"
+	-- (ids, seconds until they open), "open" (ids, seconds until they refreeze),
+	-- "refreezing" (ids, seconds of frost creeping in), "solid" (ids, walkable
+	-- and clean again). Plus "slick" (ids, seconds of low friction),
+	-- "drift" (seconds, dir), "frozen" (FireClient: value 0..1, held),
+	-- "window" (kind = "blowhole"|"shoal"|nil, at, radius, seconds),
+	-- "mist" (ids, seconds - the heal's glow), "mistEnd" (ids, healed).
+	{ name = "FloeEvent", class = "RemoteEvent" }, -- server -> client(s): { kind, ids?, seconds?, ... }
+	-- ...and the one input the fight adds: a rod cast aimed at a boss moment
+	-- (FishingController -> FishingService). The window itself is server state
+	-- (FloeService), so the payload is only which window the client believed
+	-- was open; it is re-validated before a cast is opened.
+	{ name = "BossCast", class = "RemoteEvent" }, -- client -> server: window kind ("blowhole" | "shoal")
 }
 
 local Remotes = {}

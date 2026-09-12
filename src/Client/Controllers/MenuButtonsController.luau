@@ -1,7 +1,7 @@
 --!nonstrict
 -- MenuButtonsController.luau
--- The bottom-left menu buttons: Bag (inventory), Craft, Map (islands) and -
--- for admins only - Admin. Each is a tile with a token and the key that
+-- The bottom-left menu buttons: Bag (inventory), Map (islands), Quests, Log,
+-- Hall and - for admins only - Admin. Each is a tile with a token and the key that
 -- also opens it; the lit one follows the menus' real state (isOpen()), so
 -- opening with a hotkey lights it too. Also what lets touch open the menus
 -- at all.
@@ -26,9 +26,9 @@ local UserInputService = game:GetService("UserInputService")
 
 local Theme = require(script.Parent.Parent.UI.Theme)
 local Kit = require(script.Parent.Parent.UI.Kit)
+local Sfx = require(script.Parent.Parent.Modules.Sfx)
 local AdminController = require(script.Parent.AdminController)
 local CameraController = require(script.Parent.CameraController)
-local CraftingController = require(script.Parent.CraftingController)
 local InventoryController = require(script.Parent.InventoryController)
 local IslandsController = require(script.Parent.IslandsController)
 local TrophyController = require(script.Parent.TrophyController)
@@ -58,7 +58,6 @@ local BUTTONS = {
 		color = C.accentDark,
 		controller = InventoryController,
 	},
-	{ id = "crafting", label = "Craft", token = "ANVIL", hint = "C", color = C.wood, controller = CraftingController },
 	{
 		id = "islands",
 		label = "Map",
@@ -181,6 +180,7 @@ local function buildButton(spec, index: number): TextButton
 	})
 
 	button.MouseEnter:Connect(function()
+		Sfx.play("uiHover")
 		TweenService:Create(tile, TweenInfo.new(0.08), { Size = UDim2.fromOffset(BUTTON_SIZE + 4, BUTTON_SIZE + 4) })
 			:Play()
 	end)
@@ -188,6 +188,11 @@ local function buildButton(spec, index: number): TextButton
 		TweenService:Create(tile, TweenInfo.new(0.08), { Size = UDim2.fromOffset(BUTTON_SIZE, BUTTON_SIZE) }):Play()
 	end)
 	button.Activated:Connect(function()
+		-- No uiClick: `toggle` opens or closes a panel, and each of those plays
+		-- uiOpen / uiClose a frame later. A click stacked in front of them was
+		-- two sounds for one press, and the second is the one that carries the
+		-- information. uiHover on the way in stays - it is the only feedback
+		-- these tiles have before the press.
 		toggle(spec)
 	end)
 
@@ -267,9 +272,22 @@ local function onFreeCursor(_, state: Enum.UserInputState)
 		end
 		altHeld = true
 		CameraController.setCursorFree(true)
+		-- Only the cursor actually LEAVING the crosshair is worth a cue. If it
+		-- was already free (a menu is open, or the player is in third person)
+		-- ALT changes nothing, and a click there would be a phantom.
+		if not freeBeforeAlt then
+			Sfx.play("cursorFree")
+		end
 	elseif state == Enum.UserInputState.End or state == Enum.UserInputState.Cancel then
 		altHeld = false
-		CameraController.setCursorFree(freeBeforeAlt or anyMenuOpen())
+		-- Releasing ALT only re-locks when nothing else wants the cursor free;
+		-- otherwise the cursor stays out and there is nothing to hear, so the
+		-- cue follows where the cursor ENDED UP rather than the key going up.
+		local stillFree = freeBeforeAlt or anyMenuOpen()
+		CameraController.setCursorFree(stillFree)
+		if not stillFree then
+			Sfx.play("cursorLock")
+		end
 	end
 	return Enum.ContextActionResult.Sink
 end

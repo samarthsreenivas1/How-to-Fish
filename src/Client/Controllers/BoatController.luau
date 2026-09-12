@@ -30,6 +30,8 @@ local Islands = require(Shared.Config.Islands)
 local Boats = require(Shared.Data.Boats)
 local Remotes = require(Shared.Net.Remotes)
 
+local Sfx = require(script.Parent.Parent.Modules.Sfx)
+local BossHudController = require(script.Parent.BossHudController)
 local Theme = require(script.Parent.Parent.UI.Theme)
 
 local player = Players.LocalPlayer
@@ -81,6 +83,19 @@ local drive: {
 	connection: RBXScriptConnection,
 }? =
 	nil
+
+-- The two driving loops (outboard putter, bow wash) live at MODULE scope
+-- rather than inside `drive`, and that is deliberate: a leaked Sfx.loop is
+-- audible for the rest of the session, and it is the known failure mode of
+-- this API. Kept out here, stopBoatLoops() can run unconditionally on every
+-- teardown path - including one that clears `drive` without ever reaching the
+-- body of stopDriving - so there is no arrangement of state in which the
+-- handles outlive the voyage.
+local engineLoop: BasePart? = nil
+local washLoop: BasePart? = nil
+
+-- Last hull creak, for the rate limit in `step`.
+local lastCreakAt = 0
 
 -- ============================================================ banner
 
@@ -239,10 +254,29 @@ end
 
 -- ============================================================ driving
 
+local function stopBoatLoops()
+	Sfx.stopLoop(engineLoop)
+	engineLoop = nil
+	Sfx.stopLoop(washLoop)
+	washLoop = nil
+end
+
 local function stopDriving()
+	-- AHEAD of the `drive` guard, on purpose: this is the one call that must
+	-- not be skippable. Sfx.stopLoop is a no-op on nil, so running it when
+	-- there was no voyage costs nothing, while running it only inside the
+	-- guard would strand both loops the first time anything cleared `drive`
+	-- without coming through here.
+	stopBoatLoops()
 	if not drive then
 		return
 	end
+	-- One boatLeave for EVERY way off the helm - standing up, the hull
+	-- despawning under you, a hand-off into a fresh startDriving - because
+	-- they are all the same event to the player's ear. Putting it here rather
+	-- than in the Seated handler is also what stops the normal case (Seated
+	-- false -> stopDriving) playing it twice.
+	Sfx.play("boatLeave")
 	drive.connection:Disconnect()
 	-- We still own the assembly for a beat; leave it dead in the water for
 	-- the server's park snap rather than coasting away driverless.
@@ -284,6 +318,27 @@ local function step(dt: number)
 	local wayOn = 0.35 + 0.65 * math.min(1, math.abs(drive.speed) / row.speed)
 	drive.yaw -= seat.Steer * math.rad(row.turnRate) * wayOn * dt
 
+	-- The hull creaks when the rudder is hard over AND there is way on to load
+	-- it - the product of the two, which is exactly the yaw rate the line above
+	-- just applied. The threshold is half of math.rad(row.turnRate), the row's
+	-- own full-lock-at-speed rate: expressing it as a FRACTION of the boat's
+	-- own agility means "leaning into the turn" means the same thing on the
+	-- nimble starter dinghy and on a heavy late-game hull, where a fixed
+	-- rad/s number would have the light boat creaking constantly and the heavy
+	-- one never at all.
+	--
+	-- Rate-limited to one a second because a held turn re-satisfies this test
+	-- on every one of the ~60 Heartbeats it lasts, and sixty overlapping
+	-- creaks is a buzz, not timber. At one a second the cue reads the way real
+	-- rigging does - a groan, a pause, another groan - and a sustained hard
+	-- turn gets a handful of them rather than a wall.
+	local turnRate = math.abs(seat.Steer) * math.rad(row.turnRate) * wayOn
+	local now = os.clock()
+	if turnRate > math.rad(row.turnRate) * 0.5 and now - lastCreakAt >= 1 then
+		lastCreakAt = now
+		Sfx.play("boatCreak", collider.Position)
+	end
+
 	-- Hold the waterline: World.WATER_Y (the gameplay constant), rest height,
 	-- and a soft bob. P-control through velocity so physics stays in charge.
 	local restY = World.WATER_Y + (row.model.deckHeight - row.model.draft) / 2
@@ -294,10 +349,41 @@ local function step(dt: number)
 	drive.move.VectorVelocity = forward * drive.speed + Vector3.new(0, vy, 0)
 	drive.align.CFrame = CFrame.Angles(0, drive.yaw, 0)
 
+	-- Ride both loops on the hull and modulate them from the same two numbers
+	-- the physics above just used, which is what keeps the sound honest.
+	--
+	-- ENGINE tracks the THROTTLE - what the player is asking for - so the note
+	-- rises the instant they push the stick, before the eased `speed` has
+	-- caught up; that lead is most of why an outboard feels responsive.
+	-- Absolute value, because astern is the same engine working, and a signed
+	-- throttle would drop the pitch below the 0.8 idle into a dying rumble.
+	--
+	-- WASH tracks the actual SPEED instead, because a bow wave is made by the
+	-- hull moving through water and by nothing else: a boat held against the
+	-- dock with the throttle wide open should be roaring and throwing no
+	-- spray at all, and reading the same input for both would have it doing
+	-- the opposite.
+	Sfx.moveLoop(engineLoop, collider.Position)
+	Sfx.moveLoop(washLoop, collider.Position)
+	-- Both are MULTIPLIERS of what the loop started at, not absolute levels:
+	-- the catalogue decides how loud a bow wash is and what note the outboard
+	-- idles on (wobble included), and these two only say how hard it is being
+	-- worked. Setting the absolute value here threw that balance away - a wash
+	-- at full speed came out at 1.0, four times its mix level.
+	Sfx.setLoopPitchMul(engineLoop, 0.8 + 0.5 * math.abs(seat.Throttle))
+	Sfx.setLoopGain(washLoop, math.min(1, math.abs(drive.speed) / row.speed))
+
 	updateCompass(collider.Position, drive.yaw)
 end
 
 local function startDriving(seat: VehicleSeat)
+	-- AHEAD of every validation below, not after them. Sitting in a second seat
+	-- is one Seated(true) with no Seated(false) in between, and if that seat
+	-- fails any check here the old voyage's Heartbeat and its two loops were
+	-- left running on a hull the player is no longer aboard - the leak this API
+	-- is shaped against. stopDriving is idempotent and silent on no voyage.
+	stopDriving()
+
 	local model = seat.Parent
 	if not (model and model:IsA("Model")) then
 		return
@@ -313,7 +399,6 @@ local function startDriving(seat: VehicleSeat)
 		return
 	end
 
-	stopDriving()
 	local _, yaw = collider.CFrame:ToEulerAnglesYXZ()
 	drive = {
 		row = row,
@@ -324,6 +409,20 @@ local function startDriving(seat: VehicleSeat)
 		speed = 0,
 		connection = RunService.Heartbeat:Connect(step),
 	}
+
+	Sfx.play("boatBoard")
+	-- The voyage's two loops start HERE - past every early return above, so a
+	-- refused board (someone else's hull, a half-built model) stays silent -
+	-- and are the property of stopBoatLoops from this line on. The wash opens
+	-- at zero because the boat is stationary: `step` sets its real volume on
+	-- the very next Heartbeat, and starting it at the catalogue default would
+	-- put one frame of bow wave on a boat that has not moved yet. Silenced with
+	-- setLoopGain rather than started at `{ volume = 0 }`, because the loop's
+	-- own level is what setLoopGain scales - opening at zero would make zero
+	-- the base and the wash could never rise off it.
+	engineLoop = Sfx.loop("boatEngine", collider.Position)
+	washLoop = Sfx.loop("boatWash", collider.Position)
+	Sfx.setLoopGain(washLoop, 0)
 	showCompass()
 end
 
@@ -339,11 +438,25 @@ local function watchCharacter(character: Model)
 			stopDriving()
 		end
 	end)
+	-- DYING AT THE HELM does not always produce a Seated(false): the character
+	-- comes apart and the seat goes with it. Without this the voyage's Heartbeat
+	-- and both loops outlived the driver - an engine still running somewhere out
+	-- at sea for the rest of the session.
+	humanoid.Died:Connect(stopDriving)
 end
 
 -- ============================================================ summoning
 
 local function requestSummon()
+	-- REFUSED DURING A BOSS FIGHT, client-side. BoatService refuses it too and
+	-- is the authority; this exists so the player gets a reason instead of
+	-- silence, and so the summon horn does not sound for a boat that is never
+	-- coming.
+	if BossHudController.isEngaged() then
+		showBanner("No boats during a boss fight.")
+		return
+	end
+	Sfx.play("boatSummon")
 	Remotes.RequestBoat:FireServer("summon")
 end
 
@@ -377,6 +490,21 @@ local function buildTouchButton()
 	corner.CornerRadius = UDim.new(0, 10)
 	corner.Parent = button
 	button.Activated:Connect(requestSummon)
+
+	-- THE BUTTON GOES AWAY FOR THE LENGTH OF THE FIGHT. A touch player has no
+	-- R key, so the button IS the affordance, and an affordance that is there
+	-- and does nothing reads as a bug. Polled rather than evented because
+	-- BossHudController publishes no engagement signal - a half-second poll is
+	-- the whole cost, and `Activated` above still refuses on the frame it is
+	-- pressed, so the poll is cosmetic and cannot be the gate.
+	task.spawn(function()
+		while button.Parent do
+			local engaged = BossHudController.isEngaged()
+			button.Visible = not engaged
+			button.Active = not engaged
+			task.wait(0.5)
+		end
+	end)
 end
 
 -- ============================================================ lifecycle
@@ -430,6 +558,18 @@ function BoatController.init()
 	Remotes.BoatMessage.OnClientEvent:Connect(function(text)
 		if type(text) == "string" then
 			showBanner(text)
+			-- Two of BoatService's banners are alarms rather than news, and
+			-- they are the two a driver must not read past: the hull warning
+			-- it sends once as the open sea begins eating the hull, and the
+			-- sinking. The warning is matched against Tuning.Boat.WARNING
+			-- itself - the same constant the server sends - so rewording it
+			-- can never quietly unwire the bell; the sinking has no constant
+			-- to match, so it goes by the one word that carries it.
+			if text == Tuning.Boat.WARNING then
+				Sfx.play("boatWarn")
+			elseif string.find(text, "sunk", 1, true) then
+				Sfx.play("boatSink")
+			end
 		end
 	end)
 
@@ -449,6 +589,9 @@ function BoatController.init()
 		task.spawn(watchCharacter, player.Character)
 	end
 	player.CharacterAdded:Connect(watchCharacter)
+	-- The other end of the same guarantee: a character being taken away (reset,
+	-- a teleport, a respawn) ends the voyage even if nothing ever unseated it.
+	player.CharacterRemoving:Connect(stopDriving)
 
 	gui.Parent = player:WaitForChild("PlayerGui")
 end

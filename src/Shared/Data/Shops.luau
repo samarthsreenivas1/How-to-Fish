@@ -103,7 +103,10 @@ Shops.items.hollows_locker = {
 	},
 }
 
--- The Ferryman's counter, six thousand studs from the nearest shore. He
+-- The Ferryman's counter, three thousand studs from the nearest shore (it was
+-- six until 2026-09-12, when the raft was moved north of Frostmaw Reach to put
+-- the Ferryman inside a boat's reach at all - the markup argument below is
+-- unchanged, there is still nothing else out there). He
 -- stocks a little of every leg and charges for the distance: nothing here is
 -- unavailable elsewhere, it is all unavailable ANYWHERE NEAR HERE, which is
 -- the whole of his business. The markup is the character and it is meant to

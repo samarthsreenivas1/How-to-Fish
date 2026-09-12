@@ -20,7 +20,7 @@ USAGE - after ANY change to an arena or boss builder:
     python3 tools/gen_mesh_colors.py            # regenerate the module
     python3 tools/gen_mesh_colors.py --check    # report only, write nothing
 
-It drives Blender once per target (13 of them, so it takes a few minutes),
+It drives Blender once per target (14 of them, so it takes a few minutes),
 reads each object's REAL authored colour, and rewrites the Luau module.
 
 `--check` exists because this also reports the ISLANDS' missing rows, and a
@@ -55,8 +55,23 @@ OUT = os.path.join(ROOT, "src", "Shared", "Config", "MeshColors.luau")
 
 # (generator, target) pairs. Kept explicit rather than imported, because these
 # modules only load inside Blender.
-ARENAS = ["brinejaw", "gnashroot", "wrack", "rimefang", "noctyss", "pyrelisk"]
+# EVERY target the builder dispatches, not every target someone remembered. A
+# sub-room authored as its own target (`kraken_gullet`, `pyrelisk_heart`) is a
+# separate mesh with its own object prefix, so omitting one here costs that
+# room every colour row it has and nothing else notices - the Heart shipped 22
+# objects and this list knew none of them. Cross-check against arena_gen.py's
+# own dispatch table when a new room lands:
+#     python3 -c "import re;print(sorted(re.findall(r'^    \"(\w+)\": build_',
+#         open('assets/arena_gen.py').read(), re.M)))"
+ARENAS = ["brinejaw", "gnashroot", "wrack", "rimefang", "noctyss", "pyrelisk", "pyrelisk_heart", "kraken", "kraken_gullet"]
 BOSSES = ["brinejaw", "kraken", "gnashroot", "noctyss", "rimefang", "pyrelisk", "wrack"]
+# The ATTACK-FX packs: not an arena and not a boss, but the same problem -
+# imported meshes that arrive grey and are repainted from this table by the
+# controller that clones them. `brinejaw_fx_gen.py` builds one set and takes
+# no target argument, so its single entry is a placeholder the generator
+# ignores. It is in this list rather than hand-maintained for the reason the
+# header gives: a piece added by a re-export must not be able to go un-rowed.
+FX = ["pack"]
 
 DUMP = '''
 import bpy
@@ -71,6 +86,21 @@ def base_color(mat):
 print("=== COLORS ===")
 for obj in sorted(bpy.data.objects, key=lambda o: o.name):
     if obj.type != "MESH":
+        continue
+    # COLLIDERS GET NO ROW, BY DESIGN. An object whose name ends in "Collider"
+    # is an invisible shot/collision proxy - Transparency 1, CanCollide and
+    # CanQuery only - so a colour for it is meaningless, and the Wrack lane
+    # that owns the precedent asked for the omission to be a RULE rather than
+    # a row someone deletes after each regen. `boss_gen.py`'s own Wrack
+    # handoff states it: "Wrack_HullCollider is INVISIBLE - Transparency 1,
+    # CanCollide/CanQuery true. [...] It has NO MeshColors row on purpose."
+    #
+    # Skipping the whole OBJECT (not a material slot) keeps the <Name>N suffix
+    # convention intact: `emitted` restarts per object, so dropping one cannot
+    # misnumber another. `Wrack_HullCollider` is the only such object today;
+    # the swamp trunk colliders are built in Luau at placement, never in
+    # Blender, so nothing in the island report moves either.
+    if obj.name.endswith("Collider"):
         continue
     # COUNT FACES PER SLOT. A multi-material object splits on export and Studio
     # numbers the 2nd and 3rd parts <Name>2 / <Name>3 (the Island_Base
@@ -180,7 +210,11 @@ def main():
         dump_path = os.path.join(tmpdir, "dump.py")
         with open(dump_path, "w") as handle:
             handle.write(DUMP)
-        for generator, targets in (("arena_gen.py", ARENAS), ("boss_gen.py", BOSSES)):
+        for generator, targets in (
+            ("arena_gen.py", ARENAS),
+            ("boss_gen.py", BOSSES),
+            ("brinejaw_fx_gen.py", FX),
+        ):
             for target in targets:
                 rows = run(generator, target, dump_path, tmpdir)
                 print("  %-14s %-10s %3d objects" % (generator, target, len(rows)))
@@ -202,9 +236,9 @@ def main():
         "--",
         "-- Studio's glTF importer does not carry colour across: every imported part",
         "-- arrives at Roblox's default grey. This is the per-part repaint for the",
-        "-- ARENA and BOSS packs, the same job WorldService.MESH_COLOR does for the",
-        "-- islands (that table stays where it is - it also carries per-part MATERIAL",
-        "-- and water-layer handling that these packs do not need).",
+        "-- ARENA, BOSS and ATTACK-FX packs, the same job WorldService.MESH_COLOR",
+        "-- does for the islands (that table stays where it is - it also carries",
+        "-- per-part MATERIAL and water-layer handling that these packs do not need).",
         "--",
         "-- Re-run the generator after any change to an arena or boss builder. A part",
         "-- with no row here keeps the importer's grey, and BossArenaService warns by",

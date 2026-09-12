@@ -557,6 +557,10 @@ local MESH_COLOR = {
 	-- Round-2 coastal overhaul objects (87's lane): both near-black, NOT Neon.
 	Gloomtrench_TidePools = Color3.fromRGB(20, 21, 30), -- M_GloomShelf
 	Gloomtrench_Rift = Color3.fromRGB(37, 34, 46), -- M_GloomRift
+	-- The lit route through the trench, and the one thing on that island a
+	-- player is meant to find in the dark: without a row here it imports grey
+	-- and stops reading as a path at all.
+	Gloomtrench_Path = Color3.fromRGB(93, 90, 113), -- M_GloomPath (pale flagstone)
 	Gloomtrench_Spires = Color3.fromRGB(33, 32, 42),
 	Gloomtrench_Stalks = Color3.fromRGB(59, 62, 76),
 	Gloomtrench_GlowCyan = Color3.fromRGB(74, 239, 224),
@@ -647,6 +651,15 @@ local MESH_COLOR = {
 	Wreckwater_Dock_Planks = Color3.fromRGB(121, 103, 79), -- M_WreckPlank
 	Wreckwater_Dock_Posts = Color3.fromRGB(84, 69, 52), -- M_WreckPost
 	Wreckwater_Foam = Color3.fromRGB(225, 231, 228), -- M_WreckFoam
+	-- Five objects that had no row at all and were importing Roblox default
+	-- grey. Values from the wreck lane, verified here against island_gen's
+	-- material floats independently (round(f * 255), no gamma - the same
+	-- mapping M_Grass -> (108, 178, 92) proves).
+	Wreckwater_Dunes = Color3.fromRGB(165, 154, 131), -- M_WreckDrift
+	Wreckwater_Ironwork = Color3.fromRGB(55, 50, 46), -- M_WreckIron
+	Wreckwater_Quay_Planks = Color3.fromRGB(121, 103, 79), -- M_WreckPlank
+	Wreckwater_Quay_Posts = Color3.fromRGB(84, 69, 52), -- M_WreckPost
+	Wreckwater_Rocks = Color3.fromRGB(73, 76, 83), -- M_GraveRock
 
 	-- The Maelstrom (assets/island_gen.py `maelstrom`, 2026-08-27). The base
 	-- is a fully SUBMERGED storm-shoal (three materials, so it splits into
@@ -2525,8 +2538,13 @@ function WorldService.mayEnter(player: Player, islandId: any): (boolean, string?
 	end
 
 	local level = player:GetAttribute(Progression.ATTR.level) or Progression.START_LEVEL
-	if level < entry.unlockLevel then
-		return false, string.format("Reach level %d", entry.unlockLevel)
+	-- Islets carry no unlockLevel (nothing gates them but the sea itself);
+	-- comparing against nil threw here for all nine and, because
+	-- openSeaDistance asks mayEnter for every placed island, killed the
+	-- seaworthiness tick's loop - open-sea hull damage was silently off.
+	local unlockLevel = entry.unlockLevel or 0
+	if level < unlockLevel then
+		return false, string.format("Reach level %d", unlockLevel)
 	end
 
 	-- A site entry (the Maelstrom) sits outside Islands.order, so the linear
@@ -2769,7 +2787,132 @@ local function bounceTarget(player: Player, position: Vector3): CFrame?
 	return if safeSpawn then CFrame.new(safeSpawn) else nil
 end
 
+-- ============================================================ Stray-import guard
+--
+-- A raw Studio import left in Workspace RENDERS, and that is the "scrambled
+-- world": `assets/bundles/bundle_world.glb` holds all sixteen landforms under
+-- one container, each authored around its own origin, so the import draws them
+-- STACKED AT THE IMPORT POINT - uncoloured (Studio's glTF importer drops every
+-- colour; MESH_COLOR only repaints what placeIsland clones out of Assets) and
+-- lifted so the model's lowest vertex sits at y = 0. It looks like the game
+-- broke. Nothing did: the import is simply visible, because
+-- `tools/studio_import_bundles.lua` runs with SKIP_EXISTING = true by default
+-- and leaves every already-installed pack sitting inside the container.
+--
+-- The game cannot fix the place file, but it can refuse to draw the thing:
+-- anything in Workspace that looks like a raw import is warned about by name
+-- and reparented under ReplicatedStorage, which renders nothing.
+--
+-- CHEAP AND BOOT-SAFE BY CONSTRUCTION: a bounded walk (depth and node budget
+-- below) over Workspace's direct children only, skipping the World folder this
+-- service built, stopping at the first evidence per child, and wrapped in a
+-- pcall at the call site - a guard that throws would take every service after
+-- it down with it (boot is fail-fast), which is a far worse bug than the one
+-- it is guarding against.
+local STRAY_SCAN_DEPTH = 5 -- Scene > Pack > Object_Node > MeshPart is 4
+local STRAY_SCAN_BUDGET = 8000 -- nodes visited per Workspace child
+
+-- The evidence, or nil. `<Model>_Base` for any island (the same name
+-- islandTemplate looks up) or a child named IslandPack. Arena and boss BODY
+-- packs are deliberately not checked: BossArenaService places the real arenas
+-- in Workspace during the INIT phase (before this START-phase sweep) under the
+-- pack's own part names, and the bodies are too small to matter in a heap.
+local function strayImportEvidence(child: Instance): string?
+	if child:FindFirstChild("IslandPack") then
+		return "it contains a child named IslandPack (the whole island bundle)"
+	end
+	local baseNames = {}
+	for _, entry in Islands.items do
+		if entry.model then
+			baseNames[entry.model .. "_Base"] = entry.model
+		end
+	end
+
+	local visited = 0
+	local frontier = { child }
+	for _ = 1, STRAY_SCAN_DEPTH do
+		local nextFrontier = {}
+		for _, node in ipairs(frontier) do
+			for _, descendant in ipairs(node:GetChildren()) do
+				visited = visited + 1
+				if visited > STRAY_SCAN_BUDGET then
+					return nil
+				end
+				if descendant:IsA("BasePart") then
+					local island = baseNames[descendant.Name]
+					if island then
+						return "it contains a part named " .. descendant.Name .. " (the " .. island .. " landform)"
+					end
+					-- Arena packs are deliberately NOT matched: BossArenaService
+					-- places the real arenas in its own Workspace folder during
+					-- the INIT phase, before this sweep runs in START, and their
+					-- clones keep the pack's `<Boss>Arena_Base` names - matching
+					-- them here would sweep every live arena into storage.
+				elseif descendant:IsA("Model") or descendant:IsA("Folder") then
+					table.insert(nextFrontier, descendant)
+				end
+			end
+		end
+		if #nextFrontier == 0 then
+			break
+		end
+		frontier = nextFrontier
+	end
+	return nil
+end
+
+local function sweepStrayImports()
+	local staging: Instance? = nil
+	for _, child in ipairs(Workspace:GetChildren()) do
+		-- islandFolder is this service's own work; every other service's
+		-- folder is either not a Model/Folder of imported meshes or holds
+		-- clones whose names are the pack's, not `<Model>_Base`.
+		if child ~= islandFolder and (child:IsA("Model") or child:IsA("Folder")) then
+			local evidence = strayImportEvidence(child)
+			if evidence then
+				if staging == nil then
+					local existing = ReplicatedStorage:FindFirstChild("StrayImports")
+					if existing then
+						staging = existing
+					else
+						local folder = Instance.new("Folder")
+						folder.Name = "StrayImports"
+						folder.Parent = ReplicatedStorage
+						staging = folder
+					end
+				end
+				warn(
+					string.format(
+						"[WorldService] STRAY 3D IMPORT in Workspace: %q\n"
+							.. "  %s, so this is a raw Studio import that was never split out into\n"
+							.. "  ReplicatedStorage.Assets - not part of the world.\n"
+							.. "  LEFT THERE IT RENDERS: every pack inside it drawn at the import point,\n"
+							.. "  all of them stacked on top of each other, UNCOLOURED (Studio's glTF\n"
+							.. "  importer drops all colour) and lifted so the lowest vertex sits at\n"
+							.. "  y = 0. That is the 'scrambled world' - the import being visible.\n"
+							.. "  MOVED to ReplicatedStorage.StrayImports so it cannot draw. Nothing was\n"
+							.. "  deleted. To install it properly: run tools/studio_import_bundles.lua\n"
+							.. "  (SKIP_EXISTING = false to replace packs already under Assets), save\n"
+							.. "  assets/Assets.rbxm, restart `rojo serve`. See docs/import-quick.md.",
+						child.Name,
+						evidence
+					)
+				)
+				child.Parent = staging
+			end
+		end
+	end
+end
+
 function WorldService.start()
+	-- Islands are placed in init, so by the time start runs anything that still
+	-- looks like a raw import in Workspace is not ours. pcall: a boot-time
+	-- guard must never be the thing that kills the boot.
+	local sweepOk, sweepErr = pcall(sweepStrayImports)
+	if not sweepOk then
+		warn("[WorldService] stray-import sweep failed (harmless, nothing moved): " .. tostring(sweepErr))
+	end
+
 	-- Two safety sweeps in one loop, a ray or two per player, twice a second:
 	--   - the under-map net ("walked under the island and got stuck"): lift a
 	--     character beneath the landform back onto that island's spawn;

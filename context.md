@@ -90,6 +90,9 @@ moment: **`docs/import-checklist.md` is the ledger, trust it over dates.**
   re-picking nearest-player per frame teleports a 40-stud limb. **Every
   number a hitbox uses must be a value the renderer also consumes**, and
   name the fraction, don't repeat it.
+- **Boss fights pay the whole party** (never killer-only), underlevel
+  friends CAN be carried, and the counterweight is **health scaling by party
+  size** (parts rings too, never damage) — user decisions, 2026-09-06.
 
 ## Design decisions (binding — don't reopen without the user)
 
@@ -169,6 +172,9 @@ arenas), `boss_gen.py` (colossus boss packs), `water_gen.py`, and the
 ```bash
 stylua src && selene src && rojo build -o /tmp/check.rbxlx && python3 tools/check_content.py
 python3 tools/mesh_digest.py <glb>   # per-object vertex hashes (see Concurrency)
+blender --background --python tools/check_floaters.py -- <glb> [--per-empty]   # floating/detached geometry per island (contact graph + underside clearance); run on every island regen
+python3 tools/check_quest_reach.py   # every quest objective completable at its OFFER level (species/waters/craft/deliver/visit/boat reach); --self-test = controls
+blender --background --python tools/check_npc_placement.py -- <pack.glb>   # every NPC + teleport landing stands on real floor (the probe rule NpcService uses), clear body, facing, approach; --control
 ```
 
 `check_content.py` validates cross-file ids (recipes/rosters/orders) but NOT

@@ -41,6 +41,7 @@ local Trinkets = require(Shared.Data.Trinkets)
 local QuestService = require(script.Parent.QuestService)
 local CollectionService = require(script.Parent.CollectionService)
 local BossService = require(script.Parent.BossService)
+local FloeService = require(script.Parent.FloeService)
 local CreatureService = require(script.Parent.CreatureService)
 local DataService = require(script.Parent.DataService)
 local InventoryService = require(script.Parent.InventoryService)
@@ -68,6 +69,39 @@ local CALLED_ARCHETYPE_WEIGHT = 4
 -- wiped by a cancel (rod swap / timeout / lost character), so the streak
 -- rewards seeing casts through. Read as bonus luck in onRequestCast.
 local castStreak: { [Player]: number } = {}
+
+-- ============================================================ boss casts
+-- THE ROD AS A BOSS MECHANIC (Rimefang's floe, 2026-09-12). Two moments in that
+-- fight hand the rod back to the player: her blowhole, where a landed cast
+-- drags her onto the ice, and the bait shoal, where one hooks a fish to throw.
+--
+-- A boss cast reuses the WHOLE ordinary pipeline - the same `casts` table, the
+-- same CastAccepted handshake, the same client minigame modules, the same
+-- authoritative onSubmit scoring - and differs in exactly two places: where the
+-- cast may be opened from (the window, re-validated by FloeService, never the
+-- water) and what resolving it pays (the fight's effects, no fish, no bait, no
+-- materials). `cast.boss` is the one flag that says which.
+--
+-- HARDER THAN FISHING, and stated here rather than in a rod row: this is not a
+-- fish, so the rod's own reel layout is the BASE and these are the fight's
+-- multipliers on top. `win` is the normalised perf the moment needs.
+local BOSS_CAST = {
+	blowhole = {
+		minigame = "reel",
+		-- Two extra clicks, a third again faster, three-quarter zones: the reel
+		-- you know, at the pressure of a boss's one open window.
+		extraClicks = 2,
+		speedMult = 1.35,
+		zoneMult = 0.75,
+		win = 0.55,
+	},
+	shoal = {
+		minigame = "snap",
+		count = 4,
+		lifetimeMult = 0.8,
+		win = 0.5,
+	},
+}
 
 -- The per-cast minigame layout (which minigame + its parameters) is built by
 -- the chosen minigame module's configFor and carried in CastAccepted's config;
@@ -324,6 +358,12 @@ end
 -- "timeout" (idle until MAX_REEL_DURATION).
 local function cancelCast(player: Player, cast, reason: string)
 	casts[player] = nil
+	-- A boss cast walked away from frees the window's per-player claim and
+	-- nothing else: a disconnect or a timeout is not a failed cast, so the
+	-- fight is told nothing happened rather than told it was lost.
+	if cast.boss then
+		FloeService.cancelCast(player)
+	end
 	castStreak[player] = nil -- walking away breaks a Chum Line streak
 	Remotes.CastResolved:FireClient(player, cast.id, { cancelled = true, reason = reason })
 end
@@ -332,6 +372,19 @@ end
 -- the minigame earned, plus the basic materials.
 local function resolveCast(player: Player, cast, reason: string?)
 	casts[player] = nil
+
+	-- A BOSS CAST PAYS THE FIGHT, NOT THE FISHERMAN. No streak, no grade, no
+	-- catch, no materials: the minigame's perf is a pass/fail against the
+	-- moment's own threshold and FloeService hands it to whatever the fight
+	-- registered. First, so nothing below it can grant anything.
+	if cast.boss then
+		local profile = BOSS_CAST[cast.boss] or {}
+		local perf = Minigames.get(cast.config.kind).perf(cast)
+		local won = perf >= (profile.win or 0.5)
+		FloeService.resolveCast(player, cast.boss, won, perf)
+		Remotes.CastResolved:FireClient(player, cast.id, { boss = cast.boss, won = won, perf = perf })
+		return
+	end
 	castStreak[player] = (castStreak[player] or 0) + 1 -- Chum Line: a cast seen through
 
 	-- Every minigame reduces to a normalised perf in [0,1]; the grade path is
@@ -515,6 +568,20 @@ local function onRequestCast(player: Player, claimedLanding)
 		return
 	end
 
+	-- NO FISHING IN A BOSS FIGHT (user, 2026-09-12). The server is the
+	-- authority; FishingController refuses the same input locally so the rod
+	-- never starts a swing it cannot finish (its `castBlockedByBoss`).
+	--
+	-- AFTER the landing check, so a player aiming at dry land still hears the
+	-- more specific reason. BEFORE the summon-bait branch below, on purpose: a
+	-- capstone bait cast is still a cast, and calling a SECOND boss out of the
+	-- middle of a fight is precisely what this is here to stop - and it stays
+	-- free, because the bait's spend is further down still.
+	if BossService.fightFor(player) then
+		Remotes.CastRejected:FireClient(player, "No fishing in a boss fight.")
+		return
+	end
+
 	-- The capstone bait doesn't fish - it CALLS the island's boss (Leviathan's
 	-- Call). Handled here, ahead of the ordinary spend below, because the gate
 	-- has to be checked BEFORE the bait is consumed: it costs a signature drop
@@ -609,6 +676,87 @@ local function onRequestCast(player: Player, claimedLanding)
 	Remotes.CastAccepted:FireClient(player, cast.id, cast.seed, cast.config, cast.landing)
 end
 
+-- A ROD CAST AIMED AT A BOSS MOMENT (FishingController's window branch). The
+-- client names the window it believed was open; FloeService re-decides whether
+-- one IS open, whether this player is inside 40 studs of it, and where the line
+-- lands. Everything after that is the ordinary cast lifecycle.
+local function onBossCast(player: Player, kind)
+	if casts[player] then
+		return
+	end
+	if type(kind) ~= "string" or not BOSS_CAST[kind] then
+		return
+	end
+	if not DataService.isLoaded(player) then
+		return
+	end
+	local character = player.Character
+	if not character then
+		return
+	end
+	-- THE ROD IS STILL REQUIRED, by the same two checks an ordinary cast makes -
+	-- the fight does not hand anybody a rod they did not bring.
+	if InventoryService.getEquipped(player) ~= Equipment.ROD then
+		Remotes.CastRejected:FireClient(player, "Equip your rod to cast.")
+		return
+	end
+	local rodId = InventoryService.getEquippedRod(player)
+	local rodData = rodId and Rods.items[rodId]
+	if not rodData or not rodData.reel then
+		Remotes.CastRejected:FireClient(player, "You need a rod to cast.")
+		return
+	end
+
+	local landing, why = FloeService.castWindow(player, kind)
+	if not landing then
+		Remotes.CastRejected:FireClient(player, why or "Nothing to cast at.")
+		return
+	end
+
+	local profile = BOSS_CAST[kind]
+	nextCastId += 1
+	local seed = math.random(1, 2 ^ 31 - 1)
+	local mod = Minigames.get(profile.minigame)
+	local config = mod.configFor(rodData)
+	config.kind = profile.minigame
+	-- The fight's multipliers over the rod's own layout. Written onto the config
+	-- that rides CastAccepted, so the client predicts the same harder game the
+	-- server will score - a difficulty applied on one side only is a desync.
+	if config.clicksRequired then
+		config.clicksRequired += profile.extraClicks or 0
+	end
+	if config.barSpeed then
+		config.barSpeed *= profile.speedMult or 1
+	end
+	if config.redWidth then
+		config.redWidth *= profile.zoneMult or 1
+	end
+	if config.greenWidth then
+		config.greenWidth *= profile.zoneMult or 1
+	end
+	if profile.count then
+		config.count = profile.count
+	end
+	if config.lifetime then
+		config.lifetime *= profile.lifetimeMult or 1
+	end
+
+	local cast = {
+		id = nextCastId,
+		seed = seed,
+		config = config,
+		startedAt = os.clock(),
+		landing = landing,
+		rodData = rodData,
+		-- The flag that makes this a boss cast everywhere downstream.
+		boss = kind,
+	}
+	cast.mg = mod.begin(cast) or {}
+	casts[player] = cast
+
+	Remotes.CastAccepted:FireClient(player, cast.id, cast.seed, cast.config, cast.landing)
+end
+
 -- A timed input event from the client (a reel click, a burst tap, a snap
 -- button press). The generic guards live here; the per-minigame scoring is
 -- the module's onEvent, which also owns event ordering. `extra` is an optional
@@ -657,6 +805,7 @@ function FishingService.init()
 	Remotes.RequestCast.OnServerEvent:Connect(onRequestCast)
 	Remotes.SubmitReelClick.OnServerEvent:Connect(onSubmit)
 	Remotes.AbandonCast.OnServerEvent:Connect(onAbandonCast)
+	Remotes.BossCast.OnServerEvent:Connect(onBossCast)
 	-- Bloodbait's chain lives past the cast that started it; the Killed event
 	-- is what carries it forward.
 	CreatureService.Killed.Event:Connect(onCreatureKilled)

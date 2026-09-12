@@ -130,6 +130,41 @@ Ocean.INTERIOR_WATER_NAMES = {
 	Wreckwater_Bay = true,
 }
 
+-- ------------------------------------------------------------ arena waters
+
+-- The same idea one ring out: the water baked into a boss ARENA's mesh, which
+-- wears the palette of the island that OWNS the lair (user, 2026-09-12: "for
+-- all of the boss arenas, make it so that the water is the same colour... as
+-- the island that it corresponds to"). BossArenaService.placeAuthored dresses
+-- these from `Islands.items[arena.islandId].water` and overrides the
+-- generated MeshColors row for them, exactly as WorldService does for the
+-- interior pools above.
+--
+-- COLOUR AND REFLECTANCE ONLY - no caustics layers, deliberately.
+-- OceanController adopts (and scrolls, and tides) only parts named in
+-- INTERIOR_WATER_NAMES or World.OCEAN_NAME, so a layer laid on one of these
+-- would sit dead still on water that rides no tide, which reads worse than no
+-- layer at all.
+--
+-- Deliberately ABSENT, and each for the same reason - they are not water:
+--   WrackArena_DecoShallows  - drowned WET SAND (arena_gen WK_WET).
+--   PyreliskArena_LakeFloor  - basalt under the lava (and `_Lava` is lava;
+--                              the volcano's own Volcano_Lava is excluded
+--                              from the interior list above for that reason).
+--   RimefangArena_ThinIce    - ice you stand on; `_Leads` are the open leads
+--                              cut through the floe, and those are the water.
+--   GnashrootArena_DecoShallows - wet mud at the mere's edge.
+Ocean.ARENA_WATER_NAMES = {
+	GnashrootArena_DecoMere = true,
+	RimefangArena_Leads = true,
+	-- The trench's pit water, and the ONE part in this table whose colour gets
+	-- LIGHTER: MeshColors has it at (6,11,22) and the gloom island's own
+	-- palette is (10,22,38). The island's palette is the target the user
+	-- named, so it wins here too; the pit stays near-black and opaque
+	-- (arena_gen: "Opaque: you cannot see what is under it").
+	NoctyssArena_DecoPitWater = true,
+}
+
 -- Texture layers on the water. One on purpose: two layers sliding against
 -- each other read as "too many overlapping animations" (user, 2026-08-22).
 -- The tile's lines are white; `color` tints them down to a pale blue so they

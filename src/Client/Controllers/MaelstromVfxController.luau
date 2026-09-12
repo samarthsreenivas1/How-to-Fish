@@ -18,6 +18,7 @@
 -- no server, no remotes, no imports. On a server without the site (it builds
 -- at boot; this waits generously) the controller simply idles.
 
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
@@ -25,6 +26,8 @@ local Workspace = game:GetService("Workspace")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Ocean = require(Shared.Config.Ocean)
 local World = require(Shared.Config.World)
+
+local Sfx = require(script.Parent.Parent.Modules.Sfx)
 
 local MaelstromVfxController = {}
 
@@ -40,11 +43,24 @@ local INNER_TILE = 16
 local TEXTURE_COLOR = Color3.fromRGB(120, 150, 220) -- storm-lit caustics
 local INNER_COLOR = Color3.fromRGB(170, 195, 240)
 
+-- The drain's roar. The whirlpool is a fixed landmark, so its loop sits at one
+-- world point and never moves; all that changes is whether it exists at all.
+-- ONE handle for the controller: Sfx.loop returns a part that plays until
+-- stopLoop is called, and a handle overwritten before it is stopped is a sound
+-- nothing can reach again - it plays for the rest of the session. Hence the
+-- strict pairing below (start only when the handle is nil, clear it on stop),
+-- and the hysteresis: a single threshold makes the loop chatter on and off
+-- twice a second for anyone standing exactly on the rim of earshot.
+local WHIRL_EARSHOT = 220 -- studs; the Maelstrom is heard from well out at sea
+local WHIRL_EARSHOT_OUT = 260
+local WHIRL_INTERVAL = 0.5 -- seconds between distance checks
+
 local disc: BasePart? = nil
 local inner: BasePart? = nil
 local baseCFrame: CFrame? = nil
 local angle = 0
 local innerAngle = 0
+local roar: BasePart? = nil
 
 -- The caustics texture on a face of the spinning part, so the light lines
 -- turn with the water instead of sitting still under it.
@@ -103,6 +119,44 @@ local function step(dt: number)
 	end
 end
 
+-- Where the local player is, or the camera while they have no character
+-- (respawning, spectating) so the drain doesn't cut to silence on death.
+local function listenerAt(): Vector3?
+	local character = Players.LocalPlayer and Players.LocalPlayer.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if root and root:IsA("BasePart") then
+		return root.Position
+	end
+	local cam = Workspace.CurrentCamera
+	return cam and cam.CFrame.Position or nil
+end
+
+-- Start / stop the one whirlpool loop as the player comes and goes. `at` is
+-- the disc's centre, captured once - the disc spins in place and its position
+-- never changes, so there is nothing to move the loop to.
+local function roarLoop(at: Vector3)
+	while true do
+		task.wait(WHIRL_INTERVAL)
+		-- The site was torn out from under us (world rebuild): drop the loop
+		-- and end the thread rather than roaring at an empty patch of sea.
+		if not (disc and disc.Parent) then
+			Sfx.stopLoop(roar)
+			roar = nil
+			return
+		end
+		local ear = listenerAt()
+		local distance = if ear then (ear - at).Magnitude else math.huge
+		if distance <= WHIRL_EARSHOT then
+			if not roar then
+				roar = Sfx.loop("whirlpool", at)
+			end
+		elseif roar and distance > WHIRL_EARSHOT_OUT then
+			Sfx.stopLoop(roar)
+			roar = nil
+		end
+	end
+end
+
 function MaelstromVfxController.start()
 	task.spawn(function()
 		local world = Workspace:WaitForChild(World.FOLDER_NAME, 30)
@@ -120,6 +174,8 @@ function MaelstromVfxController.start()
 		end
 		build(water)
 		RunService.RenderStepped:Connect(step)
+		-- Its own thread, and the only owner of the whirlpool loop handle.
+		task.spawn(roarLoop, water.Position)
 	end)
 end
 

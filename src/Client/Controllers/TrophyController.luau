@@ -26,6 +26,7 @@ local Bosses = require(Shared.Data.Bosses)
 local Theme = require(script.Parent.Parent.UI.Theme)
 local Kit = require(script.Parent.Parent.UI.Kit)
 local CameraController = require(script.Parent.CameraController)
+local Sfx = require(script.Parent.Parent.Modules.Sfx)
 
 local player = Players.LocalPlayer
 
@@ -249,8 +250,15 @@ function TrophyController.setOpen(open: boolean)
 	if not modal then
 		return
 	end
+	-- Guarded on the CHANGE: the menu row closes every other menu before it
+	-- opens one, so setOpen(false) arrives on an already-closed hall all the
+	-- time and an unguarded cue would click on every menu switch.
+	local changed = modal.backdrop.Visible ~= open
 	modal.backdrop.Visible = open
 	CameraController.setCursorFree(open)
+	if changed then
+		Sfx.play(if open then "uiOpen" else "uiClose")
+	end
 	if open then
 		render()
 	end

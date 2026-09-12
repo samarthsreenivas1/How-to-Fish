@@ -60,6 +60,14 @@ local PlayerService = require(script.Parent.PlayerService)
 -- WorldService boots first.
 local WorldService = require(script.Parent.WorldService)
 
+-- Chunk-scope local budget: Luau allows 200 live locals per scope and this
+-- module blew past it. Constants live as fields of K (and ATTR_* strings as
+-- fields of ATTR) instead of chunk locals. DO NOT add new top-level `local`
+-- constants to this file - add a field here.
+local ATTR = {}
+local K = {}
+local Fn = {}
+
 -- ProgressionService boots AFTER this service (it listens to Killed), so the
 -- thief's pickpocketing requires it lazily, at call time, never at load.
 local function progression()
@@ -95,40 +103,220 @@ local folder: Folder
 -- listens yet.
 CreatureService.Killed = Instance.new("BindableEvent")
 
+-- Fired with (islandId, arenaKey) when a FIGHT CHANGES ROOMS: the Kraken's
+-- siphon swallowing the party into the gullet, and the collapse putting them
+-- back on the ship. BossService listens and moves the participants it is the
+-- only owner of.
+--
+-- A BINDABLE FOR THE SAME REASON `Killed` IS ONE, and it is the only shape that
+-- works: BossService requires this file, so this file cannot require it back,
+-- and the two halves of a relocation live one on each side of that line - the
+-- fight knows WHEN, and only BossService knows WHO. The alternative (this file
+-- keeping its own participant list) would be a second, staler copy of a truth
+-- that already exists, which is the shape of bug this file has been bitten by
+-- repeatedly.
+CreatureService.ArenaMove = Instance.new("BindableEvent")
+
 -- Attribute names on the creature Model. They replicate on their own, so a
 -- client health bar can just read / listen to these without a remote.
-local ATTR_ID = "CreatureId"
-local ATTR_HEALTH = "Health"
-local ATTR_MAX_HEALTH = "MaxHealth"
+ATTR.ID = "CreatureId"
+ATTR.HEALTH = "Health"
+ATTR.MAX_HEALTH = "MaxHealth"
 -- Motion cues for CreatureVfxController (client): in the air, came down,
 -- and a counter that ticks once per flop.
-local ATTR_THROWN = "Thrown"
-local ATTR_LANDED = "Landed"
-local ATTR_FLOPS = "Flops"
+ATTR.THROWN = "Thrown"
+ATTR.LANDED = "Landed"
+ATTR.FLOPS = "Flops"
 -- Enemy states for CreatureEventController (client). All booleans, each set
 -- only by the archetype that owns it; one-off moments go through the
 -- CreatureEvent remote instead (fireEvent below).
-local ATTR_DASHING = "Dashing" -- charger: mid-dash (streak)
-local ATTR_EXPOSED = "Exposed" -- charger: turning back, takes double damage (dazed tell)
-local ATTR_BURIED = "Buried" -- burrower: under the sand, hidden + untargetable
-local ATTR_OPEN = "Open" -- mimic: gaping, hittable
-local ATTR_CHARGING = "Charging" -- pulser: charging up, hitting it shocks you
+ATTR.DASHING = "Dashing" -- charger: mid-dash (streak)
+ATTR.EXPOSED = "Exposed" -- charger: turning back, takes double damage (dazed tell)
+ATTR.BURIED = "Buried" -- burrower: under the sand, hidden + untargetable
+ATTR.OPEN = "Open" -- mimic: gaping, hittable
+ATTR.CHARGING = "Charging" -- pulser: charging up, hitting it shocks you
 -- Island bosses (BossHudController reads the name; CreatureEventController
 -- the rage).
-local ATTR_STUNNED = "Stunned" -- dazed by a stun bait: flops helplessly, can't act
+ATTR.STUNNED = "Stunned" -- dazed by a stun bait: flops helplessly, can't act
 -- The one creature that is NOT an enemy: Split Roe's hatchling, which fights
 -- on the player's side. Clients key off this to draw it as an ally rather than
 -- a target (a green bar instead of the enemy red - CombatFeedbackController).
-local ATTR_FRIENDLY = "Friendly"
+ATTR.FRIENDLY = "Friendly"
 -- Volcano tells (docs/volcano-content-spec.md).
-local ATTR_CRACKED = "Cracked" -- crust: the slag is broken, the core is exposed
-local ATTR_DOWNED = "Downed" -- reborn: dead once, about to rise again
+ATTR.CRACKED = "Cracked" -- crust: the slag is broken, the core is exposed
+ATTR.DOWNED = "Downed" -- reborn: dead once, about to rise again
 
 -- The client-event helper (fireEvent) lives down with the archetypes, but the
 -- kill and damage paths above it need to fire tells too. Assigned there.
 local fireCreatureEvent
-local ATTR_BOSS_NAME = "BossName" -- the boss's title, set when it rises
-local ATTR_ENRAGED = "Enraged" -- below Bosses.enrageBelow health: faster, harder
+ATTR.BOSS_NAME = "BossName" -- the boss's title, set when it rises
+ATTR.ENRAGED = "Enraged" -- below Bosses.enrageBelow health: faster, harder
+-- HOW BIG THIS THING IS TO A SHOT, when the row says so (`row.shotRadius`).
+--
+-- IT IS PUBLISHED BECAUSE THE ANSWER IS NEEDED IN TWO PLACES AND WAS ONLY
+-- DERIVED IN EACH (user, 2026-09-08, live: "when i point my crosshair at
+-- something and shoot, it doesnt work... especially the little black thing
+-- that follows me around"). `raycastNearest` here captures within
+-- `max(1.4, boundingBox.Magnitude * 0.3)` of the ray, and RangedController's
+-- `aimDistance` independently computes the SAME formula off the same model to
+-- decide how far down the cursor ray the target is. Both were individually
+-- correct and the composition was not: for a small target on open sand the
+-- client's sweep misses, the depth falls through to the SAND BEHIND it, and
+-- because the shot is fired from the shooter's root rather than the camera,
+-- that wrong depth bends the direction by the rig's whole parallax - so the
+-- server then tests a ray that genuinely does not pass near the target. Two
+-- estimates, one of which silently decides the other's input.
+--
+-- So the size is authored once on the row and READ by both, instead of being
+-- guessed twice. Nil on every row that does not carry it, which is every row
+-- but Wrack's shootables, and the derived formula stands for all of them.
+ATTR.SHOT_RADIUS = "ShotRadius"
+-- THIS IS THE THING TO SHOOT, and the boss cannot be hurt while it stands
+-- (user, 2026-09-08, live: they did not clearly know the cannons were the
+-- targets). Stamped by Fn.spawnBossParts on every part of a `vulnerableWhen =
+-- "partsDown"` boss - Wrack's four cannons, the Kraken's eight arms - and true
+-- for the whole life of that part.
+--
+-- IT IS A CONTRACT, NOT A VISUAL. The server owns the claim ("the fight is
+-- gated on this object") and nothing here draws anything; a client lane can
+-- key an outline, a marker or an off-screen arrow off it, and the honest
+-- alternative - each renderer keeping its own list of which rows happen to be
+-- weakpoints - is the shape of bug this file has been bitten by repeatedly.
+ATTR.WEAKPOINT = "Weakpoint"
+-- ...and THIS one is winding up right now (Wrack's cannon overload picks one
+-- live battery and charges a mega-shot out of it; damaging that battery during
+-- the windup jams the shot). Set at the windup's latch, cleared when the move
+-- leaves. Same contract: the server says which, the client decides how loud.
+ATTR.WEAKPOINT_HOT = "WeakpointHot"
+-- ------------------------------------------------ Wrack's three moving pieces
+-- (2026-09-09). All three are ANIMATION CONTRACTS in the WEAKPOINT_HOT idiom:
+-- the server states what the piece is doing, held for as long as it is true, and
+-- the client decides how to draw it. A one-shot event cannot express any of the
+-- three, because a client that adopts the hull mid-move would see nothing at all
+-- and would draw a figurehead still docked while the server flew it at someone.
+--
+-- WHAT IS *NOT* HERE, AND WHY. The Lady's POSITION is not published. She is a
+-- creature model the server moves with PivotTo every frame, so her CFrame
+-- replicates natively - the same channel the powder keg has used since
+-- 2026-09-08 (see the `NO "decoy" SPAWN EVENT` note in the powderrun handler:
+-- the keg is drawn purely from replication and nothing sends it a move event).
+-- A per-frame attribute copy of a position the engine already replicates is a
+-- second, slower, lossier truth about the same thing, and the first time the two
+-- disagree the hitbox and the picture part company. So: her MODEL is where she
+-- is, and these attributes carry only what her model cannot say.
+ATTR.WRACK_DIVE = "WrackDive"
+-- On the FIGUREHEAD's own model. 0 while she is swinging out or re-arming
+-- between passes, `n` for the n-th damaging pass (1-based), nil once she has
+-- re-docked or been shot down. The heading of a pass is not published either:
+-- it is constant for the whole pass and readable from her own motion.
+ATTR.WRACK_BOOM = "WrackBoom"
+-- On the BOSS's model. The main boom's live world bearing in radians, in
+-- ProjectileService's convention (the one Fn.wrackAngle returns), written every
+-- frame it moves and set to nil the instant the boom is stowed OR its tackle is
+-- shot away. Nil therefore means "no boom out", which is the state the client
+-- has to be able to reach from a dropped tackle as well as from a finished
+-- sweep. It is the SAME number the damage sector is tested against, taken one
+-- line apart from the same clock (the anchorline's "ridden off the same
+-- kinematics" rule), so the drawn spar and the hitbox cannot drift.
+ATTR.WRACK_HATCHES = "WrackHatches"
+-- On the BOSS's model. A bitmask of which bilge hatches are open: bit (i-1) set
+-- means hatch `i` of the boss row's `hatches` list is open, in that list's
+-- authored order - the same "order is the authored one" convention `parts.mounts`
+-- lives under. Nil when every hatch is shut. ONE attribute rather than three
+-- booleans because the client would otherwise keep its own list of which hatch
+-- is which, which is the shape of bug this file has been bitten by repeatedly.
+
+-- ---------------------------------------------- Wrack's three acts (2026-09-09)
+ATTR.WRACK_ACT = "WrackAct"
+-- On the BOSS's model, 1 or 2 - which act of his own fight the ship is in. It is
+-- FIGHT STATE, not a pose, and that is why it is published rather than inferred:
+-- act one is four live cannons and an immune hull, act two is a hull that shoots
+-- for herself, and the two are told apart by an event (the fourth permanent
+-- kill) that leaves no other trace on the model. `partsAlive` is not a
+-- substitute - it is the same 0 during the act break and for the whole of act
+-- two.
+ATTR.WRACK_WRECK = "WrackWreck"
+-- On the BOSS's model. A LEVEL, 0 to 1, not a flag: how far through wrecking the
+-- ship is once her hull has reached zero. The client eases the list and the mast
+-- fall off it, so it has to ramp rather than flip - a boolean would give the
+-- rig one frame to play a sinking in.
+--
+-- It reaches 1 on the last frame the model exists. `kill()` destroys the model
+-- and THEN fires Killed, and BossService's handoff spawns the Admiral inside
+-- that handler, so the duelist's model appears in the same frame the ship's
+-- disappears: the rig hides the ship's copy of him on this model's own removal,
+-- which is a seam with no gap in it rather than a threshold to tune.
+ATTR.WRACK_RIPOSTE = "WrackRiposte"
+-- On the ADMIRAL's model (act three), 0, 1 or 2. THREE values, not two, and the
+-- third is the whole point: 1 is the stance being held, 2 is the counter
+-- actually going off, 0 is over. With only 1 and 0 the client cannot tell "he
+-- countered you" from "the window expired untouched" - the same 1 -> 0 edge for
+-- opposite outcomes - and those are the two halves of the move the player is
+-- being asked to read. Held at 2 for the counter's whole duration, so a client
+-- adopting mid-counter still gets it (level-triggered, like Exposed).
+
+-- ------------------------------------------- THE KRAKEN'S REPLICATION CONTRACT
+-- (2026-09-09, the rework). Everything KrakenBodyController needs that a model's
+-- own CFrame cannot say, in one place, in the WRACK_DIVE idiom: the server
+-- states what a piece is DOING and holds the statement for as long as it is
+-- true, and the client decides how to draw it. Not events, because a client that
+-- adopts a body mid-move must be able to reach the right pose from nothing.
+--
+-- ON EACH ARM'S MODEL (there are two, `kraken_arm` rows):
+--   ArmPhase   one of "Rest" | "Rear" | "Slam" | "SweepCock" | "Sweep" |
+--              "Wrapped" | "Down" | "Withdrawn". The limb's state machine.
+--   ArmPhaseAt the os.clock() the phase began. THE SMOOTHNESS CONTRACT: the
+--              client eases from this timestamp rather than snapping on the
+--              change signal, so a phase that arrives one frame late still
+--              plays from where it should have started. Nothing about this
+--              fight may ever be drawn by "the attribute changed, jump".
+--   ArmT       0..1 progress through the current phase, written every frame.
+--              Redundant with ArmPhaseAt on purpose: the server owns the
+--              curve for the phases whose timing is not linear (a slam
+--              accelerates into the deck), and a client easing on its own
+--              clock would draw the impact early or late.
+--   WrapIndex  1..4 while ArmPhase is "Wrapped": WHICH boarding gap, indexed
+--              into BossArenas.maelstrom.wraps in that table's authored order.
+--              nil otherwise.
+--   TargetX/TargetZ  world XZ the limb is reaching for - a slam's impact
+--              centre, a sweep's far end. nil when the phase has no target.
+--   WeakpointHot  true while this arm's knuckle is the glowing 3x hit (see
+--              ATTR.WEAKPOINT_HOT above, whose contract this reuses rather
+--              than forking). ATTR.WEAKPOINT is stamped once at plant, by the
+--              existing `vulnerableWhen = "partsDown"` rule.
+--   WeakpointPos  where the knuckle IS, in world space, while it is hot. The
+--              arm's own hitbox is the WHOLE limb; the knuckle is a point on
+--              it, and a client that guessed would draw the glow somewhere the
+--              server is not counting hits.
+ATTR.ARM_PHASE = "ArmPhase"
+ATTR.ARM_PHASE_AT = "ArmPhaseAt"
+ATTR.ARM_T = "ArmT"
+ATTR.WRAP_INDEX = "WrapIndex"
+ATTR.TARGET_X = "TargetX"
+ATTR.TARGET_Z = "TargetZ"
+ATTR.WEAKPOINT_POS = "WeakpointPos"
+-- ON THE BOSS'S OWN MODEL:
+--   PhaseIndex  1 (the waist), 2 (the full ship) or 3 (the gullet). The
+--               machine's state, and the one number that tells a renderer
+--               which of three fights it is drawing.
+--   SiphonOpen  true for the ~10s the head is slumped and its siphon is open -
+--               the only window its health bar can be touched. Beside
+--               ATTR.EXPOSED rather than instead of it: `Exposed` is the
+--               general "this boss is open" contract every body controller
+--               already reads, and this is the Kraken's own statement about
+--               WHICH door is open, which phase three turns into a room.
+--   FightCenter  where the fight IS, in world space. Written when the swallow
+--               moves it into the gullet 20,000 studs away and read by
+--               BossService's ride home and its abandon reaper - see
+--               `fightCenter` there for the two silent failures it removes.
+--               Level-triggered because a 2-second poll cannot be handed an
+--               event.
+--   Rise        the head's climb out of the sea, 0..1 - already published by
+--               `publishPose` for this pose and named here because the
+--               contract is one list or it is nothing.
+ATTR.PHASE_INDEX = "PhaseIndex"
+ATTR.SIPHON_OPEN = "SiphonOpen"
+ATTR.FIGHT_CENTER = "FightCenter"
 
 local function randomBetween(lo: number, hi: number): number
 	return lo + math.random() * (hi - lo)
@@ -149,7 +337,7 @@ end
 --
 -- Also returns half the shortest dimension: how far the centre sits above
 -- whatever the fish is lying on.
-local function flatOrientation(model: Model): (CFrame, number)
+function Fn.flatOrientation(model: Model): (CFrame, number)
 	local _, size = model:GetBoundingBox()
 
 	local comps = {
@@ -181,7 +369,7 @@ end
 -- no bounding-box axis guessing (which is what lays fish on their side).
 -- Returns identity plus the clearance from the pivot (PrimaryPart) down to the
 -- lowest point, so the feet rest on the ground rather than the model's centre.
-local function uprightOrientation(model: Model): (CFrame, number)
+function Fn.uprightOrientation(model: Model): (CFrame, number)
 	local pivotY = if model.PrimaryPart then model.PrimaryPart.Position.Y else model:GetPivot().Position.Y
 	local boxCFrame, boxSize = model:GetBoundingBox()
 	local bottomY = boxCFrame.Position.Y - boxSize.Y / 2
@@ -285,7 +473,7 @@ local function launch(creature, target: Vector3, now: number)
 	creature.state = "flying"
 	creature.launchedAt = now
 	creature.flight = flight
-	model:SetAttribute(ATTR_THROWN, true)
+	model:SetAttribute(ATTR.THROWN, true)
 	return true
 end
 
@@ -302,6 +490,17 @@ local function groundParams(): RaycastParams
 		if player.Character then
 			table.insert(ignore, player.Character)
 		end
+	end
+	-- ...AND WRACK'S SHOT OCCLUDER, which is a solid collidable hull sitting in
+	-- the World folder (Fn.wrackOccluder). This filter Excludes only creatures
+	-- and characters and RespectCanCollide is true, so without this line every
+	-- prop the fight places near the ship - the boarding party marching at her
+	-- side, the anchor chain's landing, a powder keg spawned behind a player
+	-- standing close - would ground on the DECK, twelve studs up, instead of on
+	-- the sand. It is invisible geometry: nothing about the resulting scene
+	-- would look like a raycast filter, it would look like the props are wrong.
+	if K.WRACK_OCCLUDER then
+		table.insert(ignore, K.WRACK_OCCLUDER)
 	end
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
@@ -370,8 +569,8 @@ local function settle(creature, now: number)
 	creature.settleStart = now
 	creature.nextFlopAt = now + C.THROW_SETTLE_TIME + randomBetween(C.FLOP_REST_MIN, C.FLOP_REST_MAX)
 
-	model:SetAttribute(ATTR_THROWN, false)
-	model:SetAttribute(ATTR_LANDED, true)
+	model:SetAttribute(ATTR.THROWN, false)
+	model:SetAttribute(ATTR.LANDED, true)
 end
 
 -- ============================================================ spawning
@@ -397,9 +596,9 @@ function CreatureService.spawn(row, position: Vector3, target: Vector3?, grade: 
 	-- box; upright bipeds (the drowned) stand as-built. See the two helpers.
 	local flat, halfThickness
 	if row.body.stance == "upright" then
-		flat, halfThickness = uprightOrientation(model)
+		flat, halfThickness = Fn.uprightOrientation(model)
 	else
-		flat, halfThickness = flatOrientation(model)
+		flat, halfThickness = Fn.flatOrientation(model)
 	end
 
 	grade = grade or "Neutral"
@@ -474,11 +673,17 @@ function CreatureService.spawn(row, position: Vector3, target: Vector3?, grade: 
 	creature.yaw0 = yawToward(target and (target - start))
 	model:PivotTo(restCFrame(creature))
 
-	model:SetAttribute(ATTR_ID, row.id)
-	model:SetAttribute(ATTR_MAX_HEALTH, maxHealth)
-	model:SetAttribute(ATTR_HEALTH, maxHealth)
+	model:SetAttribute(ATTR.ID, row.id)
+	model:SetAttribute(ATTR.MAX_HEALTH, maxHealth)
+	model:SetAttribute(ATTR.HEALTH, maxHealth)
+	-- Published so the CLIENT's aim depth uses the same capture this server's
+	-- shot select does. See ATTR.SHOT_RADIUS: two independent estimates of one
+	-- number, where the client's silently decides the server's input.
+	if row.shotRadius then
+		model:SetAttribute(ATTR.SHOT_RADIUS, row.shotRadius)
+	end
 	if creature.friendly then
-		model:SetAttribute(ATTR_FRIENDLY, true)
+		model:SetAttribute(ATTR.FRIENDLY, true)
 	end
 	model.Parent = folder
 
@@ -626,14 +831,14 @@ local rimefangBody
 -- it is a flat allowance on top of the sampled girth, because the whale's own
 -- model is invisible and its bounding box is the authority stand-in, not the
 -- animal the client draws.
-local RF_SHOT_SLACK = 2.0
+K.RF_SHOT_SLACK = 2.0
 
 -- `from` is the ATTACKER'S position when the caller has one (a swinger's root,
 -- a shot's re-validated origin). It only matters for a window that is
 -- positional as well as timed - see the `markedDown` branch. Callers that
 -- cannot name a shooter (an urchin's blast, an arc shell's re-check at its
 -- landing point) pass nothing and get the old, purely-declarative answer.
-local function unaimable(creature, from: Vector3?): boolean
+function Fn.unaimable(creature, from: Vector3?): boolean
 	if creature.untargetable then
 		return true
 	end
@@ -649,7 +854,7 @@ local function unaimable(creature, from: Vector3?): boolean
 		-- ...and while it IS open she is only hittable from inside the mouth,
 		-- which `damage()` enforces off the same `noctyssInReach`. Target
 		-- selection has to agree, or the gap re-opens one level up: her body is
-		-- the biggest capture cylinder on the arena (14.4 hitRadius plus a
+		-- the biggest capture cylinder on the arena (12 hitRadius plus a
 		-- ~14-stud shot radius), so a DMR from the shelf SELECTS her, `damage`
 		-- returns nil, and the shot does nothing at all - a broken weapon, not
 		-- a miss. Worse, a shot aimed at a lantern stalk across the pit is
@@ -668,7 +873,7 @@ end
 -- `opts.skipRangedOnly` drops rows flagged `rangedOnly` (the Kraken's head):
 -- the MELEE target pick passes it, so swings reach past the head to the
 -- tentacles. Ranged fire does not pass it, and no longer needs to - the head
--- is skipped by `unaimable` above while it is immune, which is the general
+-- is skipped by `Fn.unaimable` above while it is immune, which is the general
 -- form of the same idea and applies to every consumer rather than just this
 -- one. (`rangedOnly` remains a separate statement: it says which WEAPONS a
 -- row answers to at all, not whether it can be hurt right now.)
@@ -693,7 +898,7 @@ function CreatureService.inRange(
 		-- untargetable by the player, not invulnerable.
 		if
 			not creature.dead
-			and not unaimable(creature, from)
+			and not Fn.unaimable(creature, from)
 			and not creature.friendly
 			and not (skipRangedOnly and creature.row.rangedOnly)
 		then
@@ -736,6 +941,271 @@ function CreatureService.inRange(
 	return result
 end
 
+-- ------------------------------------------------- pyrelisk: the seams
+--
+-- THE FIGHT'S CORE LOOP, and the server half of PyreliskBodyController's
+-- ATTRIBUTE CONTRACT. The colossus is `untargetable` for everything except an
+-- earned window, which is true of its BODY and stays true: `Fn.unaimable` keeps
+-- it out of every target pick, and nothing below changes that. What this adds
+-- is a second, much smaller door - the glowing seams that split open when it
+-- commits to a move. A shot that passes close to an OPEN seam, from the side
+-- the seam faces, lands: it hurts the boss and fills that flank's meter, and
+-- a full meter drops that arm and buys a window.
+--
+-- The four published attributes and their exact names live in publishPose;
+-- everything here writes the pose state they are read off.
+--
+-- Which meter a seam answers to. DERIVED off PyreliskPath.SEAMS rather than
+-- written out, exactly as the client derives it, so the two cannot drift:
+-- `authored(x, y, z)` lands at (x, z, -y), so the authored +y flank (side +1,
+-- PyreliskPath's `flank`) arrives with a NEGATIVE body-local Z. Index 1 is the
+-- CHEST - authored y = 0, so it falls out with side 0 and belongs to NEITHER
+-- mask. That is the whole of "never set bit 0 in phase 2": there is no phase
+-- check anywhere below, the chest is simply in no flank's mask and no attack
+-- can open it.
+K.PY_SEAM_FLANK = table.create(#PyreliskPath.SEAMS, 0)
+K.PY_SEAM_MASK_L, K.PY_SEAM_MASK_R = 0, 0
+for index, seam in PyreliskPath.SEAMS do
+	local side = if math.abs(seam.at.Z) < 1e-3 then 0 elseif seam.at.Z < 0 then 1 else -1
+	K.PY_SEAM_FLANK[index] = side
+	local bit = bit32.lshift(1, index - 1)
+	if side > 0 then
+		K.PY_SEAM_MASK_L += bit
+	elseif side < 0 then
+		K.PY_SEAM_MASK_R += bit
+	end
+end
+
+-- HOW CLOSE A SHOT HAS TO PASS. The drawn seam module is ~8.5 studs across,
+-- and this is a 270-stud body shot from up to 200 studs away, so the capture
+-- has to be a little more generous than the art or the move becomes pixel
+-- hunting at the ranges the arena is played at. Measured against the fight:
+-- the chest-height flank seam (SEAMS[2]) sits 163 studs from a shooter on the
+-- ring at r160, so 9 studs is an aim tolerance of atan(9/163) = 3.2 degrees -
+-- about three times a 1-degree tremor (2.85 studs of miss at that range) and
+-- nowhere near the tens of degrees the body's own 96-stud capture sphere
+-- would give if the boss were simply made aimable.
+K.PY_SEAM_HIT_RADIUS = 9.0
+
+-- WHAT A FLANK COSTS. Damage dealt through that flank's seams, summed; at
+-- this much that flank SCARS - permanently - and the pair of them is the whole
+-- of act 1.
+--
+-- 5400, UP FROM 2600, and the reason is that the meter stopped being a
+-- repeatable window and became a third of the fight. Two flanks at 5400 is
+-- 10,800 of seam damage for act 1 entire; at the old 2600 the act was over in
+-- under thirty seconds of real uptime. Against the two guns of the band -
+-- Cinderlock (110 dps sustained), Vulkan (200 dps) - that is 49s and 27s of
+-- unbroken fire per flank, and since seams are only open while the boss is
+-- ATTACKING, real uptime is nearer half that.
+--
+-- UNMEASURED (design flag F-2). Band-4 sustained party DPS has never been
+-- measured, so this number and the arms' 7,000 are one guess made twice.
+-- Re-derive them together off a real playtest or not at all.
+--
+-- AND IT IS DIVIDED BY THE PARTY (F-1), which it was not before - see
+-- `Fn.pyreliskSeamCredit`. `Fn.spawnBossParts` has always passed the party's
+-- `healthMult` down to every part, on the argument that a wall which stayed
+-- solo-sized "would make the fight EASIER per head as the party grew, which is
+-- backwards". The seam meters are the biggest wall in the redesigned fight and
+-- were the one thing in it not scaled at all.
+K.PY_SEAM_METER_HP = 5400.0
+
+-- A shot is resolved (and its seam hit judged) at FIRE time, but it lands
+-- after its flight - CombatService queues it, capped at Tuning.Ranged
+-- MAX_FLIGHT = 2.0s. A seam claim has to outlive that flight and nothing
+-- longer, so it expires here.
+K.PY_SEAM_CLAIM_LIFE = 2.5
+-- One volley of the widest shotgun, and a hard ceiling so a stray claim can
+-- never grow into a leak.
+K.PY_SEAM_CLAIM_CAP = 16
+
+-- The pose state of a live pyrelisk, or nil for every other creature in the
+-- game - which is what keeps every function below inert everywhere else.
+function Fn.pyreliskSeamState(creature)
+	if creature.poseKind ~= "pyrelisk" then
+		return nil
+	end
+	local state = creature.pose
+	if type(state) ~= "table" or state.center == nil then
+		return nil
+	end
+	return state
+end
+
+-- WHICH SEAMS A MOVE OPENS, off the row's `seams`:
+--   "arm"  - the committing flank strains: the seams of `state.aimSide`.
+--   "both" - whole-body strain (a breath, a shrug of the whole summit).
+--   "none" / absent - nothing opens.
+function Fn.pyreliskSeamMask(state, seams: string?): number
+	if seams == "both" then
+		return K.PY_SEAM_MASK_L + K.PY_SEAM_MASK_R
+	elseif seams == "arm" then
+		return if (state.aimSide or 1) < 0 then K.PY_SEAM_MASK_R else K.PY_SEAM_MASK_L
+	end
+	return 0
+end
+
+-- Called from every windup frame (the aim is already latched by then, so
+-- `aimSide` is the flank that is about to commit) and idempotent.
+function Fn.pyreliskOpenSeams(state, p)
+	state.seamsOpen = Fn.pyreliskSeamMask(state, p.seams)
+end
+
+-- THE MASK IS CLEARED ON EVERY EXIT, and there are five of them. Four are
+-- swept by one line in `Fn.placeColossus` - "no attack running means no seam
+-- open" - because every one of them ends with `creature.attack` nil:
+--
+--   exit                                  where the mask is cleared
+--   ------------------------------------  ----------------------------------
+--   recover runs to its end               here, from Fn.pyreliskRecoverPose /
+--                                         handfall's own recover
+--   Fn.openStagger (nils creature.attack)    Fn.placeColossus sweep, same frame
+--   Fn.endBossAttack (nils creature.attack)  Fn.placeColossus sweep, same frame
+--   Fn.updateBossAttack's missing-handler    Fn.endBossAttack, then the sweep
+--   beginBossCollapse (nils it too)       Fn.placeColossus sweep, same frame
+--
+-- A mask left set after its attack is the lie this system cannot tell, so the
+-- sweep is unconditional rather than a set of matched pairs.
+function Fn.pyreliskCloseSeams(state)
+	state.seamsOpen = 0
+end
+
+-- Does this ray reach an OPEN seam? Returns that seam's flank (+1 / -1) and
+-- the distance along the ray, or nil.
+--
+-- The normal test is what makes this a seam and not a sphere: a shot whose
+-- direction AGREES with the seam's outward normal is travelling into the
+-- shell from behind it - it came through the far side of a mountain - and
+-- must not land. Only a shot arriving from the side the seam faces counts.
+function Fn.pyreliskSeamOnRay(creature, origin: Vector3, dir: Vector3, maxT: number): (number?, number?)
+	local state = Fn.pyreliskSeamState(creature)
+	if state == nil then
+		return nil, nil
+	end
+	local open = state.seamsOpen or 0
+	if open == 0 then
+		return nil, nil
+	end
+	local bestSide, bestT = nil, maxT
+	for index, side in K.PY_SEAM_FLANK do
+		if side ~= 0 and bit32.band(open, bit32.lshift(1, index - 1)) ~= 0 then
+			local at, out = PyreliskPath.seamPoint(state, index)
+			if out:Dot(dir) < 0 then
+				local to = at - origin
+				local t = to:Dot(dir)
+				if t > 0 and t < bestT and (to - dir * t).Magnitude <= K.PY_SEAM_HIT_RADIUS then
+					bestSide, bestT = side, t
+				end
+			end
+		end
+	end
+	if bestSide == nil then
+		return nil, nil
+	end
+	return bestSide, bestT
+end
+
+-- THE NARROW BYPASS, and it is narrow on purpose. `raycastNearest` is the only
+-- thing that can judge a seam hit - it is the only place a ray exists - but
+-- `damage()` is where the untargetable gate lives, and the two are separated
+-- by the shot's flight. So a seam hit that WINS its ray leaves a claim on the
+-- creature, and `damage()` spends exactly one claim to get through the gate.
+-- Claims expire (K.PY_SEAM_CLAIM_LIFE), are capped (K.PY_SEAM_CLAIM_CAP), and are
+-- spent one per hit, so nothing can farm a single seam shot into free damage.
+function Fn.pyreliskSeamArm(creature, side: number, now: number)
+	local claims = creature.seamClaims
+	if claims == nil then
+		claims = {}
+		creature.seamClaims = claims
+	end
+	if #claims >= K.PY_SEAM_CLAIM_CAP then
+		table.remove(claims, 1)
+	end
+	table.insert(claims, { side = side, expires = now + K.PY_SEAM_CLAIM_LIFE })
+end
+
+-- Spend the oldest live claim, dropping any that have expired. Returns the
+-- flank that shot lands on, or nil - and nil is what every other creature in
+-- the game returns, always.
+function Fn.pyreliskSeamClaim(creature): number?
+	local claims = creature.seamClaims
+	if claims == nil or #claims == 0 then
+		return nil
+	end
+	local now = os.clock()
+	while #claims > 0 do
+		local claim = table.remove(claims, 1)
+		if now <= claim.expires then
+			return claim.side
+		end
+	end
+	return nil
+end
+
+-- THE PARTY'S SCALING FACTOR, read off the record rather than recomputed.
+-- `BossService.raise` fixes it at summon (a mid-fight rescale is the
+-- leave-and-shrink exploit) and rides it in on `extra.healthMult`, which
+-- `spawn` already reads; `Fn.spawnBossParts` reads the same field for the
+-- parts ring. Nothing else may work out how big the party is, because a second
+-- answer to that question is a second answer.
+--
+-- Generic, and deliberately not pyrelisk-named: the seam meters are its first
+-- caller, not its only possible one.
+function Fn.partyMult(creature): number
+	local extra = creature.extra
+	local mult = extra and extra.healthMult
+	if type(mult) ~= "number" or mult <= 0 then
+		return 1
+	end
+	return mult
+end
+
+-- Put `fraction` of one flank's meter in, and SCAR that flank if it fills.
+--
+-- THE ONE PLACE THE SCAR MASK IS EVER SET. It has two callers with nothing in
+-- common - a seam hit (damage, divided by the meter's HP and the party) and
+-- the monolith bait (a flat fraction off `handfall.seamCredit`) - and a second
+-- copy of the full-meter branch beside either of them would be the scar mask
+-- written in two places, to be got wrong separately. The mask is the client's
+-- contract and is monotonic for the life of the fight; a lane that sets it
+-- somewhere else is the bug this function exists to make impossible.
+--
+-- `creature.seamBreakSide` is the debt, spent on the boss's own tick, because
+-- `Fn.openStagger` lives with the fight's window machinery and a damage call
+-- has no business opening a window from inside CombatService's shot queue.
+function Fn.pyreliskMeterFill(creature, state, side: number, fraction: number)
+	if fraction <= 0 then
+		return
+	end
+	local key = if side < 0 then "seamMeterR" else "seamMeterL"
+	local meter = (state[key] or 0) + fraction
+	if meter < 1 then
+		state[key] = meter
+		return
+	end
+	state[key] = 0
+	state.seamsBroken = bit32.bor(state.seamsBroken or 0, if side < 0 then K.PY_SEAM_MASK_R else K.PY_SEAM_MASK_L)
+	creature.seamBreakSide = side
+end
+
+-- Fill a flank's meter with what the hit actually dealt, DIVIDED BY THE PARTY.
+--
+-- The divisor is the gap this closes (design flag F-1): every other wall in
+-- this fight - the arms, and the parts ring generally - has carried
+-- `extra.healthMult` since `Fn.spawnBossParts` was written, and the seam
+-- meters, which are the largest wall of the four acts, carried nothing. A
+-- four-stack filled a flank in a quarter of the time a solo player did, so act
+-- 1 got SHORTER as the party got bigger, which is the exact backwards the
+-- parts ring's own comment warns about.
+function Fn.pyreliskSeamCredit(creature, side: number, amount: number)
+	local state = Fn.pyreliskSeamState(creature)
+	if state == nil or amount <= 0 then
+		return
+	end
+	Fn.pyreliskMeterFill(creature, state, side, amount / (K.PY_SEAM_METER_HP * Fn.partyMult(creature)))
+end
+
 -- The first live creature along a ray, nearest first - the creature half of a
 -- ranged shot (CombatService's hitscan). The parts are CanQuery = false, so a
 -- real raycast can't see them; this is the "proximity, not raycast" philosophy
@@ -749,11 +1219,26 @@ function CreatureService.raycastNearest(origin: Vector3, direction: Vector3, max
 	end
 	local dir = direction.Unit
 	local best, bestT = nil, maxDistance
+	local seamCreature, seamSide = nil, nil
 	for _, creature in creatures do
+		-- THE SEAM DOOR, and it is OUTSIDE the `Fn.unaimable` gate on purpose.
+		-- The colossus's body stays exactly as unshootable as it was - this
+		-- does not widen a capture sphere or clear a flag - but a ray that
+		-- passes through one of its open seams, from the side that seam
+		-- faces, selects it. Inert for every creature that is not a pyrelisk
+		-- with seams open right now: `Fn.pyreliskSeamOnRay` returns on its
+		-- poseKind check before it touches geometry.
+		if not creature.dead and not creature.friendly then
+			local side, seamT = Fn.pyreliskSeamOnRay(creature, origin, dir, bestT)
+			if side then
+				best, bestT = creature, seamT
+				seamCreature, seamSide = creature, side
+			end
+		end
 		-- `origin` is the shooter's own position, not the camera's: CombatService
 		-- takes it from the client but ShotAim.originOk refuses any origin more
 		-- than ORIGIN_SLACK (6) studs off the firer's root.
-		if not creature.dead and not unaimable(creature, origin) and not creature.friendly then
+		if not creature.dead and not Fn.unaimable(creature, origin) and not creature.friendly then
 			-- ONE BOSS IS A LINE, NOT A POINT. Rimefang's body is 56 studs of
 			-- whale behind its pivot, so the sphere below could only ever
 			-- capture a shot aimed at the head. Each spine sample is its own
@@ -765,7 +1250,7 @@ function CreatureService.raycastNearest(origin: Vector3, direction: Vector3, max
 				for _, node in body do
 					local to = node.pos - origin
 					local t = to:Dot(dir)
-					if t > 0 and t < bestT and (to - dir * t).Magnitude <= node.radius + RF_SHOT_SLACK then
+					if t > 0 and t < bestT and (to - dir * t).Magnitude <= node.radius + K.RF_SHOT_SLACK then
 						best, bestT = creature, t
 					end
 				end
@@ -791,7 +1276,7 @@ function CreatureService.raycastNearest(origin: Vector3, direction: Vector3, max
 				-- moat, which is the one thing the arena's geometry exists to forbid.
 				--
 				-- `hitHeight` is opt-in and nil on every creature that exists today
-				-- (only the colossus branch of updateBoss sets it), so this whole
+				-- (only the colossus branch of Fn.updateBoss sets it), so this whole
 				-- block is skipped and every other creature's capture is the same
 				-- sphere, from the same pivot, to the same stud, as before.
 				local axis = creature.hitHeight
@@ -817,6 +1302,18 @@ function CreatureService.raycastNearest(origin: Vector3, direction: Vector3, max
 				if t > 0 and t < bestT then
 					local radius = creature.shotRadius
 					if not radius then
+						-- THE ROW'S OWN ANSWER FIRST, if it has one. A row that
+						-- carries `shotRadius` is one whose size the derived
+						-- formula below gets wrong for the fight it is in -
+						-- Wrack's shootable props, which are small, low, and in
+						-- two cases MOVING while you shoot at them. Authored
+						-- rather than derived because the client's aim depth has
+						-- to agree with this number, and it cannot agree with a
+						-- formula it re-runs on its own copy of the model (see
+						-- ATTR.SHOT_RADIUS).
+						radius = creature.row.shotRadius
+					end
+					if not radius then
 						-- Half the bounding sphere reads generous on purpose - a
 						-- shot that visibly clips a fin should land. Cached: the
 						-- model's size doesn't change (the bloater's swell is the
@@ -824,8 +1321,8 @@ function CreatureService.raycastNearest(origin: Vector3, direction: Vector3, max
 						-- correct anyway).
 						local _, size = creature.model:GetBoundingBox()
 						radius = math.max(1.4, size.Magnitude * 0.3)
-						creature.shotRadius = radius
 					end
+					creature.shotRadius = radius
 					local perpendicular = (to - dir * t).Magnitude
 					if perpendicular <= radius + (creature.hitRadius or 0) then
 						best, bestT = creature, t
@@ -833,6 +1330,12 @@ function CreatureService.raycastNearest(origin: Vector3, direction: Vector3, max
 				end
 			end
 		end
+	end
+	-- ...and the claim is left only if the seam actually WON the ray. A nearer
+	-- creature between the shooter and the boss takes the shot, and then no
+	-- claim is owed: leaving one would let an unrelated hit later spend it.
+	if seamCreature ~= nil and best == seamCreature then
+		Fn.pyreliskSeamArm(seamCreature, seamSide, os.clock())
 	end
 	return best, bestT
 end
@@ -882,6 +1385,33 @@ function removeOwnedParts(creature)
 	if clearPyreliskMount then
 		clearPyreliskMount(creature)
 	end
+	-- ...AND IT TAKES THE HOLE IN THE MOUNTAIN WITH IT.
+	--
+	-- `PyreliskCaldera` lives on the ARENA model, so it survives every creature
+	-- in the fight. Left at 1 it is not a stale attribute, it is a LOADED TRAP
+	-- for the next party: the volcano's next summon opens on an act-1 fight
+	-- whose moat is a 120-stud hole with no lake floor under it, and the first
+	-- person to walk out onto the rim path falls through the middle of their
+	-- own arena with no boss at the bottom of it.
+	--
+	-- HERE because this is the ONE choke point both endings pass through:
+	-- `kill()` calls it, and so does `CreatureService.despawn`, which is what
+	-- BossService's abandon reaper uses. One line, both paths, no third place
+	-- to forget.
+	--
+	-- ON THE HEART AND NOT ON THE COLOSSUS, and that is the whole subtlety. The
+	-- colossus's death is a HANDOFF, not an ending - it dies at the bottom of
+	-- its collapse having just opened the caldera on purpose, and resetting
+	-- here would slam the hole shut in the same breath that opened it, which is
+	-- the one bug this rule could plausibly introduce. The colossus abandoned
+	-- mid-fight never opened it at all (it only opens during the death fall),
+	-- so there is nothing for its teardown to close. The heart is the last
+	-- creature in the chain either way: it dies (victory) or it is reaped
+	-- (abandoned), and both come through here.
+	if creature.row and creature.row.boss == K.PY_HEART_BOSS then
+		local heart = Bosses.items[K.PY_HEART_BOSS]
+		Fn.pyreliskCloseCaldera(heart and heart.islandId)
+	end
 	if creature.partsAlive == nil then
 		return
 	end
@@ -924,6 +1454,15 @@ local function kill(creature, killer: Player?)
 	creature.dead = true
 	byModel[creature.model] = nil
 
+	-- RIMEFANG'S SHATTERED SHEET is the one hazard in the project that
+	-- outlives the attack that made it: the four thin-ice pools carry a
+	-- fight-long duration (K.RF_SHEET_LIFE), so nothing else would ever
+	-- expire them. The fight is over - drop them where the body drops.
+	-- Guarded on the row, so no other boss's pools change behaviour.
+	if creature.row.boss == K.RIMEFANG_BOSS then
+		creature.pools = nil
+	end
+
 	-- Noctyss is damageable ONLY inside the maw window (vulnerableWhen =
 	-- "markedDown"), so every death of hers happens with the jaw's invisible
 	-- floor live. Destroying the model does not reach it: the floor is
@@ -948,7 +1487,7 @@ local function kill(creature, killer: Player?)
 
 	-- A boss part (a Kraken tentacle): its death counts the ring down, and
 	-- the last one opens the head's exposure window (damage() refuses the
-	-- head while partsAlive > 0; updateBoss owns the regrow clock).
+	-- head while partsAlive > 0; Fn.updateBoss owns the regrow clock).
 	local owner = creature.partOf
 	if owner and not owner.dead and owner.partsAlive then
 		owner.partsAlive = math.max(0, owner.partsAlive - 1)
@@ -957,7 +1496,7 @@ local function kill(creature, killer: Player?)
 		-- step - brings the maw up; breaking any other one flares white and
 		-- the trench takes a swing at whoever shot it. Recorded here rather
 		-- than acted on, so kill() stays free of the fight's machinery;
-		-- updateBoss answers both on the next frame.
+		-- Fn.updateBoss answers both on the next frame.
 		if owner.choir then
 			-- A kill sets this socket's bit; a withdrawal never does.
 			if creature.socketIndex then
@@ -991,9 +1530,9 @@ local function kill(creature, killer: Player?)
 			-- controller reads to open a hull's shell plates and KEEP them
 			-- open. It is the same attribute the stagger path already writes,
 			-- so a renderer needs one rule for both ways a boss opens up.
-			owner.model:SetAttribute(ATTR_EXPOSED, true)
+			owner.model:SetAttribute(ATTR.EXPOSED, true)
 			fireCreatureEvent("exposed", owner.pos, {
-				name = owner.model:GetAttribute(ATTR_BOSS_NAME),
+				name = owner.model:GetAttribute(ATTR.BOSS_NAME),
 			})
 		end
 	end
@@ -1106,7 +1645,7 @@ local beginBossCollapse
 --
 -- `vulnerableWhen = "markedDown"` was the ONLY gate on hurting Noctyss, and it
 -- is a pure time gate: while the maw is up she could be burned from anywhere
--- on the shelf. Her hitRadius is 6 x the row's 2.4 scale = 14.4, and
+-- on the shelf. Her hitRadius is 6 x the row's 2.0 scale = 12, and
 -- `raycastNearest` adds a ~14-stud shot radius off the model's bounding
 -- sphere - a ~28-stud capture cylinder standing on the arena's centre, which
 -- a 200-stud DMR clips from any bearing on the floor. So "climb into her
@@ -1119,23 +1658,23 @@ local beginBossCollapse
 -- all", with no symptom but a fight that never ends; and being knocked off
 -- the tongue for half a second should not cancel the party's damage. The
 -- radius covers the whole walkable floor with slack - the tongue slab's far
--- corners measure 31.9 studs from the gullet at full gape - so the test
+-- corners measure 25.1 studs from the gullet at full gape - so the test
 -- degrades into "be at her mouth" rather than into a locked door. `insideMouth`
 -- is still honoured first, so standing on the floor ALWAYS counts even if the
 -- gullet offset later moves.
 --
 -- Clamping `hitRadius` for the window was the other option and is wrong: melee
 -- reach is measured off that same number from the model's PIVOT, which is the
--- skull's origin ~30 studs up, so shrinking it makes the mouth unmeleeable
+-- skull's origin ~20 studs up, so shrinking it makes the mouth unmeleeable
 -- from inside the mouth.
-local NOCTYSS_GULLET_REACH = 34.0
--- Assigns the local forward-declared up by `unaimable`, which needs this exact
+K.NOCTYSS_GULLET_REACH = 26.7
+-- Assigns the local forward-declared up by `Fn.unaimable`, which needs this exact
 -- ruling to keep target selection and `damage()` from drifting apart.
 function noctyssInReach(state, position: Vector3): boolean
 	if NoctyssPath.insideMouth(state, position) then
 		return true
 	end
-	return (position - NoctyssPath.gulletPosition(state)).Magnitude <= NOCTYSS_GULLET_REACH
+	return (position - NoctyssPath.gulletPosition(state)).Magnitude <= K.NOCTYSS_GULLET_REACH
 end
 
 -- Applies `amount` damage (server only). Returns the health left, or nil if
@@ -1151,7 +1690,7 @@ function CreatureService.damage(creature, amount: number, attacker: Player?, opt
 	if type(creature) ~= "table" or creature.dead or amount ~= amount then
 		return nil
 	end
-	-- Every reason a thing cannot be hit, in one place - see `unaimable`. All
+	-- Every reason a thing cannot be hit, in one place - see `Fn.unaimable`. All
 	-- three were spelled out here and ONLY here, which is precisely why the two
 	-- functions that pick targets never learned the last two of them. Brine
 	-- Rot's `ignoreUntargetable` burns through all three: the poison is already
@@ -1182,7 +1721,22 @@ function CreatureService.damage(creature, amount: number, attacker: Player?, opt
 			end
 		end
 	end
-	if unaimable(creature) and not (opts and opts.ignoreUntargetable) then
+	-- THE SEAM DOOR'S OTHER HALF. `raycastNearest` has already judged the
+	-- geometry - this ray passed inside K.PY_SEAM_HIT_RADIUS of an OPEN seam,
+	-- from the side it faces, and won its ray - and left a claim saying so.
+	-- Spending one here is what lets that shot through a gate the body is
+	-- still behind, and it is the ONLY thing that does: the flag, `Fn.unaimable`
+	-- and every other consumer of both are untouched.
+	--
+	-- Asked before `ignoreUntargetable` rather than after, so a poison tick
+	-- (which is already exempt) can never eat a claim a real shot is owed.
+	-- Returns nil for every creature in the game that is not a pyrelisk with
+	-- a live claim on it.
+	local seamSide = nil
+	if not (opts and opts.ignoreUntargetable) then
+		seamSide = Fn.pyreliskSeamClaim(creature)
+	end
+	if seamSide == nil and Fn.unaimable(creature) and not (opts and opts.ignoreUntargetable) then
 		return nil
 	end
 	amount = math.max(0, amount)
@@ -1198,7 +1752,7 @@ function CreatureService.damage(creature, amount: number, attacker: Player?, opt
 	-- SCALED HERE RATHER THAN FLAGGED, and that is the point of doing it in
 	-- `damage()`. The alternative - leaving the boss `untargetable` outside
 	-- windows and special-casing the flag - would change what `untargetable`
-	-- MEANS for its other consumers, all of which were checked: `unaimable`
+	-- MEANS for its other consumers, all of which were checked: `Fn.unaimable`
 	-- (and through it `inRange` and `raycastNearest`), CombatService's
 	-- re-validation of a shot in flight, and the `ignoreUntargetable` escape
 	-- Brine Rot uses. A chip boss simply never sets the flag outside its rise
@@ -1225,6 +1779,23 @@ function CreatureService.damage(creature, amount: number, attacker: Player?, opt
 		creature.participants[attacker] = true
 	end
 
+	-- THE SHATTER'S WINDOW OF NOTHING. Rimefang's phase-two opener is the
+	-- one beat in the fight the party cannot trade with, and the whale is
+	-- immune for its windup and its strike (K.ATTACK_HANDLERS.shatter sets
+	-- the deadline; the row guard means every other creature in the game
+	-- reads a nil field and falls straight through).
+	--
+	-- IT RETURNS THE HEALTH, NOT NIL. `damage()` returning nil means 'that
+	-- shot did not connect at all', which is the immune-boss-body bug the
+	-- Kraken's head note is about: the swing eats its cooldown and the
+	-- player sees a broken weapon rather than a blocked hit. This is a hit
+	-- that dealt nothing, and the credit and despawn bookkeeping above has
+	-- already run, so a party that keeps swinging through the opener keeps
+	-- its participation.
+	if creature.rfInvulnUntil and creature.row.boss == K.RIMEFANG_BOSS and os.clock() < creature.rfInvulnUntil then
+		return creature.health
+	end
+
 	-- Slagheart Golem: armoured in cooled slag. Nearly everything bounces off
 	-- until enough hits crack it, and then its core is exposed for a few
 	-- seconds and takes MORE than normal. Applied here rather than in
@@ -1241,7 +1812,7 @@ function CreatureService.damage(creature, amount: number, attacker: Player?, opt
 			if creature.crustHits >= C.CRUST_HITS then
 				creature.crustHits = 0
 				creature.crustOpenUntil = os.clock() + C.CRUST_WINDOW
-				creature.model:SetAttribute(ATTR_CRACKED, true)
+				creature.model:SetAttribute(ATTR.CRACKED, true)
 				fireCreatureEvent("crustCrack", creature.pos, {})
 			end
 		end
@@ -1254,8 +1825,34 @@ function CreatureService.damage(creature, amount: number, attacker: Player?, opt
 		amount = gimmick.onDamage(creature, amount, os.clock()) or amount
 	end
 
+	-- A seam hit fills the flank it went through, with what the blow actually
+	-- dealt after every multiplier above - so a perk, a trinket or an armour
+	-- set makes the window come sooner, exactly as it makes the boss die
+	-- sooner. Credited before the health line so a killing blow still counts
+	-- toward a meter nobody will ever see, rather than being a special case.
+	if seamSide ~= nil then
+		Fn.pyreliskSeamCredit(creature, seamSide, amount)
+	end
+
 	creature.health = math.max(0, creature.health - amount)
-	creature.model:SetAttribute(ATTR_HEALTH, creature.health)
+	creature.model:SetAttribute(ATTR.HEALTH, creature.health)
+
+	-- THE RIPOSTE. Act three's signature, and the one move in the whole fight
+	-- whose answer is to stop shooting: while the Admiral holds guard, the first
+	-- hit he takes is answered.
+	--
+	-- IT LIVES HERE, NOT IN `hitModifiers`, and the distinction is real rather
+	-- than tidiness. `hitModifiers` answers "how much does this hit do", is
+	-- first-match, and is consulted for things that are not hits at all; a
+	-- counter is a CONSEQUENCE of a hit landing, so it belongs after the health
+	-- has actually moved - which also means it cannot shadow a branch above it
+	-- or fire on a hit that was refused.
+	--
+	-- Guarded on a field only the duel ever sets, so this is one nil test for
+	-- every other creature in the game.
+	if creature.riposteUntil and os.clock() < creature.riposteUntil and not creature.dead then
+		Fn.wrackRiposte(creature, os.clock())
+	end
 
 	-- Ashfeather Phoenix: its first death isn't one. It goes down untouchable
 	-- for a moment, then rises at a fraction of its health and has to be killed
@@ -1266,7 +1863,7 @@ function CreatureService.damage(creature, amount: number, attacker: Player?, opt
 		creature.untargetable = true
 		creature.knockVel = nil
 		creature.downUntil = os.clock() + C.REBORN_DOWN
-		creature.model:SetAttribute(ATTR_DOWNED, true)
+		creature.model:SetAttribute(ATTR.DOWNED, true)
 		fireCreatureEvent("rebornDown", creature.pos, {})
 		return creature.health
 	end
@@ -1305,6 +1902,27 @@ function CreatureService.hitModifiers(creature, from: Vector3?): (number, number
 	if type(creature) ~= "table" or creature.dead then
 		return 1, 0
 	end
+	-- A HOT KNUCKLE, and it is the first question because it is the strongest
+	-- answer: a Kraken arm that is Down, Wrapped or planted has one glowing
+	-- joint on it and hitting the arm while that joint is lit is worth triple.
+	--
+	-- ASKED OF THE ARM, NOT OF A POSITION. `from` here is the ATTACKER's
+	-- position (CombatService's only caller passes the shooter's root), not
+	-- where the shot struck, so a positional test against `WeakpointPos` would
+	-- be measuring the wrong end of the line - it would reward standing near
+	-- the knuckle rather than hitting it. The knuckle's coordinates are
+	-- published for the RENDERER (ATTR.WEAKPOINT_POS, the contract at the top of
+	-- this file); what gates the multiplier is the window, which is the thing
+	-- the fight actually asks you to play around: the arm is only vulnerable
+	-- while it is committed to something, and being committed is what the phase
+	-- attributes say out loud.
+	--
+	-- Off the struct rather than off the model attribute, deliberately - one
+	-- writer (the fight tick) sets both together, and a GetAttribute in the
+	-- damage path of every hit in the game is a cost nothing else here pays.
+	if creature.krakenHot then
+		return K.KRAKEN.WEAK_MULT, 0
+	end
 	-- A kitted creature's expose window (a move's `expose` field): the same
 	-- double-damage punish the charger's turn has always had.
 	if creature.exposedUntil and os.clock() < creature.exposedUntil then
@@ -1317,6 +1935,26 @@ function CreatureService.hitModifiers(creature, from: Vector3?): (number, number
 		-- everything between the windows is noise. Every other boss keeps the
 		-- multiplier it has always had: no row but Brinejaw's carries `chip`.
 		return (if creature.chip then 1 else C.CHARGE_EXPOSED_DAMAGE_MULT), 0
+	end
+	-- A LIT EYE, on the Kraken's HEAD rather than on one of its arms - the only
+	-- window in the fight on the animal itself that is not the siphon window (the
+	-- new-attacks pass, 2026-09-12; the design is on
+	-- Bosses.items.kraken.attacks.eyelance, which now carries `glint`).
+	--
+	-- IT IS ITS OWN BRANCH RATHER THAN `exposedUntil` BECAUSE IT IS A DIFFERENT
+	-- NUMBER, and the distinction is the charger's ruling rather than a preference:
+	-- `exposedUntil` means a creature that OVER-COMMITTED and is standing there
+	-- helpless, which is worth 2x everywhere in this file. An eye that has just
+	-- fired a lance has not over-committed, it has merely finished, so the window is
+	-- priced at 1.5 - small enough to COMPETE with the arms for the party's
+	-- attention instead of replacing them, which is the choice the opening is for.
+	--
+	-- AFTER the expose branch, deliberately and for the one case where both are
+	-- open: the head is `Exposed` for the whole siphon window and for the siphon
+	-- overcharge's charge, and both of those are worth 2x. Checked in this order,
+	-- the bigger window simply wins and a glint can never make one of them cheaper.
+	if creature.krakenGlintUntil and os.clock() < creature.krakenGlintUntil then
+		return K.KRAKEN.GLINT_MULT, 0
 	end
 	-- Gimmicks that answer melee (spines' reflect, static's shock).
 	local gimmick = gimmickOf(creature)
@@ -1466,7 +2104,7 @@ local function flop(creature, now: number): (number, number, number)
 		creature.swishDir = if math.random() < 0.5 then 1 else -1
 		creature.pitchDir = if math.random() < 0.5 then 1 else -1
 		-- One tick per flop; clients splash / puff on each change.
-		creature.model:SetAttribute(ATTR_FLOPS, (creature.model:GetAttribute(ATTR_FLOPS) or 0) + 1)
+		creature.model:SetAttribute(ATTR.FLOPS, (creature.model:GetAttribute(ATTR.FLOPS) or 0) + 1)
 	end
 
 	return 0, idleYaw, 0
@@ -1499,7 +2137,7 @@ end
 
 -- The nearest living player's root to `pos`, with the player and the
 -- horizontal distance. Root nil if nobody's alive.
-local function nearestPlayerRoot(pos: Vector3): (BasePart?, Player?, number)
+function Fn.nearestPlayerRoot(pos: Vector3): (BasePart?, Player?, number)
 	local bestRoot, bestPlayer, bestDist = nil, nil, math.huge
 	for _, player in Players:GetPlayers() do
 		local character = player.Character
@@ -1530,7 +2168,7 @@ end
 -- and whether it was blocked. The cast reaches `halfThickness` past the step
 -- so the fish's edge - not just its centre - stops at the wall, and
 -- groundParams' RespectCanCollide means fronds/bushes/foam don't count.
-local function resolveHorizontal(creature, delta: Vector3): (Vector3, boolean)
+function Fn.resolveHorizontal(creature, delta: Vector3): (Vector3, boolean)
 	local flat = Vector3.new(delta.X, 0, delta.Z)
 	local dist = flat.Magnitude
 	if dist < 1e-4 then
@@ -1551,10 +2189,10 @@ end
 -- the height each step (the beach slopes; the dock is a step up) and stopping
 -- at solid obstacles. Shared by the default and rusher loops so a punch
 -- shoves either without tunnelling it through a rock or a tree.
-local function slideKnockback(creature, dt: number)
+function Fn.slideKnockback(creature, dt: number)
 	if creature.knockVel then
 		local delta = Vector3.new(creature.knockVel.X, 0, creature.knockVel.Z) * dt
-		local newPos, blocked = resolveHorizontal(creature, delta)
+		local newPos, blocked = Fn.resolveHorizontal(creature, delta)
 		creature.pos = newPos
 		if blocked then
 			creature.knockVel = nil -- ran into something solid; stop dead
@@ -1578,11 +2216,11 @@ end
 -- rises and falls under JUGGLE_GRAVITY, and tumbles as it goes. Archetype
 -- behaviour is suspended - a fish in the air can't rush or flop - which is
 -- what makes a combo feel like it's holding the creature helpless.
-local function updateAirborne(creature, dt: number)
+function Fn.updateAirborne(creature, dt: number)
 	-- Horizontal drift: same push the ground slide uses, just damped gently.
 	if creature.knockVel then
 		local delta = Vector3.new(creature.knockVel.X, 0, creature.knockVel.Z) * dt
-		local newPos, blocked = resolveHorizontal(creature, delta)
+		local newPos, blocked = Fn.resolveHorizontal(creature, delta)
 		creature.pos = newPos
 		if blocked then
 			creature.knockVel = nil
@@ -1612,7 +2250,7 @@ local function updateAirborne(creature, dt: number)
 		creature.spin = 0
 		creature.nextFlopAt = os.clock() + randomBetween(C.FLOP_REST_MIN, C.FLOP_REST_MAX)
 		if landHeight == 0 then
-			creature.model:SetAttribute(ATTR_FLOPS, (creature.model:GetAttribute(ATTR_FLOPS) or 0) + 1)
+			creature.model:SetAttribute(ATTR.FLOPS, (creature.model:GetAttribute(ATTR.FLOPS) or 0) + 1)
 		end
 		creature.model:PivotTo(poseCFrame(creature, landHeight, 0, 0))
 		return
@@ -1627,8 +2265,8 @@ end
 -- nearest player, then lunge and ram them for contact damage. Same CFrame
 -- Heartbeat as every other creature - no Humanoid, no pathfinding. Its own
 -- sub-state ("idle" / "windup" / "rush") lives on the struct, lazily seeded.
-local function updateRusher(creature, now: number, dt: number)
-	slideKnockback(creature, dt)
+function Fn.updateRusher(creature, now: number, dt: number)
+	Fn.slideKnockback(creature, dt)
 
 	if not creature.mode then
 		creature.mode = "idle"
@@ -1636,7 +2274,7 @@ local function updateRusher(creature, now: number, dt: number)
 		creature.lastHitAt = 0
 	end
 
-	local root, player, dist = nearestPlayerRoot(creature.pos)
+	local root, player, dist = Fn.nearestPlayerRoot(creature.pos)
 
 	if creature.mode == "idle" then
 		-- Flops in place (flop() ticks Flops so the splash/puff VFX + SFX fire),
@@ -1672,7 +2310,7 @@ local function updateRusher(creature, now: number, dt: number)
 		end
 	else -- rush
 		-- Lunge forward, but stop at solid scenery rather than charging through it.
-		local newPos, blocked = resolveHorizontal(creature, creature.rushDir * C.RUSH_SPEED * dt)
+		local newPos, blocked = Fn.resolveHorizontal(creature, creature.rushDir * C.RUSH_SPEED * dt)
 		creature.pos = newPos
 		creature.yaw0 = yawToward(creature.rushDir)
 		local u = math.clamp((now - creature.rushStart) / C.RUSH_DURATION, 0, 1)
@@ -1683,7 +2321,7 @@ local function updateRusher(creature, now: number, dt: number)
 			creature.lastHitAt = now
 			PlayerService.damage(player, math.random(C.CONTACT_DAMAGE_MIN, C.CONTACT_DAMAGE_MAX), creature)
 			-- Recoil back off the ram (also obstacle-checked) and flop again.
-			creature.pos = resolveHorizontal(creature, -creature.rushDir * C.CONTACT_BOUNCE)
+			creature.pos = Fn.resolveHorizontal(creature, -creature.rushDir * C.CONTACT_BOUNCE)
 			creature.mode = "idle"
 			creature.modeUntil = now + randomBetween(C.RUSH_REST_MIN, C.RUSH_REST_MAX)
 		elseif blocked or now >= creature.modeUntil then
@@ -1699,16 +2337,16 @@ end
 -- just slow and relentless. Reuses the rusher's contact damage + recoil and
 -- the shared obstacle-clamped movement. Upright creatures never flop; their
 -- `flat` is identity so poseCFrame keeps them standing.
-local function updateShambler(creature, now: number, dt: number)
-	slideKnockback(creature, dt)
+function Fn.updateShambler(creature, now: number, dt: number)
+	Fn.slideKnockback(creature, dt)
 	creature.lastHitAt = creature.lastHitAt or 0
 
-	local root, player, dist = nearestPlayerRoot(creature.pos)
+	local root, player, dist = Fn.nearestPlayerRoot(creature.pos)
 	if root and dist <= C.SHAMBLE_AGGRO then
 		-- Turn toward the player and step forward.
 		creature.yaw0 = approachAngle(creature.yaw0, yawToward(root.Position - creature.pos), C.SHAMBLE_TURN_RATE * dt)
 		local forward = flatUnit(root.Position - creature.pos)
-		creature.pos = resolveHorizontal(creature, forward * C.SHAMBLE_SPEED * dt)
+		creature.pos = Fn.resolveHorizontal(creature, forward * C.SHAMBLE_SPEED * dt)
 
 		-- A trudging bob so the stand-and-slide reads as walking.
 		local bob = math.abs(math.sin(now * C.SHAMBLE_BOB_RATE)) * C.SHAMBLE_BOB
@@ -1717,7 +2355,7 @@ local function updateShambler(creature, now: number, dt: number)
 		if player and dist <= C.CONTACT_RADIUS and now - creature.lastHitAt >= C.CONTACT_COOLDOWN then
 			creature.lastHitAt = now
 			PlayerService.damage(player, math.random(C.CONTACT_DAMAGE_MIN, C.CONTACT_DAMAGE_MAX), creature)
-			creature.pos = resolveHorizontal(creature, -forward * C.CONTACT_BOUNCE)
+			creature.pos = Fn.resolveHorizontal(creature, -forward * C.CONTACT_BOUNCE)
 		end
 	else
 		-- Nobody in range: stand and sway a little.
@@ -1729,9 +2367,9 @@ end
 -- ============================================================ enemy archetypes (2026-08-22)
 -- Eight more state machines in the same shape as the rusher: sub-state on
 -- the struct (`mode` / `modeUntil` / `modeStart`, lazily seeded), every move
--- through resolveHorizontal, one PivotTo per frame, contact damage through
+-- through Fn.resolveHorizontal, one PivotTo per frame, contact damage through
 -- PlayerService.damage. Each is written to tolerate being interrupted by a
--- juggle (updateAirborne pre-empts them): timers are absolute, so the next
+-- juggle (Fn.updateAirborne pre-empts them): timers are absolute, so the next
 -- grounded frame just sees "expired" and moves on. Knobs: Tuning.Creature.
 
 -- A one-off moment for the clients to draw (CreatureEventController).
@@ -1783,7 +2421,7 @@ end
 
 -- The rusher's contact test, shared: a hit lands if the player is within
 -- `radius` and this creature's CONTACT_COOLDOWN has passed. Returns true if it did.
-local function tryContact(
+function Fn.tryContact(
 	creature,
 	player: Player?,
 	dist: number,
@@ -1812,23 +2450,23 @@ end
 
 -- Hidden and unhittable (the burrower under the sand) or back again. The
 -- client hides the parts off the attribute; here it's just the flags.
-local function setBuried(creature, buried: boolean)
+function Fn.setBuried(creature, buried: boolean)
 	creature.untargetable = buried
 	creature.knockVel = nil
-	creature.model:SetAttribute(ATTR_BURIED, buried)
+	creature.model:SetAttribute(ATTR.BURIED, buried)
 end
 
 -- ---------------------------------------------------------------- charger (Tideline Skipper)
 -- idle -> windup -> dash (straight past the player, one hit on the way
 -- through) -> turning (exposed: hits land double) -> idle.
-local function updateCharger(creature, now: number, dt: number)
-	slideKnockback(creature, dt)
+function Fn.updateCharger(creature, now: number, dt: number)
+	Fn.slideKnockback(creature, dt)
 	if not creature.mode then
 		setMode(creature, "idle", randomBetween(C.CHARGE_REST_MIN, C.CHARGE_REST_MAX), now)
 		creature.lastHitAt = 0
 	end
 	local model = creature.model
-	local root, player, dist = nearestPlayerRoot(creature.pos)
+	local root, player, dist = Fn.nearestPlayerRoot(creature.pos)
 
 	if creature.mode == "idle" then
 		local hop, yaw, pitch = flop(creature, now)
@@ -1856,11 +2494,11 @@ local function updateCharger(creature, now: number, dt: number)
 			creature.dashRemaining = math.min(dist + C.CHARGE_OVERSHOOT, C.CHARGE_MAX_DIST)
 			creature.dashHit = false
 			setMode(creature, "dash", C.CHARGE_MAX_DIST / C.CHARGE_SPEED + 0.5, now)
-			model:SetAttribute(ATTR_DASHING, true)
+			model:SetAttribute(ATTR.DASHING, true)
 		end
 	elseif creature.mode == "dash" then
 		local step = C.CHARGE_SPEED * dt
-		local newPos, blocked = resolveHorizontal(creature, creature.rushDir * step)
+		local newPos, blocked = Fn.resolveHorizontal(creature, creature.rushDir * step)
 		creature.pos = newPos
 		creature.dashRemaining -= step
 		creature.yaw0 = yawToward(creature.rushDir)
@@ -1873,8 +2511,8 @@ local function updateCharger(creature, now: number, dt: number)
 			PlayerService.damage(player, math.random(C.CHARGE_DAMAGE_MIN, C.CHARGE_DAMAGE_MAX), creature)
 		end
 		if blocked or creature.dashRemaining <= 0 or now >= creature.modeUntil then
-			model:SetAttribute(ATTR_DASHING, false)
-			model:SetAttribute(ATTR_EXPOSED, true)
+			model:SetAttribute(ATTR.DASHING, false)
+			model:SetAttribute(ATTR.EXPOSED, true)
 			setMode(creature, "turning", C.CHARGE_TURN_TIME, now)
 		end
 	else -- turning: skids around to face the player again, back exposed
@@ -1885,7 +2523,7 @@ local function updateCharger(creature, now: number, dt: number)
 		local wobble = math.sin((now - creature.modeStart) * 9) * math.rad(10)
 		model:PivotTo(poseCFrame(creature, 0, wobble, 0))
 		if now >= creature.modeUntil then
-			model:SetAttribute(ATTR_EXPOSED, false)
+			model:SetAttribute(ATTR.EXPOSED, false)
 			setMode(creature, "idle", randomBetween(C.CHARGE_REST_MIN, C.CHARGE_REST_MAX), now)
 		end
 	end
@@ -1895,22 +2533,22 @@ end
 -- Keeps SPIT_MIN..MAX_RANGE from the player, rears up, spits. The glob is a
 -- timer on the struct: it lands at the player's position AT LAUNCH after
 -- SPIT_FLIGHT seconds (the dodge window) - the clients draw the arc from the
--- "spit" event, the server only decides the landing. landSpit runs from
+-- "spit" event, the server only decides the landing. Fn.landSpit runs from
 -- update() regardless of what the cod is doing by then.
-local function landSpit(creature)
+function Fn.landSpit(creature)
 	local spit = creature.spit
 	creature.spit = nil
 	damagePlayersInRadius(spit.landing, C.SPIT_SPLASH_RADIUS, C.SPIT_DAMAGE_MIN, C.SPIT_DAMAGE_MAX, creature, 0.5)
 	fireEvent("splash", spit.landing, { radius = C.SPIT_SPLASH_RADIUS })
 end
 
-local function updateSpitter(creature, now: number, dt: number)
-	slideKnockback(creature, dt)
+function Fn.updateSpitter(creature, now: number, dt: number)
+	Fn.slideKnockback(creature, dt)
 	if not creature.mode then
 		setMode(creature, "idle", randomBetween(C.SPIT_INTERVAL_MIN, C.SPIT_INTERVAL_MAX), now)
 	end
 	local model = creature.model
-	local root, _, dist = nearestPlayerRoot(creature.pos)
+	local root, _, dist = Fn.nearestPlayerRoot(creature.pos)
 
 	if creature.mode == "windup" then
 		if root then
@@ -1942,7 +2580,7 @@ local function updateSpitter(creature, now: number, dt: number)
 			move = -away
 		end
 		if move then
-			creature.pos = resolveHorizontal(creature, move * C.SPIT_HOP_SPEED * dt)
+			creature.pos = Fn.resolveHorizontal(creature, move * C.SPIT_HOP_SPEED * dt)
 			hop = math.max(hop, 0.35 * math.abs(math.sin(now * 8)))
 		end
 		if now >= creature.modeUntil and not creature.spit then
@@ -2004,14 +2642,14 @@ explode = function(creature)
 	kill(creature, creature.lastAttacker)
 end
 
-local function updateBloater(creature, now: number, dt: number)
-	slideKnockback(creature, dt)
-	local root, _, dist = nearestPlayerRoot(creature.pos)
+function Fn.updateBloater(creature, now: number, dt: number)
+	Fn.slideKnockback(creature, dt)
+	local root, _, dist = Fn.nearestPlayerRoot(creature.pos)
 
 	local hop, yaw, pitch = flop(creature, now)
 	if root and dist <= C.BLOAT_AGGRO and dist > 2 then
 		creature.yaw0 = approachAngle(creature.yaw0, yawToward(root.Position - creature.pos), C.RUSH_TURN_RATE * dt)
-		creature.pos = resolveHorizontal(creature, flatUnit(root.Position - creature.pos) * C.BLOAT_ROLL_SPEED * dt)
+		creature.pos = Fn.resolveHorizontal(creature, flatUnit(root.Position - creature.pos) * C.BLOAT_ROLL_SPEED * dt)
 	end
 
 	-- A throb that quickens as the fuse runs down.
@@ -2026,16 +2664,16 @@ end
 -- ---------------------------------------------------------------- drifter (Moonbell Jelly)
 -- Hovers toward the player and stings on contact. Never flops - it floats
 -- (DRIFT_HOVER + a bob); hits send it up (see the LAUNCH / GRAVITY mults).
-local function updateDrifter(creature, now: number, dt: number)
-	slideKnockback(creature, dt)
-	local root, player, dist = nearestPlayerRoot(creature.pos)
+function Fn.updateDrifter(creature, now: number, dt: number)
+	Fn.slideKnockback(creature, dt)
+	local root, player, dist = Fn.nearestPlayerRoot(creature.pos)
 
 	if root and dist <= C.DRIFT_AGGRO then
 		creature.yaw0 = approachAngle(creature.yaw0, yawToward(root.Position - creature.pos), C.RUSH_TURN_RATE * dt)
 		if dist > C.DRIFT_CONTACT_RADIUS * 0.6 then
-			creature.pos = resolveHorizontal(creature, flatUnit(root.Position - creature.pos) * C.DRIFT_SPEED * dt)
+			creature.pos = Fn.resolveHorizontal(creature, flatUnit(root.Position - creature.pos) * C.DRIFT_SPEED * dt)
 		end
-		tryContact(creature, player, dist, C.DRIFT_CONTACT_RADIUS, C.DRIFT_DAMAGE_MIN, C.DRIFT_DAMAGE_MAX, now)
+		Fn.tryContact(creature, player, dist, C.DRIFT_CONTACT_RADIUS, C.DRIFT_DAMAGE_MIN, C.DRIFT_DAMAGE_MAX, now)
 	end
 
 	local bob = math.sin(now * C.DRIFT_BOB_RATE + creature.spawnedAt) * C.DRIFT_BOB
@@ -2045,15 +2683,15 @@ end
 -- ---------------------------------------------------------------- burrower (Sand Lurker)
 -- surfaced (hittable, flops) -> sinking -> buried (hidden, untargetable,
 -- tunnels at the player) -> emerging (bursts up and bites) -> surfaced.
-local function updateBurrower(creature, now: number, dt: number)
+function Fn.updateBurrower(creature, now: number, dt: number)
 	local model = creature.model
 	if not creature.mode then
 		setMode(creature, "surfaced", C.BURROW_SURFACE_TIME, now)
 	end
-	local root, _, dist = nearestPlayerRoot(creature.pos)
+	local root, _, dist = Fn.nearestPlayerRoot(creature.pos)
 
 	if creature.mode == "surfaced" then
-		slideKnockback(creature, dt)
+		Fn.slideKnockback(creature, dt)
 		local hop, yaw, pitch = flop(creature, now)
 		if root then
 			creature.yaw0 = approachAngle(creature.yaw0, yawToward(root.Position - creature.pos), C.RUSH_TURN_RATE * dt)
@@ -2061,7 +2699,7 @@ local function updateBurrower(creature, now: number, dt: number)
 		model:PivotTo(poseCFrame(creature, hop, yaw, pitch))
 		if now >= creature.modeUntil and root and dist <= C.BURROW_AGGRO then
 			setMode(creature, "sinking", C.BURROW_SINK_TIME, now)
-			setBuried(creature, true)
+			Fn.setBuried(creature, true)
 		end
 	elseif creature.mode == "sinking" then
 		local u = modeProgress(creature, now)
@@ -2074,12 +2712,12 @@ local function updateBurrower(creature, now: number, dt: number)
 		-- round the rocks, not through them.
 		if root then
 			creature.yaw0 = yawToward(root.Position - creature.pos)
-			creature.pos = resolveHorizontal(creature, flatUnit(root.Position - creature.pos) * C.BURROW_SPEED * dt)
+			creature.pos = Fn.resolveHorizontal(creature, flatUnit(root.Position - creature.pos) * C.BURROW_SPEED * dt)
 		end
 		model:PivotTo(poseCFrame(creature, -C.BURROW_DEPTH, 0, 0))
 		if root and dist <= C.BURROW_AMBUSH_RADIUS then
 			setMode(creature, "emerging", C.BURROW_EMERGE_TIME, now)
-			setBuried(creature, false)
+			Fn.setBuried(creature, false)
 			damagePlayersInRadius(
 				creature.pos,
 				C.BURROW_EMERGE_RADIUS,
@@ -2104,12 +2742,12 @@ end
 -- closed (untargetable, still) -> snapping (lid cracks open as the tell,
 -- then the bite) -> open (gaping, hittable) -> closed. The lid is the
 -- model's Fish_Fins part, hinged server-side about the back of the shell.
-local function updateMimic(creature, now: number, dt: number)
+function Fn.updateMimic(creature, now: number, dt: number)
 	local model = creature.model
 	if not creature.mode then
 		setMode(creature, "closed", C.MIMIC_CLOSED_MIN, now)
 		creature.untargetable = true
-		model:SetAttribute(ATTR_OPEN, false)
+		model:SetAttribute(ATTR.OPEN, false)
 		local body = model.PrimaryPart
 		local lid = model:FindFirstChild("Fish_Fins")
 		if body and lid and lid:IsA("BasePart") then
@@ -2117,7 +2755,7 @@ local function updateMimic(creature, now: number, dt: number)
 			creature.lidOffset = body.CFrame:ToObjectSpace(lid.CFrame)
 		end
 	end
-	local root, _, dist = nearestPlayerRoot(creature.pos)
+	local root, _, dist = Fn.nearestPlayerRoot(creature.pos)
 	local lidAngle = 0
 
 	if creature.mode == "closed" then
@@ -2144,10 +2782,10 @@ local function updateMimic(creature, now: number, dt: number)
 			fireEvent("snap", model:GetPivot().Position, {})
 			setMode(creature, "open", C.MIMIC_OPEN_TIME, now)
 			creature.untargetable = false
-			model:SetAttribute(ATTR_OPEN, true)
+			model:SetAttribute(ATTR.OPEN, true)
 		end
 	else -- open: hangs wide, then shuts quickly at the end
-		slideKnockback(creature, dt)
+		Fn.slideKnockback(creature, dt)
 		local u = modeProgress(creature, now)
 		lidAngle = C.MIMIC_LID_OPEN * (1 - u * u * u)
 		model:PivotTo(poseCFrame(creature, 0, 0, 0))
@@ -2155,7 +2793,7 @@ local function updateMimic(creature, now: number, dt: number)
 			setMode(creature, "closed", C.MIMIC_CLOSED_MIN, now)
 			creature.untargetable = true
 			creature.knockVel = nil
-			model:SetAttribute(ATTR_OPEN, false)
+			model:SetAttribute(ATTR.OPEN, false)
 		end
 	end
 
@@ -2177,7 +2815,7 @@ end
 -- ---------------------------------------------------------------- thief (Pickpocket Hermit)
 -- chase -> (contact: pickpocket) -> flee (zig-zag) -> chase. The loot rides
 -- the struct and comes back (with a bonus) through Killed's 4th value.
-local function stealCoins(creature, player: Player, now: number): number
+function Fn.stealCoins(creature, player: Player, now: number): number
 	local service = progression()
 	local coins = service.getState(player).coins
 	local stolen = math.clamp(math.floor(coins * C.THIEF_STEAL_FRACTION), C.THIEF_STEAL_MIN, C.THIEF_STEAL_MAX)
@@ -2193,14 +2831,14 @@ local function stealCoins(creature, player: Player, now: number): number
 	return stolen
 end
 
-local function updateThief(creature, now: number, dt: number)
-	slideKnockback(creature, dt)
+function Fn.updateThief(creature, now: number, dt: number)
+	Fn.slideKnockback(creature, dt)
 	if not creature.mode then
 		setMode(creature, "chase", 0, now)
 		creature.lastHitAt = 0
 	end
 	local model = creature.model
-	local root, player, dist = nearestPlayerRoot(creature.pos)
+	local root, player, dist = Fn.nearestPlayerRoot(creature.pos)
 	local hop = C.THIEF_HOP * math.abs(math.sin(now * C.THIEF_HOP_RATE))
 
 	if creature.mode == "flee" then
@@ -2209,7 +2847,7 @@ local function updateThief(creature, now: number, dt: number)
 			local zig = math.sin(now * C.THIEF_ZIGZAG_RATE) * C.THIEF_ZIGZAG
 			local dir = CFrame.Angles(0, zig, 0) * away
 			creature.yaw0 = yawToward(dir)
-			local newPos, blocked = resolveHorizontal(creature, dir * C.THIEF_FLEE_SPEED * dt)
+			local newPos, blocked = Fn.resolveHorizontal(creature, dir * C.THIEF_FLEE_SPEED * dt)
 			creature.pos = newPos
 			if blocked then
 				-- Cornered: turn and fight sooner.
@@ -2226,10 +2864,10 @@ local function updateThief(creature, now: number, dt: number)
 	-- chase
 	if root and dist <= C.THIEF_AGGRO then
 		creature.yaw0 = approachAngle(creature.yaw0, yawToward(root.Position - creature.pos), C.RUSH_TURN_RATE * dt)
-		creature.pos = resolveHorizontal(creature, flatUnit(root.Position - creature.pos) * C.THIEF_SPEED * dt)
+		creature.pos = Fn.resolveHorizontal(creature, flatUnit(root.Position - creature.pos) * C.THIEF_SPEED * dt)
 		model:PivotTo(poseCFrame(creature, hop, 0, 0))
 		if
-			tryContact(
+			Fn.tryContact(
 				creature,
 				player,
 				dist,
@@ -2239,11 +2877,12 @@ local function updateThief(creature, now: number, dt: number)
 				now
 			)
 		then
-			if stealCoins(creature, player, now) > 0 then
+			if Fn.stealCoins(creature, player, now) > 0 then
 				setMode(creature, "flee", C.THIEF_FLEE_TIME, now)
 			else
 				-- Nothing to take: bounce off like a rusher and try again.
-				creature.pos = resolveHorizontal(creature, -flatUnit(root.Position - creature.pos) * C.CONTACT_BOUNCE)
+				creature.pos =
+					Fn.resolveHorizontal(creature, -flatUnit(root.Position - creature.pos) * C.CONTACT_BOUNCE)
 			end
 		end
 	else
@@ -2255,13 +2894,13 @@ end
 -- ---------------------------------------------------------------- pulser (Voltray)
 -- Slides at the player; when close, charges up (Charging attribute - hit it
 -- now and the shock is yours, see hitModifiers) then discharges a ring.
-local function updatePulser(creature, now: number, dt: number)
-	slideKnockback(creature, dt)
+function Fn.updatePulser(creature, now: number, dt: number)
+	Fn.slideKnockback(creature, dt)
 	if not creature.mode then
 		setMode(creature, "idle", randomBetween(C.PULSE_IDLE_MIN, C.PULSE_IDLE_MAX), now)
 	end
 	local model = creature.model
-	local root, _, dist = nearestPlayerRoot(creature.pos)
+	local root, _, dist = Fn.nearestPlayerRoot(creature.pos)
 
 	if creature.mode == "charging" then
 		local u = modeProgress(creature, now)
@@ -2269,7 +2908,7 @@ local function updatePulser(creature, now: number, dt: number)
 		model:PivotTo(poseCFrame(creature, 0.1 * u, quiver, 0))
 		if now >= creature.modeUntil then
 			creature.charging = false
-			model:SetAttribute(ATTR_CHARGING, false)
+			model:SetAttribute(ATTR.CHARGING, false)
 			damagePlayersInRadius(creature.pos, C.PULSE_RADIUS, C.PULSE_DAMAGE_MIN, C.PULSE_DAMAGE_MAX, creature, 0.5)
 			fireEvent("pulse", model:GetPivot().Position, { radius = C.PULSE_RADIUS })
 			setMode(creature, "idle", randomBetween(C.PULSE_IDLE_MIN, C.PULSE_IDLE_MAX), now)
@@ -2281,12 +2920,12 @@ local function updatePulser(creature, now: number, dt: number)
 	if root and dist <= C.PULSE_AGGRO then
 		creature.yaw0 = approachAngle(creature.yaw0, yawToward(root.Position - creature.pos), C.RUSH_TURN_RATE * dt)
 		if dist > 5 then
-			creature.pos = resolveHorizontal(creature, flatUnit(root.Position - creature.pos) * C.PULSE_SPEED * dt)
+			creature.pos = Fn.resolveHorizontal(creature, flatUnit(root.Position - creature.pos) * C.PULSE_SPEED * dt)
 		end
 		if now >= creature.modeUntil and dist <= C.PULSE_TRIGGER_RANGE then
 			setMode(creature, "charging", C.PULSE_CHARGE, now)
 			creature.charging = true
-			model:SetAttribute(ATTR_CHARGING, true)
+			model:SetAttribute(ATTR.CHARGING, true)
 		end
 	end
 	model:PivotTo(poseCFrame(creature, hop, yaw, pitch))
@@ -2316,7 +2955,7 @@ end
 -- hip height ≈ 5 studs up), so the default AOE tolerance (6) is a coin
 -- toss; this covers the deck with room to spare and still ignores anyone
 -- up on the island.
-local BOSS_HEIGHT_TOLERANCE = 14
+K.BOSS_HEIGHT_TOLERANCE = 14
 
 -- Forward: defined with the boss arsenal below (dive's shatter, defined
 -- above it, spawns one too).
@@ -2324,12 +2963,12 @@ local spawnPool
 
 -- World-space unit vector the boss is facing (an upright creature's local
 -- +X, turned by yaw0).
-local function bossFacing(creature): Vector3
+function Fn.bossFacing(creature): Vector3
 	return Vector3.new(math.cos(creature.yaw0), 0, -math.sin(creature.yaw0))
 end
 
 -- A boss attack's damage range, enraged or not.
-local function bossRoll(creature, def, range: { number }): (number, number)
+function Fn.bossRoll(creature, def, range: { number }): (number, number)
 	local mult = if creature.enraged then def.enrageDamageMult else 1
 	return math.floor(range[1] * mult + 0.5), math.floor(range[2] * mult + 0.5)
 end
@@ -2338,7 +2977,7 @@ end
 -- lies inside the cone of half-angle `halfAngle` about `facing` - or, with
 -- `invert`, everyone in range who is NOT in that cone (the tail lash: all
 -- round except dead ahead).
-local function damagePlayersInCone(
+function Fn.damagePlayersInCone(
 	at: Vector3,
 	facing: Vector3,
 	radius: number,
@@ -2365,7 +3004,7 @@ local function damagePlayersInCone(
 end
 
 -- Keep the boss inside its arena circle (centre = where it rose).
-local function clampToArena(creature, def)
+function Fn.clampToArena(creature, def)
 	local anchor = creature.anchor
 	if not anchor then
 		return
@@ -2379,7 +3018,7 @@ end
 
 -- A random point on the ground within `spread` of the player's feet - where
 -- a glob or a spine comes down.
-local function scatterAround(root: BasePart, spread: number): Vector3
+function Fn.scatterAround(root: BasePart, spread: number): Vector3
 	local angle = math.random() * math.pi * 2
 	local r = math.sqrt(math.random()) * spread
 	local at = root.Position + Vector3.new(math.cos(angle) * r, 0, math.sin(angle) * r)
@@ -2388,7 +3027,15 @@ end
 
 -- Queue a projectile that lands on its own clock (the update loop lands it,
 -- even mid-attack) and tell the clients to draw it flying.
-local function throwGlob(
+--
+-- `origin` is where the throw comes FROM, and it is optional because for
+-- every ordinary creature the answer is the same: its mouth, a few studs
+-- ahead of the pivot. A posed boss is the exception - Pyrelisk's proxy pivot
+-- is a 23-stud lump standing at the feet of a 270-stud body, so the default
+-- launched its shoulder slabs out of the colossus's ANKLES while the hand
+-- that tore them off was 333 studs up and a hundred studs away. A caller
+-- that knows where its own hand is passes it; nothing else has to change.
+function Fn.throwGlob(
 	creature,
 	def,
 	p,
@@ -2397,10 +3044,11 @@ local function throwGlob(
 	now: number,
 	event: string,
 	drawKind: string,
-	extras: { [string]: any }?
+	extras: { [string]: any }?,
+	origin: Vector3?
 )
 	creature.globs = creature.globs or {}
-	local lo, hi = bossRoll(creature, def, p.damage)
+	local lo, hi = Fn.bossRoll(creature, def, p.damage)
 	local glob = {
 		landing = landing,
 		landAt = now + flight,
@@ -2415,13 +3063,13 @@ local function throwGlob(
 		end
 	end
 	table.insert(creature.globs, glob)
-	local mouth = creature.model:GetPivot().Position + bossFacing(creature) * 4 + Vector3.new(0, 2, 0)
+	local mouth = origin or (creature.model:GetPivot().Position + Fn.bossFacing(creature) * 4 + Vector3.new(0, 2, 0))
 	-- `boss = true` picks the boss's own sound set on the client.
 	fireEvent(drawKind, mouth, { to = landing, flight = flight, arc = 10, boss = true })
 end
 
-local function bossMouth(creature): Vector3
-	return creature.model:GetPivot().Position + bossFacing(creature) * 5
+function Fn.bossMouth(creature): Vector3
+	return creature.model:GetPivot().Position + Fn.bossFacing(creature) * 5
 end
 
 -- Attack handlers. Each may define:
@@ -2431,7 +3079,7 @@ end
 --   finish(creature, def, p, now)                    - once, as the strike ends
 --   recover(creature, def, p, u, sub)                - pose the recovery (u 0..1)
 -- A handler without a pose hook just sits at its submerged rest pose.
-local ATTACK_HANDLERS = {}
+K.ATTACK_HANDLERS = {}
 
 -- HOW FAR INTO THE STRIKE EACH OF THESE LANDS ITS BLOW.
 --
@@ -2450,13 +3098,13 @@ local ATTACK_HANDLERS = {}
 -- early, the four `lunge` rows 0.22 to 0.32s.
 --
 -- Brinejaw's tail slam had this exact defect and its own constant for it
--- (`SLAM_IMPACT`); it is not on this table only because its row opts out of
+-- (`K.SLAM_IMPACT`); it is not on this table only because its row opts out of
 -- the stock tell and fires its own marker. Any handler added here that
 -- damages mid-strike belongs on this table, or its tell will lie by
 -- construction.
-local PHANTOM_IMPACT = 0.80
-local LUNGE_IMPACT = 0.72
-local RINGPULSE_IMPACT = 0.95
+K.PHANTOM_IMPACT = 0.80
+K.LUNGE_IMPACT = 0.72
+K.RINGPULSE_IMPACT = 0.95
 -- Pyrelisk's three. `handfall` lands its blow at 0.95 of the strike, which is
 -- where the pose actually brings the fist down: it used to be 0.45, and the
 -- shockwave went off while the hand was still 235 studs in the air and 60
@@ -2470,9 +3118,9 @@ local RINGPULSE_IMPACT = 0.95
 -- strikes and thrown slabs, each carrying its own mark), so for them the
 -- stock tell really is finished when the windup is - it is the body
 -- committing, not the landing.
-local HANDFALL_IMPACT = 0.95
-local RIMSWEEP_IMPACT = 1.0
-local VENTBREATH_IMPACT = 1.0
+K.HANDFALL_IMPACT = 0.95
+K.RIMSWEEP_IMPACT = 1.0
+K.VENTBREATH_IMPACT = 1.0
 -- A CHARGE IS DANGEROUS FOR THE WHOLE OF ITS TRAVEL, and lands its shockwave
 -- (`slamRadius`, in `finish`) at the very end of it - the same shape as
 -- `rimsweep` and `ventbreath`, so it takes the same 1.0. Its absence was worth
@@ -2485,31 +3133,31 @@ local VENTBREATH_IMPACT = 1.0
 -- fixes those two, and only those two. Pyrelisk does NOT charge: its book is
 -- handfall, rimsweep, ventbreath, ashfall and shardhurl, three of which are
 -- already on this table and two of which deliberately are not.
-local CHARGE_IMPACT = 1.0
+K.CHARGE_IMPACT = 1.0
 -- A BITE CLOSES ITS JAWS PART-WAY IN, and `snap` always has: its handler
--- damages at `u >= SNAP_IMPACT` of the strike, and the constant below is the
+-- damages at `u >= K.SNAP_IMPACT` of the strike, and the constant below is the
 -- one the handler reads, so the countdown and the jaws cannot drift apart the
 -- way they could while that 0.4 was a literal in one place and absent in the
 -- other. Worth 0.14s on both rows that use it (a 0.35s strike): Gnashroot's
 -- bite and Rimefang's. The four kitted hostile rows on `snap` gain the same
 -- honesty, since a kit runs this very loop.
-local SNAP_IMPACT = 0.4
-local HANDLER_IMPACT = {
-	charge = CHARGE_IMPACT,
-	snap = SNAP_IMPACT,
-	phantom = PHANTOM_IMPACT,
-	lunge = LUNGE_IMPACT,
-	ringpulse = RINGPULSE_IMPACT,
-	handfall = HANDFALL_IMPACT,
-	rimsweep = RIMSWEEP_IMPACT,
-	ventbreath = VENTBREATH_IMPACT,
+K.SNAP_IMPACT = 0.4
+K.HANDLER_IMPACT = {
+	charge = K.CHARGE_IMPACT,
+	snap = K.SNAP_IMPACT,
+	phantom = K.PHANTOM_IMPACT,
+	lunge = K.LUNGE_IMPACT,
+	ringpulse = K.RINGPULSE_IMPACT,
+	handfall = K.HANDFALL_IMPACT,
+	rimsweep = K.RIMSWEEP_IMPACT,
+	ventbreath = K.VENTBREATH_IMPACT,
 }
 
 -- ------------------------------------------------------- conducting a ring
 --
 -- A boss with a `parts` ring (the Kraken) does not need a second system to
 -- animate its arms: every arm is already a creature with a rear-slam-recover
--- machine of its own (updateTentacle), and the client already draws the limb
+-- machine of its own (Fn.updateTentacle), and the client already draws the limb
 -- to wherever that creature is. So an arm attack is not new choreography - it
 -- is the boss ORDERING arms that were going to slam anyway to slam together,
 -- in an order it chooses, on its clock instead of theirs.
@@ -2518,10 +3166,10 @@ local HANDLER_IMPACT = {
 -- buy is the difference between eight things that happen to be near you and
 -- one animal using eight arms.
 
--- Its live arms in RING ORDER, on the socket index spawnBossParts already
+-- Its live arms in RING ORDER, on the socket index Fn.spawnBossParts already
 -- stamps. Dead arms leave gaps rather than renumbering, so a wave still
 -- travels the way the ring is actually laid out.
-local function livingArms(creature)
+function Fn.livingArms(creature)
 	local arms = {}
 	for _, part in creatures do
 		if part.partOf == creature and not part.dead and part.socketIndex then
@@ -2544,15 +3192,15 @@ end
 -- a telegraph that changes length while you are reading it is the one thing a
 -- telegraph must never do.
 --
--- AN ORDER IS ALSO A DEADLINE, which is what SLAM_ORDER_GRACE below is for.
--- `slamAt` has exactly one consumer - the idle branch of `updateTentacle` -
+-- AN ORDER IS ALSO A DEADLINE, which is what K.SLAM_ORDER_GRACE below is for.
+-- `slamAt` has exactly one consumer - the idle branch of `Fn.updateTentacle` -
 -- so an arm that is mid-windup or mid-recovery when the wave reaches its
 -- socket cannot act on the order at the moment it is given. It used to hold
 -- it instead and fire it the next time it fell idle: out of formation,
 -- seconds after the beat, ignoring its own cooldown - and the next command
 -- would queue behind that one, so a ring knocked off the beat once stayed
 -- off it for the rest of the fight.
-local function commandArm(part, at: number, windup: number, lift: number)
+function Fn.commandArm(part, at: number, windup: number, lift: number)
 	part.slamAt = at
 	part.slamOrderWindup = windup
 	part.slamOrderLift = lift
@@ -2562,30 +3210,30 @@ end
 -- this the order is dropped WITHOUT firing: a wave beat that has gone by is
 -- dropped honestly, because a late lone slam out of formation reads as the
 -- arena hitting you at random, and that is worse than a gap in the wave.
-local SLAM_ORDER_GRACE = 0.75
+K.SLAM_ORDER_GRACE = 0.75
 
 -- Jaw Snap: rears back, then lunges and bites everything in front.
-ATTACK_HANDLERS.snap = {
+K.ATTACK_HANDLERS.snap = {
 	windup = function(creature, _def, _p, u, sub)
 		creature.model:PivotTo(poseCFrame(creature, sub + 0.8 * u, 0, math.rad(24) * u))
 	end,
 	strike = function(creature, def, p, _now, dt, u, _root, sub)
-		creature.pos = resolveHorizontal(creature, bossFacing(creature) * (p.lunge / p.duration) * dt)
+		creature.pos = Fn.resolveHorizontal(creature, Fn.bossFacing(creature) * (p.lunge / p.duration) * dt)
 		-- CLAMP FIRST. The lunge is 13-14 studs and the clamp only ran in
 		-- `finish`, so a bite taken at the arena's rim dealt its cone damage
 		-- and drew its `bossSnap` ring from a position outside the arena that
 		-- the boss was yanked back from immediately afterwards.
-		clampToArena(creature, def)
+		Fn.clampToArena(creature, def)
 		creature.model:PivotTo(poseCFrame(creature, sub + 0.8 * (1 - u), 0, math.rad(-14)))
-		if not creature.attack.fired and u >= SNAP_IMPACT then
+		if not creature.attack.fired and u >= K.SNAP_IMPACT then
 			creature.attack.fired = true
-			local lo, hi = bossRoll(creature, def, p.damage)
-			damagePlayersInCone(creature.pos, bossFacing(creature), p.radius, p.cone, false, lo, hi, creature)
-			fireEvent("bossSnap", bossMouth(creature), { radius = p.radius })
+			local lo, hi = Fn.bossRoll(creature, def, p.damage)
+			Fn.damagePlayersInCone(creature.pos, Fn.bossFacing(creature), p.radius, p.cone, false, lo, hi, creature)
+			fireEvent("bossSnap", Fn.bossMouth(creature), { radius = p.radius })
 		end
 	end,
 	finish = function(creature, def)
-		clampToArena(creature, def)
+		Fn.clampToArena(creature, def)
 	end,
 }
 
@@ -2595,14 +3243,14 @@ ATTACK_HANDLERS.snap = {
 -- target through the windup, so a lone player was always in front and it
 -- never landed (playtest, 2026-08-22). The dodge is distance: back off
 -- past the ring the tell draws.
-ATTACK_HANDLERS.tail = {
+K.ATTACK_HANDLERS.tail = {
 	windup = function(creature, _def, _p, u, sub)
 		creature.model:PivotTo(poseCFrame(creature, sub, math.rad(-28) * u, 0))
 	end,
 	fire = function(creature, def, p)
-		local lo, hi = bossRoll(creature, def, p.damage)
-		damagePlayersInRadius(creature.pos, p.radius, lo, hi, creature, 0.7, BOSS_HEIGHT_TOLERANCE)
-		fireEvent("sweep", creature.pos, { radius = p.radius, facing = bossFacing(creature) })
+		local lo, hi = Fn.bossRoll(creature, def, p.damage)
+		damagePlayersInRadius(creature.pos, p.radius, lo, hi, creature, 0.7, K.BOSS_HEIGHT_TOLERANCE)
+		fireEvent("sweep", creature.pos, { radius = p.radius, facing = Fn.bossFacing(creature) })
 	end,
 	strike = function(creature, _def, _p, _now, _dt, u, _root, sub)
 		creature.model:PivotTo(poseCFrame(creature, sub, math.rad(-28) + math.rad(70) * math.sin(u * math.pi * 0.5), 0))
@@ -2610,7 +3258,7 @@ ATTACK_HANDLERS.tail = {
 }
 
 -- Brine Volley: a fan of globs that splash down around the player.
-ATTACK_HANDLERS.volley = {
+K.ATTACK_HANDLERS.volley = {
 	windup = function(creature, _def, _p, u, sub)
 		creature.model:PivotTo(poseCFrame(creature, sub + 0.4 * u, 0, math.rad(30) * u))
 	end,
@@ -2619,11 +3267,11 @@ ATTACK_HANDLERS.volley = {
 			return
 		end
 		for i = 1, p.count do
-			throwGlob(
+			Fn.throwGlob(
 				creature,
 				def,
 				p,
-				scatterAround(root, p.spread),
+				Fn.scatterAround(root, p.spread),
 				p.flight + (i - 1) * p.stagger,
 				now,
 				"splash",
@@ -2637,14 +3285,14 @@ ATTACK_HANDLERS.volley = {
 }
 
 -- Tidal Slam: rears right up, crashes down - a shockwave ring.
-ATTACK_HANDLERS.slam = {
+K.ATTACK_HANDLERS.slam = {
 	windup = function(creature, _def, _p, u, sub)
 		local e = smoothstep(u)
 		creature.model:PivotTo(poseCFrame(creature, sub + 3.0 * e, 0, math.rad(38) * e))
 	end,
 	fire = function(creature, def, p)
-		local lo, hi = bossRoll(creature, def, p.damage)
-		damagePlayersInRadius(creature.pos, p.radius, lo, hi, creature, 0.5, BOSS_HEIGHT_TOLERANCE)
+		local lo, hi = Fn.bossRoll(creature, def, p.damage)
+		damagePlayersInRadius(creature.pos, p.radius, lo, hi, creature, 0.5, K.BOSS_HEIGHT_TOLERANCE)
 		fireEvent("slam", creature.pos, { radius = p.radius })
 	end,
 	strike = function(creature, _def, _p, _now, _dt, _u, _root, sub)
@@ -2657,7 +3305,7 @@ ATTACK_HANDLERS.slam = {
 
 -- Lure Pull: the lure flares and drags every nearby player toward the maw
 -- (the clients apply the pull to their own character), then it snaps.
-ATTACK_HANDLERS.pull = {
+K.ATTACK_HANDLERS.pull = {
 	fire = function(creature, _def, p)
 		fireEvent("pull", creature.model:GetPivot().Position, {
 			radius = p.radius,
@@ -2671,17 +3319,17 @@ ATTACK_HANDLERS.pull = {
 }
 
 -- Spawn Brood: coughs up minions, thrown at the player.
-ATTACK_HANDLERS.brood = {
+K.ATTACK_HANDLERS.brood = {
 	windup = function(creature, _def, _p, u, sub)
 		creature.model:PivotTo(poseCFrame(creature, sub + 0.3 * u, 0, math.rad(-16) * u))
 	end,
 	fire = function(creature, _def, p, _now, root)
-		local from = bossMouth(creature)
+		local from = Fn.bossMouth(creature)
 		for i = 1, p.count do
 			local rowId = p.rows[((i - 1) % #p.rows) + 1]
 			local row = Creatures.items[rowId]
 			if row then
-				local target = if root then root.Position else from + bossFacing(creature) * 12
+				local target = if root then root.Position else from + Fn.bossFacing(creature) * 12
 				CreatureService.spawn(row, from, target, "Neutral")
 			end
 		end
@@ -2697,13 +3345,13 @@ ATTACK_HANDLERS.brood = {
 -- THEN with a ring tell on the surface - the window to get clear - before
 -- bursting up there. It may surface on the deck itself; the prowl's arena
 -- clamp walks it back into the water afterwards.
-ATTACK_HANDLERS.dive = {
+K.ATTACK_HANDLERS.dive = {
 	windup = function(creature, def, _p, u, sub)
 		local e = smoothstep(u)
 		creature.model:PivotTo(poseCFrame(creature, sub + (-def.riseDepth - sub) * e, 0, math.rad(-30) * e))
 	end,
 	fire = function(creature)
-		setBuried(creature, true)
+		Fn.setBuried(creature, true)
 		creature.attack.locked = false
 		fireEvent("bossDive", creature.pos, {})
 	end,
@@ -2732,9 +3380,9 @@ ATTACK_HANDLERS.dive = {
 		creature.model:PivotTo(poseCFrame(creature, -def.riseDepth, 0, 0))
 	end,
 	finish = function(creature, def, p, now)
-		setBuried(creature, false)
-		local lo, hi = bossRoll(creature, def, p.damage)
-		damagePlayersInRadius(creature.pos, p.radius, lo, hi, creature, 0.5, BOSS_HEIGHT_TOLERANCE)
+		Fn.setBuried(creature, false)
+		local lo, hi = Fn.bossRoll(creature, def, p.damage)
+		damagePlayersInRadius(creature.pos, p.radius, lo, hi, creature, 0.5, K.BOSS_HEIGHT_TOLERANCE)
 		fireEvent("emerge", creature.pos, { radius = p.radius, big = true })
 		-- Rimefang's undersheet hunt: the burst shatters the surface into a
 		-- lingering frost slick (p.shatter = spawnPool spec).
@@ -2751,7 +3399,7 @@ ATTACK_HANDLERS.dive = {
 }
 
 -- Spine Barrage: quivers, then rains spines down around the player.
-ATTACK_HANDLERS.spines = {
+K.ATTACK_HANDLERS.spines = {
 	windup = function(creature, _def, _p, u, sub)
 		creature.model:PivotTo(
 			poseCFrame(creature, sub + 0.2 * u, math.sin(u * 40) * math.rad(2) * u, math.rad(12) * u)
@@ -2762,11 +3410,11 @@ ATTACK_HANDLERS.spines = {
 			return
 		end
 		for i = 1, p.count do
-			throwGlob(
+			Fn.throwGlob(
 				creature,
 				def,
 				p,
-				scatterAround(root, p.spread),
+				Fn.scatterAround(root, p.spread),
 				p.flight + (i - 1) * (p.duration / p.count),
 				now,
 				"spineHit",
@@ -2789,7 +3437,7 @@ ATTACK_HANDLERS.spines = {
 -- die with the boss: `pools` (lingering ground hazards), `strikes`
 -- (telegraphed point/ring impacts), `lures` (proximity mines / decoys).
 
-local BOSS_POOL_TICK = 0.7
+K.BOSS_POOL_TICK = 0.7
 
 -- A lingering ground hazard: damages and/or slows anyone standing in it.
 -- spec = { radius, duration, min?, max? (damage per tick), slow? (walkspeed
@@ -2815,13 +3463,13 @@ end
 -- `tellAt`, the hit lands at `hitAt`. opts: shape ("disc" | "annulus"),
 -- inner/outer (annulus), snare (seconds), chain { leash, duration }, pool
 -- (spawnPool spec), hitEvent, damage { lo, hi } override.
-local function queueStrike(creature, def, p, at: Vector3, tellAt: number, hitAt: number, opts)
+function Fn.queueStrike(creature, def, p, at: Vector3, tellAt: number, hitAt: number, opts)
 	opts = opts or {}
 	creature.strikes = creature.strikes or {}
 	local lo, hi = nil, nil
 	local range = opts.damage or p.damage
 	if range then
-		lo, hi = bossRoll(creature, def, range)
+		lo, hi = Fn.bossRoll(creature, def, range)
 	end
 	table.insert(creature.strikes, {
 		pos = at,
@@ -2844,14 +3492,14 @@ end
 
 -- Everyone standing in the ring band (the expanding-nova shape: safe inside
 -- AND outside; the dodge is stepping across the band before it detonates).
-local function damagePlayersInAnnulus(at: Vector3, inner: number, outer: number, minDmg, maxDmg, source)
+function Fn.damagePlayersInAnnulus(at: Vector3, inner: number, outer: number, minDmg, maxDmg, source)
 	for _, player in Players:GetPlayers() do
 		local character = player.Character
 		local root = character and character:FindFirstChild("HumanoidRootPart")
 		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 		if root and humanoid and humanoid.Health > 0 then
 			local d = (Vector3.new(root.Position.X, 0, root.Position.Z) - Vector3.new(at.X, 0, at.Z)).Magnitude
-			if d >= inner and d <= outer and math.abs(root.Position.Y - at.Y) <= BOSS_HEIGHT_TOLERANCE then
+			if d >= inner and d <= outer and math.abs(root.Position.Y - at.Y) <= K.BOSS_HEIGHT_TOLERANCE then
 				PlayerService.damage(player, math.random(minDmg, maxDmg), source, { bypassIframe = true })
 			end
 		end
@@ -2859,7 +3507,7 @@ local function damagePlayersInAnnulus(at: Vector3, inner: number, outer: number,
 end
 
 -- Every living player's root within `range` of `at`.
-local function livingRootsNear(at: Vector3, range: number): { { player: Player, root: BasePart } }
+function Fn.livingRootsNear(at: Vector3, range: number): { { player: Player, root: BasePart } }
 	local out = {}
 	for _, player in Players:GetPlayers() do
 		local character = player.Character
@@ -2889,13 +3537,13 @@ end
 -- corridor the length of the animal instead of an 11-stud circle at the nose
 -- that is airborne for 89% of the charge. Once per player, off the caller's
 -- own hit set.
-local function bodyContact(creature, body, reach: number, lo: number, hi: number, hitSet, skin: string?)
-	for _, entry in livingRootsNear(creature.pos, reach + RimefangPath.BODY_LENGTH) do
+function Fn.bodyContact(creature, body, reach: number, lo: number, hi: number, hitSet, skin: string?)
+	for _, entry in Fn.livingRootsNear(creature.pos, reach + RimefangPath.BODY_LENGTH) do
 		if not hitSet[entry.player] then
 			local at = entry.root.Position
 			for _, node in body do
 				local to = at - node.pos
-				if Vector3.new(to.X, 0, to.Z).Magnitude <= reach and math.abs(to.Y) <= BOSS_HEIGHT_TOLERANCE then
+				if Vector3.new(to.X, 0, to.Z).Magnitude <= reach and math.abs(to.Y) <= K.BOSS_HEIGHT_TOLERANCE then
 					hitSet[entry.player] = true
 					PlayerService.damage(entry.player, math.random(lo, hi), creature, { bypassIframe = true })
 					fireEvent("strikeHit", at, { radius = 3, skin = skin })
@@ -2911,14 +3559,14 @@ end
 -- leap (hop height - the body is airborne mid-arc and can't contact-hit),
 -- slamRadius (a landing shockwave at the end), trail { every + spawnPool
 -- spec } (hazards dropped along the wake).
-ATTACK_HANDLERS.charge = {
+K.ATTACK_HANDLERS.charge = {
 	windup = function(creature, _def, _p, u, sub)
 		local e = smoothstep(u)
 		creature.model:PivotTo(poseCFrame(creature, sub + 0.7 * e, 0, math.rad(20) * e))
 	end,
 	fire = function(creature, _def, p, _now, root)
 		local a = creature.attack
-		a.dir = if root then flatUnit(root.Position - creature.pos) else bossFacing(creature)
+		a.dir = if root then flatUnit(root.Position - creature.pos) else Fn.bossFacing(creature)
 		a.hitSet = {}
 		a.dist = 0
 		a.nextTrail = if p.trail then p.trail.every * 0.5 else math.huge
@@ -2928,20 +3576,20 @@ ATTACK_HANDLERS.charge = {
 	strike = function(creature, def, p, now, dt, u, _root, sub)
 		local a = creature.attack
 		local step = (p.length / p.duration) * dt
-		creature.pos = resolveHorizontal(creature, a.dir * step)
+		creature.pos = Fn.resolveHorizontal(creature, a.dir * step)
 		-- CLAMP BEFORE ANYTHING READS THE POSITION. This used to run only in
 		-- `finish`, so every frame of contact damage - and every `strikeHit`
 		-- ring the client drew for it - was resolved at a position the arena
 		-- would refuse a moment later, and the last of them landed where the
 		-- boss demonstrably no longer was. A charge that runs into the rim
 		-- should stop at the rim, and be the rim's length of charge.
-		clampToArena(creature, def)
+		Fn.clampToArena(creature, def)
 		a.dist += step
 		local hop = if p.leap then math.sin(u * math.pi) * p.leap else 0
 		creature.model:PivotTo(poseCFrame(creature, sub + hop, 0, math.rad(-8)))
 		-- Contact damage, once per player per charge - not while airborne.
 		--
-		-- A boss with a BODY tests its whole body (see `bodyContact`): for
+		-- A boss with a BODY tests its whole body (see `Fn.bodyContact`): for
 		-- Rimefang the `hop` test is the wrong question entirely, because the
 		-- head being 26 studs up its leap says nothing about the 40 studs of
 		-- whale behind it that are still ploughing the floe. Each node's own
@@ -2949,14 +3597,14 @@ ATTACK_HANDLERS.charge = {
 		-- has no body and takes the branch it always took, to the stud.
 		local body = rimefangBody(creature)
 		if body then
-			local lo, hi = bossRoll(creature, def, p.damage)
-			bodyContact(creature, body, p.width, lo, hi, a.hitSet, p.skin)
+			local lo, hi = Fn.bossRoll(creature, def, p.damage)
+			Fn.bodyContact(creature, body, p.width, lo, hi, a.hitSet, p.skin)
 		elseif hop < 1.5 then
-			local lo, hi = bossRoll(creature, def, p.damage)
-			for _, entry in livingRootsNear(creature.pos, p.width) do
+			local lo, hi = Fn.bossRoll(creature, def, p.damage)
+			for _, entry in Fn.livingRootsNear(creature.pos, p.width) do
 				if not a.hitSet[entry.player] then
 					a.hitSet[entry.player] = true
-					if math.abs(entry.root.Position.Y - creature.pos.Y) <= BOSS_HEIGHT_TOLERANCE then
+					if math.abs(entry.root.Position.Y - creature.pos.Y) <= K.BOSS_HEIGHT_TOLERANCE then
 						PlayerService.damage(entry.player, math.random(lo, hi), creature, { bypassIframe = true })
 						fireEvent("strikeHit", entry.root.Position, { radius = 3, skin = p.skin })
 					end
@@ -2969,17 +3617,17 @@ ATTACK_HANDLERS.charge = {
 		end
 	end,
 	finish = function(creature, def, p, now)
-		clampToArena(creature, def)
+		Fn.clampToArena(creature, def)
 		if p.slamRadius then
-			local lo, hi = bossRoll(creature, def, p.damage)
+			local lo, hi = Fn.bossRoll(creature, def, p.damage)
 			local body = rimefangBody(creature)
 			if body then
 				-- THE WHOLE ANIMAL LANDS, not its nose. A 56-stud whale coming
 				-- down flat cracks the floe along its length; a single ring at
 				-- the head left the crash's back half harmless.
-				bodyContact(creature, body, p.slamRadius, lo, hi, {}, p.skin)
+				Fn.bodyContact(creature, body, p.slamRadius, lo, hi, {}, p.skin)
 			else
-				damagePlayersInRadius(creature.pos, p.slamRadius, lo, hi, creature, 0.5, BOSS_HEIGHT_TOLERANCE)
+				damagePlayersInRadius(creature.pos, p.slamRadius, lo, hi, creature, 0.5, K.BOSS_HEIGHT_TOLERANCE)
 			end
 			fireEvent("slam", creature.pos, { radius = p.slamRadius, skin = p.skin })
 		end
@@ -2997,7 +3645,7 @@ ATTACK_HANDLERS.charge = {
 -- Ticks without the i-frame bypass (it re-hits), so standing in it hurts but
 -- doesn't shred. p: sweep (degrees), cone (half-angle degrees), range, tick,
 -- damage (per tick); optional chill { mult, duration }, sweepDir (+1/-1).
-ATTACK_HANDLERS.beam = {
+K.ATTACK_HANDLERS.beam = {
 	windup = function(creature, _def, _p, u, sub)
 		local e = smoothstep(u)
 		creature.model:PivotTo(poseCFrame(creature, sub + 0.6 * e, 0, math.rad(26) * e))
@@ -3013,11 +3661,11 @@ ATTACK_HANDLERS.beam = {
 		creature.model:PivotTo(poseCFrame(creature, sub + 0.6, 0, math.rad(10)))
 		if now >= a.nextTickAt then
 			a.nextTickAt = now + (p.tick or 0.3)
-			local facing = bossFacing(creature)
+			local facing = Fn.bossFacing(creature)
 			local origin = creature.model:GetPivot().Position
-			local lo, hi = bossRoll(creature, def, p.damage)
+			local lo, hi = Fn.bossRoll(creature, def, p.damage)
 			local half = math.rad(p.cone)
-			for _, entry in livingRootsNear(creature.pos, p.range) do
+			for _, entry in Fn.livingRootsNear(creature.pos, p.range) do
 				local to =
 					Vector3.new(entry.root.Position.X - creature.pos.X, 0, entry.root.Position.Z - creature.pos.Z)
 				if to.Magnitude < 0.01 or math.acos(math.clamp(to.Unit:Dot(facing), -1, 1)) <= half then
@@ -3045,18 +3693,18 @@ ATTACK_HANDLERS.beam = {
 
 -- Poolvolley: the volley, but every glob leaves a lingering pool where it
 -- lands (p.pool = spawnPool spec).
-ATTACK_HANDLERS.poolvolley = {
-	windup = ATTACK_HANDLERS.volley.windup,
+K.ATTACK_HANDLERS.poolvolley = {
+	windup = K.ATTACK_HANDLERS.volley.windup,
 	fire = function(creature, def, p, now, root)
 		if not root then
 			return
 		end
 		for i = 1, p.count do
-			throwGlob(
+			Fn.throwGlob(
 				creature,
 				def,
 				p,
-				scatterAround(root, p.spread),
+				Fn.scatterAround(root, p.spread),
 				p.flight + (i - 1) * p.stagger,
 				now,
 				"splash",
@@ -3067,7 +3715,7 @@ ATTACK_HANDLERS.poolvolley = {
 			)
 		end
 	end,
-	strike = ATTACK_HANDLERS.volley.strike,
+	strike = K.ATTACK_HANDLERS.volley.strike,
 }
 
 -- Barrage: a pattern of telegraphed strikes. p.pattern:
@@ -3082,7 +3730,7 @@ ATTACK_HANDLERS.poolvolley = {
 --   "rings"    - concentric ring bands around the boss (p.rings radii,
 --                p.ringWidth wide), detonating outward - the nova
 -- p.arm is the tell lead (seconds between a strike's ring and its hit).
-ATTACK_HANDLERS.barrage = {
+K.ATTACK_HANDLERS.barrage = {
 	windup = function(creature, _def, _p, u, sub)
 		creature.model:PivotTo(
 			poseCFrame(creature, sub + 0.3 * u, math.sin(u * 30) * math.rad(2) * u, math.rad(14) * u)
@@ -3095,24 +3743,24 @@ ATTACK_HANDLERS.barrage = {
 			local width = p.ringWidth or 5
 			for i, r in p.rings do
 				local hitAt = now + arm + (i - 1) * (p.interval or 0.5)
-				queueStrike(creature, def, p, center, hitAt - arm, hitAt, {
+				Fn.queueStrike(creature, def, p, center, hitAt - arm, hitAt, {
 					shape = "annulus",
 					inner = math.max(0, r - width * 0.5),
 					outer = r + width * 0.5,
 				})
 			end
 		elseif p.pattern == "line" then
-			local dir0 = if root then flatUnit(root.Position - creature.pos) else bossFacing(creature)
+			local dir0 = if root then flatUnit(root.Position - creature.pos) else Fn.bossFacing(creature)
 			for _, fanDeg in (p.fan or { 0 }) do
 				local dir = rotateFlat(dir0, math.rad(fanDeg))
 				for i = 1, p.count do
 					local at = groundedPos(creature.pos + dir * ((p.startAt or 8) + (i - 1) * p.spacing), 0)
 					local hitAt = now + arm + (i - 1) * (p.interval or 0.16)
-					queueStrike(creature, def, p, at, hitAt - arm, hitAt, {})
+					Fn.queueStrike(creature, def, p, at, hitAt - arm, hitAt, {})
 				end
 			end
 		elseif p.pattern == "wall" then
-			local dir = if root then flatUnit(root.Position - creature.pos) else bossFacing(creature)
+			local dir = if root then flatUnit(root.Position - creature.pos) else Fn.bossFacing(creature)
 			local right = rotateFlat(dir, math.pi * 0.5)
 			local across = math.max(2, math.floor(p.width / 6) + 1)
 			for rank = 0, (p.ranks or 4) - 1 do
@@ -3121,26 +3769,38 @@ ATTACK_HANDLERS.barrage = {
 				for k = 0, across - 1 do
 					local offset = (k / (across - 1) - 0.5) * p.width
 					local at = groundedPos(creature.pos + dir * d + right * offset, 0)
-					queueStrike(creature, def, p, at, hitAt - arm, hitAt, {})
+					Fn.queueStrike(creature, def, p, at, hitAt - arm, hitAt, {})
 				end
 			end
 		elseif p.pattern == "everyone" then
 			local center = creature.anchor or creature.pos
-			for _, entry in livingRootsNear(center, def.aggro * 1.5) do
-				local hitAt = now + arm
-				queueStrike(creature, def, p, groundedPos(entry.root.Position, 0), now, hitAt, {
+			-- `tellHold`: EXTRA seconds between the mark being drawn and the
+			-- blow landing, for a move that draws its tell somewhere it cannot
+			-- yet be seen. Noctyss's `dousehunt` is the one row that carries it
+			-- and the reason it exists: its mark is stamped where you were
+			-- standing when the lanterns died (which is the whole move) and
+			-- then buried under 1.6s of opaque blackout, so a 44-60 hit landed
+			-- one arm-window later with its telegraph drawn and invisible. The
+			-- hold pushes the LANDING out to where the blackout is lifting, so
+			-- the last `arm` seconds of the mark are the first anyone can see
+			-- it - the scare keeps every frame of its true black and stops
+			-- being a coin flip. Absent on every other row, and absent means 0.
+			local hold = p.tellHold or 0
+			for _, entry in Fn.livingRootsNear(center, def.aggro * 1.5) do
+				local hitAt = now + hold + arm
+				Fn.queueStrike(creature, def, p, groundedPos(entry.root.Position, 0), now, hitAt, {
 					snare = p.snare,
 					pool = p.pool,
 				})
 				for _ = 1, p.extra or 0 do
-					queueStrike(creature, def, p, scatterAround(entry.root, p.spread or 10), now, hitAt + 0.3, {})
+					Fn.queueStrike(creature, def, p, Fn.scatterAround(entry.root, p.spread or 10), now, hitAt + 0.3, {})
 				end
 			end
 		else -- scatter
 			if root then
 				for i = 1, p.count do
 					local hitAt = now + arm + (i - 1) * ((p.duration - 0.2) / math.max(p.count, 1))
-					queueStrike(creature, def, p, scatterAround(root, p.spread), hitAt - arm, hitAt, {
+					Fn.queueStrike(creature, def, p, Fn.scatterAround(root, p.spread), hitAt - arm, hitAt, {
 						pool = p.pool,
 					})
 				end
@@ -3163,12 +3823,12 @@ ATTACK_HANDLERS.barrage = {
 -- here would also silently change what a lone arm does on its own initiative.
 -- p: interval (between neighbours), windupEach (each arm's tell), lift, sweep
 -- (how far round it travels, in arms; absent = the whole ring).
-ATTACK_HANDLERS.armwave = {
+K.ATTACK_HANDLERS.armwave = {
 	windup = function(creature, _def, _p, u, sub)
 		creature.model:PivotTo(poseCFrame(creature, sub + 0.5 * u, 0, math.rad(-10) * u))
 	end,
 	fire = function(creature, _def, p, now)
-		local arms = livingArms(creature)
+		local arms = Fn.livingArms(creature)
 		if #arms == 0 then
 			return
 		end
@@ -3177,7 +3837,7 @@ ATTACK_HANDLERS.armwave = {
 		local span = math.min(p.sweep or #arms, #arms)
 		for k = 0, span - 1 do
 			local index = ((from - 1 + dir * k) % #arms) + 1
-			commandArm(arms[index], now + k * (p.interval or 0.26), p.windupEach or 0.8, p.lift or 13)
+			Fn.commandArm(arms[index], now + k * (p.interval or 0.26), p.windupEach or 0.8, p.lift or 13)
 		end
 	end,
 	strike = function(creature, _def, _p, _now, _dt, _u, _root, sub)
@@ -3197,12 +3857,12 @@ ATTACK_HANDLERS.armwave = {
 -- gap. Stepping out of one arm's 12-stud slam is the cheap out and stays
 -- available - the gap is for players who want to keep hitting something.
 -- p: gap (arms left open), windupEach, lift.
-ATTACK_HANDLERS.armgap = {
+K.ATTACK_HANDLERS.armgap = {
 	windup = function(creature, _def, _p, u, sub)
 		creature.model:PivotTo(poseCFrame(creature, sub + 0.7 * u, 0, math.rad(-16) * u))
 	end,
 	fire = function(creature, _def, p, now)
-		local arms = livingArms(creature)
+		local arms = Fn.livingArms(creature)
 		if #arms <= 1 then
 			return
 		end
@@ -3214,7 +3874,7 @@ ATTACK_HANDLERS.armgap = {
 			-- carries the counterplay on its own: two 12-stud rings with a
 			-- two-second tell each is something you step out of.
 			for _, arm in arms do
-				commandArm(arm, now, p.windupEach or 2.0, p.lift or 16)
+				Fn.commandArm(arm, now, p.windupEach or 2.0, p.lift or 16)
 			end
 			return
 		end
@@ -3234,7 +3894,7 @@ ATTACK_HANDLERS.armgap = {
 		end
 		for index, arm in arms do
 			if not open[index] then
-				commandArm(arm, now, p.windupEach or 2.0, p.lift or 16)
+				Fn.commandArm(arm, now, p.windupEach or 2.0, p.lift or 16)
 			end
 		end
 	end,
@@ -3246,13 +3906,13 @@ ATTACK_HANDLERS.armgap = {
 -- Snaretrap: marks the ground under every player's feet; whoever is still
 -- inside when it arms is rooted to the spot. p: arm (the escape window),
 -- radius, damage, snare (root seconds).
-ATTACK_HANDLERS.snaretrap = {
+K.ATTACK_HANDLERS.snaretrap = {
 	windup = function(creature, _def, _p, u, sub)
 		creature.model:PivotTo(poseCFrame(creature, sub - 0.4 * u, 0, math.rad(-10) * u))
 	end,
 	fire = function(creature, def, p, now)
-		for _, entry in livingRootsNear(creature.pos, def.aggro * 1.2) do
-			queueStrike(creature, def, p, groundedPos(entry.root.Position, 0), now, now + p.arm, {
+		for _, entry in Fn.livingRootsNear(creature.pos, def.aggro * 1.2) do
+			Fn.queueStrike(creature, def, p, groundedPos(entry.root.Position, 0), now, now + p.arm, {
 				snare = p.snare,
 			})
 		end
@@ -3263,7 +3923,7 @@ ATTACK_HANDLERS.snaretrap = {
 -- comes close (or fizzle after p.lifetime). p: count, spread, trigger,
 -- blast, damage, lifetime; optional drift (studs/s toward the nearest
 -- player - the powder keg).
-ATTACK_HANDLERS.decoys = {
+K.ATTACK_HANDLERS.decoys = {
 	windup = function(creature, _def, _p, u, sub)
 		creature.model:PivotTo(poseCFrame(creature, sub + 0.4 * u, 0, math.rad(18) * u))
 	end,
@@ -3273,8 +3933,15 @@ ATTACK_HANDLERS.decoys = {
 		for _ = 1, p.count do
 			local angle = math.random() * math.pi * 2
 			local r = p.spread * (0.35 + 0.65 * math.random())
-			local at = Vector3.new(center.X + math.cos(angle) * r, World.WATER_Y + 1.2, center.Z + math.sin(angle) * r)
-			local lo, hi = bossRoll(creature, def, p.damage)
+			-- Float over whatever is actually below: a fixed waterline height
+			-- half-sank Noctyss's lures into the Choirfloor's raised stone
+			-- (shelf top 1.5-1.9). The waterline stays the FLOOR of the probe,
+			-- so Wrack's kegs drifting his bay are placed exactly as before.
+			local x, z = center.X + math.cos(angle) * r, center.Z + math.sin(angle) * r
+			local floorHit = Workspace:Raycast(Vector3.new(x, 8, z), Vector3.new(0, -20, 0), groundParams())
+			local y = math.max(World.WATER_Y + 1.2, if floorHit then floorHit.Position.Y + 1.2 else -math.huge)
+			local at = Vector3.new(x, y, z)
+			local lo, hi = Fn.bossRoll(creature, def, p.damage)
 			table.insert(creature.lures, {
 				pos = at,
 				trigger = p.trigger,
@@ -3294,13 +3961,13 @@ ATTACK_HANDLERS.decoys = {
 -- Phantom: the lights go out, it vanishes, and it reappears at a player's
 -- flank mid-bite. p: emergeAt (how far from the player it surfaces), radius,
 -- cone (degrees), damage.
-ATTACK_HANDLERS.phantom = {
+K.ATTACK_HANDLERS.phantom = {
 	windup = function(creature, _def, _p, u, sub)
 		creature.model:PivotTo(poseCFrame(creature, sub - 1.2 * u, 0, math.rad(-12) * u))
 	end,
 	fire = function(creature, _def, p, _now, root)
 		local a = creature.attack
-		setBuried(creature, true)
+		Fn.setBuried(creature, true)
 		a.appeared = false
 		fireEvent("phantomOut", creature.pos, { radius = 60, skin = p.skin })
 		if root then
@@ -3322,7 +3989,7 @@ ATTACK_HANDLERS.phantom = {
 			creature.model:PivotTo(poseCFrame(creature, -def.riseDepth, 0, 0))
 			if u >= 0.5 then
 				a.appeared = true
-				setBuried(creature, false)
+				Fn.setBuried(creature, false)
 				if root then
 					creature.yaw0 = yawToward(root.Position - creature.pos)
 				end
@@ -3331,15 +3998,24 @@ ATTACK_HANDLERS.phantom = {
 			return
 		end
 		creature.model:PivotTo(poseCFrame(creature, sub + 0.5, 0, math.rad(-12)))
-		if not a.fired and u >= PHANTOM_IMPACT then
+		if not a.fired and u >= K.PHANTOM_IMPACT then
 			a.fired = true
-			local lo, hi = bossRoll(creature, def, p.damage)
-			damagePlayersInCone(creature.pos, bossFacing(creature), p.radius, math.rad(p.cone), false, lo, hi, creature)
-			fireEvent("bossSnap", bossMouth(creature), { radius = p.radius })
+			local lo, hi = Fn.bossRoll(creature, def, p.damage)
+			Fn.damagePlayersInCone(
+				creature.pos,
+				Fn.bossFacing(creature),
+				p.radius,
+				math.rad(p.cone),
+				false,
+				lo,
+				hi,
+				creature
+			)
+			fireEvent("bossSnap", Fn.bossMouth(creature), { radius = p.radius })
 		end
 	end,
 	finish = function(creature, def)
-		clampToArena(creature, def)
+		Fn.clampToArena(creature, def)
 	end,
 }
 
@@ -3347,7 +4023,7 @@ ATTACK_HANDLERS.phantom = {
 -- maw while wreckage rains on whoever it's pulling. p: radius, strength,
 -- duration, globEvery, damage (per glob), radius is the pull's reach and the
 -- globs land radius p.globRadius.
-ATTACK_HANDLERS.undertow = {
+K.ATTACK_HANDLERS.undertow = {
 	windup = function(creature, _def, _p, u, sub)
 		creature.model:PivotTo(poseCFrame(creature, sub + 0.8 * u, 0, math.rad(22) * u))
 	end,
@@ -3370,10 +4046,10 @@ ATTACK_HANDLERS.undertow = {
 		if now >= a.nextGlobAt then
 			a.nextGlobAt = now + (p.globEvery or 0.7)
 			local center = creature.anchor or creature.pos
-			local targets = livingRootsNear(center, p.radius)
+			local targets = Fn.livingRootsNear(center, p.radius)
 			if #targets > 0 then
 				local entry = targets[math.random(#targets)]
-				local at = scatterAround(entry.root, 7)
+				local at = Fn.scatterAround(entry.root, 7)
 				-- THE RAIN HAS TO REACH THE ROCKS. This is a six-second move
 				-- whose entire second half is wreckage coming down on whoever
 				-- the current is dragging, and the people being dragged are
@@ -3382,7 +4058,7 @@ ATTACK_HANDLERS.undertow = {
 				-- resolves at the waterline and the default 6-stud gate voided
 				-- the hit - the pull landed, the wreckage drew, and nothing
 				-- happened. Same tolerance the rest of the boss kit's AoE uses.
-				throwGlob(
+				Fn.throwGlob(
 					creature,
 					def,
 					{ damage = p.damage, radius = p.globRadius or 7 },
@@ -3391,7 +4067,7 @@ ATTACK_HANDLERS.undertow = {
 					now,
 					"spineHit",
 					"spit",
-					{ tolerance = BOSS_HEIGHT_TOLERANCE }
+					{ tolerance = K.BOSS_HEIGHT_TOLERANCE }
 				)
 			end
 		end
@@ -3402,7 +4078,7 @@ ATTACK_HANDLERS.undertow = {
 -- warning - and whoever it lands on is CHAINED to the spot (the client
 -- leashes its own character to the anchor). p: flight, radius, damage,
 -- leash, chainDuration.
-ATTACK_HANDLERS.anchortoss = {
+K.ATTACK_HANDLERS.anchortoss = {
 	windup = function(creature, _def, _p, u, sub)
 		local e = smoothstep(u)
 		creature.model:PivotTo(poseCFrame(creature, sub + 1.3 * e, 0, math.rad(32) * e))
@@ -3412,13 +4088,13 @@ ATTACK_HANDLERS.anchortoss = {
 			return
 		end
 		local at = groundedPos(root.Position, 0)
-		fireEvent("spine", bossMouth(creature) + Vector3.new(0, 5, 0), {
+		fireEvent("spine", Fn.bossMouth(creature) + Vector3.new(0, 5, 0), {
 			to = at,
 			flight = p.flight,
 			arc = 14,
 			boss = true,
 		})
-		queueStrike(creature, def, p, at, now, now + p.flight, {
+		Fn.queueStrike(creature, def, p, at, now, now + p.flight, {
 			chain = { leash = p.leash, duration = p.chainDuration, radius = p.radius + 3 },
 		})
 	end,
@@ -3429,7 +4105,7 @@ ATTACK_HANDLERS.anchortoss = {
 
 -- Which attacks the current health fraction allows: the LAST phase whose
 -- `below` the fraction is at or under.
-local function bossPhaseAttacks(def, hpFraction: number): { string }
+function Fn.bossPhaseAttacks(def, hpFraction: number): { string }
 	local attacks = def.phases[1].attacks
 	for _, phase in def.phases do
 		if hpFraction <= phase.below then
@@ -3439,7 +4115,54 @@ local function bossPhaseAttacks(def, hpFraction: number): { string }
 	return attacks
 end
 
-local function pickBossAttack(creature, def, now: number): string
+-- ...OR THE PHASE A MACHINE PUT IT IN, which is a different question and the
+-- Kraken is the first boss to ask it.
+--
+-- Every other fight in the project escalates on a health threshold, and that is
+-- the right rule for a boss whose phases are chapters of one continuous fight.
+-- The Kraken's are not: its phases advance on ARM-BREAK CYCLES (see
+-- `machine` on its row and `Fn.updateKrakenFight` below), because the head's
+-- health bar is only touchable inside a window the party has to earn, so
+-- "health fraction" and "how far through the fight are we" have almost nothing
+-- to do with each other there - a party four windows deep may have taken less
+-- than a tenth of the bar off.
+--
+-- A SECOND READER OF THE SAME `phases` TABLE, not a second table. The pools
+-- stay where every other boss's pools are; only the index is chosen elsewhere.
+-- `creature.krakenPhase` is nil on every other creature in the game, so this
+-- returns the health answer, unchanged, for all of them.
+function Fn.bossPhasePool(creature, def): { string }
+	local index = creature.krakenPhase
+	local phase = index and def.phases[index]
+	if phase then
+		return phase.attacks
+	end
+	return Fn.bossPhaseAttacks(def, Fn.bossPhaseFraction(creature))
+end
+
+-- WHICH FRACTION THE PHASE TABLE IS READ AT, and for every boss but one it is
+-- exactly the health fraction it has always been.
+--
+-- Admiral Wrack's fight advances on EVENTS, not on damage: act one ends when
+-- the fourth permanent cannon falls, act two when the hull reaches zero. A
+-- health fraction cannot express the first of those at all - the hull is IMMUNE
+-- for the whole of act one (`vulnerableWhen = "partsDown"`), so its bar never
+-- moves and a health-fraction table would leave him in phase one until the act
+-- was already over.
+--
+-- So the Wrack tick writes `creature.actFraction` (see Fn.wrackActStep), a
+-- single dial that runs monotonically down across BOTH of his acts - 1.00 to
+-- 0.60 on cannons destroyed, then 0.60 to 0.00 on hull damage - and his row's
+-- five bands are cut against it.
+--
+-- NOTHING ELSE IN THE GAME SETS THE FIELD, so this returns the health answer,
+-- byte-identical, for every other boss. Preferred here rather than at the call
+-- sites because there are three of them and a fourth would forget.
+function Fn.bossPhaseFraction(creature): number
+	return creature.actFraction or creature.health / creature.maxHealth
+end
+
+function Fn.pickBossAttack(creature, def, now: number): string
 	if creature.forcedAttack then
 		local forced = creature.forcedAttack
 		creature.forcedAttack = nil
@@ -3456,18 +4179,53 @@ local function pickBossAttack(creature, def, now: number): string
 	-- A row without the field is unaffected, which is every other row in the
 	-- project.
 	local used = creature.stanceUsed
-	for _, name in bossPhaseAttacks(def, creature.health / creature.maxHealth) do
+	-- The pool: the health phase for every boss, or the one a machine put this
+	-- creature in. See Fn.bossPhasePool - one call rather than two, because the
+	-- empty-pool fallback below has to draw its `[1]` from the SAME list it
+	-- filtered or a fight with everything on cooldown would silently jump
+	-- phases.
+	local phasePool = Fn.bossPhasePool(creature, def)
+	for _, name in phasePool do
 		local readyAt = creature.cooldowns and creature.cooldowns[name] or 0
 		local p = def.attacks[name]
 		local spent = p and p.once == "stance" and used and used[name]
-		if name ~= creature.lastAttack and now >= readyAt and not spent then
+		-- ...and one last gate, for a move that can only land somewhere the
+		-- boss does not aim. `Fn.rfPickAllows` returns true on its first line
+		-- for every row that does not opt in (which is every row but one), so
+		-- this is inert for the whole project except Rimefang's fluke slam -
+		-- see the note on that function.
+		-- ...and the RANGE GATE, which is the same shape of thing for the one
+		-- boss that cannot close a distance. `Fn.gnPickAllows` returns true on
+		-- its first line for every row without `rig = "gnashroot"`, which is
+		-- every row in the project but one.
+		if
+			name ~= creature.lastAttack
+			and now >= readyAt
+			and not spent
+			and Fn.rfPickAllows(creature, p, name)
+			and Fn.gnPickAllows(creature, def, p)
+		then
 			table.insert(pool, name)
 		end
 	end
 	if #pool == 0 then
 		-- Always something: the phase list's first attack (each boss leads
 		-- its lists with its short-cooldown bread-and-butter bite).
-		return bossPhaseAttacks(def, creature.health / creature.maxHealth)[1]
+		--
+		-- EXCEPT THAT THE RANGE GATE HAS TO SURVIVE THE FALLBACK. Old
+		-- Gnashroot leads every phase list with `gnash`, which is exactly the
+		-- move the gate exists to withhold - so a frame where everything is on
+		-- cooldown would hand back the one attack that cannot reach, and a
+		-- rooted boss whose bread-and-butter is a bite it can never land looks
+		-- broken in the most visible way available. Walk the list for the
+		-- first pick the gate allows; if it allows none, the old answer stands
+		-- rather than the boss doing nothing at all.
+		for _, name in phasePool do
+			if Fn.gnPickAllows(creature, def, def.attacks[name]) then
+				return name
+			end
+		end
+		return phasePool[1]
 	end
 	return pool[math.random(#pool)]
 end
@@ -3483,7 +4241,7 @@ end
 -- player is standing, exactly as the island blizzard does - and it stamps
 -- its own deadline on arrival, so a boss that dies mid-attack (and never
 -- reaches the close below) still has its sky clear on time.
-local function signalArenaStorm(def, p, active: boolean)
+function Fn.signalArenaStorm(def, p, active: boolean)
 	if not p.storm or not def.islandId or not BossArenas.centerFor(def.islandId) then
 		return
 	end
@@ -3496,20 +4254,50 @@ local function signalArenaStorm(def, p, active: boolean)
 	})
 end
 
-local function beginBossAttack(creature, def, name: string, now: number)
+function Fn.beginBossAttack(creature, def, name: string, now: number)
 	local p = def.attacks[name]
-	creature.attack =
-		{ name = name, p = p, phase = "windup", phaseStart = now, phaseUntil = now + p.windup, fired = false }
+	-- FASTER TELLS AS A FIGHT ESCALATES, and it has to be applied HERE - once,
+	-- at the one place every attack starts - or it is not one change, it is
+	-- fourteen rows that have to be re-tuned by hand and kept in step.
+	--
+	-- `creature.tellMult` is written by the Kraken's fight tick off its row's
+	-- `machine.tellMult` and is nil on every other creature in the game, so
+	-- this line is `windup * 1` for the whole project outside that fight. It
+	-- scales the WINDUP, which is the same number the generic telegraph's
+	-- countdown is drawn from below and the same number `Fn.updateBossAttack`
+	-- measures its 0..1 windup progress against - so the tell, the pose and the
+	-- blow all move together and no handler learns about it. A multiplier that
+	-- only shortened the damage clock would be the single worst bug this fight
+	-- could ship: a telegraph that lies about when it lands.
+	local windup = p.windup * (creature.tellMult or 1)
+	creature.attack = {
+		name = name,
+		p = p,
+		phase = "windup",
+		phaseStart = now,
+		phaseUntil = now + windup,
+		fired = false,
+		-- The scaled figure, for a handler that needs to know how long its own
+		-- tell really has (`a.windup`, never `p.windup`, inside a handler that
+		-- draws one).
+		windup = windup,
+	}
 	creature.lastAttack = name
 	-- The lunge's plant is the only punish window a HANDLER owns, and a
 	-- handler that is interrupted (a stagger, the collapse) never reaches
 	-- its own `finish`. Cleared at every attack's start as well as at the
 	-- lunge's end, so a stale `true` can never carry into another move.
 	creature.lungeOpen = false
+	-- ...and the two the second pass added, for the identical reason: a
+	-- handler interrupted by a stagger or the collapse never reaches its own
+	-- `finish`, so a stale `true` would carry the full-damage window into the
+	-- next move.
+	creature.coilOpen = false
+	creature.biteOpen = false
 	-- Spent for this stance the moment it BEGINS, not when it finishes: a
 	-- set-piece interrupted by the boss's own death or a stagger has still
 	-- been shown, and offering it again in the same stance would read as the
-	-- fight repeating itself. See `once` in pickBossAttack.
+	-- fight repeating itself. See `once` in Fn.pickBossAttack.
 	if p.once == "stance" then
 		creature.stanceUsed = creature.stanceUsed or {}
 		creature.stanceUsed[name] = true
@@ -3527,11 +4315,16 @@ local function beginBossAttack(creature, def, name: string, now: number)
 	-- somewhere else entirely. Note there is no "silent" tell value - an
 	-- unrecognised kind still falls through the client's catch-all flash and
 	-- plays the tell sound - so opting out has to be explicit.
+	--
+	-- COMBOS. Late in a fight the serpent sometimes throws two things at once;
+	-- resolved here, at the one place every attack starts, so no handler has
+	-- to know about it. Row-gated (`def.combo`) - no other boss changes.
+	Fn.rollCombo(creature, def, name, now)
 	if p.tell ~= false then
 		-- WHERE THE TELL IS DRAWN. The pivot is right for a boss that attacks
 		-- around itself and wrong for one whose move works the floor from a
 		-- centre that is not its head: Rimefang's carousel pulls on
-		-- `creature.anchor` and drops its bergs there (ATTACK_HANDLERS.undertow
+		-- `creature.anchor` and drops its bergs there (K.ATTACK_HANDLERS.undertow
 		-- reads `creature.anchor or creature.pos` in both places), while its
 		-- marker was drawn at the nose - so the tell and the damage named two
 		-- different circles. `at = "anchor"` puts them on one. (The Kraken's
@@ -3546,10 +4339,10 @@ local function beginBossAttack(creature, def, name: string, now: number)
 			-- THROUGH the blow, not up to the swing. Most handlers strike the
 			-- instant the windup expires, and for those this is exactly
 			-- `p.windup` as before. The ones that damage part-way into the
-			-- strike are listed in HANDLER_IMPACT, and for them a countdown
+			-- strike are listed in K.HANDLER_IMPACT, and for them a countdown
 			-- that ended at the windup was inviting the player back in - by up
 			-- to 1.52 seconds. See the note on that table.
-			duration = p.windup + (p.duration or 0) * (HANDLER_IMPACT[p.handler] or 0),
+			duration = windup + (p.duration or 0) * (K.HANDLER_IMPACT[p.handler] or 0),
 			radius = p.radius,
 			-- THE SHAPE OF THE THREAT, not just its size. A radius alone makes
 			-- every tell a circle, so a client drawing a wedge or a corridor
@@ -3569,21 +4362,39 @@ local function beginBossAttack(creature, def, name: string, now: number)
 			cone = p.cone,
 			lunge = p.lunge,
 			width = p.width,
-			facing = bossFacing(creature),
+			facing = Fn.bossFacing(creature),
+			-- WHICH MOVE THIS TELL BELONGS TO - Rimefang only, and nil (so
+			-- absent from the payload, so nothing else on the wire changes) for
+			-- every other creature in the project. Its client dispatches its
+			-- bespoke draws on `move` FIRST and only falls back to matching
+			-- radii, and that fallback's tolerance is 0.4 studs because
+			-- skyfall's 18 sits one stud from the bite's 17. Every Rimefang
+			-- telegraph therefore has to carry this, including the stock ones -
+			-- the bite, the wash and the whiteout come through here.
+			move = if creature.row.boss == K.RIMEFANG_BOSS then name else nil,
 			skin = p.skin,
 		})
 	end
 	-- The sky closes with the TELL, not with the blow: the whole windup
 	-- budget is spent watching it come in.
-	signalArenaStorm(def, p, true)
+	Fn.signalArenaStorm(def, p, true)
 end
 
-local function endBossAttack(creature, def, now: number)
+function Fn.endBossAttack(creature, def, now: number)
 	local a = creature.attack
 	local rage = if creature.enraged then def.enrageCooldownMult else 1
 	creature.cooldowns = creature.cooldowns or {}
-	creature.cooldowns[a.name] = now + a.p.cooldown * rage
-	signalArenaStorm(def, a.p, false)
+	-- A FIGHT MAY TIGHTEN ITS OWN METRONOME. `creature.cooldownStep` is nil on
+	-- every creature in the game except the Ashfall Heart, which sets it to
+	-- `K.PY_PILLAR_STEP ^ (pillars broken)` - so the room speeds up as its
+	-- cover comes down, by the party's own hand, and the eighth pillar is
+	-- fought at roughly twice the opening cadence.
+	--
+	-- HERE rather than in the heart's own tick, because this is the ONE line
+	-- that writes a cooldown; a second place that adjusted them afterwards
+	-- would be a number computed twice and reconciled never. Inert at nil.
+	creature.cooldowns[a.name] = now + a.p.cooldown * rage * (creature.cooldownStep or 1)
+	Fn.signalArenaStorm(def, a.p, false)
 	-- A move with `expose = seconds` leaves the creature wide open after its
 	-- recover: hits land at the charger's exposed multiplier for the window
 	-- (hitModifiers), and the client draws the dazed tell off the attribute.
@@ -3592,7 +4403,7 @@ local function endBossAttack(creature, def, now: number)
 		-- The attribute is the tell: the client already draws the charger's
 		-- dazed sparks off Exposed, so every kitted expose window inherits
 		-- that language for free (no boss-roar "exposed" event - too grand).
-		creature.model:SetAttribute(ATTR_EXPOSED, true)
+		creature.model:SetAttribute(ATTR.EXPOSED, true)
 	end
 	if a.p.follow then
 		creature.forcedAttack = a.p.follow
@@ -3624,7 +4435,7 @@ local function endBossAttack(creature, def, now: number)
 	setMode(creature, if def.entrenched then "entrenched" else "prowl", 0, now)
 end
 
-local function updateBossAttack(
+function Fn.updateBossAttack(
 	creature,
 	def,
 	now: number,
@@ -3640,9 +4451,9 @@ local function updateBossAttack(
 	-- moves in its own voice - "deathroll", "magmajet" - while sharing the
 	-- parameterized primitives); a book entry without one keeps the old rule
 	-- that the attack's NAME is the handler (Brinejaw's book).
-	local handler = ATTACK_HANDLERS[p.handler or a.name]
+	local handler = K.ATTACK_HANDLERS[p.handler or a.name]
 	if not handler then
-		endBossAttack(creature, def, now)
+		Fn.endBossAttack(creature, def, now)
 		return
 	end
 
@@ -3653,7 +4464,12 @@ local function updateBossAttack(
 			creature.yaw0 =
 				approachAngle(creature.yaw0, yawToward(root.Position - creature.pos), def.turnRate * 1.5 * dt)
 		end
-		local u = math.clamp((now - a.phaseStart) / math.max(p.windup, 1e-3), 0, 1)
+		-- `a.windup`, not `p.windup`: an escalating fight can shorten its own
+		-- tells (see Fn.beginBossAttack), and the windup POSE has to finish on
+		-- the same clock the phase does or the arm would still be rearing when
+		-- the blow lands. Identical for every attack that is not scaled, since
+		-- `a.windup` is written as `p.windup * 1` in that case.
+		local u = math.clamp((now - a.phaseStart) / math.max(a.windup or p.windup, 1e-3), 0, 1)
 		if handler.windup then
 			handler.windup(creature, def, p, u, sub)
 		else
@@ -3690,7 +4506,7 @@ local function updateBossAttack(
 			creature.model:PivotTo(poseCFrame(creature, sub, 0, 0))
 		end
 		if now >= a.phaseUntil then
-			endBossAttack(creature, def, now)
+			Fn.endBossAttack(creature, def, now)
 		end
 	end
 end
@@ -3703,7 +4519,7 @@ end
 -- Lunge: a tracked hop-leap at the player, cone hit on landing. p: reach
 -- (max leap), hop (arc height), cone (half-angle rad; default a 60-deg
 -- bite), knockback?, pool? (spawnPool spec at the landing).
-ATTACK_HANDLERS.lunge = {
+K.ATTACK_HANDLERS.lunge = {
 	windup = function(creature, _def, _p, u, sub)
 		creature.model:PivotTo(poseCFrame(creature, sub, 0, math.rad(-12) * u))
 	end,
@@ -3712,21 +4528,21 @@ ATTACK_HANDLERS.lunge = {
 		if root then
 			local to = Vector3.new(root.Position.X - creature.pos.X, 0, root.Position.Z - creature.pos.Z)
 			a.leap = math.min(to.Magnitude, p.reach or 14)
-			a.dir = if to.Magnitude > 0.01 then to.Unit else bossFacing(creature)
+			a.dir = if to.Magnitude > 0.01 then to.Unit else Fn.bossFacing(creature)
 		else
 			a.leap = p.reach or 14
-			a.dir = bossFacing(creature)
+			a.dir = Fn.bossFacing(creature)
 		end
 	end,
 	strike = function(creature, def, p, _now, dt, u, _root, sub)
 		local a = creature.attack
-		creature.pos = resolveHorizontal(creature, a.dir * (a.leap / math.max(p.duration, 1e-3)) * dt)
+		creature.pos = Fn.resolveHorizontal(creature, a.dir * (a.leap / math.max(p.duration, 1e-3)) * dt)
 		local hop = (p.hop or 3) * 4 * u * (1 - u)
 		creature.model:PivotTo(poseCFrame(creature, sub + hop, 0, math.rad(18) * (1 - u)))
-		if not a.fired and u >= LUNGE_IMPACT then
+		if not a.fired and u >= K.LUNGE_IMPACT then
 			a.fired = true
-			local lo, hi = bossRoll(creature, def, p.damage)
-			damagePlayersInCone(creature.pos, a.dir, p.radius or 6, p.cone or math.rad(60), false, lo, hi, creature)
+			local lo, hi = Fn.bossRoll(creature, def, p.damage)
+			Fn.damagePlayersInCone(creature.pos, a.dir, p.radius or 6, p.cone or math.rad(60), false, lo, hi, creature)
 			if p.pool then
 				spawnPool(creature, creature.pos, p.pool, os.clock())
 			end
@@ -3738,7 +4554,7 @@ ATTACK_HANDLERS.lunge = {
 -- Cone breath: a held jet from the mouth swept over `duration`, ticking
 -- damage inside the cone. p: reach, cone (half-angle), tickEvery?, pool?
 -- (a hazard line left along the centreline as it ends).
-ATTACK_HANDLERS.conebreath = {
+K.ATTACK_HANDLERS.conebreath = {
 	windup = function(creature, _def, _p, u, sub)
 		creature.model:PivotTo(poseCFrame(creature, sub + 0.5 * u, 0, math.rad(-20) * u))
 	end,
@@ -3751,9 +4567,9 @@ ATTACK_HANDLERS.conebreath = {
 		creature.model:PivotTo(poseCFrame(creature, sub + 0.5, 0, math.rad(8)))
 		if now >= (a.nextTickAt or 0) then
 			a.nextTickAt = now + (p.tickEvery or 0.35)
-			local lo, hi = bossRoll(creature, def, p.damage)
-			local facing = bossFacing(creature)
-			damagePlayersInCone(creature.pos, facing, p.reach or 12, p.cone or math.rad(35), false, lo, hi, creature)
+			local lo, hi = Fn.bossRoll(creature, def, p.damage)
+			local facing = Fn.bossFacing(creature)
+			Fn.damagePlayersInCone(creature.pos, facing, p.reach or 12, p.cone or math.rad(35), false, lo, hi, creature)
 			fireEvent("beam", creature.pos + Vector3.new(0, 1.5, 0), {
 				to = creature.pos + facing * (p.reach or 12) + Vector3.new(0, 1, 0),
 				skin = p.skin,
@@ -3761,7 +4577,7 @@ ATTACK_HANDLERS.conebreath = {
 		end
 		if u >= 0.95 and not a.fired and p.pool then
 			a.fired = true
-			local facing = bossFacing(creature)
+			local facing = Fn.bossFacing(creature)
 			spawnPool(creature, creature.pos + facing * (p.reach or 12) * 0.6, p.pool, now)
 		end
 	end,
@@ -3772,7 +4588,7 @@ ATTACK_HANDLERS.conebreath = {
 -- annulus [safeRadius, radius] at the end of the strike: the SAFE spot is
 -- up close, and the tell says so. p: radius (outer), ringWidth?, safeRadius
 -- (invert), invert?.
-ATTACK_HANDLERS.ringpulse = {
+K.ATTACK_HANDLERS.ringpulse = {
 	windup = function(creature, _def, p, u, sub)
 		if u < 0.05 and not creature.attack.tellFired then
 			creature.attack.tellFired = true
@@ -3792,10 +4608,10 @@ ATTACK_HANDLERS.ringpulse = {
 		local a = creature.attack
 		creature.model:PivotTo(poseCFrame(creature, sub + 0.9 * (1 - u), 0, 0))
 		if p.invert then
-			if not a.fired and u >= RINGPULSE_IMPACT then
+			if not a.fired and u >= K.RINGPULSE_IMPACT then
 				a.fired = true
-				local lo, hi = bossRoll(creature, def, p.damage)
-				damagePlayersInAnnulus(creature.pos, p.safeRadius or 6, p.radius, lo, hi, creature)
+				local lo, hi = Fn.bossRoll(creature, def, p.damage)
+				Fn.damagePlayersInAnnulus(creature.pos, p.safeRadius or 6, p.radius, lo, hi, creature)
 				fireEvent("pulse", creature.pos, { radius = p.radius, skin = p.skin })
 			end
 			return
@@ -3808,8 +4624,8 @@ ATTACK_HANDLERS.ringpulse = {
 		local front = p.radius * u
 		local band = p.ringWidth or 4
 		a.hitPlayers = a.hitPlayers or {}
-		local lo, hi = bossRoll(creature, def, p.damage)
-		for _, entry in livingRootsNear(creature.pos, front) do
+		local lo, hi = Fn.bossRoll(creature, def, p.damage)
+		for _, entry in Fn.livingRootsNear(creature.pos, front) do
 			local d = (Vector3.new(entry.root.Position.X, 0, entry.root.Position.Z) - Vector3.new(
 				creature.pos.X,
 				0,
@@ -3823,12 +4639,12 @@ ATTACK_HANDLERS.ringpulse = {
 	end,
 }
 
--- Mortar: N telegraphed ground marks (queueStrike - the marks land on their
+-- Mortar: N telegraphed ground marks (Fn.queueStrike - the marks land on their
 -- own clock, whatever the creature does next). p: count, spread, delay
 -- (tell-to-hit), stagger, aim ("player" scatters around the player,
--- "self" around the creature), plus queueStrike riders: shape/inner/outer,
+-- "self" around the creature), plus Fn.queueStrike riders: shape/inner/outer,
 -- snare, chain, pool, hitEvent.
-ATTACK_HANDLERS.mortar = {
+K.ATTACK_HANDLERS.mortar = {
 	windup = function(creature, _def, _p, u, sub)
 		creature.model:PivotTo(poseCFrame(creature, sub + 0.6 * u, 0, math.rad(-16) * u))
 	end,
@@ -3837,14 +4653,14 @@ ATTACK_HANDLERS.mortar = {
 		for i = 1, count do
 			local at
 			if root and (p.aim or "player") == "player" then
-				at = scatterAround(root, p.spread or 7)
+				at = Fn.scatterAround(root, p.spread or 7)
 			else
 				local angle = math.random() * math.pi * 2
 				local r = math.sqrt(math.random()) * (p.spread or 10)
 				at = groundedPos(creature.pos + Vector3.new(math.cos(angle) * r, 0, math.sin(angle) * r), 0)
 			end
 			local tellAt = now + (i - 1) * (p.stagger or 0.25)
-			queueStrike(creature, def, p, at, tellAt, tellAt + (p.delay or 1.1), {
+			Fn.queueStrike(creature, def, p, at, tellAt, tellAt + (p.delay or 1.1), {
 				shape = p.shape,
 				inner = p.inner,
 				outer = p.outer,
@@ -3860,12 +4676,12 @@ ATTACK_HANDLERS.mortar = {
 -- Gust push: a displacement shove - radial, or a cone with `cone` set. The
 -- client moves the character (the `pull` machinery, mirrored outward);
 -- optional light damage. p: radius, push (studs/s), lift?, cone?, damage?.
-ATTACK_HANDLERS.gustpush = {
+K.ATTACK_HANDLERS.gustpush = {
 	windup = function(creature, _def, _p, u, sub)
 		creature.model:PivotTo(poseCFrame(creature, sub + 0.7 * u, 0, math.rad(-10) * u))
 	end,
 	fire = function(creature, def, p, _now)
-		local facing = bossFacing(creature)
+		local facing = Fn.bossFacing(creature)
 		fireEvent("gust", creature.pos, {
 			radius = p.radius,
 			push = p.push or 42,
@@ -3876,9 +4692,9 @@ ATTACK_HANDLERS.gustpush = {
 			skin = p.skin,
 		})
 		if p.damage then
-			local lo, hi = bossRoll(creature, def, p.damage)
+			local lo, hi = Fn.bossRoll(creature, def, p.damage)
 			if p.cone then
-				damagePlayersInCone(creature.pos, facing, p.radius, p.cone, false, lo, hi, creature)
+				Fn.damagePlayersInCone(creature.pos, facing, p.radius, p.cone, false, lo, hi, creature)
 			else
 				damagePlayersInRadius(creature.pos, p.radius, lo, hi, creature, 0.7)
 			end
@@ -3888,44 +4704,25 @@ ATTACK_HANDLERS.gustpush = {
 
 -- ---------------------------------------------------------------- rimefang
 --
--- The Floe-Breaker's two bespoke moves. Everything else in its book runs on
--- handlers that already exist (snap / charge / slam / undertow / barrage).
-
--- Mirrors BossArenaService.FOLDER_NAME - the arena furniture lives here, and
--- a wash asks it whether a player is behind cover.
-local BOSS_ARENA_FOLDER = "BossArenas"
-local washParams: RaycastParams? = nil
-
--- Anything solid between the boss and a player shelters them from a wash.
--- This is what the arena's bergs and its frozen whaler are FOR: the counter
--- to the wash is position, not timing, and without an occlusion test the
--- furniture is scenery.
-local function washSheltered(root: BasePart, from: Vector3): boolean
-	local arenas = Workspace:FindFirstChild(BOSS_ARENA_FOLDER)
-	if not arenas then
-		return false
-	end
-	if not washParams then
-		washParams = RaycastParams.new()
-		washParams.FilterType = Enum.RaycastFilterType.Include
-	end
-	washParams.FilterDescendantsInstances = { arenas }
-	local origin = from + Vector3.new(0, 2.5, 0)
-	local hit = Workspace:Raycast(origin, root.Position - origin, washParams)
-	-- The floor is in the same folder and a ray across a domed floe grazes
-	-- it; only standing geometry counts as cover.
-	if not hit then
-		return false
-	end
-	local name = hit.Instance.Name
-	return not (string.find(name, "_Base", 1, true) or string.find(name, "Floor", 1, true))
-end
+-- The Floe-Breaker's bespoke moves. Everything else in its book runs on
+-- handlers that already exist (snap / slam / barrage).
+--
+-- THE WASH'S COVER MECHANIC IS GONE (kit v2), and the occlusion raycast with
+-- it. `Fn.washSheltered` used to ask the arena furniture whether a player was
+-- behind something, and the rebuilt r=120 sheet has no standing geometry at
+-- all - so the test could only ever return false, at the cost of one raycast
+-- per player per wash, and the `sheltered` roster it produced was a wire
+-- field that was always empty. Deleted rather than left returning false: a
+-- shelter test that cannot shelter anybody is exactly the kind of number the
+-- next reader would tune. The client keeps its own `sheltered` exemption as a
+-- harmless no-op on a roster nobody sends. If furniture ever comes back, the
+-- move that needs it is the wash and this is where the test went.
 
 -- Everyone the crest has reached since the last frame. Backwards, because it
 -- removes as it goes; `PlayerService.damage` is already safe for a player who
 -- has died or left between the schedule and the arrival (no humanoid, no
 -- hit), so there is no second liveness test to keep in step with it.
-local function washLand(creature, now: number)
+function Fn.washLand(creature, now: number)
 	local a = creature.attack
 	local queue = a and a.washHits
 	if not queue then
@@ -3944,9 +4741,9 @@ end
 -- shoulders a wall of water over it; the seal is not bitten, it is WASHED
 -- OFF. So the threat here is displacement, not damage - you are shoved
 -- toward the holes and the pressure ridge - and shelter beats it.
-ATTACK_HANDLERS.wash = {
+K.ATTACK_HANDLERS.wash = {
 	-- NO POSE HOOKS. The whale's body is published as attributes and drawn by
-	-- the client (rimefangDrive below), so a pivot here would only move a
+	-- the client (Fn.rimefangDrive below), so a pivot here would only move a
 	-- model nobody can see. The roll onto its side - the tell, which has to
 	-- read from the far side of the arena, because the answer is to move - is
 	-- posed from the phase this loop is already in.
@@ -3955,9 +4752,8 @@ ATTACK_HANDLERS.wash = {
 		-- LATCHED ONCE, never per frame. A bearing recomputed each frame
 		-- snaps to whoever is nearest, so in a party the wall would jump
 		-- across the arena mid-attack and stop being dodgeable.
-		a.dir = if root then flatUnit(root.Position - creature.pos) else bossFacing(creature)
-		local sheltered = {}
-		local lo, hi = bossRoll(creature, def, p.damage)
+		a.dir = if root then flatUnit(root.Position - creature.pos) else Fn.bossFacing(creature)
+		local lo, hi = Fn.bossRoll(creature, def, p.damage)
 		-- THE WALL TRAVELS, SO THE DAMAGE TRAVELS WITH IT. Everything below
 		-- used to resolve in this one loop, at the instant the windup ended:
 		-- a player at the far rim took the hit before the crest had left the
@@ -3965,47 +4761,44 @@ ATTACK_HANDLERS.wash = {
 		-- against a one-frame hit, so the scheduling belongs here.
 		--
 		-- The whole cone is decided NOW and never revisited: who is in the
-		-- wedge, who cover saved, and how hard it hits. Only the MOMENT is
-		-- deferred. That ordering is the point - re-testing shelter as the
-		-- crest arrived would let cover flicker mid-sweep (a player stepping
-		-- out from behind a berg after the wall committed would be saved by
-		-- geometry the wall had already passed), and the raycast set is one
-		-- batch rather than one per frame.
+		-- wedge and how hard it hits. Only the MOMENT is deferred. That
+		-- ordering is the point - re-testing the wedge as the crest arrived
+		-- would let a player who stepped aside AFTER the wall committed still
+		-- be caught by geometry the wall had already passed, and it would make
+		-- the move re-aim itself, which is the exact failure kit v2 exists to
+		-- fix everywhere else in this book.
 		local reach = math.max(p.radius - (p.sweepFrom or 0), 1e-3)
 		a.washHits = {}
-		for _, entry in livingRootsNear(creature.pos, p.radius) do
+		for _, entry in Fn.livingRootsNear(creature.pos, p.radius) do
 			local to = flatUnit(entry.root.Position - creature.pos)
 			if to:Dot(a.dir) >= math.cos(p.cone) then
-				if washSheltered(entry.root, creature.pos) then
-					table.insert(sheltered, entry.player.UserId)
-				else
-					-- Where the crest is when it reaches them, inverted: the
-					-- client walks its wall out linearly from `sweepFrom` to
-					-- `radius` over `sweep` seconds, so this is that same line
-					-- solved for time. A move without `sweep` keeps the old
-					-- behaviour exactly - every delay is zero.
-					local off = entry.root.Position - creature.pos
-					local dist = Vector3.new(off.X, 0, off.Z).Magnitude
-					local u = math.clamp((dist - (p.sweepFrom or 0)) / reach, 0, 1)
-					table.insert(a.washHits, {
-						player = entry.player,
-						at = now + (p.sweep or 0) * u,
-						amount = math.random(lo, hi),
-					})
-				end
+				-- Where the crest is when it reaches them, inverted: the
+				-- client walks its wall out linearly from `sweepFrom` to
+				-- `radius` over `sweep` seconds, so this is that same line
+				-- solved for time. A move without `sweep` keeps the old
+				-- behaviour exactly - every delay is zero.
+				local off = entry.root.Position - creature.pos
+				local dist = Vector3.new(off.X, 0, off.Z).Magnitude
+				local u = math.clamp((dist - (p.sweepFrom or 0)) / reach, 0, 1)
+				table.insert(a.washHits, {
+					player = entry.player,
+					at = now + (p.sweep or 0) * u,
+					amount = math.random(lo, hi),
+				})
 			end
 		end
 		-- Rides the kit engine's `gust` vocabulary (displacement is the pull
-		-- machinery in reverse, client-side) plus one new field: `sheltered`
-		-- is the list of players cover saved, and their clients skip the shove.
+		-- machinery in reverse, client-side). No `sheltered` roster any more -
+		-- see the note at the top of this region; the client's exemption reads
+		-- a field nobody sends and does nothing, which is the correct no-op.
 		fireEvent("gust", creature.pos, {
 			radius = p.radius,
 			push = p.push or 70,
 			duration = math.max(p.duration, 0.2),
 			cone = p.cone,
 			facing = a.dir,
+			move = "wash",
 			skin = p.skin,
-			sheltered = sheltered,
 		})
 		if p.slick then
 			spawnPool(creature, groundedPos(creature.pos + a.dir * (p.radius * 0.45), 0), p.slick, now)
@@ -4014,20 +4807,20 @@ ATTACK_HANDLERS.wash = {
 		-- the next one: with `sweep` unset every delay is zero, and a move
 		-- that opts out of the travelling wall must land exactly where it
 		-- landed before this existed.
-		washLand(creature, now)
+		Fn.washLand(creature, now)
 	end,
 	-- The wall arriving, one player at a time, on the schedule `fire` wrote.
 	-- The PivotTo is what the attack loop does for a handler with no strike
 	-- hook, kept verbatim so adding this hook changes nothing but the timing.
 	strike = function(creature, _def, _p, now, _dt, _u, _root, sub)
-		washLand(creature, now)
+		Fn.washLand(creature, now)
 		creature.model:PivotTo(poseCFrame(creature, sub, 0, 0))
 	end,
 	-- Nobody is dropped if the strike ends early (it cannot today - the sweep
 	-- is 0.22s inside a 0.9s strike - but a retune must not silently start
 	-- eating hits).
 	finish = function(creature)
-		washLand(creature, math.huge)
+		Fn.washLand(creature, math.huge)
 	end,
 }
 
@@ -4037,9 +4830,9 @@ ATTACK_HANDLERS.wash = {
 -- fight where nothing is coming - which is what makes the beats that ARE
 -- coming legible. It marks its target, and the mark is who the NEXT move
 -- opens on.
-ATTACK_HANDLERS.spyhop = {
+K.ATTACK_HANDLERS.spyhop = {
 	-- No pose hooks, for the same reason the wash has none: the stand, the
-	-- hold and the slow scan are published (rimefangDrive below), not pivoted.
+	-- hold and the slow scan are published (Fn.rimefangDrive below), not pivoted.
 	fire = function(creature, _def, p, _now, root)
 		if root then
 			-- LATCHED HERE AND NEVER AGAIN, the way `charge` latches `a.dir`.
@@ -4073,11 +4866,11 @@ ATTACK_HANDLERS.spyhop = {
 -- and the body is drawn swinging about the head, so that is up to 108 degrees
 -- of TAIL, and a ring placed when the windup starts would be nowhere by the
 -- time it ends. Latching `a.dir` on the first windup frame stops the body
--- (`rimefangFace` reads it) and reads as the animal committing. And the
+-- (`Fn.rimefangFace` reads it) and reads as the animal committing. And the
 -- MOMENT: the countdown runs through the fall rather than finishing while the
 -- tail is still up. The row opts out of the stock tell (`tell = false`) so
 -- there is exactly one marker and it is this one.
-local RF_FLUKE_IMPACT = 0.3
+K.RF_FLUKE_IMPACT = 0.3
 
 -- Where the fluke will come down: the last spine sample's ground position.
 -- The lobtail is no longer a lift - the tail rears and then HAMMERS, the tip
@@ -4087,13 +4880,13 @@ local RF_FLUKE_IMPACT = 0.3
 -- point, well inside this move's 24-stud radius. Reading the rest pose is
 -- therefore both correct and the only thing available at windup start, which
 -- is when the marker has to be placed.
-local function flukeGround(creature): Vector3
+function Fn.flukeGround(creature): Vector3
 	local body = rimefangBody(creature)
 	local at = if body then body[#body].pos else creature.pos
 	return groundedPos(Vector3.new(at.X, creature.pos.Y, at.Z), 0)
 end
 
-ATTACK_HANDLERS.flukeslam = {
+K.ATTACK_HANDLERS.flukeslam = {
 	-- No pose hooks: the whale is published as attributes and drawn by the
 	-- client, so a PivotTo here would only move a model nobody can see.
 	windup = function(creature, _def, p, _u, _sub)
@@ -4102,26 +4895,32 @@ ATTACK_HANDLERS.flukeslam = {
 			return
 		end
 		a.aimed = true
-		a.dir = bossFacing(creature)
-		a.impact = flukeGround(creature)
+		a.dir = Fn.bossFacing(creature)
+		a.impact = Fn.flukeGround(creature)
 		fireEvent("telegraph", a.impact, {
 			kind = p.tellKind or "burst",
-			duration = p.windup + (p.duration or 0) * RF_FLUKE_IMPACT,
+			duration = p.windup + (p.duration or 0) * K.RF_FLUKE_IMPACT,
 			radius = p.radius,
 			facing = a.dir,
+			-- WHICH MOVE THIS IS, on every Rimefang telegraph and every
+			-- Rimefang slam. The client dispatches on `move` FIRST and only
+			-- falls back to matching radii - a fallback whose tolerance is now
+			-- 0.4 studs, because skyfall's 18 sits one stud from the bite's 17.
+			-- Nothing here may rely on that fallback.
+			move = "flukeslam",
 			skin = p.skin,
 		})
 	end,
 	strike = function(creature, def, p, _now, _dt, u, _root, _sub)
 		local a = creature.attack
-		if a.fired or u < RF_FLUKE_IMPACT then
+		if a.fired or u < K.RF_FLUKE_IMPACT then
 			return
 		end
 		a.fired = true
-		local at = a.impact or flukeGround(creature)
-		local lo, hi = bossRoll(creature, def, p.damage)
-		damagePlayersInRadius(at, p.radius, lo, hi, creature, 0.5, BOSS_HEIGHT_TOLERANCE)
-		fireEvent("slam", at, { radius = p.radius, skin = p.skin })
+		local at = a.impact or Fn.flukeGround(creature)
+		local lo, hi = Fn.bossRoll(creature, def, p.damage)
+		damagePlayersInRadius(at, p.radius, lo, hi, creature, 0.5, K.BOSS_HEIGHT_TOLERANCE)
+		fireEvent("slam", at, { radius = p.radius, move = "flukeslam", skin = p.skin })
 	end,
 }
 
@@ -4145,26 +4944,26 @@ ATTACK_HANDLERS.flukeslam = {
 -- prowling), and returns on its first line for any creature whose row is not
 -- Rimefang's. No other boss can reach a line of it.
 
-local RIMEFANG_BOSS = "rimefang"
--- Mirrors ATTR_POSE / ATTR_POSE_CENTER, which are declared with the colossus
+K.RIMEFANG_BOSS = "rimefang"
+-- Mirrors ATTR.POSE / ATTR.POSE_CENTER, which are declared with the colossus
 -- driver further down this file and so are not in scope here. Same two names,
 -- because they are the same contract: `Pose` is what makes the client adopt
 -- the model, `PoseCenter` is where the body is drawn from.
-local RF_ATTR_POSE = "Pose"
-local RF_ATTR_CENTER = "PoseCenter"
+K.RF_ATTR_POSE = "Pose"
+K.RF_ATTR_CENTER = "PoseCenter"
 
 -- The prowl's breath cycle: how long it runs under the sheet, and how long
 -- it lies up top before it goes back down.
-local RF_DIVE_HOLD = 3.6
-local RF_SURFACE_HOLD = 4.2
+K.RF_DIVE_HOLD = 3.6
+K.RF_SURFACE_HOLD = 4.2
 -- Not a full `submerge`: it hunts under the sheet, it does not leave, and
 -- the thing you are shooting at has to stay findable between attacks.
-local RF_DIVE_DEPTH = 0.6
+K.RF_DIVE_DEPTH = 0.6
 
 -- An attribute is a replicated write, so a pose number is only sent when it
 -- has actually moved. (Same reasoning as the choir's ChoirDown, which is
 -- published on change for the same reason.)
-local RF_EPSILON = 0.004
+K.RF_EPSILON = 0.004
 
 local function rfPut(model: Model, cache, attr: string, value: number)
 	-- A NaN reaching the cache would latch this channel off for the life of
@@ -4175,14 +4974,14 @@ local function rfPut(model: Model, cache, attr: string, value: number)
 		return
 	end
 	local last = cache[attr]
-	if last == nil or math.abs(value - last) > RF_EPSILON then
+	if last == nil or math.abs(value - last) > K.RF_EPSILON then
 		cache[attr] = value
 		model:SetAttribute(attr, value)
 	end
 end
 
 -- The pose state, and the one-time handshake with the client.
-local function rimefangState(creature)
+function Fn.rimefangState(creature)
 	local state = creature.rimefangPose
 	if state then
 		return state
@@ -4204,19 +5003,27 @@ local function rimefangState(creature)
 	end
 	-- Centre BEFORE kind: `Pose` is the signal the controller adopts on, and
 	-- it reads `PoseCenter` in the same breath.
-	creature.model:SetAttribute(RF_ATTR_CENTER, state.center)
-	creature.model:SetAttribute(RF_ATTR_POSE, RIMEFANG_BOSS)
+	creature.model:SetAttribute(K.RF_ATTR_CENTER, state.center)
+	creature.model:SetAttribute(K.RF_ATTR_POSE, K.RIMEFANG_BOSS)
 	return state
 end
 
 -- WHERE THE BODY IS DRAWN FROM, so that the head lands on the server's own
--- authority point every frame. Only the breach moves the head away from the
--- centre horizontally (`arch` walks it along the leap's parabola), so rather
--- than duplicating that parabola's constants here, the offset is asked of
--- the path itself: pose the shape about the origin and see where t = 0 came
--- out. The vertical is deliberately NOT cancelled - the leap's height, the
--- spy-hop's stand and the dive's depth ARE the pose.
-local function rimefangCenter(state, at: Vector3): Vector3
+-- authority point every frame. Rather than duplicating any pose's constants
+-- here, the offset is asked of the path itself: pose the shape about the
+-- origin and see where t = 0 came out. The vertical is deliberately NOT
+-- cancelled - the spy-hop's stand, the dive's depth, the ice breach's
+-- eruption and the sky slam's 70 studs of climb ARE the pose.
+--
+-- THIS IS WHY THE TWO KIT-V2 CHANNELS SATISFY THEIR CONTRACT FOR FREE. Both
+-- burst and skyfall move the head VERTICALLY about the centre, so the
+-- horizontal cancellation above is a no-op for them and PoseCenter comes out
+-- as exactly what the client is promised: the burst point on the surface for
+-- the ice breach, and the ground point under the head for the sky slam. The
+-- handlers earn that by keeping creature.pos on the mark - pinned to the lock
+-- point at the ice breach's `fire`, eased onto it and parked by 0.58 of the
+-- sky slam's strike.
+function Fn.rimefangCenter(state, at: Vector3): Vector3
 	local keep = state.center
 	state.center = Vector3.zero
 	local head = RimefangPath.pointAt(state, 0)
@@ -4235,7 +5042,7 @@ end
 -- aft into scenery: visible, solid-looking and unswingable, the beached body
 -- during the punish window included.
 --
--- WHY SAMPLES AND NOT A `parts` RING. spawnBossParts is the other way to give
+-- WHY SAMPLES AND NOT A `parts` RING. Fn.spawnBossParts is the other way to give
 -- a boss more than one place to be hit, and it is the wrong tool here. A
 -- `parts` row is a CREATURE - its own health, its own death, a socket index,
 -- and a `vulnerableWhen = "partsDown"` gate on the parent - which is the
@@ -4259,22 +5066,22 @@ end
 -- the tail. At 11 the spacing is 56/10 = 5.6, and 6.0 > 5.6 closes it - with
 -- every pair forward of there wider still, because girth is only rising.
 --
--- Raising RF_MIN_RADIUS to 3.6 would have closed the same gap and is the
+-- Raising K.RF_MIN_RADIUS to 3.6 would have closed the same gap and is the
 -- wrong fix: the fluke's drawn half-width is 6.6 * girth(1) = 1.45, so 3.0 is
 -- already twice the hide and 3.6 would be swinging at open water. Sampling
 -- finer keeps every radius honest to the body and costs two more `pointAt`
 -- calls per test.
-local RF_HIT_SAMPLES = 11
+K.RF_HIT_SAMPLES = 11
 -- The pack's authored half-width at full girth (the row's note on `hitRadius`
 -- measures the drawn whale at ~6.6 half-width, 7.2 half-height), and a floor
 -- under the peduncle's pinch: `RimefangPath.girth` bottoms out at 0.22, which
 -- would leave the fluke a 1.5-stud target you could not reliably swing at.
-local RF_HALF_WIDTH = 6.6
-local RF_MIN_RADIUS = 3.0
+K.RF_HALF_WIDTH = 6.6
+K.RF_MIN_RADIUS = 3.0
 
 -- The spine, sampled, as capture spheres - or nil for anything that is not
 -- Rimefang, which is what keeps every other creature on the pivot sphere it
--- has always had. Guarded on `creature.row.boss` exactly as `rimefangDrive`
+-- has always had. Guarded on `creature.row.boss` exactly as `Fn.rimefangDrive`
 -- is, and on the pose state as well: before the first drive frame (and all
 -- through `rising`) there is no body yet, and the caller falls back.
 --
@@ -4282,7 +5089,7 @@ local RF_MIN_RADIUS = 3.0
 -- called per swing and per shot, and a fresh table of nine per call would be
 -- churn for nothing.
 function rimefangBody(creature)
-	if creature.row.boss ~= RIMEFANG_BOSS then
+	if creature.row.boss ~= K.RIMEFANG_BOSS then
 		return nil
 	end
 	local state = creature.rimefangPose
@@ -4291,15 +5098,15 @@ function rimefangBody(creature)
 	end
 	local nodes = creature.rimefangHitNodes
 	if not nodes then
-		nodes = table.create(RF_HIT_SAMPLES)
-		for i = 1, RF_HIT_SAMPLES do
-			nodes[i] = { pos = Vector3.zero, radius = 0, t = (i - 1) / (RF_HIT_SAMPLES - 1) }
+		nodes = table.create(K.RF_HIT_SAMPLES)
+		for i = 1, K.RF_HIT_SAMPLES do
+			nodes[i] = { pos = Vector3.zero, radius = 0, t = (i - 1) / (K.RF_HIT_SAMPLES - 1) }
 		end
 		creature.rimefangHitNodes = nodes
 	end
 	for _, node in nodes do
 		node.pos = RimefangPath.pointAt(state, node.t)
-		node.radius = math.max(RF_HALF_WIDTH * RimefangPath.girth(node.t), RF_MIN_RADIUS)
+		node.radius = math.max(K.RF_HALF_WIDTH * RimefangPath.girth(node.t), K.RF_MIN_RADIUS)
 	end
 	return nodes
 end
@@ -4311,170 +5118,1125 @@ end
 -- a party. Before the strike there is no latch yet, and the boss's own yaw -
 -- which the shared loop turns at `turnRate` through the windup - is the
 -- tell.
-local function rimefangFace(creature, a): number
+function Fn.rimefangFace(creature, a): number
 	return if a.dir then yawToward(a.dir) else creature.yaw0
 end
+
+-- EASING, the whole job of this region. `smoothstep` above zeroes the first
+-- derivative at both ends; these zero more, or bias the acceleration, so a
+-- pose value LEAVES and ARRIVES with weight instead of a linear ramp.
+
+-- Quintic. Zero first AND second derivative at 0 and 1, so a channel eased
+-- with it has no kick at either end - the default for surge-and-settle beats.
+local function smootherstep(t: number): number
+	t = math.clamp(t, 0, 1)
+	return t * t * t * (t * (t * 6 - 15) + 10)
+end
+
+-- Accelerate from rest: slow off the mark, fast into the end. The tail
+-- gathering speed into a hammer, a body dropping under its own weight.
+local function easeInCubic(t: number): number
+	t = math.clamp(t, 0, 1)
+	return t * t * t
+end
+
+-- Decelerate to rest: fast off the mark, ease to a stop. A snap that lands
+-- and a jaw that shuts.
+local function easeOutCubic(t: number): number
+	t = math.clamp(t, 0, 1)
+	local f = 1 - t
+	return 1 - f * f * f
+end
+
+-- THE LEAP CLOCK. `arch` is the parabola parameter (RimefangPath draws height
+-- sin(arch*pi) and ground ARCH_SPAN*(arch-0.5)), so walking it LINEARLY in
+-- time gives a constant ground speed and only the sine's natural hang at the
+-- apex. This warps that walk so the progress is FAST near the water (arch 0
+-- and 1) and SLOW over the top: it accelerates off the surface, floats the
+-- apex, and accelerates into re-entry. da/du = 1 + k*cos(2pi*u) stays > 0 for
+-- k < 1, so it never stalls or reverses, and arch(0)=0, arch(0.5)=0.5,
+-- arch(1)=1 land the endpoints and the apex exactly where the parabola wants.
+local function hangArc(u: number, k: number): number
+	u = math.clamp(u, 0, 1)
+	return u + k * math.sin(2 * math.pi * u) / (2 * math.pi)
+end
+
+-- ------------------------------------------------- rimefang: the kit v2 moves
+--
+-- THE VERDICT ON KIT v1 was that the whale never actually hit you: "they don't
+-- really hit the user at all; it's mainly just the whale rushing and hitting
+-- the user". Every one of those was a move that landed somewhere the player
+-- was not, and each for a different reason:
+--   * `breach` rode the shared `charge` - a FIXED 46-stud run on a latched
+--     bearing, so against a player at the 14-stud standoff it landed 32 studs
+--     PAST them, every time.
+--   * `flukeslam` lands where the TAIL is, 56 studs behind the nose, and
+--     nothing steers the tail anywhere.
+--   * `carousel` pulled on `creature.anchor` - the arena's middle - wherever
+--     anybody happened to be standing.
+-- Only `bite` connected, so the whole fight read as a rush.
+--
+-- THE RULE THE THREE HANDLERS BELOW ARE BUILT ON: every attack lands on the
+-- player's MARKED position. The body does the spectacle; the mark is the
+-- contract. Concretely that means each of them (a) predicts, with rfAimPoint,
+-- (b) LOCKS that prediction at a stated moment and stops re-aiming, (c) fires
+-- its own telegraph AT the locked point with an honest countdown, and (d)
+-- damages that same latched point rather than wherever the body ended up. The
+-- three differ only in where they come FROM: under the ice, out of the sky,
+-- and along the sheet.
+
+-- Where the client's continuous visuals read which move is running. Numeric
+-- pose channels go through rfPut; this one is a string, so it is published
+-- through its own change-cache in the driver.
+K.RF_ATTR_MOVE = "Move"
+-- HOW FAR AHEAD A LOCK AIMS. A mark placed on where you STAND is dodged by
+-- walking; a mark placed on where you are GOING is dodged by changing
+-- direction, which is a decision rather than a reflex. 0.35s of horizontal
+-- velocity is about one stride at run speed - enough to punish a straight
+-- line, short enough that a stop beats it.
+K.RF_AIM_LEAD = 0.35
+-- The burst's damage frame, as a fraction of the ice breach's strike: the
+-- instant the head is fully out and the sheet lets go. The pose curve, the
+-- telegraph's countdown and the hit all read this one number.
+K.RF_BURST_IMPACT = 0.55
+-- Skyfall lands AT THE END of its strike, by construction - the whole strike
+-- is the flight. Kept as a named constant so the pose, the countdown and the
+-- hit cannot drift apart the way a literal 1.0 in three places would.
+K.RF_SKY_IMPACT = 1.0
+-- ...and the floe quake heaves on the very first frame of its strike, which
+-- is `fire` - the exact instant the windup expires. The client draws the
+-- heave on its own clock from the telegraph's `duration`, so this MUST be 0:
+-- any impact fraction here would be a countdown that finishes before the
+-- damage does.
+K.RF_LANE_IMPACT = 0.0
+-- How much of the ground track is spent before the dive begins, so PoseCenter
+-- (the ground point under the head) has stopped moving by the time the body
+-- is coming down it. Matches the pose contract's hang-and-pitch-over at 0.58.
+K.RF_SKY_SETTLE = 0.58
+-- JUMPED, NOT OUTRUN. A player in Jumping/Freefall - or simply this many
+-- studs clear of the impact plane - is over the shockwave when it passes.
+K.RF_AIR_CLEAR = 3.0
+
+-- The countdowns the stock telegraph draws for the new handlers. Registered
+-- here rather than in the K.HANDLER_IMPACT literal so the whole of Rimefang's
+-- kit stays inside Rimefang's region; the table is only ever read at runtime,
+-- long after this chunk has finished loading. All three moves opt OUT of the
+-- stock tell today (they mark their own, better-placed points), so these are
+-- the honest values for the day somebody turns one back on.
+K.HANDLER_IMPACT.icebreach = K.RF_BURST_IMPACT
+K.HANDLER_IMPACT.skyfall = K.RF_SKY_IMPACT
+K.HANDLER_IMPACT.lane = K.RF_LANE_IMPACT
+
+-- PREDICTIVE AIM, and the one function every new lock goes through. The point
+-- is grounded (so a mark drawn on it sits on the sheet rather than at the
+-- player's waist) and clamped into the arena (so a player who runs for the
+-- rim cannot drag the whale's commit outside the circle Fn.clampToArena will
+-- immediately haul it back inside of - which is how a "locked" point used to
+-- end up somewhere the body could never reach).
+function Fn.rfAimPoint(creature, root: BasePart?, lead: number): Vector3
+	if not root then
+		return groundedPos(creature.pos, 0)
+	end
+	local velocity = root.AssemblyLinearVelocity
+	local at = root.Position + Vector3.new(velocity.X, 0, velocity.Z) * lead
+	local def = bossDef(creature)
+	local anchor = creature.anchor
+	if anchor and def and def.arena then
+		local off = Vector3.new(at.X - anchor.X, 0, at.Z - anchor.Z)
+		if off.Magnitude > def.arena.radius then
+			at = anchor + off.Unit * def.arena.radius
+		end
+	end
+	-- The player's own Y is the ray's hint, not the answer: groundedPos casts
+	-- from just above it onto whatever is underneath.
+	return groundedPos(Vector3.new(at.X, root.Position.Y, at.Z), 0)
+end
+
+-- Is this player off the ice? Two tests, because either one alone lies: the
+-- humanoid state is authoritative for a jump but reads Freefall for a single
+-- frame off a ledge, and a height band alone would spare anybody standing on
+-- a rise. Together they mean "in the air over the impact plane".
+function Fn.rfAirborne(root: BasePart, groundY: number): boolean
+	if root.Position.Y > groundY + K.RF_AIR_CLEAR then
+		return true
+	end
+	local character = root.Parent
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if humanoid then
+		local state = humanoid:GetState()
+		return state == Enum.HumanoidStateType.Jumping or state == Enum.HumanoidStateType.Freefall
+	end
+	return false
+end
+
+-- Flat distance from a point to the segment [from, from + dir*length]. The
+-- floe quake's corridor is a segment, not a circle, and a radius test would
+-- either miss the far end or catch the whole arena.
+function Fn.rfSegDist(at: Vector3, from: Vector3, dir: Vector3, length: number): number
+	local off = Vector3.new(at.X - from.X, 0, at.Z - from.Z)
+	local along = math.clamp(off:Dot(dir), 0, length)
+	return (off - dir * along).Magnitude
+end
+
+-- MAY THE PICKER OFFER THIS MOVE? Rimefang-only, and only for a row that asks
+-- (`needsFlukeTarget`), so every other boss and every kitted hostile takes the
+-- `true` on the first line. The fluke slam hammers the ice at the TAIL, 56
+-- studs behind the nose, and nothing aims the tail: on a 70-stud arena it is
+-- usually pointed at open ice, and rolling it there spent 2.1 seconds of the
+-- fight on a move that could not hit anybody. Gated at the PICK rather than
+-- re-aimed, because re-aiming the tail is exactly the lie kit v2 removes.
+function Fn.rfPickAllows(creature, p, name: string?): boolean
+	if creature.row.boss ~= K.RIMEFANG_BOSS then
+		return true
+	end
+	-- THE OPENER OWNS THE NEXT SLOT. While the sheet is still due to be
+	-- shattered nothing else may be offered. `shatter` is in no phase list
+	-- and so can never come out of this pool - it arrives through the
+	-- engine's own `creature.forcedAttack`, which Fn.pickBossAttack spends
+	-- before it ever builds one (Fn.rfPhaseWatch re-asserts it every idle
+	-- frame until the move has actually landed). This is the belt to that
+	-- brace: if the override were ever lost, the pool empties and the
+	-- picker falls back to the phase list's first entry rather than
+	-- rolling a set piece over the top of the opener.
+	if creature.rfShatterDue then
+		return name == "shatter"
+	end
+	if not p or not p.needsFlukeTarget then
+		return true
+	end
+	return #Fn.livingRootsNear(Fn.flukeGround(creature), p.radius or 24) > 0
+end
+
+-- THE ICE BREACH. It sinks, hunts you UNDER the sheet at `hunt` studs/second
+-- toward where you are going, and `lock` seconds before the windup ends it
+-- COMMITS: it stops moving, and the mark goes down on the ice. Then it comes
+-- up through that mark nose-first and topples onto the floe.
+--
+-- The lock is the whole design. Everything before it is pressure you can walk
+-- away from (the crack-web follows you, drawn at PoseCenter, which is the
+-- head); everything after it is a fixed circle with an honest countdown. The
+-- 0.6s between them is the reaction budget, stated once, in the row.
+K.ATTACK_HANDLERS.icebreach = {
+	-- `u` is the shared loop's windup progress; the POSE reads it, this hook
+	-- works off the loop's own deadline instead (see `left` below).
+	windup = function(creature, def, p, _u, sub)
+		local a = creature.attack
+		local now = os.clock()
+		-- The shared loop does not hand a windup hook its dt, and this one
+		-- MOVES the boss, so the step is measured here. Clamped: a hitch must
+		-- not teleport the hunt across the arena in one frame.
+		local dt = math.clamp(now - (a.rfLast or now), 0, 0.25)
+		a.rfLast = now
+		creature.model:PivotTo(poseCFrame(creature, sub, 0, 0))
+		if a.locked then
+			return
+		end
+		-- Time until the strike begins, from the loop's OWN deadline rather
+		-- than from `u` - the telegraph's countdown is this number, and a
+		-- countdown reconstructed from a progress fraction is a frame long.
+		local left = math.max(a.phaseUntil - now, 0)
+		a.aim = Fn.rfAimPoint(creature, (Fn.nearestPlayerRoot(creature.pos)), K.RF_AIM_LEAD)
+		if left <= (p.lock or 0.6) then
+			a.locked = true
+			a.impact = a.aim
+			fireEvent("telegraph", a.impact, {
+				kind = "mark",
+				move = "icebreach",
+				radius = p.radius,
+				-- Through the BURST, not up to the surfacing: the sheet does
+				-- not let go until 0.55 of the strike.
+				duration = left + (p.duration or 0) * K.RF_BURST_IMPACT,
+				skin = p.skin,
+			})
+			return
+		end
+		local to = Vector3.new(a.aim.X - creature.pos.X, 0, a.aim.Z - creature.pos.Z)
+		local step = math.min((p.hunt or 30) * dt, to.Magnitude)
+		if step > 1e-3 then
+			creature.pos = groundedPos(creature.pos + to.Unit * step, creature.halfThickness)
+			Fn.clampToArena(creature, def)
+		end
+	end,
+	-- Belt and braces: a windup shorter than `lock` (a retune, or an enrage
+	-- that ever touches windups) would otherwise reach the strike unlocked and
+	-- silently damage the whale's own position - v1's exact bug.
+	fire = function(creature, def, p, _now, root)
+		local a = creature.attack
+		-- HOW MANY ERUPTIONS THIS BREACH IS. Decided once, at the strike, and
+		-- only in phase two or later: `chain = 2` on the row means the whale
+		-- comes up twice. Latched here rather than at the recover so the pose
+		-- can read it on the same frame the recover begins, and guarded on nil
+		-- so Fn.rfChainRearm's second pass cannot re-arm the counter.
+		if a.chainLeft == nil then
+			local escalated = creature.enraged or (creature.rfPhase or 1) >= 2
+			a.chainLeft = if escalated and (p.chain or 0) > 1 then p.chain - 1 else 0
+		end
+		if not a.locked then
+			a.locked = true
+			a.impact = a.aim or Fn.rfAimPoint(creature, root, K.RF_AIM_LEAD)
+			fireEvent("telegraph", a.impact, {
+				kind = "mark",
+				move = "icebreach",
+				radius = p.radius,
+				duration = (p.duration or 0) * K.RF_BURST_IMPACT,
+				skin = p.skin,
+			})
+		end
+		-- IT COMES UP WHERE THE MARK IS. The head is teleported onto the lock
+		-- point for the strike; the client never sees a jump because the body
+		-- is under the ice at Submerge 1 on this frame and the burst pose
+		-- lifts it out of exactly this spot.
+		creature.pos = groundedPos(Vector3.new(a.impact.X, creature.pos.Y, a.impact.Z), creature.halfThickness)
+		Fn.clampToArena(creature, def)
+	end,
+	strike = function(creature, def, p, now, _dt, u, _root, sub)
+		local a = creature.attack
+		creature.model:PivotTo(poseCFrame(creature, sub, 0, 0))
+		if a.fired or u < K.RF_BURST_IMPACT then
+			return
+		end
+		a.fired = true
+		local at = a.impact or creature.pos
+		local lo, hi = Fn.bossRoll(creature, def, p.damage)
+		-- Height-tolerant like the rest of the boss kit's radial hits: the
+		-- mark is grounded and a player standing on a rise is still standing
+		-- on the sheet that just exploded.
+		damagePlayersInRadius(at, p.radius, lo, hi, creature, 0.5, K.BOSS_HEIGHT_TOLERANCE)
+		-- OUTWARD AND UP, on the kit engine's own displacement vocabulary -
+		-- the sheet coming apart under you, not a shove.
+		fireEvent("gust", at, {
+			radius = p.radius,
+			push = p.push or 62,
+			lift = p.lift or 34,
+			duration = 0.45,
+			move = "icebreach",
+			skin = p.skin,
+		})
+		fireEvent("slam", at, { radius = p.radius, move = "icebreach", skin = p.skin })
+		if p.slick then
+			spawnPool(creature, at, p.slick, now)
+		end
+	end,
+	recover = function(creature, _def, _p, _u, sub)
+		creature.model:PivotTo(poseCFrame(creature, sub, 0, 0))
+		local a = creature.attack
+		-- THE RE-DIVE. The chained eruption's recover is K.RF_CHAIN_RECOVER long
+		-- rather than the row's 2.0, and it does not end the attack: it rewinds
+		-- the same attack to a fresh windup, so the hunt runs again at the
+		-- player's NEW predicted point and every telegraph and slam payload is
+		-- byte-identical to the first eruption's. Only the LAST eruption reaches
+		-- Fn.endBossAttack, which is what pays the `expose`/`holdExpose` window -
+		-- one beached punish per chain, not one per breach.
+		if not a or (a.chainLeft or 0) <= 0 or not a.chainAt or os.clock() < a.chainAt then
+			return
+		end
+		a.chainLeft -= 1
+		a.chainAt = nil
+		Fn.rfChainRearm(creature, os.clock())
+	end,
+	finish = function(creature, _def, _p, now)
+		local a = creature.attack
+		if not a or (a.chainLeft or 0) <= 0 then
+			return
+		end
+		-- Read by Fn.rimefangPhaseProgress as the recover's span, so the pose's
+		-- re-dive curve finishes on exactly the frame the re-arm fires.
+		a.recoverSpan = K.RF_CHAIN_RECOVER
+		a.chainAt = now + K.RF_CHAIN_RECOVER
+	end,
+}
+
+-- THE SHOCKWAVE'S SECOND PULSE, half a second behind the slam. Grounded-only,
+-- and the band is strictly OUTSIDE the slam's own radius so nobody is billed
+-- twice for one landing. `bypassIframe`, because it lands inside the
+-- invulnerability the slam just handed out and the whole point of the beat is
+-- that it is a separate thing to answer.
+function Fn.rfShockPulse(creature, def, p, at: Vector3)
+	local inner = p.radius or 18
+	local outer = p.shock or 40
+	local lo, hi = Fn.bossRoll(creature, def, p.shockDamage or { 18, 26 })
+	for _, entry in Fn.livingRootsNear(at, outer) do
+		local off = entry.root.Position - at
+		if Vector3.new(off.X, 0, off.Z).Magnitude > inner and not Fn.rfAirborne(entry.root, at.Y) then
+			PlayerService.damage(entry.player, math.random(lo, hi), creature, { bypassIframe = true })
+		end
+	end
+	-- The shove is NOT gated on the jump: being knocked about by a wave you
+	-- cleared costs nothing, and gating it would mean the ring visibly stops
+	-- at whoever timed it right.
+	fireEvent("gust", at, {
+		radius = outer,
+		push = p.shockPush or 46,
+		duration = 0.4,
+		move = "skyfall",
+		skin = p.skin,
+	})
+end
+
+-- The landing itself, called from the strike's last frame AND from `finish` -
+-- a strike that ends between frames must not drop the blow, which is the same
+-- reason the wash's finish flushes its queue.
+function Fn.rfSkyLand(creature, def, p, now: number)
+	local a = creature.attack
+	if not a or a.fired then
+		return
+	end
+	a.fired = true
+	local at = a.impact or creature.pos
+	creature.pos = groundedPos(Vector3.new(at.X, creature.pos.Y, at.Z), creature.halfThickness)
+	local lo, hi = Fn.bossRoll(creature, def, p.damage)
+	damagePlayersInRadius(at, p.radius, lo, hi, creature, 0.4, K.BOSS_HEIGHT_TOLERANCE)
+	fireEvent("gust", at, {
+		radius = p.radius,
+		push = p.push or 90,
+		lift = p.lift or 55,
+		duration = 0.5,
+		move = "skyfall",
+		skin = p.skin,
+	})
+	fireEvent("slam", at, { radius = p.radius, move = "skyfall", skin = p.skin })
+	-- The expanding ring, its own event kind because it is its own mechanic:
+	-- the client draws 40 studs of shockwave over 0.7s and the player's answer
+	-- is a jump timed against it.
+	fireEvent("rimeShock", at, { radius = p.shock or 40, duration = p.shockDuration or 0.7 })
+	a.shockAt = now + (p.shockAt or 0.5)
+end
+
+-- THE SKY SLAM. Windup tracks; `fire` locks and marks; the strike is the
+-- flight, with the ground track finished before the dive so the mark under
+-- the head stops moving; the impact is at the very end of it, and the
+-- shockwave's second pulse lands half a second into the recover.
+K.ATTACK_HANDLERS.skyfall = {
+	windup = function(creature, _def, _p, _u, sub)
+		local a = creature.attack
+		creature.model:PivotTo(poseCFrame(creature, sub, 0, 0))
+		-- TRACKED, not latched, for the whole windup: the commit is the
+		-- telegraph, and it is fired below at the windup's end.
+		a.aim = Fn.rfAimPoint(creature, (Fn.nearestPlayerRoot(creature.pos)), K.RF_AIM_LEAD)
+	end,
+	fire = function(creature, _def, p, _now, root)
+		local a = creature.attack
+		a.impact = a.aim or Fn.rfAimPoint(creature, root, K.RF_AIM_LEAD)
+		a.launch = creature.pos
+		fireEvent("telegraph", a.impact, {
+			kind = "mark",
+			move = "skyfall",
+			radius = p.radius,
+			-- The whole strike IS the countdown: it lands at the end of it.
+			duration = (p.duration or 0) * K.RF_SKY_IMPACT,
+			skin = p.skin,
+		})
+	end,
+	strike = function(creature, def, p, now, _dt, u, _root, sub)
+		local a = creature.attack
+		local launch = a.launch or creature.pos
+		local impact = a.impact or creature.pos
+		-- THE GROUND TRACK, and why it is finished early. PoseCenter for this
+		-- move is the ground point under the head, so creature.pos IS the
+		-- shadow: easing it all the way to the mark by the time the dive
+		-- starts means the shadow settles on the mark and then the body falls
+		-- into it, rather than the two arriving together and the mark reading
+		-- as a moving target right up to the hit.
+		local at = launch:Lerp(impact, smoothstep(math.min(u / K.RF_SKY_SETTLE, 1)))
+		creature.pos = groundedPos(Vector3.new(at.X, creature.pos.Y, at.Z), creature.halfThickness)
+		creature.model:PivotTo(poseCFrame(creature, sub, 0, 0))
+		if a.fired or u < K.RF_SKY_IMPACT then
+			return
+		end
+		Fn.rfSkyLand(creature, def, p, now)
+	end,
+	finish = function(creature, def, p, now)
+		Fn.rfSkyLand(creature, def, p, now)
+	end,
+	recover = function(creature, def, p, _u, sub)
+		creature.model:PivotTo(poseCFrame(creature, sub, 0, 0))
+		local a = creature.attack
+		if not a or not a.shockAt or a.shocked or os.clock() < a.shockAt then
+			return
+		end
+		a.shocked = true
+		Fn.rfShockPulse(creature, def, p, a.impact or creature.pos)
+	end,
+}
+
+-- THE FLOE QUAKE. A shoulder-down ram along the sheet. The bearing is latched
+-- on the FIRST windup frame - the corridor is drawn once and never moves,
+-- which is what makes a sidestep an answer - and the heave lands in `fire`,
+-- the exact instant the windup expires. That exactness is a contract: the
+-- client draws the heave on its own clock from the telegraph's `duration`, so
+-- a server-side impact fraction (or a re-arm) would put the two out of step.
+K.ATTACK_HANDLERS.lane = {
+	windup = function(creature, _def, p, _u, sub)
+		local a = creature.attack
+		creature.model:PivotTo(poseCFrame(creature, sub, 0, 0))
+		if a.aimed then
+			return
+		end
+		a.aimed = true
+		local root = Fn.nearestPlayerRoot(creature.pos)
+		a.dir = if root then flatUnit(root.Position - creature.pos) else Fn.bossFacing(creature)
+		a.from = groundedPos(creature.pos, 0)
+		fireEvent("telegraph", a.from, {
+			kind = "lane",
+			move = "floequake",
+			-- REQUIRED. Without a Vector3 facing the client falls back to the
+			-- stock circular draw and the corridor is never shown.
+			facing = a.dir,
+			length = p.length or 60,
+			-- FULL width on the wire; the client halves it. The server's hit
+			-- test uses `half` for exactly that reason - two names, so neither
+			-- side has to guess which convention the other holds.
+			width = p.width or 10,
+			duration = math.max(a.phaseUntil - os.clock(), 0),
+			skin = p.skin,
+		})
+	end,
+	fire = function(creature, def, p, _now, _root)
+		local a = creature.attack
+		if a.fired then
+			return
+		end
+		a.fired = true
+		local from = a.from or groundedPos(creature.pos, 0)
+		local dir = a.dir or Fn.bossFacing(creature)
+		local length = p.length or 60
+		local half = p.half or 5
+		local lo, hi = Fn.bossRoll(creature, def, p.damage)
+		for _, entry in Fn.livingRootsNear(from, length + half) do
+			if Fn.rfSegDist(entry.root.Position, from, dir, length) <= half then
+				PlayerService.damage(entry.player, math.random(lo, hi), creature)
+				-- LAUNCHED, not shoved: the gust is fired at the player's own
+				-- feet with a small radius and a large `lift`, so the sheet
+				-- bucking under them throws them up rather than outward along
+				-- a radius the corridor does not have.
+				fireEvent("gust", groundedPos(entry.root.Position, 0), {
+					radius = 6,
+					push = p.push or 24,
+					lift = p.lift or 62,
+					duration = 0.5,
+					move = "floequake",
+					skin = p.skin,
+				})
+			end
+		end
+	end,
+	strike = function(creature, _def, _p, _now, _dt, _u, _root, sub)
+		creature.model:PivotTo(poseCFrame(creature, sub, 0, 0))
+	end,
+}
 
 -- move name -> the pose it wants, per phase. `pose` is a scratch table
 -- already filled with the cruise pose, so each of these only writes what it
 -- changes. Windup is the tell, strike is the blow, recover is the opening -
 -- the same three beats the shared loop is already counting.
-local RF_MOVES = {}
+K.RF_MOVES = {}
 
--- Lunge out, jaws open, and shut them on the frame the hit lands: `snap`
--- deals its damage at u >= 0.4, so that is where the mouth closes.
-RF_MOVES.bite = function(pose, phase, u, _now)
+-- COIL, SNAP, SETTLE. `snap` deals its damage at u >= K.SNAP_IMPACT, so the
+-- jaws yawn wide through the lunge and slam shut ON that frame. Windup drops
+-- the head (a submerge dip that returns to nothing before the strike) and
+-- parts the jaws - the tell that a bite is loading; the snap whips the reach
+-- out fast and decelerating into the hit; recover draws the head back.
+K.RF_MOVES.bite = function(pose, phase, u, _now)
 	pose.swim = 1
 	if phase == "windup" then
-		local e = smoothstep(u)
-		pose.gape = 0.55 * e
-		pose.lunge = 0.2 * e
+		local e = smootherstep(u)
+		-- The head-drop coil: a dip that rises and returns to 0 by mid-windup,
+		-- so the strike (which does not touch submerge) inherits a level head.
+		pose.submerge = 0.14 * math.sin(math.pi * math.min(u / 0.5, 1))
+		pose.gape = 0.6 * e
+		pose.lunge = 0.12 * e
 	elseif phase == "strike" then
-		pose.lunge = math.min(u / 0.4, 1)
-		pose.gape = if u < 0.4 then 1 else math.max(1 - (u - 0.4) / 0.22, 0)
+		local snapT = math.min(u / K.SNAP_IMPACT, 1)
+		-- Reach whips out fast off the coil (0.12 at the handoff) and eases
+		-- into the bite.
+		pose.lunge = 0.12 + 0.88 * easeOutCubic(snapT)
+		if u < K.SNAP_IMPACT then
+			-- Yawns from the windup's 0.6 to a full gape right at the chomp.
+			pose.gape = 0.6 + 0.4 * easeOutCubic(snapT)
+		else
+			-- Slams shut on the damage frame and after.
+			pose.gape = 1 - easeOutCubic((u - K.SNAP_IMPACT) / (1 - K.SNAP_IMPACT))
+		end
 	else
-		pose.lunge = 1 - smoothstep(u)
+		pose.swim = 1 - 0.4 * smootherstep(u)
+		pose.lunge = 1 - smootherstep(u)
 	end
 end
 
 -- It stands on its tail and LOOKS at you. The slow turn through the hold is
 -- the whole point of the beat - it is picking someone - and it turns about
 -- the bearing it latched, not toward whoever is nearest now.
-RF_MOVES.spyhop = function(pose, phase, u, now)
+K.RF_MOVES.spyhop = function(pose, phase, u, now)
 	pose.swim = 0.3
 	if phase == "windup" then
-		pose.rise = smoothstep(u)
+		-- A small gather dip (0 at both ends of it) as it loads the stand,
+		-- then the surge up - smootherstep so it powers off the water and
+		-- eases as it reaches the top rather than jerking to a halt.
+		pose.submerge = 0.14 * math.sin(math.pi * math.min(u / 0.45, 1))
+		pose.rise = smootherstep(u)
 	elseif phase == "strike" then
-		pose.rise = 1
-		pose.face += math.sin(now * 1.1) * math.rad(14)
+		-- The scan: a single smooth sweep left-centre-right-centre across the
+		-- hold (sin(2pi*u) is 0 at both ends, so it hands off clean), and a
+		-- breathing bob and jaw that both vanish at the boundaries.
+		local breath = math.sin(u * math.pi)
+		pose.rise = 1 - 0.035 * breath * (0.5 - 0.5 * math.cos(now * 3.2))
+		pose.gape = 0.08 * breath
+		pose.face += math.sin(u * math.pi * 2) * math.rad(18)
 	else
-		pose.rise = 1 - smoothstep(u)
+		-- Sinks back with weight - it hangs, then drops (easeIn accelerates
+		-- down) - and settles a touch under before levelling.
+		pose.rise = 1 - easeInCubic(u)
+		pose.submerge = 0.16 * math.sin(math.pi * u)
+		pose.swim = 0.3 + 0.3 * smootherstep(u)
 	end
 end
 
--- THE BREACH. It gathers under the surface, leaves the water, and comes down
--- on the floe. `arch` is PROGRESS along the leap rather than a weight, so
--- the drawn body follows the head through the air on the same clock the
--- charge travels on. The landing hands over to `beached`, which the expose
--- window below holds up for as long as the fight leaves it alone.
-RF_MOVES.breach = function(pose, phase, u, _now)
+-- THE ICE BREACH. `burst` is a PROGRESS channel, not a weight: 0 is lying
+-- horizontal under the sheet at RimefangPath.BURST_DEPTH, 0.55 is the head
+-- fully out and vertical at BURST_HEIGHT, and 1 is flat on the floe in the
+-- shape `beached = 1` draws. PoseCenter for the whole strike is the burst
+-- point, which the handler has already pinned creature.pos to.
+--
+-- The 0.55 is not decoration: it is K.RF_BURST_IMPACT, the same number the
+-- handler damages on and the telegraph counts down to, so the sheet cannot
+-- let go on a frame where the head is still coming up.
+K.RF_MOVES.icebreach = function(pose, phase, u, _now, a)
+	local p = a and a.p
 	if phase == "windup" then
 		pose.swim = 1
-		pose.submerge = 0.7 * smoothstep(u)
+		-- IT BURIES ITSELF FIRST, over `sink` real seconds rather than over a
+		-- fraction of the windup: the row states the sink in seconds because
+		-- that is what it reads as on screen, and the windup is long (2.2s) and
+		-- mostly travel. smootherstep so it slips under rather than dropping.
+		local win = math.max((p and p.windup) or 2.2, 1e-3)
+		-- ...unless this is the SECOND eruption of a chain, which begins with
+		-- the whale already under the sheet (the re-dive is the first one's
+		-- recover). Ramping from 0 here would pop the body up through the ice
+		-- for a frame before burying it again.
+		pose.submerge = if a and a.rfSunk
+			then 1
+			else smootherstep(math.min(u * win / math.max((p and p.sink) or 0.4, 1e-3), 1))
+		-- Nothing of the burst yet: under the ice IS burst 0, and the hunt is
+		-- drawn by the crack-web the client lays at PoseCenter.
+		pose.burst = 0
+		-- The jaw cracks open over the last quarter, continuing into the roar.
+		pose.gape = 0.2 * smootherstep(math.max((u - 0.75) / 0.25, 0))
 	elseif phase == "strike" then
 		pose.swim = 1
-		pose.arch = u
+		-- Sheds the submerge over `rise` seconds as the body leaves the water,
+		-- so the burst is not fighting a depth blend on the way up.
+		local dur = math.max((p and p.duration) or 0.7, 1e-3)
+		pose.submerge = 1 - smootherstep(math.min(u * dur / math.max((p and p.rise) or 0.2, 1e-3), 1))
+		if u < K.RF_BURST_IMPACT then
+			-- THE ERUPTION: fast off the mark, easing as it reaches full height
+			-- - it is thrown out by the sheet giving way, not lifted.
+			pose.burst = K.RF_BURST_IMPACT * easeOutCubic(u / K.RF_BURST_IMPACT)
+		else
+			-- THE TOPPLE: accelerating the whole way down, because it is
+			-- falling. Lands on burst 1 exactly at the strike's end, which is
+			-- the shape `beached = 1` draws and where the recover picks it up.
+			local t = (u - K.RF_BURST_IMPACT) / (1 - K.RF_BURST_IMPACT)
+			pose.burst = K.RF_BURST_IMPACT + (1 - K.RF_BURST_IMPACT) * easeInCubic(t)
+		end
+		-- THE ROAR, peaking as the head clears the ice at 0.55 and shut by the
+		-- time it comes down; 0 at u = 1 (sin(pi)), so it hands off clean.
+		pose.gape = 0.2 + 0.7 * math.sin(math.pi * math.min(u / K.RF_BURST_IMPACT, 1))
+	elseif a and (a.chainLeft or 0) > 0 then
+		-- THE RE-DIVE, and the chain's whole visual argument: it does NOT lie
+		-- on the ice. `burst` runs back down to 0 as the body slides through
+		-- its own hole and `submerge` comes back on, so the pose lands on
+		-- exactly the state the next windup's `rfSunk` branch holds - 1 - and
+		-- nothing snaps across the re-arm.
+		local e = smootherstep(u)
+		pose.swim = 1
+		pose.burst = 1 - e
+		pose.submerge = e
+		pose.gape = 0.2 * (1 - e)
 	else
-		pose.swim = 0.2
-		pose.beached = smoothstep(math.min(u * 2.2, 1))
-		-- Once it is flat on the ice the leap is fully overridden, so the
-		-- arch can be dropped without anything moving; dropping it earlier
-		-- would whip the body back down its own parabola.
-		-- Ramp arch DOWN as beached comes up, rather than dropping it the frame
-		-- the server's own beached crosses a threshold. The client eases the two
-		-- at different rates (18/s vs 4/s), so a hard drop rewound the head down
-		-- its own parabola while the body was only half overridden - a 12-stud
-		-- jump in one frame on every landing.
-		pose.arch = math.max(0, 1 - pose.beached)
+		-- THE HANDOFF. `burst = 1` and `beached = 1` are the same shape, so
+		-- crossfading one into the other moves nothing - which is the whole
+		-- reason the contract makes them match. Ramped rather than dropped, for
+		-- the reason the old breach's `arch` was ramped: a hard drop rewinds
+		-- the body down its own curve while the override is only half blended.
+		pose.swim = 1 - 0.75 * smootherstep(math.min(u * 3, 1))
+		pose.beached = smootherstep(math.min(u * 3, 1))
+		pose.burst = math.max(0, 1 - pose.beached)
+		pose.gape = 0.2 * (1 - smootherstep(u))
+	end
+end
+
+-- THE SKY SLAM. `skyfall` is the other progress channel: 0 on the surface,
+-- 0->0.45 the climb to RimefangPath.SKY_HEIGHT, 0.45->0.58 the hang and the
+-- pitch over, 0.58->1 the descent, impact at 1 in the shape `beached = 1`
+-- draws. PoseCenter is the ground point under the head, which is creature.pos
+-- - the handler eases it onto the mark by 0.58 so the shadow settles before
+-- the body falls into it.
+--
+-- THE PROGRESS IS WALKED WITH hangArc, and that is the beat. Linear progress
+-- would give a constant climb rate and a hang that lasts as long as the
+-- contract's 0.13 of the channel; hangArc(u, 0.55) leaves the ground fast,
+-- STRETCHES the apex in time (that stretch is the count-in for the jump the
+-- shockwave is about to ask for), and accelerates into the landing. It hits
+-- 0, 0.5 and 1 exactly at u = 0, 0.5 and 1, so the impact lands on the frame
+-- K.RF_SKY_IMPACT names and nowhere else.
+K.RF_MOVES.skyfall = function(pose, phase, u, _now)
+	if phase == "windup" then
+		pose.swim = 1
+		-- ANTICIPATION: it dips, gathers, and is back at the surface before the
+		-- launch (sin(pi * u/0.7) is 0 at u = 0 and again at u = 0.7), with the
+		-- jaw opening the whole way through - the tell that this is the big one.
+		pose.submerge = 0.75 * math.sin(math.pi * math.min(u / 0.7, 1))
+		pose.gape = 0.75 * smootherstep(u)
+		pose.skyfall = 0
+	elseif phase == "strike" then
+		pose.swim = 1
+		pose.submerge = 0
+		pose.skyfall = hangArc(u, 0.55)
+		-- Bellows through the climb and the hang, and is shut for the descent:
+		-- the silence on the way down is the tell that it is about to land.
+		pose.gape = 0.75 * (1 - smootherstep(math.max((u - 0.55) / 0.45, 0)))
+	else
+		-- Same handoff as the ice breach: skyfall 1 and beached 1 are one
+		-- shape, crossfaded rather than dropped.
+		pose.swim = 1 - 0.75 * smootherstep(math.min(u * 5, 1))
+		pose.beached = smootherstep(math.min(u * 5, 1))
+		pose.skyfall = math.max(0, 1 - pose.beached)
+	end
+end
+
+-- THE FLOE QUAKE. The wash's vocabulary - shoulder down, dig in - but held
+-- straight and driven FORWARD rather than swept: the roll is the tell that
+-- something is coming along a line, and `lunge` is the body carrying through
+-- it. Less roll than the wash (52 degrees against 74) on purpose, so the two
+-- moves do not read as the same animation from across the arena.
+K.RF_MOVES.floequake = function(pose, phase, u, _now)
+	local hard = math.rad(-52)
+	pose.swim = 1
+	if phase == "windup" then
+		-- Counter-roll the other way first (anticipation), dying out as it
+		-- commits; the shoulder digs in, and the body loads over the last 40%.
+		pose.roll = hard * smootherstep(u) + math.rad(7) * math.sin(math.pi * math.min(u / 0.35, 1))
+		pose.submerge = 0.34 * smootherstep(u)
+		pose.lunge = 0.25 * smootherstep(math.max((u - 0.6) / 0.4, 0))
+	elseif phase == "strike" then
+		-- THE RAM. 0.4s, and the damage is on its first frame, so the pose here
+		-- is the follow-through of a blow that has already landed: hold the
+		-- roll and the dig, and throw the reach out decelerating.
+		pose.roll = hard
+		pose.submerge = 0.34
+		pose.lunge = 0.25 + 0.75 * easeOutCubic(u)
+	else
+		pose.roll = hard * (1 - smootherstep(u))
+		pose.submerge = 0.34 * (1 - smootherstep(u))
+		pose.lunge = 1 - smootherstep(u)
+		pose.swim = 1 - 0.4 * smootherstep(u)
 	end
 end
 
 -- THE WAVE WASH. Hard over onto its side, shoulder down, and sweep. The roll
 -- IS the tell, and it has to read from the far side of the arena, because
 -- the answer to this move is to move.
-RF_MOVES.wash = function(pose, phase, u, _now)
+K.RF_MOVES.wash = function(pose, phase, u, _now)
 	local hard = math.rad(-74)
 	pose.swim = 1
 	if phase == "windup" then
-		pose.roll = hard * smoothstep(u)
-		pose.submerge = 0.12
+		-- A counter-roll the OTHER way first (anticipation), dying out as the
+		-- body commits hard over; the shoulder digs in as it goes.
+		pose.roll = hard * smootherstep(u) + math.rad(9) * math.sin(math.pi * math.min(u / 0.35, 1))
+		pose.submerge = 0.18 * smootherstep(u)
 	elseif phase == "strike" then
-		pose.roll = hard
+		-- Holds the roll and digs a touch deeper through the sweep (0 extra at
+		-- both ends, so the boundaries stay put), shoulder held under.
+		pose.roll = hard * (1 + 0.06 * math.sin(u * math.pi))
+		pose.submerge = 0.18
 	else
-		pose.roll = hard * (1 - smoothstep(u))
+		-- Rights itself, smootherstep so it eases up under its own weight.
+		pose.roll = hard * (1 - smootherstep(u))
+		pose.submerge = 0.18 * (1 - smootherstep(u))
+		pose.swim = 1 - 0.4 * smootherstep(u)
 	end
 end
 
 -- The tail comes up clear of the water and hammers down. The fall and the
--- blow read the SAME constant (RF_FLUKE_IMPACT, with the handler): the ring
+-- blow read the SAME constant (K.RF_FLUKE_IMPACT, with the handler): the ring
 -- lands on the frame the fluke reaches the ice, and the marker's countdown
 -- runs to that frame too.
-RF_MOVES.flukeslam = function(pose, phase, u, _now)
+K.RF_MOVES.flukeslam = function(pose, phase, u, _now)
 	if phase == "windup" then
-		pose.swim = 0.3
-		pose.submerge = 0.55 * smoothstep(u)
-		pose.flukeUp = smoothstep(u)
+		-- ANTICIPATION: the head plunges (an extra dip that returns to 0) to
+		-- lever the tail, and the rear itself holds low for the first slice
+		-- before whipping up - the counter-beat before the hammer. It loads
+		-- the body (swim rising late) as the tail reaches its full rear.
+		pose.swim = 0.3 + 0.7 * smootherstep(math.max((u - 0.55) / 0.45, 0))
+		pose.submerge = 0.55 * smootherstep(u) + 0.08 * math.sin(math.pi * math.min(u / 0.4, 1))
+		pose.flukeUp = math.max(0, smootherstep(u) - 0.14 * math.sin(math.pi * math.min(u / 0.28, 1)))
 	elseif phase == "strike" then
 		pose.swim = 1
 		pose.submerge = 0.55
-		pose.flukeUp = math.max(1 - u / RF_FLUKE_IMPACT, 0)
+		-- THE HAMMER: from reared (1) it accelerates DOWN to the contract's
+		-- "hammered" ~0.2 exactly on the impact frame (K.RF_FLUKE_IMPACT), then
+		-- relaxes fast toward rest - fast blow, hard settle.
+		if u < K.RF_FLUKE_IMPACT then
+			pose.flukeUp = 1 - 0.8 * easeInCubic(u / K.RF_FLUKE_IMPACT)
+		else
+			pose.flukeUp = 0.2 * (1 - easeOutCubic((u - K.RF_FLUKE_IMPACT) / (1 - K.RF_FLUKE_IMPACT)))
+		end
 	else
-		pose.swim = 0.8
-		pose.submerge = 0.55 * (1 - smoothstep(u))
+		-- The tail wallows back: swim eases to cruise, the head rises out of
+		-- its dip, and one gentle settling flop (0 at both ends).
+		pose.swim = 1 - 0.4 * smootherstep(u)
+		pose.submerge = 0.55 * (1 - smootherstep(u))
+		pose.flukeUp = 0.1 * math.sin(math.pi * u)
 	end
 end
 
--- Orcas ring a bait ball and drive it inward: a bank held for the whole
--- move, and a heading that keeps coming round. The turn is published as a
--- bearing that grows past a full circle - the client eases along the
--- shortest arc, so 2pi of it costs nothing and never snaps back.
-RF_MOVES.carousel = function(pose, phase, u, _now)
-	local bank = math.rad(34)
-	pose.swim = 1
-	if phase == "windup" then
-		pose.roll = bank * smoothstep(u)
-		pose.face += math.rad(40) * u
-	elseif phase == "strike" then
-		pose.roll = bank
-		pose.face += math.rad(40) + u * math.pi * 2
-	else
-		pose.roll = bank * (1 - smoothstep(u))
-		pose.face += math.rad(40)
-	end
-end
+-- The carousel's pose went with the carousel (see the note in its place in
+-- Bosses.luau): a bank held around a circle centred on the arena, for a move
+-- that could not land on anybody's mark. No dead pose code is left behind -
+-- K.RF_MOVES is looked up by ATTACK NAME, so an entry for a move no phase can
+-- roll is a curve nothing will ever run and a body nobody can check.
 
 -- It rears out of the water and CALLS, and the storm answers. Partial rise,
 -- and a jaw working through the call.
-RF_MOVES.whiteout = function(pose, phase, u, now)
+K.RF_MOVES.whiteout = function(pose, phase, u, now)
 	if phase == "windup" then
-		local e = smoothstep(u)
-		pose.swim = 0.6
-		pose.rise = 0.5 * e
-		pose.gape = 0.55 * e
+		local e = smootherstep(u)
+		-- A gather dip, then rear partway up and open the jaw for the call.
+		pose.swim = 0.6 - 0.1 * e
+		pose.submerge = 0.1 * math.sin(math.pi * math.min(u / 0.4, 1))
+		pose.rise = 0.55 * e
+		pose.gape = 0.6 * e
 	elseif phase == "strike" then
+		-- Held menacing through the storm: the rear stands, the jaw works the
+		-- call, and the head sways to survey. Both the call and the sway are
+		-- windowed by sin(u*pi) so they are 0 at the phase boundaries and the
+		-- pose hands off without a jump.
+		local hold = math.sin(u * math.pi)
 		pose.swim = 0.5
-		pose.rise = 0.5
-		pose.gape = 0.55 + 0.35 * math.abs(math.sin(now * 5.5))
+		pose.rise = 0.55
+		pose.gape = 0.6 + 0.3 * math.abs(math.sin(now * 5.5)) * hold
+		pose.face += math.rad(10) * math.sin(now * 0.8) * hold
 	else
-		local e = 1 - smoothstep(u)
-		pose.rise = 0.5 * e
-		pose.gape = 0.55 * e
+		local e = 1 - smootherstep(u)
+		pose.swim = 0.5 + 0.1 * smootherstep(u)
+		pose.rise = 0.55 * e
+		pose.gape = 0.6 * e
+	end
+end
+
+-- ------------------------------------------------- rimefang: phase two (2026-09-09)
+-- THE FIGHT'S SECOND HALF, and it is the ENRAGE: `enrageBelow` is 0.5 and so
+-- is phase two's `below`, so the bar going red, the cooldowns tightening and
+-- the moveset opening up are all one event rather than three that drift.
+--
+-- What is gained at 50%: skyfall, flukeslam and whiteout join the pool, the
+-- ice breach starts chaining, and the sheet SHATTERS once - the opener below.
+
+-- The phase-long blizzard. The client caps an arena storm at 20 s and stamps
+-- its own deadline on arrival, so a storm that has to last a whole phase is
+-- held by RE-SIGNALLING it, not by asking for a longer one. 12 s of refresh
+-- against a 20 s window leaves 8 s of slack for a dropped frame or a
+-- FireAllClients that arrives late; a refresh at 20 would strobe.
+K.RF_STORM_REFRESH = 12
+K.RF_PHASE_STORM = { storm = { mode = "blizzard", duration = 20 } }
+-- The shattered sheet's pools last THE REST OF THE FIGHT. There is no
+-- "forever" in the pool tick - it compares `now` against `expiresAt` - so the
+-- fight-long lifetime is spelled as an hour, which no Rimefang kill has ever
+-- come close to, and `kill()` drops them with the body so a duration this long
+-- can never outlive the boss that made it.
+K.RF_SHEET_LIFE = 3600
+K.RF_SHEET_SLOW = 0.5
+K.RF_SHEET_MIN = 4
+K.RF_SHEET_MAX = 6
+K.RF_THIN_ICE_RADIUS = 13
+-- THE CHAIN'S SHORT RECOVER. A chained eruption does not lie on the ice: it
+-- slides back under through its own hole after 0.8 s and hunts again, and the
+-- full 2.0 s beached window is paid ONCE, by the last eruption in the chain.
+-- Read twice - as the recover POSE's span (so the re-dive curve finishes
+-- exactly as the next windup starts) and as the moment the re-arm fires.
+K.RF_CHAIN_RECOVER = 0.8
+-- The shatter's own impact fraction: it lands on the first frame of its
+-- strike, like the floe quake, so its countdown is the windup exactly. `tell`
+-- is false on the row (the handler draws the burst itself at the body), so
+-- this is the honest value for the day somebody turns the stock tell back on.
+K.RF_SHATTER_IMPACT = 0.0
+K.HANDLER_IMPACT.shatter = K.RF_SHATTER_IMPACT
+
+-- WHICH PHASE THE HEALTH FRACTION PUTS IT IN. A deliberate mirror of the
+-- engine's `bossPhaseIndex`, which is a file-local declared ~500 lines BELOW
+-- this one and therefore not an upvalue here; a forward declaration would be a
+-- new top-level local, which this file cannot afford (the 200-register limit).
+-- Same rule, same table, same answer.
+function Fn.rfPhaseIndex(def, hpFraction: number): number
+	local index = 1
+	for i, phase in def.phases do
+		if hpFraction <= phase.below then
+			index = i
+		end
+	end
+	return index
+end
+
+-- The four thin-ice patches as WORLD points. `BossArenas.items.ice.thinIce`
+-- holds OFFSETS from the arena centre (the same convention `stones` and
+-- `sockets` use), so they are resolved against the boss's anchor and grounded
+-- - a pool drawn at the offset's raw Y would float or bury itself.
+function Fn.rfShatterSites(creature, def): { Vector3 }
+	local arena = def.islandId and BossArenas.items[def.islandId]
+	local center = creature.anchor or creature.pos
+	local sites = {}
+	for _, offset in (arena and arena.thinIce or {}) do
+		table.insert(sites, groundedPos(center + offset, 0))
+	end
+	return sites
+end
+
+-- The sheet coming apart, as hazard. One persistent pool per thin-ice patch:
+-- open water that chills and nibbles, so the rim - which was the safe place to
+-- read the fight from - costs something to stand on for the rest of it. The
+-- damage is deliberately tiny (4-6 a tick); this is a floor tax, not a move.
+function Fn.rfShatterPools(creature, def, now: number)
+	local arena = def.islandId and BossArenas.items[def.islandId]
+	local spec = {
+		radius = (arena and arena.thinIceRadius) or K.RF_THIN_ICE_RADIUS,
+		duration = K.RF_SHEET_LIFE,
+		slow = K.RF_SHEET_SLOW,
+		min = K.RF_SHEET_MIN,
+		max = K.RF_SHEET_MAX,
+		skin = "frost",
+	}
+	for _, site in Fn.rfShatterSites(creature, def) do
+		spawnPool(creature, site, spec, now)
+	end
+end
+
+-- THE PHASE WATCH, called once a frame from Fn.rimefangDrive. Three jobs, all
+-- of which need to happen whatever the boss is doing:
+--
+--   1. Track the phase index, and the FIRST time it reaches 2 mark the shatter
+--      due. Once only, for the whole fight (`rfShattered`).
+--   2. Force the opener. `creature.forcedAttack` is the engine's own override -
+--      Fn.pickBossAttack spends it before it builds a pool, and it is how
+--      `follow` combos already work - so the shatter needs no picker change and
+--      is not in any phase list. Re-asserted every idle frame rather than set
+--      once, so an uproot that cancels the windup mid-flight cannot swallow the
+--      opener: it is due until it has actually fired.
+--   3. Hold the blizzard. Re-signalled every K.RF_STORM_REFRESH seconds while
+--      the phase index is >= 2, and immediately whenever an attack ends -
+--      Fn.endBossAttack closes the storm window for the move that owned it
+--      (the whiteout carries one), and there is one window per island, so
+--      without that second trigger the sky would clear for up to 12 s.
+--
+-- Nothing here runs after death: Fn.rimefangDrive returns on `creature.dead`.
+function Fn.rfPhaseWatch(creature, def, now: number)
+	local index = Fn.rfPhaseIndex(def, creature.health / math.max(creature.maxHealth, 1))
+	local was = creature.rfPhase or 1
+	creature.rfPhase = index
+	if index >= 2 and was < 2 and not creature.rfShattered then
+		creature.rfShatterDue = true
+	end
+	if creature.rfShatterDue and not creature.attack then
+		creature.forcedAttack = "shatter"
+	end
+	local running = creature.attack ~= nil
+	if creature.rfWasAttacking and not running then
+		creature.rfStormAt = 0
+	end
+	creature.rfWasAttacking = running
+	if index >= 2 and creature.rfShattered and now >= (creature.rfStormAt or math.huge) then
+		creature.rfStormAt = now + K.RF_STORM_REFRESH
+		Fn.signalArenaStorm(def, K.RF_PHASE_STORM, true)
+	end
+end
+
+-- RE-ARM, for the ice breach's chain. The engine's attack loop only ever moves
+-- windup -> strike -> recover -> Fn.endBossAttack, so a move that wants to run
+-- twice rewinds its OWN state from inside its recover hook: the loop reads
+-- `a.phase` and `a.phaseUntil` fresh on the next frame and simply starts the
+-- windup again. Nothing else in the struct is reused, so every latched value
+-- the hunt owns is cleared here - a stale `locked`/`impact` would erupt the
+-- second breach at the first one's mark.
+--
+-- `a.rfSunk` is the pose handoff: the whale is ALREADY under the ice at the
+-- moment it re-arms, so the windup curve must hold submerge at 1 rather than
+-- ramping it from 0 and snapping the body up through the sheet for a frame.
+function Fn.rfChainRearm(creature, now: number)
+	local a = creature.attack
+	if not a then
+		return
+	end
+	a.phase = "windup"
+	a.phaseStart = now
+	a.phaseUntil = now + (a.windup or a.p.windup)
+	a.locked, a.fired, a.aim, a.impact = false, false, nil, nil
+	a.rfLast = now
+	a.recoverSpan = nil
+	a.rfSunk = true
+end
+
+-- THE SHEET SHATTERS: phase two's opener, and the only move in the fight the
+-- player cannot answer by dodging alone - the answer is to be somewhere else
+-- entirely when it lands, and then to live with the arena it leaves behind.
+--
+-- It rears into the spy-hop stand, roars, and comes down on its own position
+-- with 26 studs of blow and an outward shove. The read is inverted from every
+-- other move in the kit: every other one marks where YOU are going, and this
+-- one marks where IT is. It is invulnerable for the windup and the strike -
+-- the one moment in the fight the party cannot trade with it - so the beat
+-- reads as a cutscene the fight is still running.
+--
+-- Fired EXACTLY ONCE per fight, by Fn.rfPhaseWatch, through the engine's
+-- `forcedAttack`. It is in no phase list and its cooldown is nominal; the
+-- once-only guarantee is `creature.rfShattered`, set the instant it lands.
+K.ATTACK_HANDLERS.shatter = {
+	windup = function(creature, _def, p, _u, sub)
+		local a = creature.attack
+		creature.model:PivotTo(poseCFrame(creature, sub, 0, 0))
+		if a.rfTold then
+			return
+		end
+		a.rfTold = true
+		-- INVULNERABLE THROUGH THE BLOW. Stated as a deadline rather than a
+		-- flag so no exit path - a stagger, an uproot cancelling the attack,
+		-- the boss's own death - can leave it stuck on. `damage()` honours it,
+		-- guarded on this row.
+		creature.rfInvulnUntil = a.phaseUntil + (p.duration or 0)
+		-- The tell is at the BODY, and the whole windup is its countdown: the
+		-- move lands on the first frame of the strike (K.RF_SHATTER_IMPACT).
+		fireEvent("telegraph", groundedPos(creature.pos, 0), {
+			kind = "burst",
+			move = "shatter",
+			radius = p.radius,
+			duration = math.max(a.phaseUntil - os.clock(), 0),
+			skin = p.skin,
+		})
+	end,
+	fire = function(creature, def, p, now, _root)
+		local a = creature.attack
+		if a.fired then
+			return
+		end
+		a.fired = true
+		-- ONCE, FOR THE WHOLE FIGHT. Cleared here rather than at the pick, so
+		-- an opener interrupted before it landed is still owed.
+		creature.rfShattered = true
+		creature.rfShatterDue = false
+		local at = groundedPos(creature.pos, 0)
+		local lo, hi = Fn.bossRoll(creature, def, p.damage)
+		damagePlayersInRadius(at, p.radius, lo, hi, creature, 0.5, K.BOSS_HEIGHT_TOLERANCE)
+		-- Thrown OUT, barely up: the sheet dropping out from under you, which
+		-- is a different displacement from the eruption's throw (lift 34).
+		fireEvent("gust", at, {
+			radius = p.radius,
+			push = p.push or 80,
+			lift = p.lift or 20,
+			duration = 0.5,
+			move = "shatter",
+			skin = p.skin,
+		})
+		fireEvent("slam", at, { radius = p.radius, move = "shatter", skin = p.skin })
+		-- THE ARENA CHANGES, and this is the event that says so. World points,
+		-- not offsets: `position` is the anchor for the client's own framing and
+		-- `sites` are already resolved, so nothing on the far side has to know
+		-- the arena row's convention. Fired once, with the pools it describes.
+		local arena = def.islandId and BossArenas.items[def.islandId]
+		fireEvent("rimeShatter", creature.anchor or at, {
+			-- Sent in the payload as well as on the wire: the wire position is
+			-- where the effect happens, and `position` is the SHEET's centre,
+			-- which is what a draw covering the whole floe has to be built from.
+			-- They are the same point today and the contract states both.
+			position = creature.anchor or at,
+			-- The whole sheet, from the arena row rather than from the roam
+			-- radius: the walked floe is r 120 and the leash is 70.
+			radius = (arena and arena.floorRadius) or 120,
+			sites = Fn.rfShatterSites(creature, def),
+		})
+		Fn.rfShatterPools(creature, def, now)
+		-- ...and the sky closes for the rest of the phase. Signalled here and
+		-- HELD by Fn.rfPhaseWatch's re-signal; the row carries no `storm` block
+		-- on purpose, because Fn.endBossAttack would close one at the recover's
+		-- end and the blizzard has to outlive the move that called it.
+		Fn.signalArenaStorm(def, K.RF_PHASE_STORM, true)
+		creature.rfStormAt = now + K.RF_STORM_REFRESH
+	end,
+	strike = function(creature, _def, _p, _now, _dt, _u, _root, sub)
+		creature.model:PivotTo(poseCFrame(creature, sub, 0, 0))
+	end,
+	recover = function(creature, _def, _p, _u, sub)
+		creature.model:PivotTo(poseCFrame(creature, sub, 0, 0))
+	end,
+}
+
+-- THE SHATTER'S BODY. Rear, roar, slam - and it hands back to the cruise pose
+-- exactly, so the prowl picks it up without a step:
+--   cruise -> windup: swim 0.6 -> 0.4, rise 0 -> 1, gape 0 -> 1, submerge 0.
+--   windup -> strike:  swim 0.4 -> 0.25, rise 1 -> 0 by u 0.3, gape 1 -> 0 by
+--                      u 0.4, beached pulsed 0 -> 1 -> 0 inside the strike.
+--   strike -> recover: swim 0.25 -> 0.6, everything else already 0, which is
+--                      the cruise pose the ambient prowl writes.
+-- There is no expose on the row, so the recover hands straight to the prowl
+-- rather than to Fn.rimefangDrive's beached window.
+K.RF_MOVES.shatter = function(pose, phase, u, _now)
+	if phase == "windup" then
+		local e = smootherstep(u)
+		pose.swim = 0.6 - 0.2 * e
+		-- A gather dip that is back to 0 by mid-windup, so the rear lifts off a
+		-- level body rather than out of a hole.
+		pose.submerge = 0.12 * math.sin(math.pi * math.min(u / 0.35, 1))
+		-- THE STAND. Rise 1 is the spy-hop, the tallest shape the path draws.
+		pose.rise = e
+		pose.gape = e
+	elseif phase == "strike" then
+		pose.swim = 0.4 - 0.15 * smootherstep(u)
+		-- Down fast: the stand is spent in the first third of the strike, which
+		-- is where the blow already landed (K.RF_SHATTER_IMPACT is 0).
+		pose.rise = 1 - smootherstep(math.min(u / 0.3, 1))
+		pose.gape = 1 - smootherstep(math.min(u / 0.4, 1))
+		-- THE PULSE. `beached` is the flat-on-the-ice shape; here it is struck
+		-- and released rather than held, because the whale does not lie down -
+		-- it slams and is back in the water. 0 at both ends by construction.
+		local up = smootherstep(math.min(u / 0.3, 1))
+		local down = smootherstep(math.max((u - 0.5) / 0.5, 0))
+		pose.beached = up * (1 - down)
+	else
+		-- Back to cruise. Every other channel is already at its cruise value.
+		pose.swim = 0.25 + 0.35 * smootherstep(u)
 	end
 end
 
 -- How far through the phase the shared attack loop is, on that loop's own
 -- clock, so the pose and the damage can never be reading different times.
-local function rimefangPhaseProgress(a, p, now: number): number
-	local span = if a.phase == "windup" then p.windup elseif a.phase == "strike" then p.duration else p.recover
+function Fn.rimefangPhaseProgress(a, p, now: number): number
+	-- `a.recoverSpan` is the ice breach's chain, and nothing else writes it:
+	-- a chained eruption recovers in K.RF_CHAIN_RECOVER rather than the row's
+	-- full window, and the pose has to finish its re-dive on the same clock
+	-- the re-arm fires on or the body rewinds mid-curve.
+	local span = if a.phase == "windup"
+		then p.windup
+		elseif a.phase == "strike" then p.duration
+		else (a.recoverSpan or p.recover)
 	return math.clamp((now - a.phaseStart) / math.max(span or 0, 1e-3), 0, 1)
 end
 
 -- THE AMBIENT PROWL: a swim cycle that works as hard as the animal is
 -- actually moving, a breath cycle that takes it under the sheet and brings
 -- it back up to blow, and a bank into its own turns.
-local function rimefangAmbient(creature, def, pose, state, now: number, dt: number)
+function Fn.rimefangAmbient(creature, def, pose, state, now: number, dt: number)
 	-- The tail's effort, from the distance the boss covered this frame -
 	-- free, and it can never disagree with where the fight actually put it.
 	local moved = (creature.pos - (state.lastPos or creature.pos)).Magnitude / math.max(dt, 1e-3)
-	pose.swim = math.clamp(0.45 + moved / math.max(def.speed or 8, 1) * 0.55, 0.35, 1)
+	-- ...plus a slow breath swell in the tail, so even a whale holding station
+	-- between attacks keeps stroking rather than freezing at a flat effort.
+	local breath = 0.06 * math.sin(now * 1.3)
+	pose.swim = math.clamp(0.45 + moved / math.max(def.speed or 8, 1) * 0.55 + breath, 0.35, 1)
 
 	if creature.rimefangBreathUntil == nil then
-		creature.rimefangBreathUntil = now + RF_SURFACE_HOLD
+		creature.rimefangBreathUntil = now + K.RF_SURFACE_HOLD
 		creature.rimefangDown = false
 	end
 	if now >= creature.rimefangBreathUntil then
 		creature.rimefangDown = not creature.rimefangDown
-		creature.rimefangBreathUntil = now + (if creature.rimefangDown then RF_DIVE_HOLD else RF_SURFACE_HOLD)
+		creature.rimefangBreathUntil = now + (if creature.rimefangDown then K.RF_DIVE_HOLD else K.RF_SURFACE_HOLD)
 		if creature.rimefangDown then
 			-- THE BLOW, then it slips under. Borrowed vocabulary, the way the
 			-- wash rides `gust`: `bossDive` is already a plume of spray at
@@ -4482,13 +6244,16 @@ local function rimefangAmbient(creature, def, pose, state, now: number, dt: numb
 			fireEvent("bossDive", creature.pos, {})
 		end
 	end
-	pose.submerge = if creature.rimefangDown then RF_DIVE_DEPTH else 0
+	-- Under the sheet it holds the dive depth; up top it rides a small
+	-- breathing heave (in phase with the tail's swell) instead of sitting
+	-- frozen at the waterline - the surface half of "never static".
+	pose.submerge = if creature.rimefangDown then K.RF_DIVE_DEPTH else 0.03 * (1 - math.cos(now * 1.3))
 
 	-- A BANK INTO THE TURN: a whale rolls its shoulders through a heading
 	-- change. Prowl only - an attack that wants a roll says so itself, and
-	-- adding this on top would fight the wash's shoulder-down and the
-	-- carousel's held bank. Smoothed, because the yaw is already rate-limited
-	-- and the raw per-frame delta is noise.
+	-- adding this on top would fight the wash's shoulder-down and the floe
+	-- quake's held roll. Smoothed, because the yaw is already rate-limited and
+	-- the raw per-frame delta is noise.
 	local turn = angleDelta(state.faceAngle or pose.face, pose.face) / math.max(dt, 1e-3)
 	local want = math.clamp(-turn * 0.22, -0.38, 0.38)
 	state.bank = (state.bank or 0) + (want - (state.bank or 0)) * math.clamp(dt * 3, 0, 1)
@@ -4499,15 +6264,20 @@ end
 -- the controller eases toward it (RimefangBodyController.EASE), so these are
 -- step values rather than animation curves - except `arch`, which is leap
 -- progress and tracks nearly rigidly on both sides.
-local function rimefangDrive(creature, now: number, dt: number)
-	if creature.row.boss ~= RIMEFANG_BOSS or creature.dead or not creature.model.Parent then
+function Fn.rimefangDrive(creature, now: number, dt: number)
+	if creature.row.boss ~= K.RIMEFANG_BOSS or creature.dead or not creature.model.Parent then
 		return
 	end
 	local def = bossDef(creature)
 	if not def then
 		return
 	end
-	local state = rimefangState(creature)
+	-- PHASE TWO'S BOOKKEEPING, before anything else this frame reads it:
+	-- the phase index, the once-only shatter, and the phase-long blizzard's
+	-- re-signal. Runs whatever branch the body takes below, including while
+	-- an attack is mid-flight.
+	Fn.rfPhaseWatch(creature, def, now)
+	local state = Fn.rimefangState(creature)
 	-- The swim cycle and the beached thrash are computed on BOTH sides from
 	-- this, and two machines' clocks share no epoch.
 	state.time = Workspace:GetServerTimeNow()
@@ -4520,6 +6290,11 @@ local function rimefangDrive(creature, now: number, dt: number)
 	-- The cruise pose, which every branch below is a departure from.
 	pose.swim, pose.submerge, pose.rise, pose.roll = 0.6, 0, 0, 0
 	pose.arch, pose.beached, pose.flukeUp, pose.gape, pose.lunge = 0, 0, 0, 0, 0
+	-- The two kit-v2 progress channels. Both are 0 at rest and both are only
+	-- ever written by their own move, so a frame outside those moves publishes
+	-- them at 0 and the client's `Move` attribute is what says whether 0 means
+	-- "under the ice" or "not running".
+	pose.burst, pose.skyfall = 0, 0
 	pose.face = creature.yaw0
 
 	local attack = creature.attack
@@ -4530,30 +6305,51 @@ local function rimefangDrive(creature, now: number, dt: number)
 		pose.swim = 1
 		creature.rimefangBreathUntil = nil
 	elseif attack then
-		pose.face = rimefangFace(creature, attack)
-		local move = RF_MOVES[attack.name]
+		pose.face = Fn.rimefangFace(creature, attack)
+		local move = K.RF_MOVES[attack.name]
 		if move then
-			move(pose, attack.phase, rimefangPhaseProgress(attack, attack.p, now), now)
+			-- `attack` is handed to the move as well so a beat can read its
+			-- latched state (the two progress channels read their own row's
+			-- `sink`/`rise` seconds off `a.p`); moves that do not need it
+			-- simply ignore the argument.
+			move(pose, attack.phase, Fn.rimefangPhaseProgress(attack, attack.p, now), now, attack)
 		end
 		-- The prowl's breath restarts once the move is over: it comes up and
 		-- blows after a fight beat, not halfway through one.
 		creature.rimefangBreathUntil = nil
-	elseif creature.lastAttack == "breach" and creature.exposedUntil and now < creature.exposedUntil then
-		-- THE PUNISH WINDOW, and it is the DATA's window: `breach` carries
-		-- `expose = 4`, endBossAttack opens it (after stamping the cooldown),
-		-- and this only draws what that window already means. Nothing here
-		-- decides how long it lasts.
+	elseif
+		(creature.lastAttack == "icebreach" or creature.lastAttack == "skyfall")
+		and creature.exposedUntil
+		and now < creature.exposedUntil
+	then
+		-- THE PUNISH WINDOW, and it is the DATA's window: `icebreach` carries
+		-- `expose = 2` and `skyfall` `expose = 3.5`, Fn.endBossAttack opens it
+		-- (after stamping the cooldown), and this only draws what that window
+		-- already means. Nothing here decides how long it lasts.
+		--
+		-- BOTH big moves now open one, and both hand `beached = 1` to this
+		-- branch - the ice breach through `burst` and the sky slam through
+		-- `skyfall`, which is exactly why the contract makes all three shapes
+		-- the same at 1. Naming them is deliberate: a move that does NOT end
+		-- lying on the floe must not inherit the beached body just because it
+		-- happens to carry an expose window.
 		local left = creature.exposedUntil - now
 		pose.beached = if left < 0.7 then smoothstep(left / 0.7) else 1
 		pose.swim = 0.25
 		creature.rimefangBreathUntil = nil
 	else
-		rimefangAmbient(creature, def, pose, state, now, dt)
+		Fn.rimefangAmbient(creature, def, pose, state, now, dt)
 	end
 
 	state.swim, state.submerge, state.rise, state.roll = pose.swim, pose.submerge, pose.rise, pose.roll
 	state.arch, state.beached, state.flukeUp = pose.arch, pose.beached, pose.flukeUp
 	state.gape, state.lunge, state.faceAngle = pose.gape, pose.lunge, pose.face
+	-- WRITTEN INTO THE STATE, not only onto the wire, and that is what keeps
+	-- the server's hitbox honest for free: `rimefangBody` samples
+	-- RimefangPath.pointAt on THIS state, so the moment the path understands
+	-- `burst` and `skyfall` the 11-node hit chain follows the head up out of
+	-- the ice and up into the sky without a line of new hit code.
+	state.burst, state.skyfall = pose.burst, pose.skyfall
 	state.lastPos = creature.pos
 
 	local model, cache = creature.model, creature.rimefangWrote
@@ -4567,9 +6363,25 @@ local function rimefangDrive(creature, now: number, dt: number)
 	rfPut(model, cache, "FaceAngle", state.faceAngle)
 	rfPut(model, cache, "Gape", state.gape)
 	rfPut(model, cache, "Lunge", state.lunge)
+	rfPut(model, cache, "Burst", state.burst)
+	rfPut(model, cache, "Skyfall", state.skyfall)
+	-- WHICH MOVE IS RUNNING, as a string, so the client's continuous visuals
+	-- (the crack-web under the hunt, the shadow under the sky slam) know which
+	-- channel to believe. It has to be a string and so cannot ride rfPut's
+	-- numeric NaN guard; the same change-cache rule applies for the same
+	-- reason - an attribute write is a replicated write.
+	--
+	-- "" WHEN NOTHING IS RUNNING, never nil: clearing an attribute and setting
+	-- it empty look identical on the client only if the client is checking for
+	-- both, and one of the two is a habit nobody keeps.
+	local moveName = if attack then attack.name else ""
+	if cache.Move ~= moveName then
+		cache.Move = moveName
+		model:SetAttribute(K.RF_ATTR_MOVE, moveName)
+	end
 	-- THE PUNISH WINDOW PUBLISHES ITS OWN DEADLINE, in server time, because
-	-- ATTR_EXPOSED cannot be trusted here: endBossAttack sets it, but its only
-	-- expiry lives in updateKitted, which a plain `archetype = "boss"` never
+	-- ATTR.EXPOSED cannot be trusted here: Fn.endBossAttack sets it, but its only
+	-- expiry lives in Fn.updateKitted, which a plain `archetype = "boss"` never
 	-- runs. For this boss it latches true at the first breach and stays true -
 	-- so the client's gold clock, thrash audio and slush puffs ran for the
 	-- REST OF THE FIGHT, and no later breach could reopen the cue. A deadline
@@ -4581,10 +6393,10 @@ local function rimefangDrive(creature, now: number, dt: number)
 		"OpenUntil",
 		if openAt and openAt > now then Workspace:GetServerTimeNow() + (openAt - now) else 0
 	)
-	local center = rimefangCenter(state, creature.pos)
+	local center = Fn.rimefangCenter(state, creature.pos)
 	if (center - state.center).Magnitude > 0.05 then
 		state.center = center
-		model:SetAttribute(RF_ATTR_CENTER, center)
+		model:SetAttribute(K.RF_ATTR_CENTER, center)
 	end
 end
 
@@ -4598,12 +6410,12 @@ end
 -- (the quirk registry below). A row WITHOUT `moves` behaves exactly as
 -- before - the whole revamp lands island-by-island with no flag day.
 --
--- The attack loop is the BOSS loop: begin/update/endBossAttack already read
+-- The attack loop is the BOSS loop: begin/update/Fn.endBossAttack already read
 -- only `def.attacks / turnRate / attackGapMin/Max / enrageCooldownMult` (and
--- handlers read `enrageDamageMult` via bossRoll, `riseDepth`/`aggro` for
--- dive-style moves; clampToArena no-ops without `creature.anchor`) - so a
+-- handlers read `enrageDamageMult` via Fn.bossRoll, `riseDepth`/`aggro` for
+-- dive-style moves; Fn.clampToArena no-ops without `creature.anchor`) - so a
 -- kitted creature just feeds those functions a `book` built from its row
--- instead of a Bosses entry. Between moves it walks with `updateProwl`
+-- instead of a Bosses entry. Between moves it walks with `Fn.updateProwl`
 -- below - or, when a row names `movement = "<archetype>"`, that archetype's
 -- full updater (opt-in: the archetype's own built-in attack then runs AS
 -- part of the kit).
@@ -4643,7 +6455,7 @@ end
 -- Pick the next move: honor a forced follow, then weighted-pick among moves
 -- that are off cooldown, whose `below` HP gate passes, and whose `range`
 -- covers the player. Returns nil when nothing qualifies (keep walking).
-local function pickKitMove(creature, book, now: number, dist: number): string?
+function Fn.pickKitMove(creature, book, now: number, dist: number): string?
 	if creature.forcedAttack then
 		local forced = creature.forcedAttack
 		creature.forcedAttack = nil
@@ -4684,9 +6496,9 @@ end
 -- The default kitted locomotion: face the nearest player, close to standoff,
 -- breathe. ~The prowl half of the boss loop at ground level. Idles as a
 -- resting catch when nobody is near.
-local function updateProwl(creature, now: number, dt: number)
-	slideKnockback(creature, dt)
-	local root, _, dist = nearestPlayerRoot(creature.pos)
+function Fn.updateProwl(creature, now: number, dt: number)
+	Fn.slideKnockback(creature, dt)
+	local root, _, dist = Fn.nearestPlayerRoot(creature.pos)
 	if not root or dist > tune(creature, "RUSH_AGGRO_RANGE") then
 		local hop, yaw, pitch = flop(creature, now)
 		creature.model:PivotTo(poseCFrame(creature, hop, yaw, pitch))
@@ -4696,7 +6508,7 @@ local function updateProwl(creature, now: number, dt: number)
 	local standoff = (creature.row.tuning and creature.row.tuning.STANDOFF) or 8
 	local delta = Vector3.new(root.Position.X - creature.pos.X, 0, root.Position.Z - creature.pos.Z)
 	if delta.Magnitude > standoff then
-		creature.pos = resolveHorizontal(creature, delta.Unit * tune(creature, "SHAMBLE_SPEED") * dt)
+		creature.pos = Fn.resolveHorizontal(creature, delta.Unit * tune(creature, "SHAMBLE_SPEED") * dt)
 	end
 	local breathe = math.sin(now * 2.1) * 0.12
 	creature.model:PivotTo(poseCFrame(creature, math.max(0, breathe), 0, 0))
@@ -4704,7 +6516,7 @@ end
 
 -- The kitted updater: attack in flight -> drive the shared loop; otherwise
 -- walk (prowl, or the row's named `movement` archetype) and consider a pick.
-local function updateKitted(creature, now: number, dt: number)
+function Fn.updateKitted(creature, now: number, dt: number)
 	local book = kitBook(creature)
 
 	-- A phasey blink-out returns here (gimmick registry below).
@@ -4720,24 +6532,24 @@ local function updateKitted(creature, now: number, dt: number)
 	-- An expose window (move `expose` field) closing.
 	if creature.exposedUntil and now >= creature.exposedUntil then
 		creature.exposedUntil = nil
-		creature.model:SetAttribute(ATTR_EXPOSED, false)
+		creature.model:SetAttribute(ATTR.EXPOSED, false)
 	end
 
-	local root, player, dist = nearestPlayerRoot(creature.pos)
+	local root, player, dist = Fn.nearestPlayerRoot(creature.pos)
 
 	if creature.attack then
-		updateBossAttack(creature, book, now, dt, root, player, dist, 0)
+		Fn.updateBossAttack(creature, book, now, dt, root, player, dist, 0)
 		return
 	end
 
 	local movement = creature.row.movement
-	local walker = (movement and ARCHETYPE_UPDATERS[movement]) or updateProwl
+	local walker = (movement and ARCHETYPE_UPDATERS[movement]) or Fn.updateProwl
 	walker(creature, now, dt)
 
 	if root and now >= (creature.nextAttackAt or 0) then
-		local name = pickKitMove(creature, book, now, dist)
+		local name = Fn.pickKitMove(creature, book, now, dist)
 		if name then
-			beginBossAttack(creature, book, name, now)
+			Fn.beginBossAttack(creature, book, name, now)
 		end
 	end
 end
@@ -4748,14 +6560,14 @@ end
 -- ... }`. Each hook is consulted from exactly one engine point:
 --   onDamage(creature, amount, now)  -> modified amount   (damage(), pre-HP)
 --   onHit(creature)                  -> mult, reflect     (hitModifiers())
---   onContact(creature, dealt)                            (tryContact(), after a landed ram)
+--   onContact(creature, dealt)                            (Fn.tryContact(), after a landed ram)
 --   onKill(creature)                                      (kill(), before Killed fires)
-local GIMMICKS = {}
+K.GIMMICKS = {}
 
 -- Armoured while telegraphing: hits during a windup do a fraction, so
 -- panic-swinging into a tell is punished and the recover window is the
 -- reward. { kind = "harden", mult = 0.35? }
-GIMMICKS.harden = {
+K.GIMMICKS.harden = {
 	onDamage = function(creature, amount)
 		if creature.attack and creature.attack.phase == "windup" then
 			return amount * (creature.row.gimmick.mult or 0.35)
@@ -4767,12 +6579,12 @@ GIMMICKS.harden = {
 -- Ignites below a health fraction: Enraged attr, faster cooldowns, harder
 -- hits (mutates the cached book). { kind = "frenzy", below = 0.4?, cooldownMult
 -- = 0.65?, damageMult = 1.25? }
-GIMMICKS.frenzy = {
+K.GIMMICKS.frenzy = {
 	onDamage = function(creature, amount)
 		local g = creature.row.gimmick
 		if not creature.enraged and (creature.health - amount) / creature.maxHealth <= (g.below or 0.4) then
 			creature.enraged = true
-			creature.model:SetAttribute(ATTR_ENRAGED, true)
+			creature.model:SetAttribute(ATTR.ENRAGED, true)
 			local book = creature.kitBook
 			if book then
 				book.enrageCooldownMult = g.cooldownMult or 0.65
@@ -4786,7 +6598,7 @@ GIMMICKS.frenzy = {
 
 -- Blinks out after every N hits: briefly untargetable, reappears offset.
 -- { kind = "phasey", hits = 3?, gap = 0.7?, hop = 9? }
-GIMMICKS.phasey = {
+K.GIMMICKS.phasey = {
 	onDamage = function(creature, amount, now)
 		local g = creature.row.gimmick
 		creature.phaseyHits = (creature.phaseyHits or 0) + 1
@@ -4805,7 +6617,7 @@ GIMMICKS.phasey = {
 }
 
 -- Thorns, front-agnostic: melee reflect. { kind = "spines", reflect = n }
-GIMMICKS.spines = {
+K.GIMMICKS.spines = {
 	onHit = function(creature)
 		return 1, creature.row.gimmick.reflect or C.THORN_REFLECT
 	end,
@@ -4813,7 +6625,7 @@ GIMMICKS.spines = {
 
 -- Statically charged: every melee hit shocks the attacker a little.
 -- { kind = "static", shock = n? }
-GIMMICKS.static = {
+K.GIMMICKS.static = {
 	onHit = function(creature)
 		return 1, creature.row.gimmick.shock or math.floor(C.PULSE_SHOCK_DAMAGE * 0.5)
 	end,
@@ -4821,19 +6633,19 @@ GIMMICKS.static = {
 
 -- Comedy physics: knockback sends it flying. { kind = "slippery", mult = 2? }
 -- (Consulted in applyKnockback, not via a hook - one line there.)
-GIMMICKS.slippery = {}
+K.GIMMICKS.slippery = {}
 
 -- Heals a fraction of the contact damage it deals. { kind = "leech", frac = 0.5? }
-GIMMICKS.leech = {
+K.GIMMICKS.leech = {
 	onContact = function(creature, dealt)
 		local g = creature.row.gimmick
 		creature.health = math.min(creature.maxHealth, creature.health + math.ceil(dealt * (g.frac or 0.5)))
-		creature.model:SetAttribute(ATTR_HEALTH, creature.health)
+		creature.model:SetAttribute(ATTR.HEALTH, creature.health)
 	end,
 }
 
 -- Detonates on death. { kind = "deathburst", radius = 9?, damage = {lo,hi}? }
-GIMMICKS.deathburst = {
+K.GIMMICKS.deathburst = {
 	onKill = function(creature)
 		local g = creature.row.gimmick
 		local radius = g.radius or 9
@@ -4845,7 +6657,7 @@ GIMMICKS.deathburst = {
 
 function gimmickOf(creature)
 	local g = creature.row.gimmick
-	return g and GIMMICKS[g.kind]
+	return g and K.GIMMICKS[g.kind]
 end
 
 -- The Kraken's tentacle ring (Bosses entry `parts`): `count` copies of
@@ -4860,7 +6672,7 @@ end
 -- A COLOSSUS holds a perch instead of chasing: `entrenched = true` in its
 -- Bosses row. It never walks, its appendages do the attacking, and it cannot
 -- be hurt at all until the players EARN a stagger - the punish window a
--- handler opens with openStagger(). The loop the redesign is built on:
+-- handler opens with Fn.openStagger(). The loop the redesign is built on:
 -- survive a pattern, earn the opening, spend it.
 --
 -- Three pieces are generic, so the other colossi (Wrack's beached flagship,
@@ -4874,22 +6686,22 @@ end
 -- What stays per-boss is the SHAPE its body takes, which lives in its own
 -- path module (Shared/Modules/BrinejawPath) and is selected by `def.pose`.
 
-local ATTR_STANCE = "Stance" -- 1 = final stance; counts DOWN as it loses ground
+ATTR.STANCE = "Stance" -- 1 = final stance; counts DOWN as it loses ground
 -- How many it STARTED with, published once. Without it a client can only take
 -- the first Stance it sees as the maximum, which is right for anyone present
 -- at the summon and wrong for everyone who joins after: a boss two stances
 -- down draws to a latecomer as an undamaged one.
-local ATTR_STANCES = "Stances"
-local ATTR_POSE = "Pose" -- which path module draws this body, for the client
-local ATTR_POSE_CENTER = "PoseCenter" -- the perch's anchor (the tower's foot)
+ATTR.STANCES = "Stances"
+ATTR.POSE = "Pose" -- which path module draws this body, for the client
+ATTR.POSE_CENTER = "PoseCenter" -- the perch's anchor (the tower's foot)
 -- Brinejaw's replicated pose. The client draws its entire body from these, so
 -- this list is the contract with BrinejawBodyController.
-local ATTR_COIL = "Coil"
-local ATTR_UNWIND = "Unwind"
-local ATTR_SWEEP_ANGLE = "SweepAngle"
-local ATTR_SWEEP_HEIGHT = "SweepHeight"
-local ATTR_SLUMP = "Slump"
-local ATTR_FACE_ANGLE = "FaceAngle"
+ATTR.COIL = "Coil"
+ATTR.UNWIND = "Unwind"
+ATTR.SWEEP_ANGLE = "SweepAngle"
+ATTR.SWEEP_HEIGHT = "SweepHeight"
+ATTR.SLUMP = "Slump"
+ATTR.FACE_ANGLE = "FaceAngle"
 -- ...and the four the ATTACK CHANNEL rides on (BrinejawPath's header: ten
 -- attributes and nothing else). `AttackKind` names which pose the body is in,
 -- `AttackU` is progress 0..1 through it, and Aim is the strike point in
@@ -4902,50 +6714,145 @@ local ATTR_FACE_ANGLE = "FaceAngle"
 -- ~100 parts across the arena in one frame. Every handler below does this the
 -- same way: `finish` writes U = 1 (published that frame, kind still set) and
 -- the FIRST `recover` frame clears the kind.
-local ATTR_ATTACK_KIND = "AttackKind"
-local ATTR_ATTACK_U = "AttackU"
-local ATTR_AIM_X = "AimX"
-local ATTR_AIM_Z = "AimZ"
+ATTR.ATTACK_KIND = "AttackKind"
+ATTR.ATTACK_U = "AttackU"
+ATTR.AIM_X = "AimX"
+ATTR.AIM_Z = "AimZ"
 -- Noctyss's replicated pose. The BOSS model publishes only the maw's three
 -- numbers, because the choir publishes itself: each stalk is its own entity
 -- with its own health bar, so it carries its own pose on its own model
--- (SocketIndex / TrueLure / Lean / BeamAngle / Douse, set by updateChoir).
--- This list is the contract with NoctyssBodyController.
-local ATTR_MAW_RISE = "MawRise"
-local ATTR_MAW_GAPE = "MawGape"
-local ATTR_MAW_YAW = "MawYaw"
-local ATTR_SOCKET_INDEX = "SocketIndex"
-local ATTR_TRUE_LURE = "TrueLure"
-local ATTR_LEAN = "Lean"
-local ATTR_BEAM_ANGLE = "BeamAngle"
-local ATTR_DOUSE = "Douse"
+-- (SocketIndex / TrueLure / Lean / BeamAngle / Douse / Grow, set by
+-- Fn.updateChoir). This list is the contract with NoctyssBodyController.
+ATTR.MAW_RISE = "MawRise"
+ATTR.MAW_GAPE = "MawGape"
+ATTR.MAW_YAW = "MawYaw"
+ATTR.SOCKET_INDEX = "SocketIndex"
+ATTR.TRUE_LURE = "TrueLure"
+ATTR.LEAN = "Lean"
+ATTR.BEAM_ANGLE = "BeamAngle"
+ATTR.DOUSE = "Douse"
+-- HOW FAR OUT OF ITS COLLAR A STALK IS, 0..1, absent meaning 1 - and the one
+-- attribute in this contract the server had never written. The client has had
+-- the whole growth animation for as long as the fight has existed, gated behind
+-- this name and set by nothing but the intro cutscene: so after every punish
+-- window the arena went dark for four seconds and then seven 33-stud stalks and
+-- seven lanterns existed, fully formed, in one frame.
+--
+-- IT IS SAFE TO WRITE NOW, and that is a NoctyssPath change rather than this
+-- one: `Grow` used to scale the DRAWN shape only, so a live stalk at grow < 1
+-- would have been a lantern you can see low in its collar and can only shoot
+-- thirty studs above it. The scale lives inside `stalkCurve`/`bulbPosition`
+-- now - one curve, both sides - so the drawn eye and the tested one are the
+-- same point at every value of it. `Fn.updateChoir` ramps it over
+-- K.CHOIR_REGROW and gates targeting while it is under 1; see there.
+ATTR.GROW = "Grow"
 -- WHICH SOCKETS ARE EMPTY, as a bitmask on the BOSS model: bit (i - 1) set
 -- means socket i is down. A dead stalk's model is destroyed, so the client
 -- has nothing left to hang a collapse or a stump on - this is the only
 -- record that socket ever held one. A bitmask rather than seven attributes
 -- because it changes as a set, and one number can never replicate half a
 -- choir.
-local ATTR_CHOIR_DOWN = "ChoirDown"
+ATTR.CHOIR_DOWN = "ChoirDown"
 -- The Kraken's. It needs far less than Brinejaw: its head does not travel,
 -- so all the client has to know is how far out of the water it is. Where the
 -- eight arms are is not published at all - each one is drawn to the tentacle
 -- creature it holds, and those replicate already.
-local ATTR_RISE = "Rise"
+ATTR.RISE = "Rise"
 -- THE RIGGED-COLOSSUS SET. A boss whose limbs are animated needs more than a
 -- height and a bearing, and these are the five: what it is doing, how far into
 -- the pose, how far through the blow, and the aim it COMMITTED to at windup.
 -- The names are the ones GnashrootBodyController already reads (bd, who is
--- migrating to them), so a second rigged boss adds a row to RIG_POSE below
+-- migrating to them), so a second rigged boss adds a row to K.RIG_POSE below
 -- rather than a second parallel branch.
-local ATTR_ATTACK = "Attack"
-local ATTR_ATTACK_BLEND = "AttackBlend"
-local ATTR_STRIKE = "Strike"
-local ATTR_AIM_ANGLE = "AimAngle"
-local ATTR_AIM_SIDE = "AimSide"
+ATTR.ATTACK = "Attack"
+ATTR.ATTACK_BLEND = "AttackBlend"
+ATTR.STRIKE = "Strike"
+ATTR.AIM_ANGLE = "AimAngle"
+ATTR.AIM_SIDE = "AimSide"
 -- Pyrelisk's own: which arm is lying across the moat as the climb ramp, 0 for
 -- neither. The client draws the ramp only while this is set, because that is
 -- the only window the server actually offers footing.
-local ATTR_PLANTED = "Planted"
+ATTR.PLANTED = "Planted"
+-- Pyrelisk's seams, and these four names are THE ATTRIBUTE CONTRACT
+-- (PyreliskBodyController's header block) spelled the same way on both sides
+-- of the wire. Two bitmasks with bit (i-1) = PyreliskPath.SEAMS[i]:
+-- `SeamsOpen` is what is split open right now (set on windup, held through
+-- the strike, cleared on every exit) and `SeamsBroken` is the permanent
+-- scarring, monotonic for the life of the fight. The two meters are 0..1 per
+-- flank: L is side +1 (seams 2, 4, 6), R is side -1 (seams 3, 5, 7). Bit 0 is
+-- the chest and belongs to neither - phase 3's target, never opened here.
+ATTR.SEAMS_OPEN = "SeamsOpen"
+ATTR.SEAMS_BROKEN = "SeamsBroken"
+ATTR.SEAM_METER_L = "SeamMeterL"
+ATTR.SEAM_METER_R = "SeamMeterR"
+-- WHICH ACT OF THE PYRELISK FIGHT THIS MODEL IS DRAWING: 1 the shell, 2 the
+-- stun and the arms, 3 the heart. A LEVEL, held for as long as it is true and
+-- never an edge, so a client adopting the fight at any instant reads the act
+-- off the model instead of off a broadcast it was not there for.
+--
+-- THE CLIMB IS CUT (2026-09-12, the directive). Act 3 used to be the arm climb
+-- - six ventrocks, the neck core, `crownshed` and the back vents - and it is
+-- gone: the SECOND ARM'S DEATH is the hull's lethal chip, the body collapses
+-- for `collapseFor`, the caldera opens under it and the party goes down the
+-- shaft. So the colossus publishes 1 and 2 ONLY, the heart publishes
+-- `K.PY_ACT_HEART`, and the numbering is still monotonic across the handoff
+-- with nothing in between. NOTHING PUBLISHES AN ACT 4 ANY MORE.
+-- One name across two models (the colossus carries 1-2, the heart 3), which is
+-- why it is not `PhaseIndex`: that value already carries a specific
+-- instruction on the Kraken ("do not draw the body") and an attribute may not
+-- mean two things on the strength of a pose gate in a neighbouring file.
+ATTR.PY_ACT = "PyreliskAct"
+-- Each arm's bar, 0..1, published every frame of act 2. NIL IS NOT ZERO: nil
+-- means "this arm is not a creature right now" (act 1, or act 3 once they are
+-- gone) and 0 means "it is down there and it is dead", which are different
+-- pictures for a HUD to draw.
+ATTR.PY_ARM_L = "PyreliskArmL"
+ATTR.PY_ARM_R = "PyreliskArmR"
+-- THE ARENA's, not a creature's: the lake drains on the MODEL, so the level
+-- survives the boss that opened it and replicates to anyone who arrives after.
+-- A NUMBER (`1`), never a boolean - `BossArenaService` tests `== 1`.
+ATTR.PY_CALDERA = "PyreliskCaldera"
+-- THE SHAFT'S DATUM. Ratified into the section 7.2 contract (2026-09-12).
+--
+-- SERVER-CONSUMED, CLIENT-READABLE. Nothing on the client reads it today, and
+-- that is a fact about today rather than a restriction: it sits on a replicated
+-- instance like every other arena level, so a VFX lane that wants to know where
+-- the shaft's mouth is may read it. What it must never become is a value the
+-- client WRITES, or one the server reads back from the client.
+--
+-- Why it lives on the arena at all: the depth half of the shaft test needs the
+-- arena's floor plane, and the only thing that knows it is the colossus
+-- (`state.center.Y`) - which is destroyed a second and a half after the caldera
+-- opens, while the thing that has to go on using it is the HEART, in another
+-- room, which cannot ask. Nor is it derivable: `BossArenas.volcano.center.Y` is
+-- 0 and `meshBottom` is the mesh's own bbox, not the rim path.
+--
+-- IT IS ONE HALF OF A PAIR, AND THE PAIR IS AN INVARIANT:
+--
+--     PyreliskCaldera == 1  <=>  PyreliskShaftFloor is a number
+--
+-- They are written together by `Fn.pyreliskOpenCaldera` and cleared together by
+-- `Fn.pyreliskCloseCaldera`, and NOTHING ELSE MAY WRITE EITHER OF THEM. A stale
+-- floor left behind by a closed caldera is not a stale number, it is a live
+-- depth test with no hole under it - the next fight's party walking the rim
+-- path over a plane that says "committed to the fall", arming a phantom shaft
+-- test that teleports people out of an act-1 fight into an empty chamber.
+--
+-- That is why the clear is inside `Fn.pyreliskCloseCaldera` rather than beside
+-- each of its callers: there are two endings (the heart's death and the
+-- reaper's teardown) and a third would be written by somebody who had not read
+-- this comment.
+ATTR.PY_SHAFT_FLOOR = "PyreliskShaftFloor"
+-- THE EIGHT OBSIDIAN PILLARS, as a bitmask of SURVIVORS, on the heart's model.
+-- Bit (i-1) is `BossArenas.items.pyrelisk_heart.sockets[i]` in that table's
+-- authored order - the `SeamsOpen` / `PyreliskRocks` convention, and the count
+-- is load-bearing the same way: eight sockets, eight bits, eight parts. A ninth
+-- socket with no bit behind it is the failure mode a bitmask has.
+ATTR.PY_PILLARS = "PyreliskPillars"
+-- (`ATTR.PY_ROCKS` and `ATTR.PY_CORE` stood here until the climb was cut. The
+-- server writes NEITHER of them now, and no client change is owed by that: the
+-- contract already says nil means "not planted, draw nothing", which is the
+-- true statement about a fight that never plants them.)
 
 -- Which phase the health fraction puts it in (1-based), the stance's source.
 local function bossPhaseIndex(def, hpFraction: number): number
@@ -4959,7 +6866,7 @@ local function bossPhaseIndex(def, hpFraction: number): number
 end
 
 -- The boss's own pose state, created on first use.
-local function colossusState(creature, def)
+function Fn.colossusState(creature, def)
 	local state = creature.pose
 	if not state then
 		creature.poseKind = def.pose
@@ -5001,8 +6908,8 @@ local function colossusState(creature, def)
 			state = PyreliskPath.newState(Vector3.new(anchor.X, anchor.Y - (creature.halfThickness or 0), anchor.Z))
 		elseif def.pose == "noctyss" then
 			-- SNAPPED TO THE WATERLINE, not to where she spawned. `spawn`
-			-- lifts a creature by half its own thickness - ~5.5 studs at her
-			-- 2.4 scale - while every arena-local number this fight uses (the
+			-- lifts a creature by half its own thickness - ~4.6 studs at her
+			-- 2.0 scale - while every arena-local number this fight uses (the
 			-- socket collars at Y 2.2, the pit floor, the maw's rise) is
 			-- authored against the arena's deck. Inheriting the spawn lift
 			-- floats the whole choir clear of its own collars.
@@ -5015,7 +6922,7 @@ local function colossusState(creature, def)
 			-- its own thickness plus SURFACE_OFFSET, and everything about
 			-- this animal is measured from the water: KrakenPath.lift is a
 			-- height above the CROWN_LIFT datum, the arms leave the crown
-			-- INTO the water, and `spawnBossParts` plants the whole tentacle
+			-- INTO the water, and `Fn.spawnBossParts` plants the whole tentacle
 			-- ring at this centre's Y. Inheriting the lift floated the drawn
 			-- octopus and its eight hitboxes clear of the sea they are
 			-- standing in - by the body's half-thickness at scale 1.4, on a
@@ -5040,43 +6947,84 @@ end
 -- Which posed bosses are RIGGED - animated limbs driven from a path module -
 -- and which extras each one publishes on top of the shared five. A serpent
 -- publishes coils; these publish an attack.
-local RIG_POSE = {
-	pyrelisk = { planted = true }, -- the arm that becomes the climb ramp
+K.RIG_POSE = {
+	-- `planted`: the arm that becomes the climb ramp. `seams`: the shootable
+	-- shell (the four contract attributes below).
+	pyrelisk = { planted = true, seams = true },
 }
 
 local function publishPose(creature, state)
 	local model = creature.model
-	if model:GetAttribute(ATTR_POSE) == nil then
-		model:SetAttribute(ATTR_POSE_CENTER, state.center)
-		model:SetAttribute(ATTR_POSE, creature.poseKind)
+	if model:GetAttribute(ATTR.POSE) == nil then
+		model:SetAttribute(ATTR.POSE_CENTER, state.center)
+		model:SetAttribute(ATTR.POSE, creature.poseKind)
 	end
 	if creature.poseKind == "brinejaw" then
-		model:SetAttribute(ATTR_COIL, state.coil)
-		model:SetAttribute(ATTR_UNWIND, state.unwind)
-		model:SetAttribute(ATTR_SWEEP_ANGLE, state.sweepAngle)
-		model:SetAttribute(ATTR_SWEEP_HEIGHT, state.sweepHeight)
-		model:SetAttribute(ATTR_SLUMP, state.slump)
-		model:SetAttribute(ATTR_FACE_ANGLE, state.faceAngle)
+		model:SetAttribute(ATTR.COIL, state.coil)
+		model:SetAttribute(ATTR.UNWIND, state.unwind)
+		model:SetAttribute(ATTR.SWEEP_ANGLE, state.sweepAngle)
+		model:SetAttribute(ATTR.SWEEP_HEIGHT, state.sweepHeight)
+		model:SetAttribute(ATTR.SLUMP, state.slump)
+		model:SetAttribute(ATTR.FACE_ANGLE, state.faceAngle)
 		-- The attack channel. Defaulted here rather than at every writer, so a
 		-- handler that sets nothing publishes a coherent idle rather than nil.
-		model:SetAttribute(ATTR_ATTACK_KIND, state.attackKind or "")
-		model:SetAttribute(ATTR_ATTACK_U, state.attackU or 0)
-		model:SetAttribute(ATTR_AIM_X, state.aimX or 0)
-		model:SetAttribute(ATTR_AIM_Z, state.aimZ or 0)
+		model:SetAttribute(ATTR.ATTACK_KIND, state.attackKind or "")
+		model:SetAttribute(ATTR.ATTACK_U, state.attackU or 0)
+		model:SetAttribute(ATTR.AIM_X, state.aimX or 0)
+		model:SetAttribute(ATTR.AIM_Z, state.aimZ or 0)
 	elseif creature.poseKind == "kraken" then
-		model:SetAttribute(ATTR_RISE, state.rise)
-		model:SetAttribute(ATTR_FACE_ANGLE, state.faceAngle)
-	elseif RIG_POSE[creature.poseKind] then
+		model:SetAttribute(ATTR.RISE, state.rise)
+		model:SetAttribute(ATTR.FACE_ANGLE, state.faceAngle)
+		-- POSE CENTRE IS THE SHIP, NOT THE HEAD, and the generic publish above
+		-- cannot know that: it sends `state.center`, which on this fight is the
+		-- head. Fn.colossusState seeds the pose from `creature.anchor`, and
+		-- Fn.updateKrakenFight has already moved that anchor onto
+		-- K.KRAKEN.HEAD_AT = (0, 0, -370) earlier in the same frame - so the
+		-- 370 studs are on the wire, and KrakenBodyController adds them again
+		-- through KrakenPath.HEAD_OFFSET. The animal lands 740 studs off the
+		-- port beam with every limb reaching back across the sea for a deck
+		-- target. `creature.krakenShip` is the value that was latched BEFORE the
+		-- anchor moved, for exactly this reason.
+		--
+		-- RE-PUBLISHED EVERY FRAME rather than once, unlike the generic head:
+		-- Fn.krakenSwallow moves the centre into the gullet mid-fight and this
+		-- must not fight it, so phase 3 is skipped entirely. An unchanged
+		-- SetAttribute does not replicate, so the cost is a comparison.
+		local ship = creature.krakenShip
+		if ship and (creature.krakenPhase or 1) < 3 then
+			model:SetAttribute(ATTR.POSE_CENTER, ship)
+		end
+	elseif K.RIG_POSE[creature.poseKind] then
 		-- The rigged-colossus publish, shared. Every field is on the state by
 		-- the same name the client reads, so adding a rigged boss is a row in
-		-- RIG_POSE - not another branch that can drift from this one.
-		model:SetAttribute(ATTR_RISE, state.rise)
-		model:SetAttribute(ATTR_FACE_ANGLE, state.faceAngle)
-		model:SetAttribute(ATTR_ATTACK, state.attack or "")
-		model:SetAttribute(ATTR_ATTACK_BLEND, state.blend or 0)
-		model:SetAttribute(ATTR_STRIKE, state.strike or 0)
-		model:SetAttribute(ATTR_AIM_ANGLE, state.aimAngle or state.faceAngle or 0)
-		model:SetAttribute(ATTR_AIM_SIDE, state.aimSide or 1)
+		-- K.RIG_POSE - not another branch that can drift from this one.
+		model:SetAttribute(ATTR.RISE, state.rise)
+		-- FACE ANGLE STOPS AT ACT 2, AND IT IS CLEARED RATHER THAN FROZEN.
+		--
+		-- `PyreliskPath.frozen(state)` is true for `act >= 2`, and a frozen body
+		-- computes its own bearing and ignores this field entirely - so from the
+		-- moment the arms come down this is a number crossing the wire every
+		-- frame that nothing reads. That alone would only be waste.
+		--
+		-- WHAT MAKES IT WORTH A BRANCH IS THE TRAP. A live `FaceAngle` on a body
+		-- that cannot turn is exactly the kind of plausible-looking field a
+		-- future reader picks up - a HUD arrow, a VFX lane wanting "which way is
+		-- it looking" - and it would track the boss's last pre-freeze heading
+		-- forever while the drawn body faces somewhere else. Set to nil it reads
+		-- as what it is: not applicable to this act.
+		--
+		-- Pyrelisk only. Every other rigged boss on this shared branch keeps
+		-- publishing it, because none of them freezes.
+		if creature.poseKind == "pyrelisk" and (state.act or 1) >= 2 then
+			model:SetAttribute(ATTR.FACE_ANGLE, nil)
+		else
+			model:SetAttribute(ATTR.FACE_ANGLE, state.faceAngle)
+		end
+		model:SetAttribute(ATTR.ATTACK, state.attack or "")
+		model:SetAttribute(ATTR.ATTACK_BLEND, state.blend or 0)
+		model:SetAttribute(ATTR.STRIKE, state.strike or 0)
+		model:SetAttribute(ATTR.AIM_ANGLE, state.aimAngle or state.faceAngle or 0)
+		model:SetAttribute(ATTR.AIM_SIDE, state.aimSide or 1)
 		-- THE STANCE, from here rather than only from the entrenched tick.
 		-- That tick writes it on CHANGE, which means a rigged body draws its
 		-- first frames - the whole rise - against whatever the client
@@ -5089,23 +7037,36 @@ local function publishPose(creature, state)
 		-- module and the wire cannot disagree, and defaulted to the maximum
 		-- rather than to 1, because 1 is the LAST stance - the wrong end.
 		state.stance = state.coil or creature.poseStances or 1
-		model:SetAttribute(ATTR_STANCE, state.stance)
-		model:SetAttribute(ATTR_STANCES, creature.poseStances or 1)
-		if RIG_POSE[creature.poseKind].planted then
-			model:SetAttribute(ATTR_SLUMP, state.slump or 0)
-			model:SetAttribute(ATTR_PLANTED, state.planted or 0)
+		model:SetAttribute(ATTR.STANCE, state.stance)
+		model:SetAttribute(ATTR.STANCES, creature.poseStances or 1)
+		if K.RIG_POSE[creature.poseKind].planted then
+			model:SetAttribute(ATTR.SLUMP, state.slump or 0)
+			model:SetAttribute(ATTR.PLANTED, state.planted or 0)
+		end
+		if K.RIG_POSE[creature.poseKind].seams then
+			-- ON THE RIG'S OWN CADENCE, and defaulted here rather than at any
+			-- writer. PRESENCE IS THE HUD'S GATE: it decides there is a seam
+			-- fight to draw from these existing at all, so all four are
+			-- published from the first pose frame - the whole rise included -
+			-- at the identity values (0, 0, 0, 0) that are exactly the
+			-- pre-seam draw. Nothing is published lazily and nothing is left
+			-- nil for the HUD to guess at.
+			model:SetAttribute(ATTR.SEAMS_OPEN, state.seamsOpen or 0)
+			model:SetAttribute(ATTR.SEAMS_BROKEN, state.seamsBroken or 0)
+			model:SetAttribute(ATTR.SEAM_METER_L, state.seamMeterL or 0)
+			model:SetAttribute(ATTR.SEAM_METER_R, state.seamMeterR or 0)
 		end
 	elseif creature.poseKind == "noctyss" then
-		model:SetAttribute(ATTR_MAW_RISE, state.mawRise)
-		model:SetAttribute(ATTR_MAW_GAPE, state.mawGape)
-		model:SetAttribute(ATTR_MAW_YAW, state.mawYaw)
+		model:SetAttribute(ATTR.MAW_RISE, state.mawRise)
+		model:SetAttribute(ATTR.MAW_GAPE, state.mawGape)
+		model:SetAttribute(ATTR.MAW_YAW, state.mawYaw)
 	end
 end
 
 -- The whole visible boss is drawn by the client from the pose attributes, so
 -- the server's model is authority only: it keeps its parts (hits and the HUD
 -- read them) but shows nothing, or the head would be drawn twice.
-local function hideColossusModel(creature)
+function Fn.hideColossusModel(creature)
 	if creature.hiddenModel then
 		return
 	end
@@ -5129,7 +7090,7 @@ end
 -- cannot provide - real footing, the lava under it, the vents' health - is
 -- here.
 --
--- WHY THE SLABS ARE SPAWNED AND NOT BORROWED. `hideColossusModel` sets
+-- WHY THE SLABS ARE SPAWNED AND NOT BORROWED. `Fn.hideColossusModel` sets
 -- Transparency and never touches CanCollide, so the server's own model IS
 -- still solid - but it is the row's CreaturePack proxy, a ~23-stud lump
 -- standing at the colossus's feet, nothing like the 270-stud body the client
@@ -5150,55 +7111,213 @@ end
 -- (The other half of that rule lives in PyreliskPath: `breath` and `lean`
 -- both switch off while an arm is planted, because both sides compute them.)
 
+-- ------------------------------------------------- THE CHIP LEDGER
+--
+-- The colossus's health bar is not a bar any more, it is a PROGRESS DIAL, and
+-- these five fractions are everything that turns it. Nothing damages the
+-- colossus directly in the redesigned fight: each milestone takes an exact
+-- fraction off it (`Fn.pyreliskChip`), and the fractions are chosen so the
+-- shipped stance machinery - `bossPhaseIndex` -> `ATTR.STANCE`, untouched -
+-- tells the exact truth about which act the fight is in.
+--
+--   act 1   two flank scars      2 x 0.15 = 0.30    1.00 -> 0.70
+--   act 2   two arms             2 x 0.35 = 0.70    0.70 -> 0.00
+--
+-- TWO CHIPS, NOT FOUR, SINCE THE CLIMB WAS CUT (2026-09-12). The six rocks'
+-- 0.05s and the neck core's 0.00 are gone with act 3, and the arms absorbed
+-- the 0.30 they used to spend: 0.20 -> 0.35 each. THE SECOND ARM'S CHIP IS THE
+-- LETHAL ONE - it floors at `K.PY_CHIP_FLOOR` like every other chip, and
+-- `Fn.pyreliskArmsDone` then takes the body down through `damage()` on the
+-- same frame, by the same route `Fn.pyreliskCoreBroken` used to.
+--
+-- THE THRESHOLD IS 0.70 (Bosses.items.pyrelisk.phases), and it is not a round
+-- number chosen for looks: a chip that does not land exactly on a boundary
+-- fires a stance change - a banner, a sting and a new attack pool - in the
+-- MIDDLE of an act, silently. `tools/check_content.py` asserts both equalities
+-- across this file and Bosses.luau for exactly that reason; the second one
+-- asserts the ledger SUMS TO 1.0, so the day someone re-tunes a chip alone the
+-- gate fails instead of the fight.
+--
+-- Authored as exact two-decimal values so the sum is representable; the gate
+-- compares to 1e-9 regardless.
+K.PY_FLANK_FRACTION = 0.15
+K.PY_ARM_FRACTION = 0.35
+-- (`K.PY_ROCK_COUNT`, `K.PY_ROCK_LIFT`, `K.PY_ROCK_WEAVE` and `K.PY_CORE_LIFT`
+-- stood here until the climb was cut. Nothing places a rock or a core any
+-- more, and nothing can: the mesh lane DELETED `PyreliskPath.armRocks` and
+-- `.neckCorePoint` in the same unit, so a surviving call would not silently
+-- place a rock somewhere plausible - it would take the type-check-and-warn
+-- path. `.climbSlabs` and `.rampCFrame` are still live, and are still act 1's:
+-- the bait `handfall` plant window reads them, and they hand back nothing once
+-- the body is fallen, which is what makes the mount layer's own gate belt and
+-- braces rather than the only thing standing between act 2 and a ramp.)
+-- WHEN THE CALDERA OPENS, in seconds into the collapse. The write itself is
+-- slice 5; this is the number the hook is measured against, and it lives here
+-- so the two slices cannot disagree about it. `collapseFor` (Bosses row) is
+-- 4.0, so the lake drains with 1.5 seconds of fall still to watch.
+K.PY_CALDERA_AT = 2.5
+-- THE SHAFT, once the lake floor is gone. 100 against the lake's own 120: the
+-- hole is INSIDE the lake, which is the whole reason `Fn.pyreliskLavaWatch` has
+-- to stand down while it is open (it would rescue every jumper straight back
+-- out onto the rim).
+K.PY_SHAFT_R = 100.0
+-- HOW FAR DOWN COUNTS AS COMMITTED. Measured from the arena's own floor plane
+-- rather than from an absolute height, so it travels with an arena that moves.
+-- Seventy studs is far enough that nobody is taken by walking near the edge and
+-- near enough that it fires while the fall still reads as a fall.
+K.PY_SHAFT_DROP = 70.0
+-- ...AND THE BACKSTOP. Nobody may be stranded on a summit whose boss has left,
+-- so this long after the caldera opens the stragglers are taken whether they
+-- jumped or not. THE JUMP IS THE BEAT AND THIS IS THE NET - the Kraken's
+-- whole-party swallow used as a backstop rather than as the beat.
+K.PY_SHAFT_GRACE = 30.0
+-- How often the shaft is polled. The lava watch's own cadence, and for the same
+-- reason: this is a proximity test over a handful of players, not a raycast.
+K.PY_SHAFT_TICK = 0.5
+
+-- ------------------------------------------------- ACT 4: THE HEART
+--
+-- Which row is the heart. Named rather than compared inline so the two places
+-- that ask (the fight tick and the gimmick) cannot drift apart, and so the
+-- string that has to match `Bosses.items.pyrelisk_heart` exists once.
+K.PY_HEART_BOSS = "pyrelisk_heart"
+-- WHICH ACT THE HEART IS. The act numbering lives in ONE place because the cut
+-- of the climb renumbered it once already (the heart was act 4 while the arm
+-- climb was act 3) and the next person to move it must not have to find every
+-- literal: `Fn.pyreliskPublishAct` writes 1 and 2 on the colossus, this is the
+-- only other value anything publishes, and `ATTR.PY_ACT`'s contract block is
+-- written against the pair.
+K.PY_ACT_HEART = 3
+-- EIGHT PILLARS, EIGHT SOCKETS, EIGHT BITS. Same sentence as the six arm rocks,
+-- and asserted at plant for the same reason.
+K.PY_PILLAR_COUNT = 8
+-- EVERY BROKEN PILLAR TIGHTENS THE ROOM. The heart's cooldowns are multiplied
+-- by this once per pillar down, so the eighth is fought at 0.90^7 = 0.478 of
+-- the opening cadence - about twice as fast, reached gradually, and reached by
+-- the party's own hand. The fight gets louder as it gets shorter, which is the
+-- argument the Kraken's `polypStep` makes one room over.
+K.PY_PILLAR_STEP = 0.90
+-- A broken pillar vents a PERMANENT pool at its own socket. `duration` is the
+-- age of the universe rather than `math.huge`: pools are swept by an
+-- `expiresAt` comparison and an infinity there is a number that never fails a
+-- test but also never sorts, which is a different class of bug. The collapse
+-- takes them all anyway (`creature.pools` dies with the creature).
+K.PY_PILLAR_POOL = { radius = 12, duration = 1e9, min = 16, max = 24, skin = "lava" }
+-- (ACT 3's AMBIENT PRESSURE - the three back vents on a clock, with
+-- `K.PY_VENT_GAP` / `_ARM` / `_POOL` - stood here until the climb was cut.
+-- Nobody walks on the body now, so there is no deck to make dangerous.
+-- `PyreliskPath.VENTS` and `ventPoint` stay: they are the shipped vent
+-- objects' sites and `ventbreath` is unchanged.)
+-- A chip may not kill. Everything that CAN kill the colossus goes through
+-- `damage()` and `beginBossCollapse`, so a chip floors here instead - a hair
+-- above zero, so the dial can read "spent" without the death path having been
+-- entered by a subtraction.
+K.PY_CHIP_FLOOR = 1.0
+
+-- ------------------------------------------------- ACT 2: THE STUN AND THE ARMS
+--
+-- HOW LONG THE COLOSSUS DOES NOTHING, capped. The stun lasts until both arms
+-- are dead OR this long, whichever comes first, and both exits are real: the
+-- arms dying is the act break, the cap expiring is the failure branch.
+--
+-- A FIXED NUMBER WOULD BE ONE OR THE OTHER FAILURE. Too short and the arms
+-- survive with nothing in the design saying what happens; too long and the
+-- arms die and the party stands about. 120 is six times `handfall.stagger`,
+-- which the row calls "the most important number in the file", and it is the
+-- only stretch of this fight in which the colossus does nothing at all -
+-- unmistakably "super long" against the fight's own vocabulary.
+--
+-- UNMEASURED (design flag F-3): 120 and the arms' 7,000 HP are one decision
+-- taken twice against a party DPS nobody has measured. Re-derive together.
+K.PY_ARM_WINDOW = 120.0
+-- How long the body takes to settle into the slump as the arms come down. The
+-- shipped stagger shapes its slump off `modeProgress`, which over a 120-second
+-- window would have spent twenty seconds easing in and twenty-one easing out;
+-- act 2 holds the pose instead and eases only at the front.
+K.PY_ARM_SLUMP_EASE = 1.4
+-- THE ARMS BLEED ONTO THE GROUND YOU HAVE TO STAND ON TO HIT THEM. Every
+-- `GAP` seconds an arm marks a point within `R` of itself on the rim path and
+-- leaves a lava pool there after `ARM` seconds of warning. That is act 2's
+-- whole clock: 120 seconds of zero pressure is a damage check, not a fight,
+-- and the path shrinking is the Pyrelisk signature (`ventbreath`'s "the move
+-- that permanently takes path away") turned into the act's timer.
+K.PY_ARM_POOL_GAP = 7.0
+K.PY_ARM_POOL_R = 55.0
+K.PY_ARM_POOL_ARM = 1.4
+-- The pool itself, `ventbreath`'s shape one size down (its own is radius 15 /
+-- duration 10). A `spawnPool` spec, so nothing new draws it.
+K.PY_ARM_POOL = { radius = 13, duration = 9, min = 14, max = 20, skin = "lava" }
+
 -- The lake, and the two numbers that decide what happens to someone in it.
 -- 120 is the caldera lake's edge (the row's `arena.radius` reasoning, and
 -- handfall's `minReach`): everything inside it is lava.
-local PY_LAKE_R = 120.0
+K.PY_LAKE_R = 120.0
 -- Where a rescue puts you down: the middle of the rim path, forty studs off
 -- the lake and forty inside the lip's undercut - the same band the summon
 -- ring drops the party on, and the only stretch of floor the whole fight can
 -- reach you on.
-local PY_RESCUE_R = 150.0
+K.PY_RESCUE_R = 150.0
 -- HOW FAR ABOVE THE LAKE STILL COUNTS AS IN IT, and this is the load-bearing
 -- half of the test. Everyone on the mount is inside the lake's radius - the
 -- back deck is 202 studs straight up over it - so a flat radius check would
 -- boil the entire party the moment they finished the climb they were asked
 -- to make. Only something at the lava's own surface is in the lava.
-local PY_LAVA_HEAD = 16.0
-local PY_LAVA_TICK = 0.75
-local PY_LAVA_DAMAGE = { 70, 95 }
+K.PY_LAVA_HEAD = 16.0
+K.PY_LAVA_TICK = 0.75
+K.PY_LAVA_DAMAGE = { 70, 95 }
 -- The shrug. Radius is the LAKE's, not the arena's: it has to reach everyone
 -- standing on the body and nobody standing on the rim path, and those two
 -- sets are separated by exactly that circle.
-local PY_SHAKE_PUSH = 62
-local PY_SHAKE_TIME = 0.55
+K.PY_SHAKE_PUSH = 62
+K.PY_SHAKE_TIME = 0.55
+-- How long the rig takes to put a pose down when a stagger opened with
+-- nothing planted. Short - it is the tail of a blow that has already landed,
+-- not an animation in its own right - but not a frame, which is what it was.
+K.PY_WEAK_EASE = 0.4
 -- How long the lava keeps watching after the window shuts. The shove happens
 -- as the slabs go, so anyone it throws is still in the air at that instant -
 -- a watch that ended with the window would miss every death it exists for.
-local PY_SHAKE_GRACE = 4.0
--- The vents: how close is "at it", how many swings it takes, and what a
--- broken one costs the boss. Three of them at 7% is a fifth of its health -
--- the mount has to be worth the climb, and this is most of the reason to
--- make it.
-local PY_VENT_REACH = 30.0
-local PY_VENT_HITS = 4
-local PY_VENT_FRACTION = 0.07
-local PY_SWING_GAP = 0.28
+K.PY_SHAKE_GRACE = 4.0
+-- THE VENT-SMASH MINIGAME IS RETIRED, AND SO ARE ITS FOUR CONSTANTS
+-- (`PY_VENT_REACH`, `PY_VENT_HITS`, `PY_VENT_FRACTION`, `PY_SWING_GAP`), its
+-- listener, its per-player throttle and the three requires it needed to read a
+-- player's hands (`InventoryService`, `Equipment`, `Weapons` - none of which
+-- anything else on this page uses; audited by grep before deletion, the only
+-- other mentions are in two comments).
+--
+-- WHY IT GOES. It existed because the punish window was a twenty-second visit
+-- to the boss's back and needed something to do up there. Act 3 IS the climb
+-- now, it lasts until the neck core dies, and what you do on the way up is
+-- break six rocks that are real creatures with real health bars - shot or
+-- swung at through CombatService like everything else in the game.
+--
+-- AND RETIRING IT IS A NET SIMPLIFICATION OF THE SECURITY SURFACE. This was
+-- the one place in the project where a remote bypassed CombatService's weapon
+-- cooldown and therefore needed to re-implement its equip check and carry a
+-- rate limit of its own. Four numbers, three requires and a second listener on
+-- `RequestAttack`, all so a swing could be read where it was sent. None of it
+-- is needed to shoot a rock.
+--
+-- `K.PY_VENT_FRACTION` WAS THE PRECEDENT THE WHOLE CHIP LEDGER IS BUILT ON -
+-- a milestone taking a fraction off the boss rather than damaging it - and it
+-- leaves the file having been generalised into `Fn.pyreliskChip` and the five
+-- `K.PY_*_FRACTION` values the gate asserts. The idea survives; the minigame
+-- does not.
+--
+-- The three `PyreliskPath.VENTS` sites and the `Pyrelisk_Vent` objects are
+-- untouched: they are geometry and they stay. Turning them into act-3 hazards
+-- that fire on a clock is design section 4.4 and is NOT in this slice.
 
 -- Every fight that currently has footing standing (creature -> mount). Only
 -- ever zero or one entries, but keyed rather than a single upvalue so a
 -- second arena on one server cannot make two windows share a state.
 local pyreliskMounts = {}
--- Per-player swing throttle for the vent hits below. Weak keys: this is a
--- rate limit, not a record, and it must not be the reason a Player instance
--- outlives the player.
-local pyreliskSwingAt = setmetatable({}, { __mode = "k" })
 
 -- One piece of the climb. Invisible and unqueryable, exactly like the maw
 -- floor: the rock the player SEES is the client's, and a queryable slab in
 -- the middle of the arena would eat the ranged shots aimed at the body behind
 -- it and re-seat every ground telegraph drawn under it.
-local function pyreliskSlab(folder: Folder, name: string, size: Vector3, cframe: CFrame)
+function Fn.pyreliskSlab(folder: Folder, name: string, size: Vector3, cframe: CFrame)
 	local part = Instance.new("Part")
 	part.Name = name
 	part.Size = size
@@ -5227,7 +7346,7 @@ function clearPyreliskMount(creature)
 end
 
 -- Stand the climb up, once, from the pose as it is at this instant.
-local function openPyreliskMount(creature, state, now: number)
+function Fn.openPyreliskMount(creature, state, now: number)
 	if creature.pyreliskMount then
 		return
 	end
@@ -5238,7 +7357,7 @@ local function openPyreliskMount(creature, state, now: number)
 	local folder = Instance.new("Folder")
 	folder.Name = "PyreliskMount"
 	for _, slab in slabs do
-		pyreliskSlab(folder, slab.name, slab.size, slab.cframe)
+		Fn.pyreliskSlab(folder, slab.name, slab.size, slab.cframe)
 	end
 	folder.Parent = Workspace
 	-- The vents' world points, taken now and kept: the body is about to be
@@ -5265,7 +7384,7 @@ end
 
 -- The window closes: it takes its arm back. The slabs go, and everyone still
 -- standing on the body is thrown off it.
-local function shakePyreliskMount(creature, state, now: number)
+function Fn.shakePyreliskMount(creature, state, now: number)
 	if not creature.pyreliskMount then
 		return
 	end
@@ -5276,20 +7395,20 @@ local function shakePyreliskMount(creature, state, now: number)
 	-- server never writes a player's motion, so nothing here fights the
 	-- client's own physics ownership of its character.
 	fireEvent("gust", Vector3.new(state.center.X, state.center.Y, state.center.Z), {
-		radius = PY_LAKE_R,
-		push = PY_SHAKE_PUSH,
-		duration = PY_SHAKE_TIME,
+		radius = K.PY_LAKE_R,
+		push = K.PY_SHAKE_PUSH,
+		duration = K.PY_SHAKE_TIME,
 		skin = "lava",
 	})
-	creature.pyreliskLavaUntil = now + PY_SHAKE_GRACE
+	creature.pyreliskLavaUntil = now + K.PY_SHAKE_GRACE
 	-- BACK TO REST. Opening a window skips the handler's `recover` (see
-	-- openStagger), so the attack that earned this one is still sitting on
+	-- Fn.openStagger), so the attack that earned this one is still sitting on
 	-- the rig with blend 1 - and the moment `planted` clears, the working arm
 	-- would snap back into a handfall windup it is not performing. The pose
 	-- is this fight's furniture too; putting it down is part of packing up.
 	--
 	-- Except during the death, which is a pose of its own and has already been
-	-- set for this frame (updateBossCollapse runs before placeColossus): a
+	-- set for this frame (Fn.updateBossCollapse runs before Fn.placeColossus): a
 	-- boss killed on the mount must not have its collapse wiped by the same
 	-- teardown that takes the slabs away.
 	if not creature.collapsing then
@@ -5303,25 +7422,152 @@ end
 -- kill, because the lake is not a hazard the fight ever asks you to read -
 -- it is the floor the arena does not have, and drowning in it is a fall out
 -- of the fight rather than a death you could have avoided.
-local function pyreliskLavaWatch(creature, def, state, now: number)
+-- THE ARENA MODEL, BY THE NAME ITS OWN ROW AUTHORS.
+--
+-- WHY BY NAME AND NOT THROUGH A HANDLE. `BossArenaService` builds the instance
+-- (`placeAuthored` returns it to `init`, which arms the listener on it) but
+-- exports no accessor for it, and that file belongs to another lane. Reaching
+-- it as `Workspace.BossArenas.<arena.model>` is not a workaround, it IS the
+-- documented contract between the two files - `BossArenaService`'s own
+-- `CALDERA_ATTR` comment names this function as the writer and says so, and
+-- `armCaldera` WARNS BY NAME at startup when the placed group does not carry
+-- the row's `model` name, precisely so this lookup cannot fail silently.
+--
+-- The name comes off the BossArenas row rather than being typed here, so the
+-- two ends cannot drift: change `arena.model` and both the listener and this
+-- follow it.
+-- Takes an ISLAND ID rather than a def, and deliberately: one of its callers
+-- is `removeOwnedParts`, which is defined ~1500 lines ABOVE `bossDef` and
+-- therefore cannot see it at all - a `bossDef(...)` call there is a global
+-- lookup returning nil, which compiles clean, passes every gate, and throws
+-- the first time the heart dies. A string has no such problem.
+function Fn.pyreliskArenaModel(islandId: string?): Instance?
+	local arena = islandId and BossArenas.items[islandId]
+	local name = arena and arena.model
+	if not name then
+		return nil
+	end
+	local arenas = Workspace:FindFirstChild("BossArenas")
+	return arenas and arenas:FindFirstChild(name)
+end
+
+-- IS THE CALDERA OPEN? Read off the ARENA model, as a LEVEL, every time it is
+-- asked - never latched. A player who jumps in ten seconds after the lake
+-- drains has to get the same answer as the one who jumped on the first frame.
+--
+-- The attribute is a NUMBER and the test is `== 1`, which is
+-- `BossArenaService`'s own test on the same field; a boolean here would read
+-- false against the value that is actually written.
+function Fn.pyreliskCalderaOpen(islandId: string?): boolean
+	local model = Fn.pyreliskArenaModel(islandId)
+	return model ~= nil and model:GetAttribute(ATTR.PY_CALDERA) == 1
+end
+
+-- THE LAKE DRAINS. One write, a LEVEL, on the arena rather than on the boss -
+-- so it outlives the colossus that opened it (which is dead moments later) and
+-- replicates to anyone who joins mid-fall for free.
+--
+-- `1`, A NUMBER, never `true`: `BossArenaService.applyCaldera` tests `== 1`, and
+-- a boolean there reads as closed while looking set in the explorer.
+function Fn.pyreliskOpenCaldera(islandId: string?, floorY: number?)
+	local model = Fn.pyreliskArenaModel(islandId)
+	if not model then
+		-- The one thing this cannot do is fail quietly. A caldera that never
+		-- opens is a fight that stops at act three with a lake in the way and
+		-- nothing in any log to say why.
+		warn(
+			string.format(
+				"[CreatureService] the caldera cannot open: no Workspace.BossArenas.%s - "
+					.. "the arena group was imported under another name (BossArenaService warns about "
+					.. "this at startup) or the arena never placed",
+				(islandId and BossArenas.items[islandId] and BossArenas.items[islandId].model) or tostring(islandId)
+			)
+		)
+		return
+	end
+	-- THE SHAFT'S OWN DATUM, STAMPED BESIDE THE LEVEL THAT OPENED IT, and it
+	-- is here because of WHO has to read it later.
+	--
+	-- The depth test that decides "this player has committed to the fall"
+	-- needs the arena's floor plane, and the only thing that knows it is the
+	-- colossus - `state.center.Y`, the plane it stands on and the plane the
+	-- lava watch burns at. But the colossus is dead a second and a half after
+	-- this line, and the creature that has to keep watching the hole after
+	-- that is the HEART, forty thousand studs away in another room, which
+	-- cannot ask. Neither can it be derived: `BossArenas.volcano.center.Y` is
+	-- 0 and `meshBottom` is the mesh's bbox, not the rim path.
+	--
+	-- So it rides the one instance both of them can reach, written once, at the
+	-- moment it is known, by the only thing that knows it. SERVER-SIDE: no
+	-- client reads it, and it is NOT part of the frozen section 7.2 contract -
+	-- see NOTES, it is flagged for ratification rather than assumed.
+	if floorY then
+		model:SetAttribute(ATTR.PY_SHAFT_FLOOR, floorY)
+	end
+	model:SetAttribute(ATTR.PY_CALDERA, 1)
+end
+
+-- ...AND IT CLOSES BEHIND THE FIGHT. Idempotent, and safe to call when it was
+-- never opened: `BossArenaService`'s listener is level-triggered, so writing 0
+-- over a 0 fires nothing.
+function Fn.pyreliskCloseCaldera(islandId: string?)
+	local model = Fn.pyreliskArenaModel(islandId)
+	if model then
+		-- BOTH, ALWAYS, AS A PAIR - see ATTR.PY_SHAFT_FLOOR's invariant. The
+		-- floor is cleared FIRST so there is no instant, however short, in
+		-- which the caldera reads closed while a live depth plane is still
+		-- sitting on the model for a watch to pick up.
+		--
+		-- Clearing the floor is not tidiness. `PyreliskCaldera` going to 0 is
+		-- the shaft watch's OWN gate, so a leftover plane is harmless only for
+		-- as long as nobody reorders these two lines or adds a caller that
+		-- clears one - and this fight has two endings already.
+		model:SetAttribute(ATTR.PY_SHAFT_FLOOR, nil)
+		model:SetAttribute(ATTR.PY_CALDERA, 0)
+	end
+end
+
+-- THE RESCUE HAS TO STAND DOWN WHEN THE HOLE OPENS, and this is the single
+-- highest-consequence line in slice 5's handoff (its section 1.1, accepted as a
+-- MUST).
+--
+-- THE ARITHMETIC, because it is not obvious and it is what makes this fatal
+-- rather than untidy. The watch fires on `K.PY_LAKE_R = 120`, and the shaft the
+-- caldera opens is `K.PY_SHAFT_R = 100` - the shaft is INSIDE the lake. So on
+-- the exact frame a player finally does the thing the whole act exists for -
+-- jump into the open caldera - the function written to SAVE them from the lava
+-- reads them as having fallen in it, and teleports them back out to
+-- `K.PY_RESCUE_R = 150` on the rim path. Every time. Forever. The beat cannot
+-- happen while this is running, and nothing about it looks like a bug: the
+-- rescue is working perfectly, at the one moment it must not.
+--
+-- AND IT IS A LEVEL TEST, NOT AN EDGE. Gating on "the caldera just opened"
+-- would rescue anybody who fell in a second later, which is most of a party.
+function Fn.pyreliskLavaWatch(creature, def, state, now: number)
 	if now < (creature.pyreliskLavaAt or 0) then
 		return
 	end
-	creature.pyreliskLavaAt = now + PY_LAVA_TICK
+	if Fn.pyreliskCalderaOpen(def.islandId) then
+		-- Nothing to be saved from and nowhere to be put: the lava has drained
+		-- and the floor under it is gone. Falling is the POINT now.
+		creature.pyreliskLavaAt = now + K.PY_LAVA_TICK
+		return
+	end
+	creature.pyreliskLavaAt = now + K.PY_LAVA_TICK
 	local center = state.center
-	local lo, hi = bossRoll(creature, def, PY_LAVA_DAMAGE)
+	local lo, hi = Fn.bossRoll(creature, def, K.PY_LAVA_DAMAGE)
 	for _, player in Players:GetPlayers() do
 		local character = player.Character
 		local root = character and character:FindFirstChild("HumanoidRootPart")
 		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 		if root and humanoid and humanoid.Health > 0 then
 			local out = Vector3.new(root.Position.X - center.X, 0, root.Position.Z - center.Z)
-			if out.Magnitude < PY_LAKE_R and root.Position.Y <= center.Y + PY_LAVA_HEAD then
+			if out.Magnitude < K.PY_LAKE_R and root.Position.Y <= center.Y + K.PY_LAVA_HEAD then
 				local burn = Vector3.new(root.Position.X, center.Y, root.Position.Z)
 				fireEvent("slam", burn, { radius = 11, skin = "lava" })
 				PlayerService.damage(player, math.random(lo, hi), creature, { bypassIframe = true })
 				local dir = if out.Magnitude > 0.01 then out.Unit else Vector3.xAxis
-				local at = center + dir * PY_RESCUE_R + Vector3.new(0, 4, 0)
+				local at = center + dir * K.PY_RESCUE_R + Vector3.new(0, 4, 0)
 				-- Set down facing the thing that threw them, on their own
 				-- bearing out of the lake, so a rescue never spins the camera
 				-- round or drops two players on the same stud.
@@ -5331,96 +7577,979 @@ local function pyreliskLavaWatch(creature, def, state, now: number)
 	end
 end
 
--- One frame of the mount, run from placeColossus so it ticks in every mode
+-- One frame of the mount, run from Fn.placeColossus so it ticks in every mode
 -- this boss can be in - including the collapse, which is the one exit that
 -- does not pass through the stagger's own end.
-local function updatePyreliskMount(creature, def, state, now: number)
+function Fn.updatePyreliskMount(creature, def, state, now: number)
+	-- THE GATE IS "a stagger with something planted", AND IT IS BACK TO EXACTLY
+	-- THAT. It was widened to "a stagger, OR act 3" while act 3 was the climb;
+	-- the climb is cut, so the act clause is gone with it and this is once
+	-- again the shipped act-1 monolith mount and nothing else.
+	--
+	-- NO PATH RE-ENABLES MOUNTING IN ACT 2 OR LATER, and it is worth saying how
+	-- that is enforced rather than trusting the gate to look right: the only
+	-- other way in is a non-zero `planted`, and `Fn.pyreliskDropArms` writes
+	-- `planted = 0` at the top of act 2 while the collapse writes 0 again -
+	-- neither the arms nor the death plants anything. (The vent-smash minigame
+	-- that used to ride this layer was retired in slice 4 and its four locals
+	-- were spent elsewhere; nothing brings it back.)
+	--
+	-- Everything downstream is untouched: `Fn.openPyreliskMount` still builds
+	-- the slabs from `PyreliskPath.climbSlabs`, `Fn.pyreliskLavaWatch` keeps
+	-- its damage-and-rescue contract, and `clearPyreliskMount` still fills the
+	-- forward declaration so `removeOwnedParts` and `kill` can both reach it.
 	if creature.mode == "stagger" and (state.planted or 0) ~= 0 and not creature.collapsing then
 		if not creature.pyreliskMount then
-			openPyreliskMount(creature, state, now)
+			Fn.openPyreliskMount(creature, state, now)
 		end
 		local mount = creature.pyreliskMount
 		if mount then
-			-- HELD STILL. placeColossus has already turned the body toward
+			-- HELD STILL. Fn.placeColossus has already turned the body toward
 			-- the nearest player this frame; this puts it back. Both angles,
 			-- because `bearing` folds one into the other and the slabs were
 			-- placed from the result.
 			state.faceAngle = mount.faceAngle
 			state.aimAngle = mount.aimAngle
 		end
+		creature.pyreliskEaseAt = nil
 	elseif creature.pyreliskMount then
-		shakePyreliskMount(creature, state, now)
+		Fn.shakePyreliskMount(creature, state, now)
+		creature.pyreliskEaseAt = nil
+	elseif creature.mode == "stagger" and not creature.collapsing then
+		-- THE WEAK STAGGER, and the reason it needs its own branch: it is the
+		-- one way into this window that plants NOTHING. A handfall that finds
+		-- no monolith calls Fn.openStagger with `weakStagger` and leaves
+		-- `planted` at 0, and Fn.openStagger nils `creature.attack` - so the
+		-- handler's own `recover` never runs, and nothing else on this page
+		-- had any reason to touch the rig. The strong path is cleaned up by
+		-- the mount teardown above (Fn.shakePyreliskMount puts the pose down as
+		-- part of packing up); the weak path had no equivalent, so the body
+		-- held the handfall pose at blend 1 with the fist buried in the path
+		-- for the whole 3 seconds and then snapped to rest in one frame when
+		-- the next attack wrote the rig.
+		--
+		-- Eased rather than cleared for the same reason the mount teardown
+		-- eases nothing: there the arm IS the furniture and has to go at
+		-- once, here there is nothing standing on it and a colossus that
+		-- snapped out of a blow it just threw reads as a dropped frame.
+		-- Same three numbers Fn.shakePyreliskMount writes, spread over
+		-- K.PY_WEAK_EASE.
+		local last = creature.pyreliskEaseAt or now
+		creature.pyreliskEaseAt = now
+		local step = math.clamp((now - last) / K.PY_WEAK_EASE, 0, 1)
+		state.blend = math.max((state.blend or 0) - step, 0)
+		state.strike = math.max((state.strike or 0) - step, 0)
+		if state.blend <= 0 and state.strike <= 0 then
+			state.attack = ""
+		end
+	else
+		creature.pyreliskEaseAt = nil
 	end
-	if creature.pyreliskMount or now < (creature.pyreliskLavaUntil or 0) then
-		pyreliskLavaWatch(creature, def, state, now)
-	end
+	-- THE MOAT IS THE FIGHT'S MELEE GATE, AND IT IS MADE OF THIS CALL.
+	--
+	-- Unconditional, in every mode, for as long as the boss is alive - which
+	-- is what `Fn.placeColossus` is. It used to run only while a mount was
+	-- standing (plus K.PY_SHAKE_GRACE), and that left the whole premise of the
+	-- fight optional: PyreliskArena_Base is authored FLAT all the way under
+	-- the lava sheet (the arena's horizontal-only rule) and the sheet itself
+	-- is non-collidable, so a player who walks inward past r120 is not in a
+	-- hazard - they are standing on solid basalt a tenth of a stud down. From
+	-- there `inRange` is 3D pivot distance minus hitRadius 96, so anywhere
+	-- inside r112 melees a 40,000-HP colossus for free, and the bait, the
+	-- climb, the window and the vents are all things you may skip. The lake
+	-- cannot be made collidable (it is the floor the arena does not have) and
+	-- the base cannot be dished without breaking the import, so the moat is
+	-- enforced by DAMAGE. The watch is cheap - K.PY_LAVA_TICK throttles it to
+	-- four passes a second over the player list - and it rescues rather than
+	-- kills, so being wrong about someone's height costs them a set-down on
+	-- the path, not a death.
+	Fn.pyreliskLavaWatch(creature, def, state, now)
 end
 
--- THE VENTS, and the one thing on this page that is not geometry.
+-- (`Fn.pyreliskVentSwing` and its second `Remotes.RequestAttack` listener
+-- stood here until act 3 became the climb. See the note on their grave, with
+-- the four constants, above `pyreliskMounts`.)
+
+-- WHO IS IN THE SHAFT, AND WHAT ACTUALLY DELIVERS THEM.
 --
--- A vent is not a creature and cannot be: creature targeting is proximity to
--- a struct's pivot, and there is no Creatures row for a shaft on a boss's
--- back. Nor can a swing find the boss itself from up there - `inRange`
--- measures melee as pivot distance minus hitRadius, and the deck is ~202
--- studs from a pivot with a 96-stud radius, so a player standing ON the
--- colossus is a hundred studs out of reach of it. That is deliberate (the
--- moat is made of that number) and must not be widened: raising hitRadius
--- enough to be hittable from the deck would also make it hittable from the
--- shore.
+-- THE FALL DOES NOT DELIVER ANYBODY. It is only the TRIGGER. The shaft's foot
+-- is a hundred-odd studs below a rim path that is itself 292 studs up, and the
+-- heart's chamber is forty thousand studs away and six hundred studs in the
+-- air - there is no geometry connecting them and there was never going to be.
+-- What moves a player is `CreatureService.ArenaMove`, per player, fired from
+-- here the moment they are far enough down the hole to have meant it. The fall
+-- is the fiction; the ArenaMove is the mechanism.
 --
--- So the swing is read where it is actually sent. RequestAttack is
--- argument-less and CombatService silently drops a swing that finds nothing
--- in reach, which is exactly what every swing on this deck does. A second
--- listener on the same remote costs nothing, needs no new network surface,
--- and cannot affect any other fight: it only ever does anything while a
--- mount is standing and the swinger is within 30 studs of an unbroken shaft.
+-- (And a fall this watch MISSES does not land anywhere good: the shaft is
+-- authored walls-only, so an uncaught player continues past its foot to the
+-- sea, ~170 studs further, in open ocean 23,400 studs from anywhere. There is
+-- no fall damage anywhere in `src/` so they live, but they are lost. That is
+-- why the poll is cheap enough to run every half second and why the grace
+-- below exists at all - slice 5's handoff section 2.7 asks for a floor or an
+-- earlier trigger, and both are the mesh lane's.)
 --
--- Rate-limited on its own clock because it does NOT go through
--- CombatService's weapon cooldown - a client spamming the remote must not be
--- able to break three vents in a frame.
-local function pyreliskVentSwing(player: Player)
-	local now = os.clock()
-	if now - (pyreliskSwingAt[player] or 0) < PY_SWING_GAP then
+-- PER PLAYER, NOT PER PARTY, because the directive's beat is "you have to like
+-- jump in" and a yank makes the jump a cutscene. `ArenaMove`'s third argument
+-- moves exactly one participant; the party form is the grace, below.
+function Fn.pyreliskShaftWatch(creature, def, now: number)
+	if now < (creature.pyreliskShaftAt or 0) then
 		return
 	end
-	local character = player.Character
-	local root = character and character:FindFirstChild("HumanoidRootPart")
-	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-	if not root or not humanoid or humanoid.Health <= 0 then
+	creature.pyreliskShaftAt = now + K.PY_SHAFT_TICK
+	if not Fn.pyreliskCalderaOpen(def.islandId) then
 		return
 	end
-	for creature, mount in pyreliskMounts do
-		local broken = creature.pyreliskBroken or {}
-		for index, at in mount.vents do
-			if not broken[index] and (root.Position - at).Magnitude <= PY_VENT_REACH then
-				pyreliskSwingAt[player] = now
-				local hits = (mount.hits[index] or 0) + 1
-				mount.hits[index] = hits
-				fireEvent("strikeHit", at, { radius = 9, skin = "lava" })
-				if hits >= PY_VENT_HITS then
-					-- BROKEN FOR THE FIGHT, not for the window: the record
-					-- lives on the creature, so a second stagger cannot spend
-					-- the same shaft twice and the party's third climb is for
-					-- the one they have not opened yet.
-					broken[index] = true
-					creature.pyreliskBroken = broken
-					fireEvent("slam", at, { radius = 26, skin = "lava" })
-					local chunk = math.max(1, math.floor(creature.maxHealth * PY_VENT_FRACTION))
-					CreatureService.damage(creature, chunk, player)
-				end
-				return
+	local centre = BossArenas.centerFor(def.islandId)
+	local model = Fn.pyreliskArenaModel(def.islandId)
+	local floor = model and model:GetAttribute(ATTR.PY_SHAFT_FLOOR)
+	-- A NIL FLOOR MEANS "NO CALDERA HAS OPENED IN THIS FIGHT" AND THE WATCH DOES
+	-- NOT RUN. It is the second half of the pair invariant (ATTR.PY_SHAFT_FLOOR)
+	-- read back: the plane is written with the caldera and cleared with it, so
+	-- its absence is the same statement as `PyreliskCaldera ~= 1` and the watch
+	-- refuses on either.
+	--
+	-- BELT AND BRACES ON PURPOSE. The caldera gate above already returned for a
+	-- closed hole, so reaching here with no floor means the two attributes have
+	-- come apart - which is the one state the invariant forbids. Refusing is
+	-- the safe reading: the alternative is a depth test against a nil or a
+	-- stale plane, which either throws or silently teleports a party out of an
+	-- act-1 fight.
+	--
+	-- `type(floor) ~= "number"` rather than `floor == nil`, because an
+	-- attribute is whatever was last written to it and a wrong-typed value must
+	-- fail the same way a missing one does.
+	if centre == nil or type(floor) ~= "number" then
+		return
+	end
+	-- THE BACKSTOP, FIRST, and it is a level test on a deadline rather than a
+	-- one-shot: nobody may be left on a summit whose boss has gone, so once the
+	-- grace is spent the whole remaining party is taken in the party form -
+	-- which is the Kraken's swallow, used as the net instead of as the beat.
+	-- `ArenaMove`'s party form already skips anyone standing in the
+	-- destination, so this cannot drag people out of the fight they are already
+	-- in and put them back on the entry pad.
+	if now >= (creature.pyreliskShaftGraceAt or math.huge) then
+		creature.pyreliskShaftGraceAt = nil
+		CreatureService.ArenaMove:Fire(def.islandId, K.PY_HEART_BOSS)
+		return
+	end
+	for _, player in Players:GetPlayers() do
+		local character = player.Character
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		if root and humanoid and humanoid.Health > 0 then
+			local out = Vector3.new(root.Position.X - centre.X, 0, root.Position.Z - centre.Z)
+			-- Inside the hole's own column AND far enough down it. Both terms
+			-- are needed: the radius alone is the whole middle of the arena
+			-- (people stand there), and the depth alone is anywhere off the
+			-- lip.
+			if out.Magnitude < K.PY_SHAFT_R and root.Position.Y <= floor - K.PY_SHAFT_DROP then
+				-- Participation is BossService's to judge - it tests by UserId
+				-- and refuses a player who is not in this fight, which is the
+				-- right ruling: "whoever is standing in the shaft" is not the
+				-- same set as "whoever is in the fight", and a passer-by has no
+				-- ride home out of a sealed room.
+				CreatureService.ArenaMove:Fire(def.islandId, K.PY_HEART_BOSS, player)
 			end
 		end
 	end
 end
 
-Remotes.RequestAttack.OnServerEvent:Connect(pyreliskVentSwing)
+-- ------------------------------------------------------------ act 4: the heart
+--
+-- A DIFFERENT ROW, A DIFFERENT ROOM, THE SAME FIGHT. `succeededBy` hands the
+-- colossus's death to `pyrelisk_heart`, which `BossService.handoff` raises in
+-- the heart arena carrying the party's `healthMult` across; `heartAs` makes the
+-- win mint `Heart_pyrelisk`, so the Kraken's gate opens for anyone who beat
+-- this. Everything below is what the room does while you are in it.
+
+-- The six wall vents, in world. Authored on the arena row as FULL XYZ - they
+-- are at three different heights and the height is the point - and resolved
+-- against the arena centre, which is the `sockets` convention with the Y term
+-- kept instead of flattened.
+--
+-- WHICH ONES SPEAK, and it is weighted AWAY from the one that spoke last so the
+-- pressure rotates round the wall rather than settling on whoever is unlucky.
+-- Six vents at three heights is a room that shoots from everywhere; six vents
+-- that all pick randomly is a room that shoots from the same place twice in a
+-- row often enough to read as aimed.
+function Fn.pyreliskHeartVents(creature, count: number): { Vector3 }
+	local arena = BossArenas.items[K.PY_HEART_BOSS]
+	local vents = arena and arena.vents
+	local out = {}
+	if not vents or #vents == 0 then
+		-- No authored vents is a room with no shooters, which reads in play as
+		-- "the heart does nothing" rather than as a missing table.
+		warn(
+			string.format(
+				"[CreatureService] BossArenas.%s has no `vents` - the heart room has no shooters and "
+					.. "`ventspit` will throw nothing",
+				K.PY_HEART_BOSS
+			)
+		)
+		return out
+	end
+	local centre = creature.anchor or creature.pos
+	local last = creature.pyreliskLastVent
+	local pool = {}
+	for i = 1, #vents do
+		if i ~= last or #vents < 2 then
+			table.insert(pool, i)
+		end
+	end
+	for _ = 1, math.min(count, #pool) do
+		local at = math.random(#pool)
+		local index = table.remove(pool, at)
+		creature.pyreliskLastVent = index
+		table.insert(out, centre + vents[index])
+	end
+	return out
+end
+
+-- WHERE A GLOB LANDS: marked ground, scattered around the party's own footing
+-- and pulled back inside the room.
+--
+-- The clamp is `pyreliskLatch`'s rule in a circle instead of a band - a glob
+-- that lands past the wall is a glob nobody could have been standing under, and
+-- the floor's own radius is the only honest bound on it.
+function Fn.pyreliskHeartGround(creature, p, root): Vector3
+	local arena = BossArenas.items[K.PY_HEART_BOSS]
+	local centre = creature.anchor or creature.pos
+	local far = (arena and arena.floorRadius or 96) - (p.radius or 12)
+	local at = if root then root.Position else centre
+	local theta = math.random() * math.pi * 2
+	local spread = math.sqrt(math.random()) * (p.spread or 20)
+	at = Vector3.new(at.X + math.cos(theta) * spread, centre.Y, at.Z + math.sin(theta) * spread)
+	local out = Vector3.new(at.X - centre.X, 0, at.Z - centre.Z)
+	local reach = out.Magnitude
+	if reach > far and reach > 0.01 then
+		at = centre + (out / reach) * far
+	end
+	return Vector3.new(at.X, centre.Y, at.Z)
+end
+
+-- VENTSPIT: two to four wall vents throw globs at marked ground. The room's
+-- bread and butter, and it is ZERO new projectile code - `Fn.throwGlob` has
+-- always taken an arbitrary origin (the Kraken's `inkmortar` passes the eye
+-- that threw it), so six shooters are six origins and nothing else.
+--
+-- NOT `ProjectileService`. Its volleys hardcode the flight plane as
+-- `World.WATER_Y + FLIGHT_Y`, and this room is six hundred studs up - every
+-- ball would fly flat through the sea underneath it, invisibly, hitting nobody.
+-- Design flag F-12; the fix is one line plus a client contract field and it is
+-- out of scope here.
+K.ATTACK_HANDLERS.ventspit = {
+	fire = function(creature, def, p, now, root)
+		for i, vent in Fn.pyreliskHeartVents(creature, p.count or 3) do
+			local at = Fn.pyreliskHeartGround(creature, p, root)
+			local flight = (p.flight or 1.6) + (i - 1) * (p.stagger or 0.2)
+			-- The disc at the impact site for exactly the flight time - the
+			-- `krakenmortar` rule: a mark that outlives its glob is a lie about
+			-- where the floor is dangerous.
+			fireEvent("telegraph", at, { kind = "mark", duration = flight, radius = p.radius, skin = p.skin })
+			Fn.throwGlob(creature, def, p, at, flight, now, "strikeHit", "spit", {
+				tolerance = K.BOSS_HEIGHT_TOLERANCE,
+				pool = p.pool,
+			}, vent)
+		end
+	end,
+}
+
+-- HEARTPULSE: the heart beats and a ring goes out from the dais. Safe at the
+-- middle and safe at the wall; the ring is the space between.
+--
+-- THE METRONOME THE PILLARS TIGHTEN. Its cooldown is stepped by
+-- `creature.cooldownStep` like everything else the heart casts, so the beat
+-- literally speeds up as the room's cover comes down.
+K.ATTACK_HANDLERS.heartpulse = {
+	fire = function(creature, def, p, now)
+		local centre = creature.anchor or creature.pos
+		local arm = p.arm or 1.2
+		Fn.queueStrike(creature, def, p, centre, now, now + arm, {
+			shape = "annulus",
+			inner = p.inner or 26,
+			outer = p.radius or 84,
+		})
+	end,
+}
+
+-- MAGMARAIN: the ceiling sheds on everybody at once. The shipped `barrage`
+-- `everyone` pattern, unchanged - `ashfall`'s shape in a smaller room.
+K.ATTACK_HANDLERS.magmarain = {
+	fire = function(creature, def, p, now, root)
+		local base = K.ATTACK_HANDLERS.barrage.fire
+		if base then
+			base(creature, def, p, now, root)
+		end
+	end,
+}
+
+-- VENTBARRAGE: phase two only. All six vents at once, one glob each, NO AIM -
+-- a wall of falling rock you walk out of rather than a thing pointed at you.
+-- Scattered on the floor rather than on the party, which is what makes it
+-- readable: the answer is "be somewhere else", and there is always a somewhere.
+K.ATTACK_HANDLERS.ventbarrage = {
+	fire = function(creature, def, p, now)
+		local arena = BossArenas.items[K.PY_HEART_BOSS]
+		local centre = creature.anchor or creature.pos
+		local far = (arena and arena.floorRadius or 96) - (p.radius or 12)
+		for i, vent in Fn.pyreliskHeartVents(creature, p.count or 6) do
+			local theta = math.random() * math.pi * 2
+			local reach = math.sqrt(math.random()) * math.max(far, 1)
+			local at = centre + Vector3.new(math.cos(theta) * reach, 0, math.sin(theta) * reach)
+			local flight = (p.flight or 2.0) + (i - 1) * (p.stagger or 0.12)
+			fireEvent("telegraph", at, { kind = "mark", duration = flight, radius = p.radius, skin = p.skin })
+			Fn.throwGlob(creature, def, p, at, flight, now, "strikeHit", "spit", {
+				tolerance = K.BOSS_HEIGHT_TOLERANCE,
+			}, vent)
+		end
+	end,
+}
+
+-- THE HEART'S OWN FRAME, called at the top of `Fn.updateBoss` for this row and
+-- nowhere else, the way `Fn.updateKrakenFight` is - BEFORE the mode dispatch, so
+-- a heart that is busy attacking still counts its pillars.
+--
+-- Everything it does is a LEVEL published off the world: which act this is, how
+-- many pillars still stand, and how fast the room is therefore beating. Nothing
+-- here is an edge, so a client that adopts the model at any instant draws the
+-- right room.
+-- `def` again, not `_def`: slice 6 underscored it because the heart's frame
+-- genuinely had no use for the row, and the shaft watch below now does.
+function Fn.updatePyreliskHeart(creature, def, now: number)
+	if creature.row.boss ~= K.PY_HEART_BOSS then
+		return
+	end
+	-- THE LAST ACT, ON THE HEART'S OWN MODEL. The same attribute name the
+	-- colossus carries 1-2 on, which is the whole point of it: one name, one
+	-- meaning ("which act of the Pyrelisk fight is this model drawing"),
+	-- monotonic across a handoff that swaps the model underneath it. The client
+	-- gates rig-drawing on THIS rather than on position, or the exterior
+	-- colossus rig draws inside the chamber.
+	--
+	-- `K.PY_ACT_HEART` AND NOT A LITERAL. It was 4 while the arm climb held 3;
+	-- the climb is cut and the heart moved up, and the one thing that must not
+	-- happen again is a renumber that leaves one literal behind in a branch
+	-- nobody runs until the fight's last minute.
+	if creature.pyreliskAct ~= K.PY_ACT_HEART then
+		creature.pyreliskAct = K.PY_ACT_HEART
+		creature.model:SetAttribute(ATTR.PY_ACT, K.PY_ACT_HEART)
+	end
+	if creature.collapsing or creature.dead then
+		return
+	end
+	-- THE HOLE IS STILL OPEN AND SOMEBODY IS STILL FALLING DOWN IT.
+	--
+	-- The colossus ran this for the last second and a half of its own fall and
+	-- is then destroyed - `Fn.updateBoss` is not called for a dead creature -
+	-- so from the handoff onward the only live thing that can keep watching the
+	-- shaft is the heart the fall is delivering people TO. Same function, same
+	-- arena (`def.islandId` is "volcano" on this row too, deliberately), same
+	-- per-player ArenaMove.
+	--
+	-- Its own grace clock starts on the heart's first frame rather than being
+	-- carried across: the colossus's deadline died with it, and the number that
+	-- matters is "how long after the room existed was somebody still not in it".
+	if creature.pyreliskShaftGraceAt == nil then
+		creature.pyreliskShaftGraceAt = now + K.PY_SHAFT_GRACE
+	end
+	Fn.pyreliskShaftWatch(creature, def, now)
+	-- THE EIGHT, RECONCILED OFF THE WORLD - the idiom acts 2 and 3 both use,
+	-- and for the same reasons: a pillar that died to a pool tick, a collapse
+	-- or a despawn counts exactly once and counts the same, and `kill()` stays
+	-- free of this fight's machinery.
+	-- `socketIndex` RATHER THAN A FIELD OF MY OWN. `Fn.spawnBossParts` already
+	-- stamps it - entry `i` IS socket index `i`, which is the number the client
+	-- claims a part by - and the heart's only parts are these eight, so a
+	-- second per-pillar field would be the same integer written twice. Bounded
+	-- against the mask's width, because a socket list that grew past eight is
+	-- exactly the silent failure a bitmask has.
+	local mask = 0
+	for _, other in creatures do
+		local index = other.partOf == creature and not other.dead and other.socketIndex
+		if index and index >= 1 and index <= K.PY_PILLAR_COUNT then
+			mask = bit32.bor(mask, bit32.lshift(1, index - 1))
+		end
+	end
+	local was = creature.pyreliskPillarMask
+	if was == nil or mask ~= was then
+		local arena = BossArenas.items[K.PY_HEART_BOSS]
+		local sockets = arena and arena.sockets
+		for i = 1, K.PY_PILLAR_COUNT do
+			local bit = bit32.lshift(1, i - 1)
+			if was and bit32.band(was, bit) ~= 0 and bit32.band(mask, bit) == 0 then
+				-- A BROKEN PILLAR VENTS AT ITS OWN FOOT, permanently. The room
+				-- gets smaller as its cover comes down, which is the same
+				-- bargain the arms and the arm rocks make: the reward for
+				-- progress is a harder floor, and it is the only reward
+				-- structure a fight with no punish window can offer.
+				local socket = sockets and sockets[i]
+				if socket then
+					local at = (creature.anchor or creature.pos) + Vector3.new(socket.X, 0, socket.Z)
+					spawnPool(creature, at, K.PY_PILLAR_POOL, now)
+					fireEvent("slam", at, { radius = K.PY_PILLAR_POOL.radius, skin = "lava" })
+				end
+			end
+		end
+		creature.pyreliskPillarMask = mask
+		creature.model:SetAttribute(ATTR.PY_PILLARS, mask)
+		-- ...AND THE ROOM TIGHTENS. Counted from the mask rather than kept as a
+		-- tally, so it cannot drift from what is actually standing.
+		local down = 0
+		for i = 1, K.PY_PILLAR_COUNT do
+			if bit32.band(mask, bit32.lshift(1, i - 1)) == 0 then
+				down += 1
+			end
+		end
+		creature.cooldownStep = K.PY_PILLAR_STEP ^ down
+	end
+end
+
+-- THE RETURN PATH, and it is the ONLY place this fight can answer its own
+-- death: `Fn.updateBoss` is not called for a creature that is already dead, so
+-- the recall out of a sealed room 40,000 studs from the island has nowhere else
+-- to live. `kill()` runs `gimmick.onKill` while `pos` still means something and
+-- before Killed pays anyone out, which is exactly the beat wanted.
+--
+-- BossService deliberately adds NO second recall - its own comment says why:
+-- `onKilled` delays `sendHome` by `RETURN_DELAY`, and a recall racing that
+-- delay that lost the race would silently take nobody anywhere, because
+-- `sendHome`'s proximity filter excludes precisely the people it failed to move.
+K.GIMMICKS.pyreliskheart = {
+	onKill = function(creature)
+		fireEvent("krakenCollapse", creature.pos, { duration = 3.0 })
+		-- The fight's centre stops being a room nobody is in any more, so the
+		-- abandon reaper and `sendHome` stop measuring presence against it.
+		creature.model:SetAttribute(ATTR.FIGHT_CENTER, nil)
+		local def = bossDef(creature)
+		if def and def.islandId then
+			-- CLOSE THE CALDERA BEHIND YOU, BEFORE THE RECALL. The party is
+			-- about to be set back down on the Ashfall Throne's rim path, and
+			-- that path currently has a 120-stud hole in the middle of it with
+			-- no lake floor under it. `PyreliskCaldera` lives on the ARENA
+			-- model, so it survives the boss that opened it and would still be
+			-- 1 at the next summon: an act-1 fight whose moat is a shaft.
+			--
+			-- Level-triggered and idempotent on the far side, so writing 0 when
+			-- it was never opened costs nothing.
+			--
+			-- THROUGH THE RESOLVER, which takes the instance name off the arena
+			-- row (`arena.model`) rather than spelling "PyreliskArena" here.
+			-- The name is a contract with `BossArenaService` - it warns at
+			-- startup when the placed group does not carry it - and a second
+			-- hand-typed copy of it in this file is the half of that contract
+			-- nothing would ever check.
+			--
+			-- REDUNDANT WITH `removeOwnedParts`, DELIBERATELY. That is the
+			-- catch-all for every way this fight can end; this one is here for
+			-- ORDER, because the caldera has to be shut before the recall puts
+			-- the party back on a rim path that currently has a hole in it.
+			Fn.pyreliskCloseCaldera(def.islandId)
+			CreatureService.ArenaMove:Fire(def.islandId, def.islandId)
+		end
+	end,
+}
+
+-- ------------------------------------------------ the colossus's four acts
+--
+-- Everything from here to the choir is the Pyrelisk's act machine, and the
+-- whole of it is fields on `Fn` - `CreatureService.luau` is at Luau's 200-local
+-- chunk limit and a new top-level `local` here does not fail a gate, it stops
+-- the server booting (2026-09-06).
+--
+-- THE STATE OF THIS FIGHT IS NOT A PHASE FIELD. It is the health bar, which
+-- `Fn.pyreliskChip` turns; `creature.partsAlive`, which the shipped parts ring
+-- counts; and `state.seamsBroken`, which the shipped seam system sets. The one
+-- new attribute (`ATTR.PY_ACT`) is a STATEMENT FOR THE CLIENT about those
+-- three, published as a level, never an edge.
+
+-- Take an exact fraction off the dial and republish it.
+--
+-- THE ONE NEW PRIMITIVE THE WHOLE REDESIGN TURNS ON, and it is the vent
+-- smash's existing arithmetic (`creature.maxHealth * fraction`) lifted into a
+-- name so every milestone shares it instead of each one open-coding the same
+-- subtraction against a different rounding.
+--
+-- IT DOES NOT GO THROUGH `damage()`, and that is not an optimisation. In act 1
+-- the colossus is `untargetable`, so `damage()` returns nil and the chip would
+-- be silently swallowed - the exact failure shape this repo is made of: a
+-- value needed somewhere it is never read, presenting as "the boss's bar never
+-- moves". It writes the health line and the attribute the same way `damage()`
+-- does, and it FLOORS rather than killing, because the death path is
+-- `beginBossCollapse`'s and a chip may not enter it by arithmetic.
+function Fn.pyreliskChip(creature, _def, fraction: number)
+	if not creature or creature.dead or fraction <= 0 then
+		return
+	end
+	local chunk = creature.maxHealth * fraction
+	creature.health = math.max(K.PY_CHIP_FLOOR, creature.health - chunk)
+	creature.model:SetAttribute(ATTR.HEALTH, creature.health)
+	-- The stance line on the boss's own tick reads the health fraction on the
+	-- very next frame, so the act banner follows from here with no second path.
+	return creature.health
+end
+
+-- HAVE WE EVER PAID FOR THIS FLANK? A two-bit mask on the CREATURE RECORD,
+-- deliberately not on `state.seamsBroken`: the scar mask is the client's
+-- contract and must not grow a second meaning, and this one is the server's
+-- private ledger of which 0.15 chips have been spent.
+--
+-- WHY THE CHIP IS PAID ON THE SCAR'S 0 -> 1 TRANSITION AND NOT ON THE METER
+-- FILLING. The 120-second failure branch clears the meters and lets a party
+-- re-fill one. Paid on meter-full, a second fill would chip a second 0.15 and
+-- the dial would walk down through 0.55, 0.40, 0.25 on cycles that were
+-- supposed to cost nothing but time - firing a stance banner and swapping the
+-- attack pool in the middle of act 1, silently. Paid on the transition, health
+-- is PINNED at exactly 0.70 for every cycle after the first, which is what
+-- makes "a second cycle is strictly cheaper, and nothing resets" true rather
+-- than aspirational. At most twice in the life of a fight, ever.
+function Fn.pyreliskFlankBit(side: number): number
+	return if side < 0 then 2 else 1
+end
+
+function Fn.pyreliskFlankPaid(creature, side: number): boolean
+	return bit32.band(creature.pyreliskFlanksPaid or 0, Fn.pyreliskFlankBit(side)) ~= 0
+end
+
+function Fn.pyreliskMarkFlankPaid(creature, side: number)
+	creature.pyreliskFlanksPaid = bit32.bor(creature.pyreliskFlanksPaid or 0, Fn.pyreliskFlankBit(side))
+end
+
+-- Both flanks scarred. A LEVEL TEST on the monotonic mask, and the drop gate
+-- below is deliberately this and not "the pair just completed": that edge
+-- happens once and can never happen again, so a party that lost the first
+-- window would have no way back into act 2 at all. See `Fn.pyreliskDropArms`.
+function Fn.pyreliskBothFlanksBroken(state): boolean
+	local broken = state.seamsBroken or 0
+	return bit32.band(broken, K.PY_SEAM_MASK_L) ~= 0 and bit32.band(broken, K.PY_SEAM_MASK_R) ~= 0
+end
+
+-- Which flank has NOT scarred yet, or nil when neither or both have. The
+-- scarred-flank preference: a colossus that has lost the use of an arm
+-- visibly stops swinging it, which is the reward for breaking a flank.
+function Fn.pyreliskUnscarredSide(state): number?
+	local broken = state.seamsBroken or 0
+	local left = bit32.band(broken, K.PY_SEAM_MASK_L) ~= 0
+	local right = bit32.band(broken, K.PY_SEAM_MASK_R) ~= 0
+	if left == right then
+		return nil
+	end
+	return if left then -1 else 1
+end
+
+-- The act, as a level on the model. One place, so nothing can publish half of
+-- it, and `creature.pyreliskAct` is the server's own copy for the branches
+-- that would otherwise have to read an attribute back.
+function Fn.pyreliskPublishAct(creature, act: number)
+	if creature.pyreliskAct == act then
+		return
+	end
+	creature.pyreliskAct = act
+	creature.model:SetAttribute(ATTR.PY_ACT, act)
+	-- ...AND INTO THE POSE STATE, which is the half the rig reads.
+	--
+	-- `PyreliskPath` is required by BOTH sides, and `state.act` is how it
+	-- learns which act it is drawing without either side inventing its own
+	-- answer: the server writes it here, the client's `colossusState` round
+	-- trip carries the same number, and both compute the pose from one field.
+	--
+	-- IT IS ALSO THE PROSTRATE FLAG. The body goes down at the top of act 2
+	-- and stays down through act 3, and "down" cannot ride `state.attack` -
+	-- that field is the CURRENT ATTACK's pose, and act 3's colossus still
+	-- casts. `act >= 2` is the level that means prostrate, and it is the same
+	-- condition the path module's hard freeze of `bearing` / `breath` / `lean`
+	-- is written against (design F-14, the mesh lane's, slice 2). Publishing it
+	-- here is what lets that land without a second wire.
+	local state = creature.pose
+	if state then
+		state.act = act
+	end
+end
+
+-- Each arm's bar, every frame of act 2, and NIL WHEN THERE IS NO ARM. A HUD
+-- that cannot tell "no arm" from "a dead arm" draws an empty bar for a limb
+-- that was never there.
+function Fn.pyreliskArmBars(creature)
+	local left, right = nil, nil
+	for _, other in creatures do
+		if other.partOf == creature and not other.dead and other.pyreliskSide then
+			local frac = math.clamp(other.health / math.max(other.maxHealth, 1), 0, 1)
+			if other.pyreliskSide < 0 then
+				right = frac
+			else
+				left = frac
+			end
+		end
+	end
+	-- (`creature.pyreliskLastArmSide` was recorded here - "the arm that was
+	-- alone at the end is the one the second death leaves, and that one is the
+	-- climb ramp". There is no ramp now: the cut of act 3 means NOTHING is ever
+	-- planted after the arms come down, `ATTR.PLANTED` stays 0 from
+	-- `Fn.pyreliskDropArms` through the collapse, and which flank died last is
+	-- not a question anything asks.)
+	creature.model:SetAttribute(ATTR.PY_ARM_L, left)
+	creature.model:SetAttribute(ATTR.PY_ARM_R, right)
+end
+
+-- Plant one arm. The SINGLE-PART form of `Fn.spawnBossParts` (the shape
+-- `Fn.plantKrakenArm` uses), and it is that rather than `parts.at = "mounts"`
+-- on purpose: a mounts list cannot express "mirrored by flank", and it would
+-- be a second copy of geometry `PyreliskPath` already owns, to be got wrong
+-- separately. That is the mirrored-monolith bug with a different set of
+-- numbers, and this fight has had it once already.
+--
+-- WHERE IT LANDS. `PyreliskPath.armJoints(state, side).fist`, through the live
+-- pose - so the day the `fallen` pose exists the arms land where the drawn
+-- limb lies, with no number pasted anywhere.
+--
+-- THE BAND CLAMP IS A RAIL, NOT THE RULE, in `pyreliskLatch`'s sense. The
+-- `fallen` pose is not built yet (it is the mesh lane's slice 2, design flag
+-- F-4/F-7), so today's idle pose can put a fist somewhere nobody can shoot it
+-- from. The clamp drags the plant back onto the rim path and SAYS SO, loudly,
+-- on the first drop - so a pose retune that walks out of the band is a warning
+-- on the first swing rather than two arms quietly parked in the lava.
+function Fn.pyreliskPlantArm(creature, row, state, side: number, now: number)
+	local at = PyreliskPath.armJoints(state, side).fist
+	local centre = state.center
+	local out = Vector3.new(at.X - centre.X, 0, at.Z - centre.Z)
+	local reach = out.Magnitude
+	-- THE ARM LIES ALONG A CHORD, NOT DOWN A RADIUS, and this clamp is the one
+	-- place in the Pyrelisk server code that talks in radii at all. It survives
+	-- the distinction because it is CONTAINMENT, not placement: it asks only
+	-- "is this point on the walkable annulus", which is a true question about
+	-- any point however the limb got there, and it moves nothing that already
+	-- is. Measured against the fallen pose the fist sits at r 192.00, inside
+	-- [130, 222], so it is inert and the warn below does not fire.
+	--
+	-- What it must never become is a DERIVATION - "the arm runs from r X to
+	-- r Y, so place things along that line". The joints sweep 46.6 degrees of
+	-- bearing from fist to shoulder; a radial line through them is not the arm
+	-- and nothing may be placed on one. The rocks come from
+	-- `PyreliskPath.armRocks` and the crownshed landings from the route's own
+	-- plates, both for this reason.
+	local near, far = K.PY_LAKE_R + 10, K.PY_PATH_OUT - 10
+	if reach < 0.01 then
+		out, reach = Vector3.new(1, 0, 0), 1
+	end
+	local want = math.clamp(reach, near, far)
+	if math.abs(want - reach) > 0.5 then
+		warn(
+			string.format(
+				"[Pyrelisk] the fallen pose puts flank %d's fist at r %.1f, outside the rim path's "
+					.. "[%.0f, %.0f] - clamped to %.1f, so the arm is not lying where the client draws it. "
+					.. "Re-derive the fallen pose (design F-4/F-7) rather than widening this band.",
+				side,
+				reach,
+				near,
+				far,
+				want
+			)
+		)
+	end
+	at = centre + (out / reach) * want
+	local model = CreatureService.spawn(row, at, nil, "Neutral", {
+		noLinger = true,
+		suppressDrops = true,
+		bounty = 0.5,
+		-- The party's factor, the same one the generic ring reads. The arms
+		-- ARE the wall in act 2; a solo-sized wall would make the act easier
+		-- per head as the party grew, which is backwards.
+		healthMult = Fn.partyMult(creature),
+	})
+	local part = byModel[model]
+	if not part then
+		return nil
+	end
+	part.partOf = creature
+	-- `socketIndex` so the generic machinery (and any client claiming an arm)
+	-- can name it; `pyreliskSide` is the flank, which is what act 3 needs to
+	-- know when it asks which arm was the second to die.
+	part.socketIndex = Fn.pyreliskFlankBit(side)
+	part.pyreliskSide = side
+	part.pos = at
+	model:PivotTo(restCFrame(part))
+	model:SetAttribute(ATTR.SOCKET_INDEX, part.socketIndex)
+	if creature.row.vulnerableWhen == "partsDown" then
+		model:SetAttribute(ATTR.WEAKPOINT, true)
+	end
+	part.pyreliskPoolAt = now + randomBetween(2.0, K.PY_ARM_POOL_GAP)
+	creature.partsAlive = (creature.partsAlive or 0) + 1
+	return part
+end
+
+-- ACT 2 BEGINS. Both arms crash across the moat onto the rim path and become
+-- two creatures; the colossus does nothing at all for as long as they stand.
+--
+-- ONE CALL SITE AND ONE GUARD, and neither of them is an edge - see the seam
+-- cash-out in `Fn.updateBoss`.
+function Fn.pyreliskDropArms(creature, def, now: number)
+	local row = def.parts and Creatures.items[def.parts.row]
+	if not row then
+		warn(string.format("[CreatureService] boss %q has no arm row - act 2 cannot begin", def.id))
+		return
+	end
+	local state = Fn.colossusState(creature, def)
+	creature.pyreliskArmsOut = true
+	-- NEITHER ARM IS THE RAMP YET: both are down, and `Planted` means "which
+	-- flank is the climb ramp", which is act 3's question and not this act's.
+	state.planted = 0
+	creature.model:SetAttribute(ATTR.PLANTED, 0)
+	creature.partsAlive = 0
+	creature.partsDownAt = nil
+	Fn.pyreliskPlantArm(creature, row, state, 1, now)
+	Fn.pyreliskPlantArm(creature, row, state, -1, now)
+	creature.pyreliskArmsLive = creature.partsAlive
+	Fn.pyreliskArmBars(creature)
+	Fn.pyreliskPublishAct(creature, 2)
+	-- The shipped window, with its per-source duration used for what it is
+	-- for. `Fn.openStagger` is also the retirement path - it stamps the running
+	-- attack's cooldown and nils `creature.attack` - so a meter that fills
+	-- mid-swing retires that swing with no second retirement path anywhere.
+	Fn.openStagger(creature, def, now, K.PY_ARM_WINDOW)
+	fireEvent("bossStance", creature.pos, { name = def.name, stance = 2 })
+end
+
+-- THE FAILURE BRANCH, AND IT IS NOT A RESET. The window ran out with the arms
+-- still standing: they go off the board with no kill and no loot
+-- (`Fn.krakenRetireArm`'s idiom), the colossus stands back up, and the fight
+-- returns to act 1.
+--
+-- WHAT SURVIVES A FAILED CYCLE: `state.seamsBroken` (untouched - the mask is
+-- documented monotonic and this design does not break that, so the scars
+-- accumulate visibly across cycles) and `creature.pyreliskFlanksPaid` (so the
+-- 0.15s are never paid twice, and health is PINNED at exactly 0.70 for every
+-- cycle after the first).
+--
+-- WHAT DOES NOT: the two meters, and the re-arm latch. With both flanks
+-- already scarred the drop gate is a LEVEL test, so the next meter to fill
+-- brings the arms back - re-entry costs ONE meter, not two, which is the right
+-- price for a retry and is why the meters are cleared rather than left full.
+function Fn.pyreliskArmsRetire(creature)
+	for _, other in creatures do
+		if other.partOf == creature and not other.dead and other.pyreliskSide then
+			other.dead = true
+			other.partOf = nil
+			byModel[other.model] = nil
+			if other.model.Parent then
+				other.model:Destroy()
+			end
+			-- `Fn.krakenRetireArm`'s own bookkeeping, for the same reason it
+			-- has it: the update loop is iterating `creatures` right now, so a
+			-- removal is only safe when it is not.
+			if not updating then
+				local index = table.find(creatures, other)
+				if index then
+					removeAt(index)
+				end
+			end
+		end
+	end
+	creature.partsAlive = 0
+	creature.partsDownAt = nil
+	creature.pyreliskArmsLive = 0
+end
+
+function Fn.pyreliskArmsFailed(creature, def, now: number)
+	local state = Fn.colossusState(creature, def)
+	Fn.pyreliskArmsRetire(creature)
+	creature.pyreliskArmsOut = nil
+	state.seamMeterL = 0
+	state.seamMeterR = 0
+	creature.seamBreakSide = nil
+	state.planted = 0
+	state.slump = 0
+	creature.model:SetAttribute(ATTR.PLANTED, 0)
+	creature.model:SetAttribute(ATTR.PY_ARM_L, nil)
+	creature.model:SetAttribute(ATTR.PY_ARM_R, nil)
+	creature.model:SetAttribute(ATTR.EXPOSED, nil)
+	creature.untargetable = def.chip == nil
+	Fn.pyreliskPublishAct(creature, 1)
+	creature.nextAttackAt = now + 2.0
+	setMode(creature, "entrenched", 0, now)
+	fireEvent("bossStance", creature.pos, { name = def.name, stance = 3 })
+end
+
+-- BOTH ARMS DEAD: THE END OF THE FIGHT ON THE SUMMIT, and it is one-way.
+-- `creature.pyreliskArmsOut` is deliberately LEFT SET - the re-cycle gate
+-- reads it, and nothing gives the arms back.
+--
+-- THIS IS THE CUT (2026-09-12, the directive: "maybe after the first phase it
+-- just goes straight into the volcano and we move into that"). There used to be
+-- an act 3 here - the ramp, the six rocks, the neck core - and the second arm's
+-- death merely chipped the dial to 0.30 and published act 3. Now the second
+-- arm's death IS the death: the tick's arm reconciliation has already taken the
+-- last 0.35 (floored at `K.PY_CHIP_FLOOR`, because a chip may never enter the
+-- death path by arithmetic), and this takes the body down.
+--
+-- THE ROUTE IS THE NECK CORE'S, LINE FOR LINE, because it is the route the
+-- caldera hangs off: `damage()` with `ignoreUntargetable` lands on the
+-- zero-health branch, which calls `beginBossCollapse`, which holds the death
+-- open for `collapseFor` (4.0) while `Fn.updateBossCollapse`'s pyrelisk branch
+-- drives the `collapse` pose, opens the caldera at `K.PY_CALDERA_AT` (2.5) and
+-- starts `Fn.pyreliskShaftWatch`. Then `kill()`, then BossService's rewards and
+-- the handoff to the heart. NOT A CHIP, for the same reason the core's kill was
+-- not one.
+--
+-- NO KILLER, AND THE PARTICIPANT SET IS WHY THAT IS RIGHT rather than merely
+-- tolerable. The generic parts path knows who broke the second arm and this
+-- reconciliation deliberately does not hook it: the payout is the FIGHT's
+-- participant set, which BossService built at summon and which every other boss
+-- death in the project pays from - so nobody loses a reward and the credit is
+-- identical to the one the core's death produced. Only `deathBlow` is nil, and
+-- the one thing that reads it is the collapse's own hand-back to `kill()`.
+--
+-- THE ACT STAYS 2 THROUGH THE FALL, and that is the F-14 freeze: the mesh
+-- lane's pin on `bearing` / `breath` / `lean` is keyed on "planted ~= 0 OR
+-- act >= 2", the body is already prostrate from the top of act 2, and the
+-- fallen pose IS the collapse (their side, confirmed). Publishing a 3 here
+-- would be a claim that the model is drawing the heart's act, which it is not -
+-- the heart writes `K.PY_ACT_HEART` on its own model, and nothing writes an act
+-- on this one again.
+--
+-- `state.planted` IS NOT WRITTEN. There is no ramp; act 2 left it at 0 and the
+-- collapse clears it to 0 in any case.
+function Fn.pyreliskArmsDone(creature, def, now: number)
+	local state = Fn.colossusState(creature, def)
+	creature.pyreliskArmsLive = 0
+	state.slump = 0
+	creature.model:SetAttribute(ATTR.PY_ARM_L, nil)
+	creature.model:SetAttribute(ATTR.PY_ARM_R, nil)
+	creature.model:SetAttribute(ATTR.EXPOSED, nil)
+	-- THE BODY IS UNTOUCHABLE AGAIN for the one frame before the collapse takes
+	-- it (`beginBossCollapse` sets it too). Kept because the death below is not
+	-- guaranteed to be reached by a future edit and a colossus left standing in
+	-- an expired stagger must not also be free to melee.
+	creature.untargetable = def.chip == nil
+	-- ...AND SO IS THE MODE, for the same reason: a stagger that has been left
+	-- behind by the act it belonged to is the one state the shaping below
+	-- cannot read. Written BEFORE the death so the collapse's own `setMode`
+	-- wins, and so the failure mode of a death that does not happen is "it
+	-- stands back up" rather than "it loops the window forever".
+	creature.nextAttackAt = now + 1.2
+	setMode(creature, "entrenched", 0, now)
+	CreatureService.damage(creature, creature.health, nil, { ignoreUntargetable = true })
+end
+
+-- (ACT 3's HELPERS STOOD HERE AND ARE CUT (2026-09-12). Eight functions, in
+-- this order: `Fn.pyreliskRampPlates` and `Fn.pyreliskRampPoints` (the climb
+-- route's arm plates and the banded landings along them, used only by
+-- `crownshed`), `Fn.pyreliskVentHazard` (the three back vents on a clock),
+-- `Fn.pyreliskRockPoints` and `Fn.pyreliskCorePoint` (the placement read into
+-- `PyreliskPath.armRocks` / `.neckCorePoint`, both of which the mesh lane has
+-- since DELETED - so these two could not be left behind even if someone wanted
+-- them), `Fn.pyreliskPlantPart`,
+-- `Fn.pyreliskPlantRocks` (the seven) and `Fn.pyreliskCoreBroken` (the death
+-- the core used to trigger, which `Fn.pyreliskArmsDone` now triggers itself by
+-- the same route).
+--
+-- `Fn.pyreliskPlantArm` IS NOT ONE OF THEM and is above, unchanged: the arms
+-- are act 2 and act 2 stays. `Fn.pyreliskSlab`, `Fn.openPyreliskMount`,
+-- `Fn.shakePyreliskMount` and `clearPyreliskMount` are also kept - they are
+-- act 1's monolith mount, which predates the redesign and is untouched by it.)
+
+-- THE ARMS' ONE BEHAVIOUR. They are dead weight on the ground - `krakenarm`
+-- and `krakenpolyp` are `function() end` and a no-op is nearly right - but an
+-- act with 120 seconds of zero pressure is a damage check, not a fight. So an
+-- arm bleeds: every `K.PY_ARM_POOL_GAP` seconds it marks a point on the rim
+-- path near itself and leaves a lava pool there.
+--
+-- The pool is owned by the COLOSSUS, not by the arm: `spawnPool` hangs the
+-- hazard off `creature.pools`, and a pool on a body that is about to be killed
+-- would vanish with it - which would make the act's clock run backwards every
+-- time an arm died.
+--
+-- Signature is the dispatcher's `(creature, now, dt)` - the order
+-- `ARCHETYPE_UPDATERS` is called with, not the order this move reads in.
+function Fn.updatePyreliskArm(creature, now: number, _dt: number)
+	local owner = creature.partOf
+	if not owner or owner.dead or creature.dead then
+		return
+	end
+	local at = creature.pos
+	if not at then
+		return
+	end
+	if creature.pyreliskPoolPending then
+		if now < creature.pyreliskPoolPending.at then
+			return
+		end
+		spawnPool(owner, creature.pyreliskPoolPending.pos, K.PY_ARM_POOL, now)
+		creature.pyreliskPoolPending = nil
+		creature.pyreliskPoolAt = now + K.PY_ARM_POOL_GAP
+		return
+	end
+	if now < (creature.pyreliskPoolAt or 0) then
+		return
+	end
+	-- A point on the rim path within reach of this arm. Kept inside the band
+	-- the party can actually stand on, for the same reason `pyreliskLatch`
+	-- clamps: a pool in the lake is a pool nobody was ever standing in.
+	local state = owner.pose
+	local centre = if state and state.center then state.center else at
+	local angle = math.random() * math.pi * 2
+	local spread = randomBetween(0, K.PY_ARM_POOL_R)
+	local want = at + Vector3.new(math.cos(angle) * spread, 0, math.sin(angle) * spread)
+	local out = Vector3.new(want.X - centre.X, 0, want.Z - centre.Z)
+	local reach = math.max(out.Magnitude, 0.01)
+	local band = math.clamp(reach, K.PY_LAKE_R + 6, K.PY_PATH_OUT - 6)
+	local site = centre + (out / reach) * band
+	site = Vector3.new(site.X, at.Y, site.Z)
+	-- The `mark` telegraph, an existing CreatureEventController branch, then
+	-- the pool. Warned ground, always - the arms are a clock, not a gotcha.
+	fireEvent("telegraph", site, {
+		kind = "mark",
+		radius = K.PY_ARM_POOL.radius,
+		duration = K.PY_ARM_POOL_ARM,
+		skin = "lava",
+	})
+	creature.pyreliskPoolPending = { pos = site, at = now + K.PY_ARM_POOL_ARM }
+end
 
 -- ------------------------------------------------------------- the choir
 --
 -- Everything below is Noctyss's, and it is deliberately small: seven stalks
 -- that are ordinary creatures, one number saying which of them is real, and
 -- a mouth that comes up when that one breaks.
+
+-- SEVEN EYES RISE OUT OF THE STONE, over this many seconds. Long enough to be
+-- a beat the party watches happen and short enough that it is not a pause: the
+-- 4s regrow dark (`parts.regrow`) is the wait, and this is the arrival at the
+-- end of it. NBC's GROW_DARK holds each lantern dark until its eye clears the
+-- collar lip, so what is actually read is "seven lights come up out of the
+-- floor" rather than "seven stalks appear".
+K.CHOIR_REGROW = 1.2
+
+-- HOW FAR THROUGH THAT RISE THE CHOIR IS, 0..1, eased. `creature.choirGrowAt`
+-- is stamped by Fn.spawnBossParts and cleared here on the frame it completes,
+-- so 1 is the answer for the whole rest of the fight and the ramp costs one
+-- field test per frame once it is done. Smoothstepped: a linear scale reads as
+-- a telescope extending, an eased one as something growing.
+function Fn.choirGrowT(creature): number
+	local at = creature.choirGrowAt
+	if not at then
+		return 1
+	end
+	local u = (os.clock() - at) / math.max(K.CHOIR_REGROW, 1e-3)
+	if u >= 1 then
+		creature.choirGrowAt = nil
+		return 1
+	end
+	u = math.clamp(u, 0, 1)
+	return u * u * (3 - 2 * u)
+end
+
+-- IS THE WHOLE CHOIR OUT OF THE STONE? The seven rise together off one clock,
+-- so this is really one question asked seven times - written as a loop anyway,
+-- because the state is per stalk and a future regrow that staggers them should
+-- not have to find this.
+function Fn.choirGrown(state): boolean
+	for index in state.stalks do
+		if NoctyssPath.growOf(state, index) < 1 then
+			return false
+		end
+	end
+	return true
+end
 
 -- Pin every living stalk to its lantern and hand it its pose.
 --
@@ -5429,16 +8558,33 @@ Remotes.RequestAttack.OnServerEvent:Connect(pyreliskVentSwing)
 -- registers and the trunk the design says is out of reach really is. The
 -- model itself is hidden - the client draws the chain - exactly like the
 -- colossus it belongs to.
-local function updateChoir(creature, state, dt: number)
+function Fn.updateChoir(creature, state, dt: number)
 	for _, stalk in state.stalks do
 		stalk.standing = false
+	end
+	-- THE REGROW, AS A NUMBER. One value for all seven (they came out of the
+	-- stone together), read once a frame rather than per stalk - and written
+	-- onto EVERY socket rather than only onto the ones with a part still
+	-- standing behind them. A stalk shot dead half way out of its collar
+	-- otherwise leaves `grow` frozen at 0.5 in the pose state for the rest of
+	-- the cycle, which reads to `Fn.choirGrown` as a choir that never finished
+	-- rising and quietly retires `herdingsnap` until the next regrow.
+	--
+	-- Written BEFORE the ring walk below, because `grow` is a term in
+	-- `bulbPosition`: the curve is scaled about the collar, so a stalk half out
+	-- of its socket stands its lantern - and its capsule - half way up, and the
+	-- hitbox solved on the next few lines has to be solved from this frame's
+	-- value rather than the last one's.
+	local grown = Fn.choirGrowT(creature)
+	for index in state.stalks do
+		NoctyssPath.setGrow(state, index, grown)
 	end
 	-- HER OWN RING, NOT THE WORLD. This walked the entire `creatures` array
 	-- every frame to find seven parts - O(everything alive) per boss per
 	-- frame, against an ambient population capped at 40 (Tuning SPAWNER
 	-- GLOBAL_CAP) plus raid waves, hatchlings, the boss and the choir itself:
 	-- ~50 structs and ~50 field tests, sixty times a second, to touch seven.
-	-- `spawnBossParts` already knows exactly which seven it planted, so it
+	-- `Fn.spawnBossParts` already knows exactly which seven it planted, so it
 	-- hands them over. Entries leave the list as they leave the fight: a kill
 	-- flags `dead`, a withdrawal (`removeOwnedParts`) clears `partOf`, and
 	-- both are checked here rather than trusted - the list is a cache of a
@@ -5455,13 +8601,32 @@ local function updateChoir(creature, state, dt: number)
 			if stalk then
 				stalk.standing = true
 				stalk.alive = true
-				hideColossusModel(part)
+				-- A STALK STILL RISING CANNOT BE TRADED WITH. A lantern
+				-- rising out of the floor is a thing to watch, not a target: it
+				-- is drawn dark under the collar lip (NBC's GROW_DARK) and its
+				-- hitbox is somewhere inside the stone. `untargetable` is the
+				-- flag every target pick and `damage()` already honour through
+				-- `Fn.unaimable`, so this needs no new gate anywhere - and it is
+				-- written every frame rather than latched, so no path can leave
+				-- a stalk stuck out of the fight.
+				part.untargetable = grown < 1
+				Fn.hideColossusModel(part)
 				part.pos = NoctyssPath.bulbPosition(state, index)
 				part.model:PivotTo(CFrame.new(part.pos))
 				local model = part.model
-				model:SetAttribute(ATTR_LEAN, stalk.lean)
-				model:SetAttribute(ATTR_BEAM_ANGLE, stalk.beamAngle)
-				model:SetAttribute(ATTR_DOUSE, stalk.douse)
+				model:SetAttribute(ATTR.LEAN, stalk.lean)
+				model:SetAttribute(ATTR.BEAM_ANGLE, stalk.beamAngle)
+				model:SetAttribute(ATTR.DOUSE, stalk.douse)
+				-- ON A CHANGE ONLY, unlike the three above: `Grow` moves for
+				-- 1.2 seconds after a regrow and never again, and a stalk that
+				-- has finished rising should not be paying replication for a
+				-- number that is 1 forever. The final write of exactly 1 is the
+				-- frame `Fn.choirGrowT` completes, so the client is never left
+				-- easing toward 0.997.
+				if (part.growPub or 1) ~= grown then
+					part.growPub = grown
+					model:SetAttribute(ATTR.GROW, grown)
+				end
 			end
 		end
 	end
@@ -5493,17 +8658,29 @@ local function updateChoir(creature, state, dt: number)
 	-- for nothing.
 	if down ~= creature.choirDown then
 		creature.choirDown = down
-		creature.model:SetAttribute(ATTR_CHOIR_DOWN, down)
+		creature.model:SetAttribute(ATTR.CHOIR_DOWN, down)
 	end
 end
 
 -- Pick the stalk that runs the next light attack: a LIVING, LIT one,
 -- preferring whichever has the target at a workable distance. A beam out of
 -- a dead socket would be the fight lying about where its attacks come from.
-local function pickChoirStalk(state, root: BasePart?): number?
+function Fn.pickChoirStalk(state, root: BasePart?): number?
 	local best, bestScore = nil, -math.huge
 	for index, stalk in state.stalks do
-		if stalk.alive and (stalk.douse or 0) < 0.5 then
+		-- ...AND NOT ONE THAT IS ALREADY SWINGING. A limb mid-slam is not a
+		-- lantern breathing at you, and handing it a lightsweep would be the
+		-- fight asking a player to read the rhythm of a light that is at that
+		-- moment a weapon - as well as fighting the attack pose for the lean.
+		-- ...NOR ONE STILL COMING OUT OF ITS COLLAR. A sweep is drawn FROM the
+		-- bulb, and a bulb at grow < 1 is inside the stone: the wedge would
+		-- come out of the floor with no lantern above it to explain it.
+		if
+			stalk.alive
+			and (stalk.douse or 0) < 0.5
+			and NoctyssPath.growOf(state, index) >= 1
+			and not NoctyssPath.stalkBusy(state, index, state.time)
+		then
 			local score = math.random() * 10
 			if root then
 				local socket = state.center + NoctyssPath.socketPoint(index)
@@ -5562,7 +8739,7 @@ local function mawFloor(creature)
 	return parts
 end
 
-local function placeMawFloor(creature, state)
+function Fn.placeMawFloor(creature, state)
 	local parts = mawFloor(creature)
 	local mouth = NoctyssPath.mawMouth(state)
 	parts.tongue.CFrame = mouth
@@ -5581,14 +8758,14 @@ end
 -- Forward: Brinejaw's live hazards - the bell's rings, a crossing wave, a
 -- bombardment in flight, the flood, the polyps' deadline. Defined far below
 -- with the handlers that arm them, and forward-declared here for the same
--- reason `pyreliskLatch` and `clearMawFloor` are: `placeColossus` is the one
+-- reason `pyreliskLatch` and `clearMawFloor` are: `Fn.placeColossus` is the one
 -- call every mode of this fight passes through, so it is where they have to
 -- be stepped, and it sits above the code that owns them.
 local updateBrineHazards
 
 -- Stand the model where its pose says its head is, aimed up-body.
-local function placeColossus(creature, def, now: number, root: BasePart?)
-	local state = colossusState(creature, def)
+function Fn.placeColossus(creature, def, now: number, root: BasePart?)
+	local state = Fn.colossusState(creature, def)
 	-- Derived rather than passed, so every existing call site keeps working.
 	local dt = math.clamp(now - (state.placedAt or now), 0, 0.1)
 	state.placedAt = now
@@ -5616,7 +8793,7 @@ local function placeColossus(creature, def, now: number, root: BasePart?)
 	state.targetPos = root and root.Position or nil
 	if def.pose == "kraken" then
 		-- The head does not prowl, so nothing else ever writes its yaw - and
-		-- bossFacing() reads THAT, not the pose. Left alone, everything drawn
+		-- Fn.bossFacing() reads THAT, not the pose. Left alone, everything drawn
 		-- or thrown along the boss's facing (the stock tell's wedge, the
 		-- mouth an ink glob leaves from) used whatever compass bearing the
 		-- yaw happened to spawn on, for the whole fight, no matter where you
@@ -5635,7 +8812,7 @@ local function placeColossus(creature, def, now: number, root: BasePart?)
 		-- stock handler animates, and the posed branch had no counterpart to
 		-- the entrenched poses that re-place the model each frame - so any
 		-- handler this boss borrowed shoved the pivot somewhere and left it
-		-- there permanently. Re-asserting it here, after updateBossAttack has
+		-- there permanently. Re-asserting it here, after Fn.updateBossAttack has
 		-- run for the frame, makes that structurally impossible rather than a
 		-- rule each handler has to remember.
 		--
@@ -5655,7 +8832,7 @@ local function placeColossus(creature, def, now: number, root: BasePart?)
 		--     `rangedOnly` and the melee pick passes `skipRangedOnly`, so the
 		--     head is not in that list at all. Splash callers see the head
 		--     30 studs higher, which is where the body is.
-		--   * `bossMouth` / `throwGlob`'s launch point: visual origin only,
+		--   * `Fn.bossMouth` / `Fn.throwGlob`'s launch point: visual origin only,
 		--     and better for it - globs now leave the mantle, not the foam.
 		--   * CombatService's `hitPoint` (impact VFX) and its knockback
 		--     direction: VFX follows the drawn body, and the knockback is
@@ -5685,7 +8862,7 @@ local function placeColossus(creature, def, now: number, root: BasePart?)
 	if def.pose == "brinejaw" then
 		-- THE WHIP'S DRAG, stepped here because this is the one call every
 		-- mode passes through and the only place `dt` exists (see
-		-- `setSweepRate`). A sweeping handler writes `sweepTargetRate` for the
+		-- `Fn.setSweepRate`). A sweeping handler writes `sweepTargetRate` for the
 		-- frames its arm is travelling; everything else leaves it nil and the
 		-- filter decays the bend out over WHIP_TAU. Cleared after the step so
 		-- a handler that stops writing stops being believed on the next frame
@@ -5698,6 +8875,23 @@ local function placeColossus(creature, def, now: number, root: BasePart?)
 		-- when the move that started it ends.
 		updateBrineHazards(creature, def, state)
 		creature.pos = BrinejawPath.headPosition(state)
+		-- THE HITTABLE PROXY FOLLOWS THE WINDOW. Ordinarily the authority
+		-- position is the head, which is where every window in this fight used
+		-- to be; the two windows the second pass added are not on the head.
+		-- The coilslam's is a LOOP lying across the sand and the bite's is the
+		-- head hanging low over the person it just snapped at, and both have a
+		-- twin in BrinejawPath that says exactly where. Written before the
+		-- PivotTo below so the server model moves with it and the thing you
+		-- swing at is the thing you can see.
+		--
+		-- Both flags are recomputed every frame by their own handler and
+		-- cleared on its `finish`, so nothing here can latch: no attack
+		-- running means no proxy moved.
+		if creature.coilOpen then
+			creature.pos = BrinejawPath.coilslamPoint(state)
+		elseif creature.biteOpen then
+			creature.pos = BrinejawPath.biteHeadPoint(state)
+		end
 		local forward = BrinejawPath.tangentAt(state, 0)
 		local up = if math.abs(forward.Y) > 0.99 then Vector3.new(0, 0, 1) else Vector3.new(0, 1, 0)
 		local right = forward:Cross(up)
@@ -5706,8 +8900,8 @@ local function placeColossus(creature, def, now: number, root: BasePart?)
 		end
 	end
 	if def.pose == "pyrelisk" then
-		-- WHAT THE STOCK TELL POINTS AT. beginBossAttack draws the row's
-		-- telegraph from bossFacing(), which reads `yaw0` - and for an
+		-- WHAT THE STOCK TELL POINTS AT. Fn.beginBossAttack draws the row's
+		-- telegraph from Fn.bossFacing(), which reads `yaw0` - and for an
 		-- entrenched boss nothing writes yaw0 except an attack's own windup
 		-- tracking, which starts from whatever the last attack happened to
 		-- leave. So a directional stock tell (ventbreath's `coneTell`) drew its
@@ -5724,6 +8918,18 @@ local function placeColossus(creature, def, now: number, root: BasePart?)
 			end
 		end
 	end
+	if def.pose == "pyrelisk" and creature.attack == nil then
+		-- THE SWEEP THAT MAKES THE MASK HONEST. Four of the five ways out of
+		-- an attack (Fn.openStagger, Fn.endBossAttack, the missing-handler bail and
+		-- the collapse) never run the handler's own `recover`, and each of
+		-- them leaves `creature.attack` nil - so rather than four matched
+		-- clears that a future exit could forget to join, the invariant is
+		-- stated once, here, on the one call every mode of this fight passes
+		-- through: NO ATTACK RUNNING MEANS NO SEAM OPEN. It runs in the same
+		-- frame the exit does, because Fn.updateBoss calls Fn.placeColossus after
+		-- the attack tick. See `Fn.pyreliskCloseSeams` for the full table.
+		state.seamsOpen = 0
+	end
 	if def.pose == "pyrelisk" and creature.mode ~= "stagger" then
 		-- The ramp is furniture ONLY inside the punish window. Clearing it
 		-- here rather than in the stagger exit keeps the whole rule in this
@@ -5737,18 +8943,18 @@ local function placeColossus(creature, def, now: number, root: BasePart?)
 		-- attacking, staggered and collapsing. The window's end, the shove and
 		-- the lava watch that outlives both are all consequences of the mode
 		-- changing, so they belong where the mode is always visible.
-		updatePyreliskMount(creature, def, state, now)
+		Fn.updatePyreliskMount(creature, def, state, now)
 	end
 	publishPose(creature, state)
 end
 
 -- The earned opening: it loses its grip, comes down, and takes damage for
 -- `seconds`. Called by a handler that has just been baited into a mistake.
-local function openStagger(creature, def, now: number, seconds: number)
+function Fn.openStagger(creature, def, now: number, seconds: number)
 	creature.untargetable = false
 	creature.exposedUntil = now + seconds
-	creature.model:SetAttribute(ATTR_EXPOSED, true)
-	-- Retire the attack here, because opening a window SKIPS endBossAttack -
+	creature.model:SetAttribute(ATTR.EXPOSED, true)
+	-- Retire the attack here, because opening a window SKIPS Fn.endBossAttack -
 	-- which is the only place cooldowns are written. Without this the move
 	-- that earns a window is the one move that never goes on cooldown, so a
 	-- good party gets slam -> window -> slam -> window and the patterns the
@@ -5774,13 +8980,13 @@ end
 -- NOTHING about the win changes. kill() is called with the killer that landed
 -- the blow and the participant set the fight already built, so BossService's
 -- rewards, the Cleared_/Heart_ attributes and the bossDown banner are the ones
--- they have always been - just COLLAPSE_TIME later. That is the whole reason
+-- they have always been - just K.COLLAPSE_TIME later. That is the whole reason
 -- this is a delay in front of the death rather than a rewrite of it.
-local COLLAPSE_TIME = 2.5
+K.COLLAPSE_TIME = 2.5
 -- How much further down the perch the fall drags the body, in Brinejaw's
 -- units: one more full turn than any stance ever costs it, so the coils end
 -- up sprawled round the tower's foot instead of gripping its drum.
-local COLLAPSE_COILS = 1.0
+K.COLLAPSE_COILS = 1.0
 
 -- Assigned to the forward local beside kill(). CreatureService.damage calls
 -- this INSTEAD of kill() when the health hits zero; returning true means "I
@@ -5792,13 +8998,101 @@ beginBossCollapse = function(creature, killer: Player?): boolean
 		return true
 	end
 	local def = bossDef(creature)
+	-- A SHIP DOES NOT DIE, SHE WRECKS - and she needs a beat to do it in.
+	--
+	-- Admiral Wrack's hull reaching zero is the act-two -> act-three break, and
+	-- an act break with no time in it is a boss that blinks out of existence and
+	-- a duelist that blinks in. This takes the death and holds it open for
+	-- `wreckFor` seconds while `ATTR.WRACK_WRECK` ramps 0 -> 1 (the client eases
+	-- her list and her mast fall off that level), then hands the real death back
+	-- to kill() exactly as the colossus fall does.
+	--
+	-- IT ALSO GIVES THE CLOSING VOLLEY ITS ROOM. `ProjectileService.watch` fires
+	-- the ring of gun-deck explosions and the hull's splash when the owner is
+	-- GONE - so without a hold, the ship blew up on the same frame she stopped
+	-- existing. Now she lists, the masts come down, and then she goes.
+	--
+	-- Checked BEFORE the perch test below, and deliberately not folded into it:
+	-- he has no `pose` and no `entrenched`, holds no perch, and must never touch
+	-- `Fn.colossusState` - he has no rig for it.
+	--
+	-- ============================================================
+	-- `def.wreckFor` IS PART OF THE GATE, AND IT IS THE WHOLE FIX (2026-09-12).
+	--
+	-- This branch used to read `def and def.succeededBy and creature.mode and
+	-- creature.mode ~= "rising"`, and `succeededBy` is NOT "this is a ship that
+	-- wrecks" - it is "this boss has a successor". The Pyrelisk has one
+	-- (`pyrelisk_heart`), is `entrenched`, is posed, and therefore took THE
+	-- SHIP'S BRANCH: `creature.wrecking` set, `ATTR.WRACK_WRECK` published on a
+	-- rig that does not read it, the hold sized by `wreckFor` (absent -> 2.5)
+	-- instead of its own `collapseFor` (4.0) - and then `Fn.updateBossCollapse`
+	-- returned at its `creature.wrecking` test BEFORE the `poseKind ==
+	-- "pyrelisk"` branch ever ran. So the colossus never drove its `collapse`
+	-- pose, NEVER OPENED THE CALDERA, never wrote `PyreliskShaftFloor` and never
+	-- started `Fn.pyreliskShaftWatch`: the heart was raised into a chamber the
+	-- party had no way to reach, with nothing in any log. Every landmark in the
+	-- caldera/shaft slice was present and correct; the code they point at was
+	-- simply never reached.
+	--
+	-- SO THE BRANCH NOW TESTS FOR WHAT IT CONSUMES. Everything inside it is
+	-- Wrack-specific - `ATTR.WRACK_WRECK`, `creature.wrackKit`, and the
+	-- `def.wreckFor` hold itself - and `wreckFor` is the field that drives the
+	-- beat. It exists on exactly ONE row (`Bosses.items.admiral_wrack`), which
+	-- is the right shape for a gate: a boss opts INTO wrecking by carrying the
+	-- number that sizes it, rather than being swept in by a field that means
+	-- something else. Testing `not def.pose` would have worked too and is worse
+	-- - a branch that asks about the absence of an unrelated field is one
+	-- rename away from being wrong again.
+	--
+	-- The `or 2.5` fallbacks below are therefore now unreachable defaults
+	-- rather than live behaviour. Left as written: a default that can only be
+	-- reached by a future row is not dead code, it is the contract for one.
+	-- ============================================================
+	if def and def.succeededBy and def.wreckFor and creature.mode and creature.mode ~= "rising" then
+		creature.collapsing = true
+		creature.wrecking = true
+		creature.deathBlow = killer
+		creature.untargetable = true
+		creature.attack = nil
+		creature.forcedAttack = nil
+		creature.poison = nil
+		creature.knockVel = nil
+		creature.stunnedUntil = nil
+		creature.exposedUntil = nil
+		-- The crack window is over with the act. Cleared rather than left to
+		-- expire, because the hull is untargetable now and an EXPOSED hull
+		-- nothing can hit is a lie the client would keep drawing.
+		creature.model:SetAttribute(ATTR.EXPOSED, nil)
+		-- HER OWN MOVES STOP WITH HER. The kegs and the boarding party outlive
+		-- the attacks that made them (that is what `wrackKit` is for), and a
+		-- boarding party still marching to repair a gun deck on a ship that is
+		-- going under is the exact shape of hazard the colossus fall clears
+		-- below for Brinejaw's polyps.
+		if creature.wrackKit then
+			for _, run in creature.wrackKit.runners or {} do
+				if run.prop and CreatureService.isAlive(run.prop) then
+					CreatureService.despawn(run.prop.model)
+				end
+			end
+			for _, man in creature.wrackKit.boarders or {} do
+				if man.prop and CreatureService.isAlive(man.prop) then
+					CreatureService.despawn(man.prop.model)
+				end
+			end
+			creature.wrackKit = nil
+		end
+		creature.model:SetAttribute(ATTR.WRACK_WRECK, 0)
+		setMode(creature, "collapse", def.wreckFor or 2.5, os.clock())
+		fireEvent("bossCollapse", creature.pos, { name = def.name, duration = def.wreckFor or 2.5 })
+		return true
+	end
 	-- Only a boss that is HOLDING a perch has anything to fall off. A posed
 	-- boss that swims (the Kraken) and every ordinary creature take the
 	-- ordinary death, untouched.
 	if not def or not def.entrenched or not def.pose or not creature.mode or creature.mode == "rising" then
 		return false
 	end
-	local state = colossusState(creature, def)
+	local state = Fn.colossusState(creature, def)
 	creature.collapsing = true
 	creature.deathBlow = killer
 	-- Nothing lands on it and nothing is owed by it any more: the fall is not
@@ -5812,10 +9106,12 @@ beginBossCollapse = function(creature, killer: Player?): boolean
 	creature.stunnedUntil = nil
 	creature.exposedUntil = nil
 	creature.lungeOpen = false
+	creature.coilOpen = false
+	creature.biteOpen = false
 	creature.punishOpen = false
-	creature.model:SetAttribute(ATTR_EXPOSED, nil)
+	creature.model:SetAttribute(ATTR.EXPOSED, nil)
 	-- AND ITS HAZARDS DIE WITH IT. Brinejaw's wave, rings, bombardment and
-	-- flood are all resolved from `placeColossus`, which keeps running through
+	-- flood are all resolved from `Fn.placeColossus`, which keeps running through
 	-- the collapse - so without this the beach would go on being shelled by an
 	-- animal that is falling off its own tower, and the polyps would detonate
 	-- and heal a corpse. The polyp CREATURES are real spawned structs, so they
@@ -5846,17 +9142,53 @@ beginBossCollapse = function(creature, killer: Player?): boolean
 		strike = state.strike or 0,
 		rise = state.rise or 1,
 	}
-	setMode(creature, "collapse", COLLAPSE_TIME, os.clock())
-	fireEvent("bossCollapse", creature.pos, { name = def.name, duration = COLLAPSE_TIME })
+	-- HOW LONG THE FALL IS, and a row may now say. `K.COLLAPSE_TIME` (2.5) is
+	-- Brinejaw's number and stays the default for every boss that does not ask
+	-- for another; the Pyrelisk asks for 4.0 (`collapseFor`), because its death
+	-- is not only a body coming down - the lake has to drain and the shaft has
+	-- to open underneath it while it does, and 2.5 seconds is not enough beats
+	-- to read both. Same field shape as the Wrack's `wreckFor` one branch up.
+	local fall = def.collapseFor or K.COLLAPSE_TIME
+	setMode(creature, "collapse", fall, os.clock())
+	fireEvent("bossCollapse", creature.pos, { name = def.name, duration = fall })
 	return true
 end
 
 -- One frame of the fall. Ends by handing the death straight back to kill().
-local function updateBossCollapse(creature, def, now: number)
+function Fn.updateBossCollapse(creature, def, now: number)
 	local u = modeProgress(creature, now)
+	-- THE SHIP'S OWN FALL, and it returns before anything below touches a rig
+	-- she does not have. One published level and no pose: `Fn.placeColossus`
+	-- and `Fn.colossusState` are for a body with joints, and she is drawn off
+	-- `CreatureId` by WrackBodyController instead.
+	--
+	-- ONE WRITER, AND THAT IS WHY THIS TEST IS STILL A FLAG AND NOT A RE-READ OF
+	-- THE ROW. `creature.wrecking` is set in exactly one place - the
+	-- `def.succeededBy and def.wreckFor` branch of `beginBossCollapse` - and
+	-- cleared in exactly one, four lines below. So it says precisely "that
+	-- branch opened this collapse", which is the question this early return is
+	-- asking, and re-deriving it from `def` here would be a SECOND place to
+	-- disagree about which fall this is. That is the shape of the 2026-09-12
+	-- bug one function up: the gate said `succeededBy` while the body of the
+	-- branch meant `wreckFor`, and the Pyrelisk fell down the gap between them.
+	-- Fix the gate, keep one writer, and this stays honest for free.
+	if creature.wrecking then
+		creature.model:SetAttribute(ATTR.WRACK_WRECK, math.clamp(u, 0, 1))
+		if u >= 1 then
+			creature.collapsing = nil
+			creature.wrecking = nil
+			-- The death that always happened. kill() destroys the model - taking
+			-- this attribute with it at exactly 1 - and then fires Killed, inside
+			-- which BossService raises the Admiral. The duelist therefore exists
+			-- in the same frame the ship stops existing, which is the seam the
+			-- client hides her copy of him on.
+			kill(creature, creature.deathBlow)
+		end
+		return
+	end
 	local e = u * u * (3 - 2 * u)
 	local from = creature.collapseFrom
-	local state = colossusState(creature, def)
+	local state = Fn.colossusState(creature, def)
 	-- Per-pose, the way publishPose is: what "coming down" LOOKS like is the
 	-- boss's own vocabulary, and a pose with no branch here still gets the
 	-- beat and the event - the generic half of the contract.
@@ -5864,7 +9196,7 @@ local function updateBossCollapse(creature, def, now: number)
 		-- The grip goes (coil slides a turn past its last stance), the head
 		-- comes down on the sand (slump), and the tail lets go of the tower
 		-- and lies out in the shallows (unwind, at sweep height).
-		state.coil = from.coil - COLLAPSE_COILS * e
+		state.coil = from.coil - K.COLLAPSE_COILS * e
 		state.slump = from.slump + (1 - from.slump) * e
 		state.unwind = from.unwind + (1 - from.unwind) * e
 		state.sweepHeight = from.sweepHeight + (BrinejawPath.SWEEP_LOW - from.sweepHeight) * e
@@ -5906,10 +9238,52 @@ local function updateBossCollapse(creature, def, now: number)
 		state.strike = from.strike * (1 - e)
 		state.slump = from.slump + (1 - from.slump) * e
 		state.rise = from.rise * (1 - e * 0.45)
+		-- ============================================================
+		-- THE CALDERA OPENS, 2.5 SECONDS INTO A FOUR-SECOND FALL.
+		--
+		-- The lava drains, the lake floor goes, and a 120-stud shaft is open
+		-- where it was - with a second and a half of fall still to watch it
+		-- happen under the body, which is what makes it read as cause and
+		-- effect rather than as two things that occurred.
+		--
+		-- IT IS AN ATTRIBUTE ON THE ARENA AND NOT A CALL, and the reason is
+		-- this file's local budget: `BossArenaService` requires nothing from
+		-- CreatureService, so CreatureService COULD require it - but that is a
+		-- new file-scope `local` in a module at Luau's 200-local chunk limit,
+		-- and the limit is a boot failure rather than a gate failure. An
+		-- attribute on a replicated Workspace instance costs no local,
+		-- replicates to late joiners for free, and the client VFX lane can read
+		-- it without a second wire.
+		--
+		-- A LEVEL, NEVER AN EDGE, so a client that adopts the model mid-fall
+		-- still sees an open caldera. The latch below is only there to keep
+		-- this from writing the same value sixty times a second.
+		--
+		-- `u * fall` AND NOT `u`: `u` is the fraction of a duration that a ROW
+		-- chooses (`collapseFor`), so testing `u >= 0.625` would silently move
+		-- the beat every time that number was retuned. This asks the question
+		-- in seconds, which is the unit `K.PY_CALDERA_AT` is written in.
+		--
+		-- AND THE SHAFT WATCH STARTS HERE, not at the death: the hole is open
+		-- for the last 1.5 seconds of the fall and somebody will jump into it
+		-- before the body has finished sinking. `pyreliskShaftFloor` is the
+		-- arena's own floor plane, captured while the boss still knows where it
+		-- is standing - the heart, which takes the watch over below, is forty
+		-- thousand studs away and cannot ask.
+		local fall = def.collapseFor or K.COLLAPSE_TIME
+		if not creature.pyreliskCaldera and u * fall >= K.PY_CALDERA_AT then
+			creature.pyreliskCaldera = true
+			creature.pyreliskShaftGraceAt = now + K.PY_SHAFT_GRACE
+			Fn.pyreliskOpenCaldera(def.islandId, (creature.pose and creature.pose.center or creature.pos).Y)
+		end
+		if creature.pyreliskCaldera then
+			Fn.pyreliskShaftWatch(creature, def, now)
+		end
+		-- ============================================================
 	end
 	-- No `root`: a dying boss does not track anybody, so the face angle it
 	-- died on is the one it falls on.
-	placeColossus(creature, def, now, nil)
+	Fn.placeColossus(creature, def, now, nil)
 	if u >= 1 then
 		creature.collapsing = nil
 		-- And now the death that always happened. Same killer, same
@@ -5931,7 +9305,7 @@ end
 -- That is a known limitation and not something to paper over here - the real
 -- fix is for the generator to emit the nine teeth as nine named objects.
 -- Until it does, the rule for this table is: nothing may assume `part`.
-local function colossusStones(creature, def)
+function Fn.colossusStones(creature, def)
 	if creature.stones then
 		return creature.stones
 	end
@@ -5957,7 +9331,7 @@ local function colossusStones(creature, def)
 			-- NOT `part.CFrame`: a stone spent in a previous fight is still
 			-- sunk when the next summon builds this table, so capturing the
 			-- live pose would record the underground position as "rest" and
-			-- restoreStones would faithfully put it back underground. The
+			-- Fn.restoreStones would faithfully put it back underground. The
 			-- config position is the only thing that stays true across
 			-- fights, and the bait test already reads from there.
 			-- Config POSITION, but the part's own ROTATION. Building a bare
@@ -5996,13 +9370,13 @@ end
 --
 -- This used to claim it also ran at the end of a fight. It does not, and it
 -- cannot from here - `beginBossCollapse` is assigned above this line, so this
--- local is not in scope for it. What actually cleans up is `colossusStones`,
+-- local is not in scope for it. What actually cleans up is `Fn.colossusStones`,
 -- which raises anything the last party sank while building the next fight's
 -- table (see the comment at its `restCFrame`). Spent stones therefore sit in
 -- the ground BETWEEN fights and stand again on the next summon, which is
 -- correct but is not what this comment said.
-local function restoreStones(creature, def)
-	for _, stone in colossusStones(creature, def) do
+function Fn.restoreStones(creature, def)
+	for _, stone in Fn.colossusStones(creature, def) do
 		if not stone.standing then
 			stone.standing = true
 			stone.regrowAt = nil
@@ -6023,13 +9397,13 @@ end
 --
 -- Opt-in by the field, so no other colossus's stones change: Pyrelisk's nine
 -- monoliths do not carry it and keep the stance-change rule exactly.
-local function regrowStones(creature, def, now: number)
+function Fn.regrowStones(creature, def, now: number)
 	if not def.stoneRegrow then
 		return
 	end
-	for _, stone in colossusStones(creature, def) do
+	for _, stone in Fn.colossusStones(creature, def) do
 		if not stone.standing then
-			-- Stamped lazily rather than at `spendStone`, so a stone spent
+			-- Stamped lazily rather than at `Fn.spendStone`, so a stone spent
 			-- before this ever ran still gets a clock.
 			stone.regrowAt = stone.regrowAt or (now + def.stoneRegrow)
 			if now >= stone.regrowAt then
@@ -6045,11 +9419,11 @@ local function regrowStones(creature, def, now: number)
 end
 
 -- Is there a stone still standing within `reach` of `at`? The same test
--- spendStone will make when the blow lands, asked at TELEGRAPH time so the
+-- Fn.spendStone will make when the blow lands, asked at TELEGRAPH time so the
 -- marker can already say "this one is on rock" - which is the whole reason
 -- to aim a slam at a stone in the first place.
 local function stoneNear(creature, def, at: Vector3, reach: number): boolean
-	for _, stone in colossusStones(creature, def) do
+	for _, stone in Fn.colossusStones(creature, def) do
 		if stone.standing then
 			local d = Vector3.new(stone.position.X - at.X, 0, stone.position.Z - at.Z).Magnitude
 			if d <= reach then
@@ -6061,9 +9435,9 @@ local function stoneNear(creature, def, at: Vector3, reach: number): boolean
 end
 
 -- Take the stone nearest `at` if one is close enough and still standing.
-local function spendStone(creature, def, at: Vector3, reach: number)
+function Fn.spendStone(creature, def, at: Vector3, reach: number)
 	local best, bestDist = nil, reach
-	for _, stone in colossusStones(creature, def) do
+	for _, stone in Fn.colossusStones(creature, def) do
 		if stone.standing then
 			local d = Vector3.new(stone.position.X - at.X, 0, stone.position.Z - at.Z).Magnitude
 			if d <= bestDist then
@@ -6076,7 +9450,7 @@ local function spendStone(creature, def, at: Vector3, reach: number)
 	end
 	best.standing = false
 	-- Sink the rock rather than destroy it: a stance change raises it again
-	-- (restoreStones), and the authored and procedural arenas both work
+	-- (Fn.restoreStones), and the authored and procedural arenas both work
 	-- because their stones carry the same names.
 	if best.part and best.part.Parent then
 		best.part.CFrame = best.part.CFrame - Vector3.new(0, 9, 0)
@@ -6093,7 +9467,7 @@ end
 -- Nothing spawns: the arm IS the coils, re-posed (BrinejawPath).
 --
 -- WHERE THE SWEEP IS CHOSEN. On the FIRST WINDUP FRAME, not in `fire`.
--- `fire` runs when the strike starts (updateBossAttack: windup ends -> phase
+-- `fire` runs when the strike starts (Fn.updateBossAttack: windup ends -> phase
 -- becomes "strike" -> fire), so anything decided there is decided at the
 -- moment of the blow and can telegraph nothing. Picking the arc up front
 -- costs the attack its mid-windup tracking, which is the point: a sweep you
@@ -6104,7 +9478,7 @@ local function aimSweep(creature, def, p)
 		return -- windup already chose; `fire` only ever spends what it picked
 	end
 	a.aimed = true
-	local state = colossusState(creature, def)
+	local state = Fn.colossusState(creature, def)
 	local arc = p.arc or math.rad(320)
 	-- WHICH WAY IT TURNS. Ordinarily a coin toss, but a row carrying
 	-- `reverse` takes the OPPOSITE of the sweep before it - that is the whole
@@ -6130,29 +9504,25 @@ local function aimSweep(creature, def, p)
 	a.arc = arc
 	a.startAngle = target - dir * arc * 0.5
 	a.high = p.high == true
-	-- The precise telegraph. `center` is the tower's FOOT, not the model's
-	-- pivot (the head rides 60 studs up it), and `duration` is the whole lead
-	-- time from here to the arm finishing, so the client can draw the band
-	-- ahead of the body instead of chasing it.
-	fireEvent("serpentSweep", state.center, {
-		angle = a.startAngle,
-		arc = dir * arc,
-		inner = BrinejawPath.SWEEP_INNER,
-		reach = BrinejawPath.SWEEP_REACH,
-		height = if a.high then BrinejawPath.SWEEP_HIGH else BrinejawPath.SWEEP_LOW,
-		high = a.high,
-		-- The arm's real half-thickness, because the marker has no business
-		-- guessing it. It is per-attack (3.4 low, 3.6 high, 3.8 constrict) and
-		-- the client was drawing every one of them at a hardcoded 3.4.
-		girth = p.girth or 3.2,
-		-- BOTH halves, because they are not interchangeable: the arm holds
-		-- still on the start bearing for `windup` and only travels the arc
-		-- during `duration`. A marker that spreads the arc over the sum runs
-		-- ahead of the tail by most of a sweep - players dodge the warning
-		-- and get hit by the thing it was warning about.
-		windup = p.windup,
-		duration = p.duration,
-	})
+	-- THE ORANGE GROUND-RUNG MARKER IS GONE, AND NOTHING REPLACES IT
+	-- (2026-09-08, contract REVISION 2 §6). This used to fire `serpentSweep`
+	-- here with the arc, the reach, the girth and both halves of the lead
+	-- time, and the client drew a lit band on the sand from it. Two things
+	-- were wrong with that and only the second one is fixable by tuning:
+	--
+	--   * the band is a STATIC wedge and the arm is a DRAG CURVE, so the
+	--     marker promised a lane the tail was already bending out of;
+	--   * and there is nothing to warn about. The whip is a hundred parts of
+	--     serpent unwinding off a lighthouse in front of you, held on the
+	--     start bearing for the whole windup. It IS the telegraph, and a
+	--     second one drawn under it only taught players to watch the floor
+	--     instead of the animal.
+	--
+	-- Every Brinejaw row that reaches this function - whip, doublewhip,
+	-- whipback, spiral - is therefore marker-less, and `aimSweep` has no
+	-- caller outside this boss. The client's serpentSweep handler stays where
+	-- it is: it is the pattern other lanes build their ground rungs from, and
+	-- nothing here fires it any more.
 end
 
 -- THE DRAG TERM, AND WHOSE JOB IT IS. `state.sweepRate` is the arm's signed
@@ -6165,17 +9535,17 @@ end
 -- A caller that supplies NOTHING gets rate 0 - a straight arm, which still
 -- matches its own hit test but is not the arm anybody is shown.
 --
--- SO THE FILTER IS STEPPED FROM `placeColossus`, NOT FROM THE HANDLERS, and
+-- SO THE FILTER IS STEPPED FROM `Fn.placeColossus`, NOT FROM THE HANDLERS, and
 -- that is the whole reason this is a one-line field rather than a call: a
 -- handler only runs while its own attack is running, and stepSweepRate has to
 -- keep running AFTER one ends or the rate freezes at whatever it held on the
 -- last strike frame and the arm keeps its 28-degree bend for the rest of the
--- fight. placeColossus is the one call every mode of this fight passes
+-- fight. Fn.placeColossus is the one call every mode of this fight passes
 -- through and it is the only place `dt` exists, so a sweeping handler writes
 -- its exact rate here and everything else - windups, recoveries, the idle
 -- serpent, the punish window - leaves it alone and gets the 0 that unwinds
 -- the tip over about a third of a second.
-local function setSweepRate(state, rate: number)
+function Fn.setSweepRate(state, rate: number)
 	state.sweepTargetRate = rate
 end
 
@@ -6194,10 +9564,10 @@ end
 -- the drawn curve that was right. `sweepProbe` copies sweepRate, attackKind
 -- and attackU too, which is also what makes `spiral` work: its contracting
 -- reach is read off attackU by `sweepReach`, inside `sweepHits`.
-local function sweepWedgeHits(creature, def, p, state, fromAngle: number)
+function Fn.sweepWedgeHits(creature, def, p, state, fromAngle: number)
 	local a = creature.attack
 	local girth = p.girth or 3.2
-	local lo, hi = bossRoll(creature, def, p.damage)
+	local lo, hi = Fn.bossRoll(creature, def, p.damage)
 	local swept = math.abs(state.sweepAngle - fromAngle)
 	local steps = math.max(1, math.ceil(swept / math.rad(3)))
 	for _, player in Players:GetPlayers() do
@@ -6216,13 +9586,13 @@ local function sweepWedgeHits(creature, def, p, state, fromAngle: number)
 	end
 end
 
-ATTACK_HANDLERS.orbitsweep = {
+K.ATTACK_HANDLERS.orbitsweep = {
 	windup = function(creature, def, p, u, _sub)
 		aimSweep(creature, def, p)
-		local state = colossusState(creature, def)
+		local state = Fn.colossusState(creature, def)
 		-- Not travelling yet: the arm holds the start bearing for the whole
 		-- windup, so the rate decays toward 0 and the tip straightens out.
-		setSweepRate(state, 0)
+		Fn.setSweepRate(state, 0)
 		-- The tail peels off the tower during the windup - the telegraph is
 		-- the body itself, so a player who reads the serpent reads the attack.
 		-- It swings to the START bearing as it peels, which is now known.
@@ -6238,7 +9608,7 @@ ATTACK_HANDLERS.orbitsweep = {
 	end,
 	fire = function(creature, def, p, _now, _root)
 		local a = creature.attack
-		local state = colossusState(creature, def)
+		local state = Fn.colossusState(creature, def)
 		-- Reuse, never re-pick: a telegraph that shows one arc while the arm
 		-- swings another is worse than no telegraph at all. (The call is a
 		-- no-op after windup - it is here only so a zero-windup row can never
@@ -6250,7 +9620,7 @@ ATTACK_HANDLERS.orbitsweep = {
 	end,
 	strike = function(creature, def, p, _now, dt, _u, _root, _sub)
 		local a = creature.attack
-		local state = colossusState(creature, def)
+		local state = Fn.colossusState(creature, def)
 		state.unwind = 1
 		local rate = a.arc / math.max(p.duration, 1e-3)
 		local from = state.sweepAngle
@@ -6258,14 +9628,14 @@ ATTACK_HANDLERS.orbitsweep = {
 		-- THE EXACT RATE, signed, handed to the shared filter. The server
 		-- knows it - it is the number that drives the line above - and it is
 		-- what puts the drag in the arm that is about to be hit-tested.
-		setSweepRate(state, a.dir * rate)
-		sweepWedgeHits(creature, def, p, state, from)
+		Fn.setSweepRate(state, a.dir * rate)
+		Fn.sweepWedgeHits(creature, def, p, state, from)
 	end,
 	finish = function(creature, def, _p, _now)
 		-- The arm stays out; the entrenched branch winds it back onto the
 		-- tower, so the recovery reads as the serpent re-gripping - and the
 		-- rate is left to decay to 0 on its own, which IS the springback.
-		local state = colossusState(creature, def)
+		local state = Fn.colossusState(creature, def)
 		state.unwind = math.min(state.unwind or 1, 1)
 	end,
 }
@@ -6282,21 +9652,19 @@ ATTACK_HANDLERS.orbitsweep = {
 -- would hit-test the full 66-stud arm against a lane the client has already
 -- drawn closing in.
 --
--- ONE serpentSweep event, at the FULL reach, fired from the windup by the
--- shared `aimSweep`. The contract is explicit that a shrinking reach must
--- never go through the old static-marker path: that marker draws one fixed
--- band for the whole move, so a contracting number sent through it would
--- promise safe ground that the arm is still crossing. The closing edge is
--- drawn by the body controller from `sweepReach` instead - same function,
--- same frame.
-ATTACK_HANDLERS.serpentspiral = {
+-- NO GROUND MARKER, as of REVISION 2 §6 - and this row is the one that never
+-- could have had an honest one anyway. A static marker draws ONE fixed band
+-- for the whole move, so a contracting reach sent through it would promise
+-- safe ground the arm is still crossing. The closing edge is drawn by the
+-- body controller from `sweepReach` instead - same function, same frame.
+K.ATTACK_HANDLERS.serpentspiral = {
 	windup = function(creature, def, p, u, _sub)
 		aimSweep(creature, def, p)
-		local state = colossusState(creature, def)
+		local state = Fn.colossusState(creature, def)
 		state.unwind = math.max(state.unwind or 0, u)
 		state.sweepHeight = BrinejawPath.SWEEP_LOW
 		state.sweepAngle = creature.attack.startAngle or state.sweepAngle
-		setSweepRate(state, 0)
+		Fn.setSweepRate(state, 0)
 		-- The kind goes on at the START of the windup, at U = 0, so the reach
 		-- is still SWEEP_REACH while the arm peels off the tower: the closing
 		-- only begins when the arm does.
@@ -6306,7 +9674,7 @@ ATTACK_HANDLERS.serpentspiral = {
 	end,
 	fire = function(creature, def, p, _now, _root)
 		local a = creature.attack
-		local state = colossusState(creature, def)
+		local state = Fn.colossusState(creature, def)
 		aimSweep(creature, def, p)
 		state.unwind = 1
 		a.hit = {}
@@ -6314,19 +9682,19 @@ ATTACK_HANDLERS.serpentspiral = {
 	end,
 	strike = function(creature, def, p, _now, dt, u, _root, _sub)
 		local a = creature.attack
-		local state = colossusState(creature, def)
+		local state = Fn.colossusState(creature, def)
 		state.unwind = 1
 		local rate = a.arc / math.max(p.duration, 1e-3)
 		local from = state.sweepAngle
 		state.sweepAngle += a.dir * rate * dt
-		setSweepRate(state, a.dir * rate)
+		Fn.setSweepRate(state, a.dir * rate)
 		-- U IS THE CLOSING. Run it across the whole strike so the reach
 		-- reaches its inner limit exactly as the arc finishes.
 		state.attackU = u
-		sweepWedgeHits(creature, def, p, state, from)
+		Fn.sweepWedgeHits(creature, def, p, state, from)
 	end,
 	finish = function(creature, def, _p, _now)
-		local state = colossusState(creature, def)
+		local state = Fn.colossusState(creature, def)
 		state.unwind = math.min(state.unwind or 1, 1)
 		-- U TO 1 FIRST, published this frame with the kind still set: the
 		-- spiral's arm is at its innermost here, and clearing the kind now
@@ -6336,7 +9704,7 @@ ATTACK_HANDLERS.serpentspiral = {
 	recover = function(creature, def, _p, _u, _sub)
 		-- ...and NOW the kind goes. The first recover frame, one frame after
 		-- the one that published U = 1.
-		local state = colossusState(creature, def)
+		local state = Fn.colossusState(creature, def)
 		state.attackKind = ""
 		state.attackU = 0
 	end,
@@ -6354,7 +9722,7 @@ ATTACK_HANDLERS.serpentspiral = {
 -- How far into the strike the rattle actually connects. Shared, because the
 -- marker's countdown and the tail's descent have to agree on it or the fight
 -- lies about its own timing in one direction or the other.
-local SLAM_IMPACT = 0.62
+K.SLAM_IMPACT = 0.62
 
 local function aimSlam(creature, def, p)
 	local a = creature.attack
@@ -6362,7 +9730,7 @@ local function aimSlam(creature, def, p)
 		return
 	end
 	a.aimed = true
-	local state = colossusState(creature, def)
+	local state = Fn.colossusState(creature, def)
 	local at = state.targetPos or state.center
 	local to = at - state.center
 	if to.Magnitude > 0.01 then
@@ -6374,37 +9742,59 @@ local function aimSlam(creature, def, p)
 	-- measured from the perch anchor, the same frame sweepHits works in).
 	local r = Vector3.new(at.X - state.center.X, 0, at.Z - state.center.Z).Magnitude
 	a.impact = Vector3.new(at.X, state.center.Y + BrinejawPath.sandY(r), at.Z)
+	-- EVERY STANDING STONE'S POSITION, so the bait can be SEEN (contract §7 -
+	-- "the mechanic exists; nobody can see it"). The client already gets the
+	-- impact point and `stoneNear`; what it could not know was where the rocks
+	-- are, so it had nothing to glow. Positions rather than a count, and the
+	-- SERVER's list rather than the arena config's, because a stone spent
+	-- earlier in the fight is sunk and must not light up: `standing` is the
+	-- only place that truth lives.
+	local stones = {}
+	for _, stone in Fn.colossusStones(creature, def) do
+		if stone.standing then
+			table.insert(stones, stone.position)
+		end
+	end
 	fireEvent("serpentSlam", a.impact, {
 		radius = p.radius or 13,
+		-- The client used to derive the landing from `duration` measured at
+		-- arrival, so the baited-stone shatter fired one network hop late.
+		-- The blow lands at K.SLAM_IMPACT of the strike, after the windup;
+		-- ship the absolute server clock so a mid-attack adopter is exact.
+		impactAt = Workspace:GetServerTimeNow() + p.windup + (p.duration or 0) * K.SLAM_IMPACT,
+		stones = stones,
 		-- THROUGH the blow, not up to the swing. The rings used to close at
 		-- the end of the windup, but the rattle only starts falling then and
-		-- the damage resolves at SLAM_IMPACT of the strike - so the countdown
+		-- the damage resolves at K.SLAM_IMPACT of the strike - so the countdown
 		-- finished 0.53s before anything happened, and a player who read it
 		-- correctly stepped back into the circle and died to it.
-		duration = p.windup + (p.duration or 0) * SLAM_IMPACT,
+		duration = p.windup + (p.duration or 0) * K.SLAM_IMPACT,
 		-- Whether this landing is ON rock: the client tints the marker, so a
 		-- correct bait is legible before the tail comes down, not after.
-		stoneNear = stoneNear(creature, def, a.impact, p.stoneReach or 11),
+		-- 11 -> 13 with the row (contract §5). The default is the row's twin
+		-- and must move with it, or a book that omits the field silently
+		-- tests a narrower bait than the one the client is glowing.
+		stoneNear = stoneNear(creature, def, a.impact, p.stoneReach or 13),
 	})
 end
 
-ATTACK_HANDLERS.tailslam = {
+K.ATTACK_HANDLERS.tailslam = {
 	windup = function(creature, def, p, u, _sub)
 		aimSlam(creature, def, p)
-		local state = colossusState(creature, def)
+		local state = Fn.colossusState(creature, def)
 		state.unwind = math.min(u * 1.2, 1)
 		state.sweepHeight = BrinejawPath.SWEEP_HIGH + (p.lift or 9) * u
 		state.sweepAngle = creature.attack.aimAngle or state.sweepAngle
 	end,
 	fire = function(creature, def, p, _now, _root)
 		local a = creature.attack
-		local state = colossusState(creature, def)
+		local state = Fn.colossusState(creature, def)
 		aimSlam(creature, def, p) -- no-op after windup: the marker IS the blow
 		state.sweepAngle = a.aimAngle
 	end,
 	strike = function(creature, def, p, now, _dt, u, _root, _sub)
 		local a = creature.attack
-		local state = colossusState(creature, def)
+		local state = Fn.colossusState(creature, def)
 		state.unwind = 1
 		-- Down it comes - and STAYS down. This used to read the arc off `u`
 		-- unconditionally, so the frame after impact recomputed a height of
@@ -6418,24 +9808,26 @@ ATTACK_HANDLERS.tailslam = {
 		-- rather than as an 8.2-stud jump the client then has to smooth over
 		-- a third of a second, which is what put the visible impact after the
 		-- damage that it was supposed to explain.
-		local fall = math.min(u / SLAM_IMPACT, 1)
+		local fall = math.min(u / K.SLAM_IMPACT, 1)
 		local top = BrinejawPath.SWEEP_HIGH + (p.lift or 9)
 		state.sweepHeight = top + (BrinejawPath.SWEEP_LOW - top) * fall * fall
-		if a.fired or u < SLAM_IMPACT then
+		if a.fired or u < K.SLAM_IMPACT then
 			return
 		end
 		a.fired = true
-		local lo, hi = bossRoll(creature, def, p.damage)
-		damagePlayersInCone(a.impact, Vector3.new(1, 0, 0), p.radius or 13, math.pi, false, lo, hi, creature)
+		local lo, hi = Fn.bossRoll(creature, def, p.damage)
+		Fn.damagePlayersInCone(a.impact, Vector3.new(1, 0, 0), p.radius or 13, math.pi, false, lo, hi, creature)
 		fireEvent("slam", a.impact, { radius = p.radius or 13, skin = p.skin })
-		local stone = spendStone(creature, def, a.impact, p.stoneReach or 11)
+		-- Same 13 as the marker above asked with: the reach that DECIDES and
+		-- the reach that was DRAWN are one number.
+		local stone = Fn.spendStone(creature, def, a.impact, p.stoneReach or 13)
 		if stone then
-			openStagger(creature, def, now, p.stagger or 8)
+			Fn.openStagger(creature, def, now, p.stagger or 8)
 		elseif p.weakStagger then
 			-- Sand absorbs most of it: the serpent is jarred, not brought
 			-- down. Enough to keep the fight winnable, far too short to be
 			-- the plan.
-			openStagger(creature, def, now, p.weakStagger)
+			Fn.openStagger(creature, def, now, p.weakStagger)
 		end
 	end,
 }
@@ -6457,7 +9849,7 @@ ATTACK_HANDLERS.tailslam = {
 -- flood ticks through a stagger. An attack handler only runs while its own
 -- attack is running, so resolving any of these inside one would silently drop
 -- the tail of every effect the moment the next move began. They are resolved
--- instead by `updateBrineHazards`, run from `placeColossus` - the one call
+-- instead by `updateBrineHazards`, run from `Fn.placeColossus` - the one call
 -- every mode of this fight passes through, including the collapse. The
 -- handlers below only ARM them.
 
@@ -6467,14 +9859,14 @@ ATTACK_HANDLERS.tailslam = {
 -- deliberately takes the list as an argument (it is required by the pose math
 -- on both sides of the wire, so a BossArenas dependency there is a cycle
 -- waiting to happen).
-local BRINE_SPIRE_COVER = { offset = Vector3.zero, radius = 9 }
+K.BRINE_SPIRE_COVER = { offset = Vector3.zero, radius = 9 }
 
 local function brineCover(creature, def)
 	if creature.brineCover then
 		return creature.brineCover
 	end
 	local arena = def.islandId and BossArenas.items[def.islandId]
-	local cover = { BRINE_SPIRE_COVER }
+	local cover = { K.BRINE_SPIRE_COVER }
 	for _, piece in (arena and arena.cover or {}) do
 		table.insert(cover, piece)
 	end
@@ -6484,7 +9876,7 @@ end
 
 -- The hazard record this boss hangs its live effects off. One table, created
 -- on demand, torn down with the creature.
-local function brineHazards(creature)
+function Fn.brineHazards(creature)
 	creature.brine = creature.brine or {}
 	return creature.brine
 end
@@ -6496,7 +9888,7 @@ end
 -- close-range dead zone (that guard is for pulls). The server never writes a
 -- player's motion directly: the client owns its own character's physics, and
 -- this is the bargain the lure pull and the anchor chain already strike.
-local function shoveAlong(at: Vector3, dir: Vector3, push: number, duration: number)
+function Fn.shoveAlong(at: Vector3, dir: Vector3, push: number, duration: number)
 	fireEvent("gust", at - dir * 6, { radius = 12, push = push, duration = duration })
 end
 
@@ -6505,54 +9897,103 @@ end
 -- read of that attack. 4.6 studs is a standing R15 root (~3.0 over the sand)
 -- with 1.6 of slack for the beach profile and the arena's own half-stud of
 -- authored slop, and well under the ~7 a jump's apex reaches.
-local BRINE_GROUNDED = 4.6
+K.BRINE_GROUNDED = 4.6
 
-local function brineGrounded(state, position: Vector3): boolean
+function Fn.brineGrounded(state, position: Vector3): boolean
 	local dx, dz = position.X - state.center.X, position.Z - state.center.Z
 	local r = math.sqrt(dx * dx + dz * dz)
-	return position.Y - (state.center.Y + BrinejawPath.sandY(r)) < BRINE_GROUNDED
+	return position.Y - (state.center.Y + BrinejawPath.sandY(r)) < K.BRINE_GROUNDED
 end
 
 -- How far out a player is standing, in the arena's own frame.
-local function brineRadiusOf(state, position: Vector3): number
+function Fn.brineRadiusOf(state, position: Vector3): number
 	local dx, dz = position.X - state.center.X, position.Z - state.center.Z
 	return math.sqrt(dx * dx + dz * dz)
 end
 
 -- ------------------------------------------------------------- the wave
 --
--- RIPTIDE. A wall of water crosses the whole arena on one bearing, and it is
--- TALL: jumping does not evade it, and the only answer is the lee of a rock.
--- The server damages a player in the frame the front's `along` passes theirs,
--- once, and only if `waveSheltered` says they are not standing in a shadow -
--- which is the same call, with the same numbers, that shades the ground on
--- the client. The shadow is a promise, not a suggestion.
+-- RIPTIDE, REDESIGNED (2026-09-08, contract REVISION 2 §1). It was a wall of
+-- water crossing the arena on one bearing, answered only by the lee of a rock;
+-- it is now an EXPANDING RING heaved outward by the coils, with TWO GAP ARCS
+-- the party RUNS TO. Still TALL - there is no height band in the test below
+-- and jumping never evades it.
+--
+-- The two answers, in the order they matter:
+--   * the GAPS. Two arc centres at least `gapSpread` apart, each `gapHalf`
+--     wide, picked at fire time and marked with foam before the ring moves.
+--     Being inside one is being safe, at any radius.
+--   * the COVER SHADOW, kept exactly as it was and now secondary. It is what
+--     makes the reef stones matter to something other than the tailslam, and
+--     `BrinejawPath.waveSafe` folds both tests into the one call the client
+--     also asks - the shadow is still a promise, not a suggestion.
+--
+-- WHY TWO GAPS AND NOT ONE. One gap is a single point the whole party sprints
+-- to and the move stops being a decision; two, at least 100 degrees apart,
+-- means somebody is always nearer one than the other and the party splits.
+K.RIPTIDE_GAP_SPREAD = math.rad(100)
+
+-- Pick the pair. `gapA` is free; `gapB` is drawn at a separation of
+-- spread..(2*pi - spread) from it, so the SHORT way round between the two is
+-- always at least `spread` - a naive "two independent draws, reroll if close"
+-- would keep the bias and cost a loop.
+function Fn.riptideGaps(spread: number, anchor: number?): (number, number)
+	-- NEAR THE PLAYER, not anywhere. The user's playtest verdict on the
+	-- random pair was "literally undodgeable": at r=40 a gap 120 degrees
+	-- away is an 84-stud run against a ring that closes the distance in
+	-- ~2 s. `anchor` is the boss's current target's bearing; gapA lands
+	-- within +-K.RIPTIDE_GAP_JITTER of it, so from r=40 the run is at most
+	-- ~15 studs (one second) and the read is "step sideways into the calm
+	-- water", which is a dodge a first-timer can find. gapB keeps the old
+	-- rule off gapA, so a party still splits. No anchor (nobody targeted)
+	-- falls back to the old free draw.
+	local a
+	if anchor then
+		a = (anchor + (math.random() * 2 - 1) * K.RIPTIDE_GAP_JITTER) % (math.pi * 2)
+	else
+		a = math.random() * math.pi * 2
+	end
+	local separation = spread + math.random() * (math.pi * 2 - 2 * spread)
+	return a, (a + separation) % (math.pi * 2)
+end
+-- 22 -> 36 after the second playtest ("make the wave a little harder"): the
+-- gap still opens on the player's side, just a longer sidestep - from r=40
+-- up to ~25 studs instead of ~15.
+K.RIPTIDE_GAP_JITTER = math.rad(36)
+
 local function armWave(creature, def, p, state, startAt: number)
-	local bearing = math.random() * math.pi * 2
-	local at = state.targetPos
-	if at then
-		-- Aimed THROUGH the tracked player rather than at random, so the wave
-		-- is a question asked of somebody: the cover they have to reach is the
-		-- cover behind them.
-		local to = at - state.center
-		if to.Magnitude > 0.01 then
-			bearing = math.atan2(to.Z, to.X)
+	local speed = p.speed or 24
+	local inner, outer = p.inner or 10, p.outer or 76
+	local gapHalf = p.gapHalf or math.rad(16)
+	-- Anchor the near gap on whoever the serpent is looking at: the same
+	-- `targetPos` the tail slam locks onto, read at fire time.
+	local anchor = nil
+	if state.targetPos then
+		local dx, dz = state.targetPos.X - state.center.X, state.targetPos.Z - state.center.Z
+		if dx * dx + dz * dz > 1 then
+			anchor = math.atan2(dz, dx)
 		end
 	end
-	local speed, reach = p.speed or 26, p.reach or 78
-	brineHazards(creature).wave = {
-		bearing = bearing,
-		speed = speed,
-		reach = reach,
+	local gapA, gapB = Fn.riptideGaps(p.gapSpread or K.RIPTIDE_GAP_SPREAD, anchor)
+	Fn.brineHazards(creature).wave = {
 		start = startAt,
+		speed = speed,
+		inner = inner,
+		outer = outer,
+		gapA = gapA,
+		gapB = gapB,
+		gapHalf = gapHalf,
 		hit = {},
 		p = p,
 	}
 	fireEvent("serpentWave", state.center, {
-		bearing = bearing,
-		speed = speed,
-		reach = reach,
 		start = startAt,
+		speed = speed,
+		inner = inner,
+		outer = outer,
+		gapA = gapA,
+		gapB = gapB,
+		gapHalf = gapHalf,
 		-- The arena this belongs to. Without it the client matches by centre
 		-- within 200 studs, which is a guess; with it the cover list it shades
 		-- is provably the list the server just tested against.
@@ -6565,56 +10006,67 @@ local function stepWave(creature, def, state, now: number)
 	if not wave then
 		return
 	end
-	local front = BrinejawPath.waveFront(wave.bearing, wave.speed, wave.reach, wave.start, now)
-	if not front then
+	-- WHERE THE RING IS, from the shared helper and nowhere else: nil once it
+	-- has passed `outer`, which is also the frame the client stops drawing it.
+	local ring = BrinejawPath.waveRing(wave.start, wave.speed, wave.inner, wave.outer, now)
+	if not ring then
 		creature.brine.wave = nil
 		return
 	end
-	local dir = Vector3.new(math.cos(wave.bearing), 0, math.sin(wave.bearing))
 	local cover = brineCover(creature, def)
-	local lo, hi = bossRoll(creature, def, wave.p.damage)
+	local lo, hi = Fn.bossRoll(creature, def, wave.p.damage)
 	for _, player in Players:GetPlayers() do
 		local character = player.Character
 		local root = character and character:FindFirstChild("HumanoidRootPart")
 		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 		if root and humanoid and humanoid.Health > 0 and not wave.hit[player] then
-			local along = (root.Position - state.center):Dot(dir)
-			-- THE FRAME THE FRONT PASSES THEM. No height band anywhere in this
-			-- test: the wall is taller than a jump on purpose.
-			if front >= along then
+			-- THE FRAME THE RING CROSSES THEIR OWN RADIUS, once. No height
+			-- band anywhere in this test: the wave is taller than a jump on
+			-- purpose, and it always will be.
+			if ring >= Fn.brineRadiusOf(state, root.Position) then
 				wave.hit[player] = true
-				if not BrinejawPath.waveSheltered(cover, state.center, wave.bearing, root.Position) then
+				if
+					not BrinejawPath.waveSafe(wave.gapA, wave.gapB, wave.gapHalf, cover, state.center, root.Position)
+				then
 					PlayerService.damage(player, math.random(lo, hi), creature, { bypassIframe = true })
-					shoveAlong(root.Position, dir, wave.p.push or 46, 0.5)
+					-- OUTWARD, along the ring's own radius - the sea is going
+					-- out, so it carries you out with it. A player caught at
+					-- the tower's foot is thrown toward open beach rather than
+					-- into the masonry.
+					local out = Vector3.new(root.Position.X - state.center.X, 0, root.Position.Z - state.center.Z)
+					local dir = if out.Magnitude > 0.01 then out.Unit else Vector3.xAxis
+					Fn.shoveAlong(root.Position, dir, wave.p.push or 46, 0.5)
 				end
 			end
 		end
 	end
 end
 
-ATTACK_HANDLERS.riptide = {
+K.ATTACK_HANDLERS.riptide = {
 	windup = function(creature, def, p, _u, _sub)
 		local a = creature.attack
 		if a.aimed then
 			return
 		end
 		a.aimed = true
-		local state = colossusState(creature, def)
+		local state = Fn.colossusState(creature, def)
 		-- ARMED ON THE FIRST WINDUP FRAME, TO START WHEN THE WINDUP ENDS.
-		-- `start` is a server clock, so the client draws the wall gathering
-		-- OUTSIDE the arena for the whole windup and crossing it for the
-		-- strike: the telegraph is the wave itself, arriving.
+		-- `start` is a server clock, so the client has the whole windup to
+		-- draw the sea gathering at the tower's foot and to lay the two gaps'
+		-- foam markers down BEFORE the ring moves: the read starts before the
+		-- water does, which is the only reason a 24-stud/second ring is fair.
 		armWave(creature, def, p, state, Workspace:GetServerTimeNow() + p.windup)
 	end,
 	fire = function(creature, def, p, _now, _root)
 		-- A zero-windup row could reach the strike unarmed; this cannot be
 		-- reached twice (aimSweep's rule, and for the same reason).
-		ATTACK_HANDLERS.riptide.windup(creature, def, p, 0, 0)
+		K.ATTACK_HANDLERS.riptide.windup(creature, def, p, 0, 0)
 	end,
 	-- No `strike`: the crossing is resolved by updateBrineHazards, which runs
 	-- in every mode. `duration` on the row only has to be long enough that the
-	-- attack does not end absurdly before the water does; the wall's real
-	-- clock is 2 * reach / speed, and it is the same clock on both sides.
+	-- attack does not end absurdly before the water does; the ring's real
+	-- clock is (outer - inner) / speed, and it is the same clock on both
+	-- sides.
 }
 
 -- ------------------------------------------------------------- the rain
@@ -6647,10 +10099,13 @@ local function armRain(creature, _def, p, state, startAt: number)
 		count = math.clamp(math.floor(p.count or 14), 0, 36),
 		start = startAt,
 		stagger = p.stagger or 0.22,
-		fall = p.fall or 1.1,
+		-- 1.1 -> 0.75 with the row (contract §5): the default is the row's
+		-- twin, and moving one without the other would let a book that omits
+		-- the field draw markers the damage no longer follows.
+		fall = p.fall or 0.75,
 		radius = p.radius or 7,
 	}
-	local hazards = brineHazards(creature)
+	local hazards = Fn.brineHazards(creature)
 	hazards.rain = { chunks = BrinejawPath.rainChunks(payload), radius = payload.radius, p = p, fired = {} }
 	fireEvent("serpentRain", state.center, payload)
 end
@@ -6659,7 +10114,7 @@ end
 -- not been spent yet. Shared by masonryrain and the surge's derived rain,
 -- because they ARE the same shape - `surgeRain` only builds the payload.
 local function stepRainRun(creature, def, state, run, now: number): boolean
-	local lo, hi = bossRoll(creature, def, run.p.damage)
+	local lo, hi = Fn.bossRoll(creature, def, run.p.damage)
 	local pending = false
 	for index, chunk in run.chunks do
 		if not run.fired[index] then
@@ -6676,21 +10131,21 @@ local function stepRainRun(creature, def, state, run, now: number): boolean
 	return pending
 end
 
-ATTACK_HANDLERS.masonryrain = {
+K.ATTACK_HANDLERS.masonryrain = {
 	windup = function(creature, def, p, _u, _sub)
 		local a = creature.attack
 		if a.aimed then
 			return
 		end
 		a.aimed = true
-		local state = colossusState(creature, def)
+		local state = Fn.colossusState(creature, def)
 		-- FIRST IMPACT AT THE END OF THE WINDUP, which puts each chunk's
 		-- ground marker (`fall` ahead of its own impact) inside the windup:
 		-- the markers ARE the telegraph, and they are drawn from this table.
 		armRain(creature, def, p, state, Workspace:GetServerTimeNow() + p.windup)
 	end,
 	fire = function(creature, def, p, _now, _root)
-		ATTACK_HANDLERS.masonryrain.windup(creature, def, p, 0, 0)
+		K.ATTACK_HANDLERS.masonryrain.windup(creature, def, p, 0, 0)
 	end,
 	-- Resolved by updateBrineHazards; see the note on riptide.
 }
@@ -6713,7 +10168,7 @@ local function armRings(creature, _def, p, state, startAt: number)
 		gap = p.gap or 1.05,
 		band = p.band or 2.6,
 	}
-	brineHazards(creature).rings = { payload = payload, p = p, hit = {} }
+	Fn.brineHazards(creature).rings = { payload = payload, p = p, hit = {} }
 	fireEvent("serpentRings", state.center, payload)
 end
 
@@ -6723,7 +10178,7 @@ local function stepRings(creature, def, state, now: number)
 		return
 	end
 	local payload = rings.payload
-	local lo, hi = bossRoll(creature, def, rings.p.damage)
+	local lo, hi = Fn.bossRoll(creature, def, rings.p.damage)
 	local live = false
 	for k = 1, payload.count do
 		local radius = BrinejawPath.ringRadius(payload.start, payload.speed, payload.gap, k, now)
@@ -6739,8 +10194,8 @@ local function stepRings(creature, def, state, now: number)
 				local root = character and character:FindFirstChild("HumanoidRootPart")
 				local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 				if root and humanoid and humanoid.Health > 0 and not rings.hit[k][player] then
-					local r = brineRadiusOf(state, root.Position)
-					if math.abs(r - radius) < payload.band * 0.5 and brineGrounded(state, root.Position) then
+					local r = Fn.brineRadiusOf(state, root.Position)
+					if math.abs(r - radius) < payload.band * 0.5 and Fn.brineGrounded(state, root.Position) then
 						rings.hit[k][player] = true
 						PlayerService.damage(player, math.random(lo, hi), creature, { bypassIframe = true })
 					end
@@ -6753,9 +10208,9 @@ local function stepRings(creature, def, state, now: number)
 	end
 end
 
-ATTACK_HANDLERS.belltoll = {
+K.ATTACK_HANDLERS.belltoll = {
 	windup = function(creature, def, _p, u, _sub)
-		local state = colossusState(creature, def)
+		local state = Fn.colossusState(creature, def)
 		state.attackKind = "belltoll"
 		-- U 0..BELL_WINDUP_U across the engine's windup, so the head's own
 		-- cock lands exactly where the path module says the windup ends.
@@ -6767,7 +10222,7 @@ ATTACK_HANDLERS.belltoll = {
 	end,
 	strike = function(creature, def, p, _now, _dt, u, _root, _sub)
 		local a = creature.attack
-		local state = colossusState(creature, def)
+		local state = Fn.colossusState(creature, def)
 		-- The rest of U across the strike: BELL_WINDUP_U -> 1.
 		state.attackU = BrinejawPath.BELL_WINDUP_U + u * (1 - BrinejawPath.BELL_WINDUP_U)
 		if not a.rung and state.attackU >= BrinejawPath.BELL_IMPACT_U then
@@ -6782,10 +10237,10 @@ ATTACK_HANDLERS.belltoll = {
 	finish = function(creature, def, _p, _now)
 		-- U to 1, published this frame with the kind still on: the head is
 		-- half-way back up the tower here and clearing now would snap it.
-		colossusState(creature, def).attackU = 1
+		Fn.colossusState(creature, def).attackU = 1
 	end,
 	recover = function(creature, def, _p, _u, _sub)
-		local state = colossusState(creature, def)
+		local state = Fn.colossusState(creature, def)
 		state.attackKind = ""
 		state.attackU = 0
 	end,
@@ -6807,14 +10262,14 @@ ATTACK_HANDLERS.belltoll = {
 --                 to climb and an 8% exit moved the body 5.1 studs a step.
 -- To hold the window open longer you HOLD U AT 0.72 - you do not stretch the
 -- 0.50..1 span, which would drag the climb out with it.
-local LUNGE_FALL = 0.30 -- seconds of U 0.35 -> 0.50, the descent
-local LUNGE_SETTLE = 0.35 -- seconds of U 0.50 -> 0.72, the skull settling
-local LUNGE_CLIMB = 0.85 -- seconds of U 0.72 -> 1, the peel back up the tower
+K.LUNGE_FALL = 0.30 -- seconds of U 0.35 -> 0.50, the descent
+K.LUNGE_SETTLE = 0.35 -- seconds of U 0.50 -> 0.72, the skull settling
+K.LUNGE_CLIMB = 0.85 -- seconds of U 0.72 -> 1, the peel back up the tower
 
 -- The farthest living player past `minRange`, or the farthest one at all if
 -- everybody is inside it (a party that has crowded the tower still gets
 -- lunged at - the move is a punish, not a refusal).
-local function farthestPlayerRoot(from: Vector3, minRange: number): BasePart?
+function Fn.farthestPlayerRoot(from: Vector3, minRange: number): BasePart?
 	local best, bestDist = nil, -1
 	local bestFar, bestFarDist = nil, -1
 	for _, player in Players:GetPlayers() do
@@ -6837,7 +10292,7 @@ end
 -- Write Aim from a world position, clamped to the ring the neck can reach.
 -- ARENA-LOCAL, because PoseCenter is already replicated and a world-space aim
 -- would be the same number on the wire twice.
-local function setBrineAim(state, at: Vector3)
+function Fn.setBrineAim(state, at: Vector3)
 	local dx, dz = at.X - state.center.X, at.Z - state.center.Z
 	local r = math.sqrt(dx * dx + dz * dz)
 	if r < 1e-3 then
@@ -6847,26 +10302,26 @@ local function setBrineAim(state, at: Vector3)
 	state.aimX, state.aimZ = dx / r * clamped, dz / r * clamped
 end
 
-ATTACK_HANDLERS.serpentlunge = {
+K.ATTACK_HANDLERS.serpentlunge = {
 	windup = function(creature, def, p, u, _sub)
-		local state = colossusState(creature, def)
+		local state = Fn.colossusState(creature, def)
 		state.attackKind = "lunge"
 		-- U 0 -> LUNGE_COCK_U across the windup: the whole tracking window.
 		state.attackU = u * BrinejawPath.LUNGE_COCK_U
-		local root = farthestPlayerRoot(state.center, p.minRange or 25)
+		local root = Fn.farthestPlayerRoot(state.center, p.minRange or 25)
 		if root then
-			setBrineAim(state, root.Position)
+			Fn.setBrineAim(state, root.Position)
 		end
 	end,
 	fire = function(creature, def, p, _now, _root)
 		local a = creature.attack
-		local state = colossusState(creature, def)
+		local state = Fn.colossusState(creature, def)
 		-- AIM FREEZES HERE, at LUNGE_COCK_U, and this is the last write to it.
 		-- The client draws its countdown ring from the same two numbers, so a
 		-- late correction would move the ring people are standing out of.
-		local root = farthestPlayerRoot(state.center, p.minRange or 25)
+		local root = Fn.farthestPlayerRoot(state.center, p.minRange or 25)
 		if root then
-			setBrineAim(state, root.Position)
+			Fn.setBrineAim(state, root.Position)
 		end
 		a.hold = p.hold or 4.0
 		a.landed = false
@@ -6874,22 +10329,22 @@ ATTACK_HANDLERS.serpentlunge = {
 	end,
 	strike = function(creature, def, p, now, _dt, _u, _root, _sub)
 		local a = creature.attack
-		local state = colossusState(creature, def)
+		local state = Fn.colossusState(creature, def)
 		-- U FROM ELAPSED TIME, not from the engine's `u`, because the four
 		-- segments have wildly different rates and the middle one is a HOLD.
-		-- The row's `duration` must be hold + LUNGE_FALL + LUNGE_SETTLE +
-		-- LUNGE_CLIMB, which is where its "hold + 1.5" comment comes from.
+		-- The row's `duration` must be hold + K.LUNGE_FALL + K.LUNGE_SETTLE +
+		-- K.LUNGE_CLIMB, which is where its "hold + 1.5" comment comes from.
 		local t = now - a.phaseStart
 		local cock, impact = BrinejawPath.LUNGE_COCK_U, BrinejawPath.LUNGE_IMPACT_U
 		local held = 0.72 -- the top of the punish window, from the header
-		if t < LUNGE_FALL then
-			state.attackU = cock + (impact - cock) * (t / LUNGE_FALL)
-		elseif t < LUNGE_FALL + LUNGE_SETTLE then
-			state.attackU = impact + (held - impact) * ((t - LUNGE_FALL) / LUNGE_SETTLE)
-		elseif t < LUNGE_FALL + LUNGE_SETTLE + a.hold then
+		if t < K.LUNGE_FALL then
+			state.attackU = cock + (impact - cock) * (t / K.LUNGE_FALL)
+		elseif t < K.LUNGE_FALL + K.LUNGE_SETTLE then
+			state.attackU = impact + (held - impact) * ((t - K.LUNGE_FALL) / K.LUNGE_SETTLE)
+		elseif t < K.LUNGE_FALL + K.LUNGE_SETTLE + a.hold then
 			state.attackU = held
 		else
-			local climb = (t - LUNGE_FALL - LUNGE_SETTLE - a.hold) / LUNGE_CLIMB
+			local climb = (t - K.LUNGE_FALL - K.LUNGE_SETTLE - a.hold) / K.LUNGE_CLIMB
 			state.attackU = held + (1 - held) * math.clamp(climb, 0, 1)
 		end
 		-- THE BLOW, at LUNGE_IMPACT_U. `lungeHits` reads the same U and the
@@ -6898,7 +10353,7 @@ ATTACK_HANDLERS.serpentlunge = {
 		-- the disc that was drawn are one circle.
 		if not a.landed and state.attackU >= impact then
 			a.landed = true
-			local lo, hi = bossRoll(creature, def, p.damage)
+			local lo, hi = Fn.bossRoll(creature, def, p.damage)
 			for _, player in Players:GetPlayers() do
 				local character = player.Character
 				local root = character and character:FindFirstChild("HumanoidRootPart")
@@ -6912,7 +10367,7 @@ ATTACK_HANDLERS.serpentlunge = {
 			fireEvent("serpentSlam", BrinejawPath.lungeImpactPoint(state), { radius = BrinejawPath.LUNGE_RADIUS })
 		end
 		-- THE PUNISH WINDOW. Open for exactly the held span: the skull is on
-		-- the sand, `placeColossus` has already parked the authority model on
+		-- the sand, `Fn.placeColossus` has already parked the authority model on
 		-- it (`creature.pos = headPosition` IS `lungeHeadPosition`), and the
 		-- chip scaling steps aside while this is true. Recomputed every frame
 		-- rather than latched, so no exit - a stagger, a death, an interrupted
@@ -6921,10 +10376,10 @@ ATTACK_HANDLERS.serpentlunge = {
 	end,
 	finish = function(creature, def, _p, _now)
 		creature.lungeOpen = false
-		colossusState(creature, def).attackU = 1
+		Fn.colossusState(creature, def).attackU = 1
 	end,
 	recover = function(creature, def, _p, _u, _sub)
-		local state = colossusState(creature, def)
+		local state = Fn.colossusState(creature, def)
 		state.attackKind = ""
 		state.attackU = 0
 		state.aimX, state.aimZ = 0, 0
@@ -6941,10 +10396,10 @@ ATTACK_HANDLERS.serpentlunge = {
 -- The damage rides `undertowPoint`, which is the same call the client's dust
 -- plume rides: one point, one radius (UNDERTOW_RADIUS, from the path module,
 -- never from the row), no second copy of "how fast does it travel".
-ATTACK_HANDLERS.serpentundertow = {
+K.ATTACK_HANDLERS.serpentundertow = {
 	windup = function(creature, def, _p, u, _sub)
 		local a = creature.attack
-		local state = colossusState(creature, def)
+		local state = Fn.colossusState(creature, def)
 		if not a.aimed then
 			a.aimed = true
 			-- FROZEN AT U = 0, which for this kind means the moment the attack
@@ -6953,7 +10408,7 @@ ATTACK_HANDLERS.serpentundertow = {
 			-- would drag the whole buried run sideways.
 			local at = state.targetPos
 			if at then
-				setBrineAim(state, at)
+				Fn.setBrineAim(state, at)
 			end
 		end
 		-- The kind is not on yet: the windup is the body diving, which the
@@ -6962,16 +10417,16 @@ ATTACK_HANDLERS.serpentundertow = {
 		state.unwind = math.max(state.unwind or 0, u * 0.6)
 	end,
 	fire = function(creature, def, _p, _now, _root)
-		local state = colossusState(creature, def)
+		local state = Fn.colossusState(creature, def)
 		state.attackKind = "undertow"
 		state.attackU = 0
 		creature.attack.hit = {}
 	end,
 	strike = function(creature, def, p, _now, _dt, u, _root, _sub)
 		local a = creature.attack
-		local state = colossusState(creature, def)
+		local state = Fn.colossusState(creature, def)
 		state.attackU = u
-		local lo, hi = bossRoll(creature, def, p.damage)
+		local lo, hi = Fn.bossRoll(creature, def, p.damage)
 		for _, player in Players:GetPlayers() do
 			local character = player.Character
 			local root = character and character:FindFirstChild("HumanoidRootPart")
@@ -6982,23 +10437,23 @@ ATTACK_HANDLERS.serpentundertow = {
 					PlayerService.damage(player, math.random(lo, hi), creature, { bypassIframe = true })
 					local at, _ = BrinejawPath.undertowPoint(state)
 					local out = Vector3.new(root.Position.X - at.X, 0, root.Position.Z - at.Z)
-					shoveAlong(root.Position, if out.Magnitude > 0.01 then out.Unit else Vector3.xAxis, 34, 0.4)
+					Fn.shoveAlong(root.Position, if out.Magnitude > 0.01 then out.Unit else Vector3.xAxis, 34, 0.4)
 				end
 			end
 		end
 	end,
 	finish = function(creature, def, p, _now)
-		local state = colossusState(creature, def)
+		local state = Fn.colossusState(creature, def)
 		-- THE ERUPTION at the far end of the run, which is what makes the
 		-- bulge a threat you have to leave rather than one you outwalk.
 		state.attackU = 1
 		local at, _ = BrinejawPath.undertowPoint(state)
-		local lo, hi = bossRoll(creature, def, p.damage)
+		local lo, hi = Fn.bossRoll(creature, def, p.damage)
 		damagePlayersInRadius(at, p.radius or 14, lo, hi, creature, 0.4)
 		fireEvent("slam", at, { radius = p.radius or 14 })
 	end,
 	recover = function(creature, def, _p, _u, _sub)
-		local state = colossusState(creature, def)
+		local state = Fn.colossusState(creature, def)
 		state.attackKind = ""
 		state.attackU = 0
 		state.aimX, state.aimZ = 0, 0
@@ -7017,7 +10472,7 @@ ATTACK_HANDLERS.serpentundertow = {
 -- The surge's rubble is NOT a second attack. Both sides build its rain
 -- payload with `BrinejawPath.surgeRain` and hand it to the same `rainChunks`,
 -- so there is one table of numbers for it and neither side typed them.
-local SURGE_TAIL = 0.35 -- seconds at U = 1 before the window opens; see below
+K.SURGE_TAIL = 0.35 -- seconds at U = 1 before the window opens; see below
 
 local function armSurge(creature, _def, p, state, startAt: number)
 	local payload = {
@@ -7027,7 +10482,7 @@ local function armSurge(creature, _def, p, state, startAt: number)
 		seed = math.random(1, 2147483000),
 	}
 	local rainPayload = BrinejawPath.surgeRain(payload)
-	brineHazards(creature).surge = {
+	Fn.brineHazards(creature).surge = {
 		payload = payload,
 		p = p,
 		tickAt = startAt,
@@ -7059,30 +10514,30 @@ local function stepSurge(creature, def, state, now: number)
 		return
 	end
 	surge.tickAt = now + (p.floodTick or 0.6)
-	local lo, hi = bossRoll(creature, def, p.damage)
+	local lo, hi = Fn.bossRoll(creature, def, p.damage)
 	local floodR = surge.payload.floodR
 	for _, player in Players:GetPlayers() do
 		local character = player.Character
 		local root = character and character:FindFirstChild("HumanoidRootPart")
 		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 		if root and humanoid and humanoid.Health > 0 then
-			local r = brineRadiusOf(state, root.Position)
+			local r = Fn.brineRadiusOf(state, root.Position)
 			if r > floodR then
 				PlayerService.damage(player, math.random(lo, hi), creature, { bypassIframe = true })
 				-- SHOVED INWARD, toward the band they are supposed to be
 				-- standing in. The flood is a boundary, not a kill box.
 				local inward = Vector3.new(state.center.X - root.Position.X, 0, state.center.Z - root.Position.Z)
 				if inward.Magnitude > 0.01 then
-					shoveAlong(root.Position, inward.Unit, p.shove or 30, 0.5)
+					Fn.shoveAlong(root.Position, inward.Unit, p.shove or 30, 0.5)
 				end
 			end
 		end
 	end
 end
 
-ATTACK_HANDLERS.tidalsurge = {
+K.ATTACK_HANDLERS.tidalsurge = {
 	windup = function(creature, def, _p, u, _sub)
-		local state = colossusState(creature, def)
+		local state = Fn.colossusState(creature, def)
 		state.attackKind = "rear"
 		-- U 0 -> 0.5 across the windup: REAR_U is 0.30, so it reaches full
 		-- height part-way through and holds the rest, which reads as the body
@@ -7091,17 +10546,17 @@ ATTACK_HANDLERS.tidalsurge = {
 		state.aimX, state.aimZ = 0, 0 -- `rear` rears on the bearings it has
 	end,
 	fire = function(creature, def, p, _now, _root)
-		local state = colossusState(creature, def)
+		local state = Fn.colossusState(creature, def)
 		state.attackU = 0.5
 		armSurge(creature, def, p, state, Workspace:GetServerTimeNow())
 	end,
 	strike = function(creature, def, p, now, _dt, _u, _root, _sub)
 		local a = creature.attack
-		local state = colossusState(creature, def)
+		local state = Fn.colossusState(creature, def)
 		local t = now - a.phaseStart
-		local fall = math.max(p.duration - SURGE_TAIL, 1e-3)
+		local fall = math.max(p.duration - K.SURGE_TAIL, 1e-3)
 		-- HELD AT 0.5 for the flood, then U 0.5 -> 1 to come down. It reaches
-		-- 1 with SURGE_TAIL to spare, and those frames are the whole point:
+		-- 1 with K.SURGE_TAIL to spare, and those frames are the whole point:
 		-- the kind is still "rear" while U sits at 1, so the body finishes its
 		-- exit ramp BEFORE the window opens and clears the kind. Running U to
 		-- 1 and clearing it in the same frame publishes neither.
@@ -7114,23 +10569,23 @@ ATTACK_HANDLERS.tidalsurge = {
 		if t >= p.duration then
 			-- THE GUARANTEED WINDOW. Cleared first, opened second: the stagger
 			-- poses the head down on the sand and a live attack kind would be
-			-- fighting it for the body. openStagger retires the attack and
+			-- fighting it for the body. Fn.openStagger retires the attack and
 			-- switches the mode, which is why this is safe to call from a
 			-- strike (the engine only touches the orphaned attack table
 			-- afterwards) and would NOT be from a recover.
 			state.attackKind = ""
 			state.attackU = 0
-			openStagger(creature, def, now, p.stagger or 8)
+			Fn.openStagger(creature, def, now, p.stagger or 8)
 		end
 	end,
 	finish = function(creature, def, _p, _now)
 		-- Only reached if the strike ran out without opening the window (a
-		-- duration shorter than SURGE_TAIL, or a death mid-set-piece).
-		local state = colossusState(creature, def)
+		-- duration shorter than K.SURGE_TAIL, or a death mid-set-piece).
+		local state = Fn.colossusState(creature, def)
 		state.attackU = 1
 	end,
 	recover = function(creature, def, _p, _u, _sub)
-		local state = colossusState(creature, def)
+		local state = Fn.colossusState(creature, def)
 		state.attackKind = ""
 		state.attackU = 0
 	end,
@@ -7149,8 +10604,8 @@ ATTACK_HANDLERS.tidalsurge = {
 -- the party is already carrying and they show a health bar like anything
 -- else. Nothing about them is special-cased in combat; the only thing this
 -- code owns is what happens at the deadline.
-local function polypSites(creature, def, count: number): { Vector3 }
-	local state = colossusState(creature, def)
+function Fn.polypSites(creature, def, count: number): { Vector3 }
+	local state = Fn.colossusState(creature, def)
 	local arena = def.islandId and BossArenas.items[def.islandId]
 	local sites = {}
 	for _, piece in (arena and arena.cover or {}) do
@@ -7160,7 +10615,7 @@ local function polypSites(creature, def, count: number): { Vector3 }
 		local out = Vector3.new(offset.X, 0, offset.Z)
 		local push = if out.Magnitude > 0.01 then out.Unit * ((piece.radius or 3) + 2.5) else Vector3.new(3, 0, 0)
 		local at = state.center + offset + push
-		table.insert(sites, Vector3.new(at.X, state.center.Y + BrinejawPath.sandY(brineRadiusOf(state, at)), at.Z))
+		table.insert(sites, Vector3.new(at.X, state.center.Y + BrinejawPath.sandY(Fn.brineRadiusOf(state, at)), at.Z))
 	end
 	-- Shuffle and take `count`: a fixed order would put the same three rocks
 	-- under the same three polyps every fight, and half the mechanic is
@@ -7195,14 +10650,14 @@ local function stepPolyps(creature, def, now: number)
 				fireEvent("polypBurst", entry.position, { healed = false, radius = p.radius or 10 })
 			elseif expired then
 				entry.resolved = true
-				local lo, hi = bossRoll(creature, def, p.damage)
+				local lo, hi = Fn.bossRoll(creature, def, p.damage)
 				damagePlayersInRadius(entry.position, p.radius or 10, lo, hi, creature, 0.5)
 				-- The heal, as a fraction of MAX health so it does not shrink
 				-- as the fight goes on - a heal that scales with what is left
 				-- would be meaningless by the time it mattered.
 				local heal = (p.heal or 0.035) * creature.maxHealth
 				creature.health = math.min(creature.maxHealth, creature.health + heal)
-				creature.model:SetAttribute(ATTR_HEALTH, creature.health)
+				creature.model:SetAttribute(ATTR.HEALTH, creature.health)
 				CreatureService.despawn(polyp.model)
 				fireEvent("polypBurst", entry.position, { healed = true, radius = p.radius or 10 })
 			else
@@ -7215,23 +10670,23 @@ local function stepPolyps(creature, def, now: number)
 	end
 end
 
-ATTACK_HANDLERS.serpentpolyps = {
+K.ATTACK_HANDLERS.serpentpolyps = {
 	windup = function(creature, def, _p, u, _sub)
 		-- No pose kind: the serpent does not change shape to grow these, and
 		-- an attack kind with no ATTACK entry would pose nothing anyway. The
 		-- coils grind, which is the tail coming a little off the tower.
-		local state = colossusState(creature, def)
+		local state = Fn.colossusState(creature, def)
 		state.unwind = math.max(state.unwind or 0, u * 0.35)
 	end,
 	fire = function(creature, def, p, _now, _root)
-		local state = colossusState(creature, def)
+		local state = Fn.colossusState(creature, def)
 		local row = Creatures.items.brine_polyp
 		if not row then
 			return
 		end
 		local deadline = Workspace:GetServerTimeNow() + (p.deadline or 12)
 		local entries, positions = {}, {}
-		for _, at in polypSites(creature, def, p.count or 3) do
+		for _, at in Fn.polypSites(creature, def, p.count or 3) do
 			-- No `target`: a thrown spawn arcs off to a landing point, and
 			-- these are rooted to the rock they grew on.
 			local model = CreatureService.spawn(row, at, nil, "Neutral")
@@ -7244,7 +10699,7 @@ ATTACK_HANDLERS.serpentpolyps = {
 		if #entries == 0 then
 			return
 		end
-		brineHazards(creature).polyps = { entries = entries, deadline = deadline, p = p }
+		Fn.brineHazards(creature).polyps = { entries = entries, deadline = deadline, p = p }
 		fireEvent("serpentPolyps", state.center, { deadline = deadline, positions = positions })
 	end,
 	-- Resolved by updateBrineHazards for the next twelve seconds, while the
@@ -7252,8 +10707,573 @@ ATTACK_HANDLERS.serpentpolyps = {
 	-- at the same time, which is the whole cost of the mechanic.
 }
 
+-- ----------------------------------------------------------- the geysers
+--
+-- STANCE-1 PRESSURE, AND THE FIGHT'S ANSWER TO STANDING STILL. Eight columns
+-- of brine come up through the sand one every `interval`, and every one of
+-- them is placed near where a LIVE PLAYER WAS STANDING when the move began.
+--
+-- THE WHOLE LIST IS PRECOMPUTED HERE AND SENT (contract §2), which is the one
+-- place this boss's events break their own "derive, never send" rule - and it
+-- has to be. Everything else Brinejaw scatters is scattered by the shared LCG
+-- off a seed, because both sides can run the same generator; player positions
+-- are SERVER-ONLY, so a client handed a seed could not reproduce a single
+-- burst. Sending the placements is therefore not a shortcut, it is the only
+-- way the thing you dodge and the thing you see can be one list.
+--
+-- AND THE LIST IS DELIBERATELY STALE. It is drawn once, at fire time, and
+-- never re-aimed: the later bursts land where you WERE, so the move rewards
+-- walking and punishes parking. A tracked version of this would be a
+-- five-second sustained AoE nobody can leave.
+-- VOLLEYS THAT FOLLOW. The first design placed every burst at fire time
+-- around where players WERE ("deliberately stale", so you could walk out of
+-- it); the user's verdict was that the spikes should hunt them. So the run is
+-- now dealt in short volleys - `volley` bursts each - and every volley is
+-- re-aimed at the players' LIVE positions when it is armed. Each marker still
+-- leads its burst by `lead`, so the dodge is "move off the marked spot": the
+-- rocks come to you, but never faster than you can read them.
+K.GEYSER_LEAD_VEL = 0.5
+
+function Fn.armGeysers(creature, def, p, state, startAt: number, remaining: number?)
+	local total = math.clamp(math.floor(p.count or 8), 1, 24)
+	local volley = math.clamp(math.floor(p.volley or total), 1, total)
+	local count = math.min(volley, remaining or total)
+	local interval = p.interval or 0.7
+	local scatter = p.scatter or 10
+	-- The live roots, taken ONCE: re-reading Players inside the loop would
+	-- make the eight bursts follow whoever happened to die part-way through.
+	local roots = {}
+	for _, player in Players:GetPlayers() do
+		local character = player.Character
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		if root and humanoid and humanoid.Health > 0 then
+			table.insert(roots, { pos = root.Position, vel = root.AssemblyLinearVelocity })
+		end
+	end
+	if #roots == 0 then
+		return
+	end
+	local lead = p.lead or 0.9
+	local bursts = {}
+	for i = 1, count do
+		local pick = roots[math.random(#roots)]
+		-- AIMED AHEAD OF A RUNNING PLAYER. The second playtest asked for the
+		-- rocks to "follow the user better": with the burst placed on the
+		-- position alone, a player already running in a straight line was
+		-- never inside the mark by the time it erupted, so the move read as
+		-- chasing where they had been. Leading by half the marker's lead
+		-- (K.GEYSER_LEAD_VEL x `lead` seconds of flat velocity) puts the mark
+		-- where a straight run ENDS UP, so the honest dodge is to change
+		-- direction - and a standing player is still aimed at exactly.
+		local flat = Vector3.new(pick.vel.X, 0, pick.vel.Z)
+		local from = pick.pos + flat * (K.GEYSER_LEAD_VEL * lead)
+		-- UNIFORM IN AREA, not in radius: a uniform draw on the offset piles
+		-- the bursts onto the player's own feet (area grows with r^2), and a
+		-- move that always lands on you is not a move you can walk out of.
+		local angle = math.random() * math.pi * 2
+		local off = scatter * math.sqrt(math.random())
+		local x, z = from.X + math.cos(angle) * off, from.Z + math.sin(angle) * off
+		-- Grounded on the beach profile, because the damage circle is a sphere
+		-- test and a burst floating at a root's Y would miss anybody crouched
+		-- on the sand under it.
+		local r = Fn.brineRadiusOf(state, Vector3.new(x, state.center.Y, z))
+		bursts[i] = {
+			pos = Vector3.new(x, state.center.Y + BrinejawPath.sandY(r), z),
+			at = startAt + (i - 1) * interval,
+		}
+	end
+	Fn.brineHazards(creature).geysers = {
+		bursts = bursts,
+		radius = p.radius or 6,
+		p = p,
+		fired = {},
+		-- What is still owed after this volley; stepGeysers re-arms the next
+		-- one from fresh positions when this one has fully fired.
+		remaining = (remaining or total) - count,
+	}
+	fireEvent("serpentGeysers", state.center, {
+		start = startAt,
+		count = count,
+		interval = interval,
+		radius = p.radius or 6,
+		-- HOW FAR EACH MARKER LEADS ITS OWN BURST, and the countdown ends AT
+		-- the burst rather than at the end of the windup - the same rule the
+		-- slam marker's `duration` follows. Sent rather than assumed, so a
+		-- retune of `lead` moves the drawn warning with the damage.
+		lead = p.lead or 0.9,
+		bursts = bursts,
+		islandId = def.islandId,
+	})
+end
+
+function Fn.stepGeysers(creature, def, _state, now: number)
+	local run = creature.brine and creature.brine.geysers
+	if not run then
+		return
+	end
+	local lo, hi = Fn.bossRoll(creature, def, run.p.damage)
+	local pending = false
+	for index, burst in run.bursts do
+		if not run.fired[index] then
+			if now >= burst.at then
+				run.fired[index] = true
+				damagePlayersInRadius(burst.pos, run.radius, lo, hi, creature, 0.5)
+			else
+				pending = true
+			end
+		end
+	end
+	if not pending then
+		if run.remaining > 0 then
+			-- Next volley, aimed at where the players are NOW. Its first burst
+			-- lands `lead` seconds out so the marker gets its full lead.
+			local state = Fn.colossusState(creature, def)
+			Fn.armGeysers(creature, def, run.p, state, now + (run.p.lead or 0.9), run.remaining)
+		else
+			creature.brine.geysers = nil
+		end
+	end
+end
+
+K.ATTACK_HANDLERS.serpentgeysers = {
+	windup = function(creature, def, p, u, _sub)
+		local a = creature.attack
+		local state = Fn.colossusState(creature, def)
+		-- The coils grind and the tail comes a little off the tower - the same
+		-- shape the polyps use, and for the same reason: nothing about this
+		-- move is expressible as one of the ten pose attributes, so the body
+		-- only has to look like it is doing work.
+		state.unwind = math.max(state.unwind or 0, u * 0.35)
+		if a.aimed then
+			return
+		end
+		a.aimed = true
+		-- ARMED ON THE FIRST WINDUP FRAME with the first burst at the windup's
+		-- END. `lead` is 0.9 and the row's windup is 1.2, so burst 1's marker
+		-- lands 0.3 s into the windup and gets its full lead; a row that ever
+		-- sets windup < lead would draw the first marker in the past.
+		Fn.armGeysers(creature, def, p, state, Workspace:GetServerTimeNow() + p.windup)
+	end,
+	fire = function(creature, def, p, _now, _root)
+		K.ATTACK_HANDLERS.serpentgeysers.windup(creature, def, p, 1, 0)
+	end,
+	-- Resolved by updateBrineHazards; see the note on riptide.
+}
+
+-- ------------------------------------------------------------ the spines
+--
+-- A RADIAL VOLLEY WITH SAFE LANES (contract §3). Ten spines leave the tower
+-- along ten evenly spaced bearings at once and fly outward at 55 studs a
+-- second; the ground BETWEEN the lanes is untouched. The answer is not to be
+-- somewhere else, it is to be in a GAP - and the gaps are 220 of the ring's
+-- 360 degrees, which is what makes a volley this fast fair.
+--
+-- NOTHING BUT `bearing0` IS SENT ABOUT THE LANES. Lane k's centre is
+-- bearing0 + k * (2*pi/lanes) on both sides, so ten bearings never travel the
+-- wire and can never disagree. Grounded or airborne makes no difference: this
+-- one is not jumped, and there is no height band in the test.
+function Fn.armSpines(creature, def, p, state, startAt: number)
+	local payload = {
+		start = startAt,
+		-- Rolled ONTO the tracked player's bearing when there is one, so the
+		-- volley is a question asked of somebody: the lane you are standing in
+		-- is the lane you have to leave.
+		bearing0 = state.faceAngle or 0,
+		lanes = math.clamp(math.floor(p.lanes or 10), 2, 24),
+		laneHalf = p.laneHalf or math.rad(7),
+		speed = p.speed or 55,
+		reach = p.reach or 70,
+		islandId = def.islandId,
+	}
+	local at = state.targetPos
+	if at then
+		local to = at - state.center
+		if to.Magnitude > 0.01 then
+			payload.bearing0 = math.atan2(to.Z, to.X)
+		end
+	end
+	Fn.brineHazards(creature).spines = { payload = payload, p = p, hit = {} }
+	fireEvent("serpentSpines", state.center, payload)
+end
+
+-- ------------------------------------------------------------- combos
+--
+-- TWO ATTACKS AT ONCE, SOMETIMES (user, 2026-09-09: "as the fight progresses
+-- the boss is able to do multiple attacks at once... somewhat rare but
+-- possible"). The attack slot is single - one pose, one AttackKind - so a
+-- combo is never two POSES. It is whatever attack is beginning with a HAZARD
+-- attack started underneath it: the wave, the masonry, the geysers and the
+-- spines all resolve in updateBrineHazards on their own clocks, independent
+-- of `creature.attack`, which is exactly why "the water outlives the move"
+-- already worked. Each has its own slot in `creature.brine`, so two can
+-- coexist; the same hazard is never doubled (its slot is checked).
+--
+-- Rarity rides the stance: the row gives a chance per phase index, and a
+-- combo cooldown keeps a lucky streak from chaining. The secondary's own
+-- cooldown is stamped as if it had been picked normally, so the pool does
+-- not owe a second copy right after. Its telegraph starts `delay` after the
+-- primary's, so the two reads arrive as two things and not one blur.
+K.COMBO_ARMS = {
+	riptide = function(creature, def, p, state, at)
+		armWave(creature, def, p, state, at)
+	end,
+	masonryrain = function(creature, def, p, state, at)
+		armRain(creature, def, p, state, at)
+	end,
+	geysers = function(creature, def, p, state, at)
+		Fn.armGeysers(creature, def, p, state, at)
+	end,
+	spines = function(creature, def, p, state, at)
+		Fn.armSpines(creature, def, p, state, at)
+	end,
+}
+K.COMBO_SLOT = { riptide = "wave", masonryrain = "rain", geysers = "geysers", spines = "spines" }
+
+function Fn.rollCombo(creature, def, primary: string, now: number)
+	local combo = def.combo
+	if not combo or not def.entrenched then
+		return
+	end
+	if (creature.comboReadyAt or 0) > now then
+		return
+	end
+	local hpFraction = creature.health / creature.maxHealth
+	local chance = combo.chance[bossPhaseIndex(def, hpFraction)] or 0
+	if chance <= 0 or math.random() >= chance then
+		return
+	end
+	-- Candidates: hazard secondaries the current phase already offers, not
+	-- the primary, off cooldown, and not already running.
+	local offered = {}
+	for _, name in Fn.bossPhaseAttacks(def, hpFraction) do
+		offered[name] = true
+	end
+	local hazards = creature.brine or {}
+	local pool = {}
+	for _, name in combo.secondaries do
+		local p = def.attacks[name]
+		local ready = (creature.cooldowns and creature.cooldowns[name] or 0) <= now
+		if
+			p
+			and K.COMBO_ARMS[name]
+			and name ~= primary
+			and offered[name]
+			and ready
+			and not hazards[K.COMBO_SLOT[name]]
+		then
+			table.insert(pool, name)
+		end
+	end
+	if #pool == 0 then
+		return
+	end
+	local name = pool[math.random(#pool)]
+	local p = def.attacks[name]
+	local state = Fn.colossusState(creature, def)
+	K.COMBO_ARMS[name](creature, def, p, state, Workspace:GetServerTimeNow() + p.windup + (combo.delay or 0.6))
+	creature.cooldowns = creature.cooldowns or {}
+	creature.cooldowns[name] = now + p.cooldown
+	creature.comboReadyAt = now + (combo.cooldown or 20)
+end
+
+function Fn.stepSpines(creature, def, state, now: number)
+	local run = creature.brine and creature.brine.spines
+	if not run then
+		return
+	end
+	local payload = run.payload
+	if now >= payload.start + payload.reach / math.max(payload.speed, 1e-3) then
+		creature.brine.spines = nil
+		return
+	end
+	local lo, hi = Fn.bossRoll(creature, def, run.p.damage)
+	for _, player in Players:GetPlayers() do
+		local character = player.Character
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		if root and humanoid and humanoid.Health > 0 and not run.hit[player] then
+			-- THE SHARED LANE TEST, and the ONE call that decides it. The
+			-- payload goes in whole so the helper reads `lanes`, `laneHalf`,
+			-- `speed`, `reach` and `start` from the same table the client was
+			-- sent - a hand-rolled bearing loop here is exactly the "one value,
+			-- two homes" fault BrinejawPath's header exists to forbid.
+			if BrinejawPath.spineHits(payload, state.center, root.Position, now) then
+				run.hit[player] = true
+				PlayerService.damage(player, math.random(lo, hi), creature, { bypassIframe = true })
+			end
+		end
+	end
+end
+
+K.ATTACK_HANDLERS.serpentspines = {
+	windup = function(creature, def, p, u, _sub)
+		local a = creature.attack
+		local state = Fn.colossusState(creature, def)
+		-- The body rears its spines: the tail comes off the tower, and the
+		-- lanes are drawn on the sand for the whole windup.
+		state.unwind = math.max(state.unwind or 0, u * 0.5)
+		if a.aimed then
+			return
+		end
+		a.aimed = true
+		-- The lanes leave WHEN THE WINDUP ENDS, so the drawn lanes and the
+		-- flying spines are the same ten bearings and the windup is the read.
+		Fn.armSpines(creature, def, p, state, Workspace:GetServerTimeNow() + p.windup)
+	end,
+	fire = function(creature, def, p, _now, _root)
+		K.ATTACK_HANDLERS.serpentspines.windup(creature, def, p, 1, 0)
+	end,
+	-- Resolved by updateBrineHazards; see the note on riptide.
+}
+
+-- ----------------------------------------------------------- the coilslam
+--
+-- A MID-BODY LOOP RISES OFF THE TOWER AND CRASHES ALONG ONE LINE THROUGH IT,
+-- and then it LIES THERE. The line is a corridor, so you step sideways off it
+-- rather than running from it; the loop on the sand afterwards is a FULL
+-- punish window on the body, no bait required.
+--
+-- THE SHAPE OF U, from the contract and not from taste:
+--   0    .. 0.40  the loop rises, the line marker live
+--   0.40 .. 0.50  the crash; THE BLOW LANDS AT 0.50
+--   0.50 .. 0.85  the fallen loop lies across the arena - THE MELEE WINDOW,
+--                 full damage, proxy parked on `coilslamPoint`
+--   0.85 .. 1     recover, the loop peels back onto the tower
+--
+-- The windup drives 0 -> 0.40 and the strike owns the rest - and the strike
+-- drives U FROM ELAPSED TIME rather than from the engine's `u`, for the same
+-- reason the lunge does: the middle segment is a HOLD, and four segments with
+-- wildly different rates cannot share one linear ramp.
+K.COILSLAM_RISE_U = 0.40 -- the loop is up; the crash starts here
+K.COILSLAM_IMPACT_U = 0.50 -- THE BLOW
+K.COILSLAM_HELD_U = 0.85 -- the top of the melee window; hold U here
+K.COILSLAM_CRASH = 0.22 -- seconds of U 0.40 -> 0.50, the fall
+K.COILSLAM_SETTLE = 0.30 -- seconds of U 0.50 -> 0.85, the loop laying out
+K.COILSLAM_CLIMB = 0.70 -- seconds of U 0.85 -> 1, the peel back up
+
+K.ATTACK_HANDLERS.serpentcoilslam = {
+	windup = function(creature, def, p, u, _sub)
+		local a = creature.attack
+		local state = Fn.colossusState(creature, def)
+		state.attackKind = "coilslam"
+		-- U 0 -> K.COILSLAM_RISE_U across the whole windup: the rise IS the
+		-- windup, so the loop is at full height exactly as the crash begins.
+		state.attackU = u * K.COILSLAM_RISE_U
+		if a.aimed then
+			return
+		end
+		a.aimed = true
+		-- LATCHED ON THE FIRST WINDUP FRAME. The line runs THROUGH the tower,
+		-- so re-aiming mid-windup would swivel a 100-stud corridor across the
+		-- whole beach while the party is reading the one it was shown. Only
+		-- the BEARING of Aim is used (the contract: magnitude unused), but the
+		-- aim is written through the same clamp everything else uses so the
+		-- ten attributes stay one channel.
+		local at = state.targetPos
+		if at then
+			Fn.setBrineAim(state, at)
+		else
+			state.aimX = math.cos(state.faceAngle or 0) * BrinejawPath.AIM_MAX
+			state.aimZ = math.sin(state.faceAngle or 0) * BrinejawPath.AIM_MAX
+		end
+		a.bearing = math.atan2(state.aimZ or 0, state.aimX or 0)
+		-- THE COUNTDOWN ENDS AT THE BLOW, not at the end of the windup. The
+		-- crash is K.COILSLAM_CRASH past the windup's end, and a marker that
+		-- closed early would invite players back onto the line 0.22 s before
+		-- a loop of serpent landed on it.
+		local now = Workspace:GetServerTimeNow()
+		fireEvent("serpentCoilslam", state.center, {
+			start = now,
+			bearing = a.bearing,
+			impactAt = now + p.windup + K.COILSLAM_CRASH,
+			islandId = def.islandId,
+		})
+	end,
+	fire = function(creature, def, p, _now, _root)
+		local a = creature.attack
+		local state = Fn.colossusState(creature, def)
+		K.ATTACK_HANDLERS.serpentcoilslam.windup(creature, def, p, 1, 0)
+		a.hold = p.hold or 4.5
+		a.landed = false
+		state.attackU = K.COILSLAM_RISE_U
+	end,
+	strike = function(creature, def, p, now, _dt, _u, _root, _sub)
+		local a = creature.attack
+		local state = Fn.colossusState(creature, def)
+		local t = now - a.phaseStart
+		local rise, impact, held = K.COILSLAM_RISE_U, K.COILSLAM_IMPACT_U, K.COILSLAM_HELD_U
+		if t < K.COILSLAM_CRASH then
+			state.attackU = rise + (impact - rise) * (t / K.COILSLAM_CRASH)
+		elseif t < K.COILSLAM_CRASH + K.COILSLAM_SETTLE then
+			state.attackU = impact + (held - impact) * ((t - K.COILSLAM_CRASH) / K.COILSLAM_SETTLE)
+		elseif t < K.COILSLAM_CRASH + K.COILSLAM_SETTLE + a.hold then
+			state.attackU = held
+		else
+			local climb = (t - K.COILSLAM_CRASH - K.COILSLAM_SETTLE - a.hold) / K.COILSLAM_CLIMB
+			state.attackU = held + (1 - held) * math.clamp(climb, 0, 1)
+		end
+		if not a.landed and state.attackU >= impact then
+			a.landed = true
+			local lo, hi = Fn.bossRoll(creature, def, p.damage)
+			for _, player in Players:GetPlayers() do
+				local character = player.Character
+				local root = character and character:FindFirstChild("HumanoidRootPart")
+				local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+				if root and humanoid and humanoid.Health > 0 then
+					-- THE LINE BAND, from the path module: within `girth` of
+					-- the line through the tower on the aim bearing, between
+					-- the radii the loop actually spans. Same function the
+					-- client draws the corridor from.
+					if BrinejawPath.coilslamHits(state, root.Position, p.girth or 5.0) then
+						PlayerService.damage(player, math.random(lo, hi), creature, { bypassIframe = true })
+					end
+				end
+			end
+		end
+		-- THE MELEE WINDOW, recomputed every frame rather than latched, so no
+		-- exit - a stagger, a death, an interrupted attack - can leave it
+		-- stuck open. `Fn.placeColossus` reads this to park the hittable proxy
+		-- on the fallen loop, and `punishOpen` reads it to lift the chip
+		-- scaling, exactly as the lunge's plant does.
+		creature.coilOpen = state.attackU >= impact and state.attackU <= held
+	end,
+	finish = function(creature, def, _p, _now)
+		creature.coilOpen = false
+		-- U TO 1 FIRST, published this frame with the kind still set: the loop
+		-- is half-way back onto the tower here and clearing now would snap it.
+		Fn.colossusState(creature, def).attackU = 1
+	end,
+	recover = function(creature, def, _p, _u, _sub)
+		local state = Fn.colossusState(creature, def)
+		state.attackKind = ""
+		state.attackU = 0
+		state.aimX, state.aimZ = 0, 0
+	end,
+}
+
+-- --------------------------------------------------------------- the bite
+--
+-- THE ONE MOVE IN THE BOOK THAT IS NOT ON A ROTATION. It is not in any phase
+-- list; the entrenched tick fires it when somebody has been parked inside
+-- `reach` of the tower for longer than `dwell` (see Fn.updateBoss's brinejaw
+-- branch), on its own ~9 s cooldown, in any stance.
+--
+-- WHY IT HAS TO EXIST. The tower foot is the safest ground on the beach and
+-- nothing was asking anything of it: the whip cannot reach inside SWEEP_INNER
+-- (13), the riptide's ring launches at 10, the masonry's sector starts at 12
+-- and the bell's rings are nil under radius 4. A party that stood at the
+-- masonry could ignore a third of the book.
+--
+-- AND IT PAYS FOR ITSELF. U 0.45..0.75 leaves the head hanging LOW where you
+-- are standing - damageable at full rate, `biteHeadPoint` under the proxy -
+-- so taking the bite on purpose is a real, tight play rather than a mistake.
+--
+--   0    .. 0.30  rear
+--   0.30 .. 0.45  the snap; THE BLOW LANDS AT 0.45
+--   0.45 .. 0.75  the head hangs low - the mini punish window
+--   0.75 .. 1     recover
+K.BITE_REAR_U = 0.30
+K.BITE_IMPACT_U = 0.45
+K.BITE_HELD_U = 0.75
+K.BITE_SNAP = 0.16 -- seconds of U 0.30 -> 0.45, the snap
+K.BITE_SETTLE = 0.20 -- seconds of U 0.45 -> 0.75, the head coming to rest
+K.BITE_CLIMB = 0.55 -- seconds of U 0.75 -> 1, back onto the coil
+
+K.ATTACK_HANDLERS.serpentbite = {
+	windup = function(creature, def, p, u, _sub)
+		local a = creature.attack
+		local state = Fn.colossusState(creature, def)
+		state.attackKind = "bite"
+		state.attackU = u * K.BITE_REAR_U
+		-- TRACKED THROUGH THE WHOLE REAR, unlike every other aim in this book,
+		-- and that is the point: the windup is 0.7 s and the target is inside
+		-- 14 studs. A latched aim at that range would be dodged by one step,
+		-- which would make the punishment for camping the tower nothing at all.
+		--
+		-- AND THE CLAMP IS CORRECT HERE, not merely tolerated. `setBrineAim`
+		-- pushes the aim out to AIM_MIN = 16 so the neck never threads the
+		-- masonry, and the row's `reach` is 14 - so a camper standing at r =
+		-- 10..14 has the snap point 2..6 studs beyond them, well inside the
+		-- 9-stud footprint. Nobody can be nearer than the spire's own 8.5-stud
+		-- radius at the sand, so the worst case is 7.5 studs of offset against
+		-- 9 of reach and the bite always lands on the person it answered.
+		local at = state.targetPos
+		if at then
+			Fn.setBrineAim(state, at)
+		end
+		if a.aimed then
+			return
+		end
+		a.aimed = true
+		local now = Workspace:GetServerTimeNow()
+		fireEvent("serpentBite", state.center, {
+			-- ARENA-LOCAL, the same frame Aim itself is written in, so the
+			-- marker and the attribute channel cannot drift apart.
+			aim = Vector3.new(state.aimX or 0, 0, state.aimZ or 0),
+			-- THROUGH the snap, not up to it: the blow is K.BITE_SNAP past the
+			-- windup's end.
+			impactAt = now + p.windup + K.BITE_SNAP,
+			radius = p.radius or 9,
+			islandId = def.islandId,
+		})
+	end,
+	fire = function(creature, def, p, _now, _root)
+		local a = creature.attack
+		local state = Fn.colossusState(creature, def)
+		-- The last write to Aim. A zero-windup row could reach here unaimed.
+		K.ATTACK_HANDLERS.serpentbite.windup(creature, def, p, 1, 0)
+		a.hold = p.hold or 1.6
+		a.landed = false
+		state.attackU = K.BITE_REAR_U
+	end,
+	strike = function(creature, def, p, now, _dt, _u, _root, _sub)
+		local a = creature.attack
+		local state = Fn.colossusState(creature, def)
+		local t = now - a.phaseStart
+		local rear, impact, held = K.BITE_REAR_U, K.BITE_IMPACT_U, K.BITE_HELD_U
+		if t < K.BITE_SNAP then
+			state.attackU = rear + (impact - rear) * (t / K.BITE_SNAP)
+		elseif t < K.BITE_SNAP + K.BITE_SETTLE then
+			state.attackU = impact + (held - impact) * ((t - K.BITE_SNAP) / K.BITE_SETTLE)
+		elseif t < K.BITE_SNAP + K.BITE_SETTLE + a.hold then
+			state.attackU = held
+		else
+			local climb = (t - K.BITE_SNAP - K.BITE_SETTLE - a.hold) / K.BITE_CLIMB
+			state.attackU = held + (1 - held) * math.clamp(climb, 0, 1)
+		end
+		if not a.landed and state.attackU >= impact then
+			a.landed = true
+			local lo, hi = Fn.bossRoll(creature, def, p.damage)
+			for _, player in Players:GetPlayers() do
+				local character = player.Character
+				local root = character and character:FindFirstChild("HumanoidRootPart")
+				local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+				if root and humanoid and humanoid.Health > 0 then
+					if BrinejawPath.biteHits(state, root.Position, p.radius or 9) then
+						PlayerService.damage(player, math.random(lo, hi), creature, { bypassIframe = true })
+					end
+				end
+			end
+		end
+		-- The mini punish window; same rules as the coilslam's, same reason
+		-- for being recomputed rather than latched.
+		creature.biteOpen = state.attackU >= impact and state.attackU <= held
+	end,
+	finish = function(creature, def, _p, _now)
+		creature.biteOpen = false
+		Fn.colossusState(creature, def).attackU = 1
+	end,
+	recover = function(creature, def, _p, _u, _sub)
+		local state = Fn.colossusState(creature, def)
+		state.attackKind = ""
+		state.attackU = 0
+		state.aimX, state.aimZ = 0, 0
+	end,
+}
+
 -- ONE FRAME OF EVERYTHING BRINEJAW HAS LEFT LYING AROUND. Run from
--- `placeColossus`, so it ticks in every mode this boss can be in - attacking,
+-- `Fn.placeColossus`, so it ticks in every mode this boss can be in - attacking,
 -- entrenched, staggered, collapsing. That is deliberate and it is the reason
 -- these are not resolved in their handlers: a bell rung at the end of a move
 -- is still ringing through the next one, and a party that breaks the last
@@ -7266,7 +11286,7 @@ updateBrineHazards = function(creature, def, state)
 	-- sends carries a `start` / `impactAt` / `deadline` measured in
 	-- `Workspace:GetServerTimeNow()` - that is the contract's timing base,
 	-- and it is what lets a client adopting the fight mid-attack land at
-	-- the right phase instead of at the right elapsed time. `placeColossus`
+	-- the right phase instead of at the right elapsed time. `Fn.placeColossus`
 	-- reasons in `os.clock()`, which is a completely different epoch: using
 	-- the number it is holding would compare two clocks that share nothing
 	-- but a unit, and every ring, chunk and deadline here would resolve
@@ -7276,6 +11296,13 @@ updateBrineHazards = function(creature, def, state)
 	stepRings(creature, def, state, now)
 	stepSurge(creature, def, state, now)
 	stepPolyps(creature, def, now)
+	-- The two the second pass added, and they belong here for the same reason
+	-- everything above does: the geysers' eight bursts run 5.6 s past a 1.2 s
+	-- windup and the spines outlive their own 1.6 s strike, so a handler that
+	-- resolved either would silently drop its tail the moment the next move
+	-- began.
+	Fn.stepGeysers(creature, def, state, now)
+	Fn.stepSpines(creature, def, state, now)
 	local rain = creature.brine.rain
 	if rain and not stepRainRun(creature, def, state, rain, now) then
 		creature.brine.rain = nil
@@ -7303,11 +11330,11 @@ local pyreliskLatch
 --
 -- The Brinejaw shape (tailslam), rebuilt for a jointed arm: that handler
 -- drives sweepHeight/sweepAngle through BrinejawPath and cannot be reused, but
--- `spendStone` and `openStagger` underneath it are generic and are what this
+-- `Fn.spendStone` and `Fn.openStagger` underneath it are generic and are what this
 -- borrows.
-ATTACK_HANDLERS.handfall = {
+K.ATTACK_HANDLERS.handfall = {
 	windup = function(creature, def, p, u, _sub)
-		local state = colossusState(creature, def)
+		local state = Fn.colossusState(creature, def)
 		local a = creature.attack
 		if not a.aimed then
 			-- LATCHED ONCE. Everything in PyreliskPath's contract is about
@@ -7318,55 +11345,88 @@ ATTACK_HANDLERS.handfall = {
 			a.aimed = true
 			-- Shared with the other four, and it aims the ARM: passing the
 			-- pose turns the body far enough that the fist swings onto the
-			-- target instead of 60-70 degrees past it. `HANDFALL_IMPACT`
+			-- target instead of 60-70 degrees past it. `K.HANDFALL_IMPACT`
 			-- is where in the swing the blow lands, so the point marked here
 			-- is where the fist will BE then - not where it starts.
-			a.impact = pyreliskLatch(creature, def, p, "handfall", HANDFALL_IMPACT)
+			a.impact = pyreliskLatch(creature, def, p, "handfall", K.HANDFALL_IMPACT)
 			-- The shadow on the ground, for the whole lead time. `slam` is a
 			-- real telegraph branch on the client (a pulsing ring at the
 			-- radius); an unknown kind would degrade to a 3-stud sparkle,
 			-- which on a blow this size is no warning at all.
+			-- IT RUNS TO THE BLOW, not to the middle of the strike. The
+			-- shadow used to be told `duration * 0.5` while the fist lands at
+			-- K.HANDFALL_IMPACT (0.95): on the row's 1.4s strike the mark
+			-- finished 0.63s BEFORE the hand arrived, so the last thing the
+			-- telegraph did was tell you it was over while the blow was still
+			-- coming. Same constant the damage reads, for the same reason it
+			-- is a named constant at all.
 			fireEvent("telegraph", a.impact, {
 				kind = "slam",
 				radius = p.radius,
-				duration = p.windup + p.duration * 0.5,
+				duration = p.windup + p.duration * K.HANDFALL_IMPACT,
 				skin = "lava",
 			})
 		end
 		state.attack = "handfall"
 		state.blend = u
 		state.strike = 0
+		-- THE SEAMS SPLIT AS IT COMMITS. handfall does not go through
+		-- `Fn.pyreliskWindupPose` - it predates it and is declared above it - so
+		-- it opens its own, off the same row field and the same latched
+		-- `aimSide` the other four use.
+		Fn.pyreliskOpenSeams(state, p)
 	end,
-	strike = function(creature, def, p, now, _dt, u, _root, _sub)
-		local state = colossusState(creature, def)
+	-- `now` IS `_now` NOW. This handler's only use of the clock was the two
+	-- `Fn.openStagger` calls the bait used to make, and act 1 has no window to
+	-- open any more - see the bait below. Underscored rather than deleted: the
+	-- five pyrelisk strike handlers share one signature, and a short one here
+	-- would be the odd row out for no gain.
+	strike = function(creature, def, p, _now, _dt, u, _root, _sub)
+		local state = Fn.colossusState(creature, def)
 		local a = creature.attack
 		state.strike = u
 		-- The blow lands when the ARM does. This used to fire at 0.45, which
 		-- is 0.77s before the pose brings the fist down - the shockwave went
 		-- off while the hand was still 235 studs in the air and 60 studs
 		-- outside the arena.
-		if a.fired or u < HANDFALL_IMPACT then
+		if a.fired or u < K.HANDFALL_IMPACT then
 			return
 		end
 		a.fired = true
-		local lo, hi = bossRoll(creature, def, p.damage)
-		damagePlayersInRadius(a.impact, p.radius, lo, hi, creature, 0.35, BOSS_HEIGHT_TOLERANCE)
+		local lo, hi = Fn.bossRoll(creature, def, p.damage)
+		damagePlayersInRadius(a.impact, p.radius, lo, hi, creature, 0.35, K.BOSS_HEIGHT_TOLERANCE)
 		-- `strikeHit`, not `bossSlam`: there is no EVENTS.bossSlam on the
 		-- client, so that call hit the catch-all and drew nothing at all.
 		fireEvent("strikeHit", a.impact, { radius = p.radius, skin = "lava" })
-		-- The bait. A monolith within reach shatters and buys the long window
-		-- with the arm left lying across the moat; open rock buys a jar.
-		local stone = spendStone(creature, def, a.impact, p.stoneReach or 26)
-		if stone then
-			state.planted = state.aimSide
-			openStagger(creature, def, now, p.stagger or 20)
-		else
-			state.planted = 0
-			openStagger(creature, def, now, p.weakStagger or 3)
+		-- THE BAIT, RE-POINTED. It used to shatter a monolith and buy a
+		-- twenty-second punish window with the arm left across the moat. There
+		-- is no window to open in act 1 any more - the body is untargetable and
+		-- stays that way, and the window is act 2, which is ninety seconds
+		-- longer. So the bait pays SEAM METER instead: a spent monolith fills
+		-- `seamCredit` of the committing flank's meter outright.
+		--
+		-- THE NINE STONES ALL SURVIVE, and so do `stoneReach = 30` (derived off
+		-- the fist's r 188 band), `Fn.spendStone`, `Fn.regrowStones` and
+		-- `Fn.restoreStones`. Every one of them still means what it meant; what
+		-- changed is what the shattered rock BUYS.
+		--
+		-- It goes through `Fn.pyreliskMeterFill` and not through a second copy
+		-- of the full-meter branch, so a bait that finishes a flank scars it by
+		-- exactly the path a seam shot does - one place the mask is ever set.
+		local stone = Fn.spendStone(creature, def, a.impact, p.stoneReach or 26)
+		if stone and p.seamCredit then
+			Fn.pyreliskMeterFill(creature, state, state.aimSide or 1, p.seamCredit)
 		end
+		-- NOTHING IS PLANTED BY A FIST ANY MORE. `Planted` means "which flank
+		-- is the climb ramp", and in the redesigned fight that is act 3's
+		-- answer and nobody else's.
+		state.planted = 0
 	end,
 	recover = function(creature, def, _p, u, _sub)
-		local state = colossusState(creature, def)
+		local state = Fn.colossusState(creature, def)
+		-- ...and they seal as it takes the arm back. The other exits are swept
+		-- in Fn.placeColossus; this is the ordinary one.
+		Fn.pyreliskCloseSeams(state)
 		state.blend = 1 - u
 		state.strike = 1 - u
 		if u >= 1 then
@@ -7399,18 +11459,18 @@ ATTACK_HANDLERS.handfall = {
 -- why `pyreliskLatch` clamps the aim to [120, 200] and will not let a row
 -- widen it - only narrow it. A rake, which travels horizontally at path
 -- height, is not bound by that and the rimsweep row rakes to 228 on purpose.
-local PY_BAND_OUT = 200.0 -- PY_CLEAR_R: the outer edge of open sky
-local PY_PATH_OUT = 232.0 -- the lip itself: the last stud anyone can stand on
+K.PY_BAND_OUT = 200.0 -- PY_CLEAR_R: the outer edge of open sky
+K.PY_PATH_OUT = 232.0 -- the lip itself: the last stud anyone can stand on
 
 -- COMMIT. Latches the pose's aim and hands back the ground point the attack
 -- has just promised, clamped into the band. Called once, from a windup, and
 -- never again for the life of that attack.
 function pyreliskLatch(creature, def, p, poseName: string?, strikeAt: number?): (Vector3, number, number)
-	local state = colossusState(creature, def)
+	local state = Fn.colossusState(creature, def)
 	local angle = state.faceAngle or 0
-	local radius = (PY_LAKE_R + PY_BAND_OUT) * 0.5
-	local near = math.max(p.minReach or PY_LAKE_R, PY_LAKE_R)
-	local far = math.min(p.maxReach or PY_BAND_OUT, PY_BAND_OUT)
+	local radius = (K.PY_LAKE_R + K.PY_BAND_OUT) * 0.5
+	local near = math.max(p.minReach or K.PY_LAKE_R, K.PY_LAKE_R)
+	local far = math.min(p.maxReach or K.PY_BAND_OUT, K.PY_BAND_OUT)
 	local at = state.targetPos
 	if at then
 		local to = Vector3.new(at.X - state.center.X, 0, at.Z - state.center.Z)
@@ -7433,15 +11493,55 @@ function pyreliskLatch(creature, def, p, poseName: string?, strikeAt: number?): 
 	-- the target and keeps the two together, which is the promise
 	-- PyreliskPath's header makes and could not previously keep.
 	local side = PyreliskPath.plantSide(state, angle)
+	-- A SCARRED FLANK DOES NOT COMMIT. Breaking a flank costs the colossus the
+	-- use of that arm, visibly, and that is the reward for having broken it.
+	--
+	-- A PREFERENCE, NOT A GATE, and the distinction is the bug one level down:
+	-- with BOTH flanks scarred `Fn.pyreliskUnscarredSide` returns nil and this
+	-- falls through to the geometry's own answer, because a latch that refused
+	-- every side would have to return something anyway and the something would
+	-- be whatever the last line happened to leave behind.
+	--
+	-- `ashfall` and `ventbreath` are whole-body moves and are unaffected, so a
+	-- party that breaks one flank early does not run out of things to shoot.
+	local unscarred = Fn.pyreliskUnscarredSide(state)
+	if unscarred then
+		side = unscarred
+	end
 	local bodyAngle = angle
 	if poseName then
 		local localBearing, fistRadius = PyreliskPath.fistOffset(poseName, side, strikeAt)
 		bodyAngle = angle - localBearing
 		-- The reach is the ARM's, not the player's distance: where the fist
-		-- can be is a property of the pose. Clamped only as a sanity rail -
-		-- if this ever clamps, the pose and the band disagree and the
-		-- telegraph would stop marking the real landing point.
-		radius = math.clamp(fistRadius, near, math.max(near, far))
+		-- can be is a property of the pose.
+		--
+		-- AND THE CLAMP IS A RAIL, NOT THE RULE. It is supposed to be dead
+		-- code: every pose that reaches this line is tuned to land inside
+		-- [120, 200] on its own (handfall's fist is at r 188.04 at
+		-- K.HANDFALL_IMPACT), so the number below is the pose's, unaltered.
+		-- It was not always: the staged handfall landed at r 209.1 and was
+		-- clamped to a flat 200 on EVERY swing - the drawn fist under the
+		-- lip's undercut, the shockwave nine studs inboard of it, the impact
+		-- radius never varying, and the two innermost monoliths permanently
+		-- out of `stoneReach`. All of that was silent, which is why this
+		-- warns now: a future pose retune that walks back out of the band
+		-- should be loud on the first swing rather than quietly flattening
+		-- the move again.
+		local clamped = math.clamp(fistRadius, near, math.max(near, far))
+		if math.abs(clamped - fistRadius) > 0.5 then
+			warn(
+				string.format(
+					"[Pyrelisk] pose '%s' puts its fist at r %.1f, outside the [%.0f, %.0f] band - "
+						.. "clamped to %.1f, so the telegraph no longer marks where the fist lands. Retune the pose.",
+					poseName,
+					fistRadius,
+					near,
+					far,
+					clamped
+				)
+			)
+		end
+		radius = clamped
 	end
 	PyreliskPath.latch(state, bodyAngle, side)
 	local impact = Vector3.new(
@@ -7454,7 +11554,7 @@ end
 
 -- The pose half of a windup, shared by all four: hold the attack's shape,
 -- blend into it over the windup, and make sure the blow reads as unswung.
-local function pyreliskWindupPose(state, name: string, u: number)
+function Fn.pyreliskWindupPose(state, name: string, u: number)
 	state.attack = name
 	state.blend = u
 	state.strike = 0
@@ -7463,7 +11563,11 @@ end
 -- ...and the recovery, which is the same three numbers unwound. Clearing
 -- `attack` at the end matters: `poseFor` reads POSE[state.attack], so a name
 -- left behind holds the working arm in a pose it is no longer performing.
-local function pyreliskRecoverPose(state, u: number)
+function Fn.pyreliskRecoverPose(state, u: number)
+	-- The shell seals the moment the recover starts: an open seam is a "shoot
+	-- me now" and the blow is already spent. Every other way out of an attack
+	-- is swept in Fn.placeColossus - see `Fn.pyreliskCloseSeams`.
+	Fn.pyreliskCloseSeams(state)
 	state.blend = 1 - u
 	state.strike = 1 - u
 	if u >= 1 then
@@ -7472,7 +11576,7 @@ local function pyreliskRecoverPose(state, u: number)
 end
 
 -- Shortest signed way from `from` to `to`, in radians.
-local function pyreliskWrap(a: number): number
+function Fn.pyreliskWrap(a: number): number
 	return (a + math.pi) % (math.pi * 2) - math.pi
 end
 
@@ -7484,13 +11588,17 @@ end
 -- Bespoke on purpose. `orbitsweep` is the same idea and cannot be borrowed:
 -- every line of it drives sweepAngle / sweepHeight / unwind through
 -- BrinejawPath, which is a different animal's spine.
-ATTACK_HANDLERS.rimsweep = {
+K.ATTACK_HANDLERS.rimsweep = {
 	windup = function(creature, def, p, u, _sub)
-		local state = colossusState(creature, def)
+		local state = Fn.colossusState(creature, def)
 		local a = creature.attack
 		if not a.aimed then
 			a.aimed = true
-			local _, angle = pyreliskLatch(creature, def, p)
+			-- Latched WITH the pose, so the drawn arm is on the bearing that
+			-- is about to be dangerous rather than 70 degrees behind it: the
+			-- rake's fist sits `fistOffset` round the body's own facing, the
+			-- same correction handfall makes.
+			local _, angle = pyreliskLatch(creature, def, p, "rimsweep", 0)
 			a.arc = p.arc or math.rad(150)
 			-- WHICH WAY IT RAKES: away from the shoulder that throws it,
 			-- decided by the arm the latch picked, never by a coin toss. A
@@ -7502,8 +11610,16 @@ ATTACK_HANDLERS.rimsweep = {
 			-- rather than at them.
 			a.startAngle = angle - a.dir * a.arc * 0.5
 			a.angle = a.startAngle
-			a.inner = math.max(p.inner or 160, PY_LAKE_R)
-			a.outer = math.min(p.radius or PyreliskPath.REACH, PyreliskPath.REACH)
+			a.inner = math.max(p.inner or 160, K.PY_LAKE_R)
+			-- RAKE_OUT, NOT REACH, and they stopped being the same number when
+			-- the body was remodelled (2026-09-09). REACH is the ARM's length
+			-- from its own shoulder - 150 now, down from 228 - while this
+			-- clamp wants the outermost stud of PATH the fist crosses,
+			-- measured from the body's axis, which is 200. Clamping with
+			-- REACH would have pulled the damaged annulus in to 150, INSIDE
+			-- the row's own `inner` of 160, and the rake would have swept an
+			-- empty band for the rest of the fight without erroring anywhere.
+			a.outer = math.min(p.radius or PyreliskPath.RAKE_OUT, PyreliskPath.RAKE_OUT)
 			a.hit = {}
 			-- WHERE THE RAKE BEGINS, on the band, for the whole lead time.
 			-- The row's stock `ringTell` says which annulus is about to be
@@ -7522,23 +11638,49 @@ ATTACK_HANDLERS.rimsweep = {
 				duration = p.windup + p.duration,
 				skin = p.skin,
 			})
+			-- ...and turned onto the START of the rake rather than its
+			-- middle, because that is where the arm is held for the whole
+			-- windup and it is what the entry mark above is pointing at. The
+			-- strike takes it from here, frame by frame, along the path this
+			-- windup has just committed to.
+			local fistLocal = (PyreliskPath.fistOffset("rimsweep", state.aimSide or 1, 0))
+			state.aimAngle = a.startAngle - fistLocal
 		end
-		pyreliskWindupPose(state, "rimsweep", u)
+		Fn.pyreliskWindupPose(state, "rimsweep", u)
+		Fn.pyreliskOpenSeams(state, p)
 	end,
 	strike = function(creature, def, p, _now, dt, u, _root, _sub)
-		local state = colossusState(creature, def)
+		local state = Fn.colossusState(creature, def)
 		local a = creature.attack
 		state.strike = u
 		local from = a.angle
 		a.angle = from + a.dir * (a.arc / math.max(p.duration, 1e-3)) * dt
 		local step = (a.angle - from) * a.dir
-		local lo, hi = bossRoll(creature, def, p.damage)
-		for _, entry in livingRootsNear(state.center, a.outer + 8) do
+		-- THE DRAWN ARM RIDES THE RAKE. This is the one place in the fight
+		-- that writes `aimAngle` after the windup, it is deliberate, and
+		-- PyreliskPath's CONTRACT names it as the single sanctioned case.
+		-- What was latched is the PATH - a.startAngle, a.arc and a.dir, all
+		-- fixed before the first frame of the strike - so the bearing being
+		-- damaged right now is a pure function of the clock and nothing here
+		-- reads a player. Turning the body by it is the server animating a
+		-- committed swing, not re-aiming: the entry mark drawn at windup does
+		-- not move, the arc does not change, and a player who runs cannot
+		-- drag the arm after them. Without it the rake's damage travelled 150
+		-- degrees while the drawn arm turned 26, so the thing you dodge and
+		-- the thing you see agreed only at the start.
+		-- Measured at THIS frame's strike fraction, not at the cached windup
+		-- one: the rake's fist swings 15 degrees round the body over the
+		-- course of the pose (-73.5 at s=0 to -58.7 at s=0.85), and a fixed
+		-- offset would let the drawn arm lead the damage by that much.
+		local fistLocal = (PyreliskPath.fistOffset("rimsweep", state.aimSide or 1, u))
+		state.aimAngle = a.angle - fistLocal
+		local lo, hi = Fn.bossRoll(creature, def, p.damage)
+		for _, entry in Fn.livingRootsNear(state.center, a.outer + 8) do
 			if not a.hit[entry.player] then
 				local stood = entry.root.Position
 				local to = Vector3.new(stood.X - state.center.X, 0, stood.Z - state.center.Z)
 				local d = to.Magnitude
-				local level = math.abs(stood.Y - state.center.Y) <= BOSS_HEIGHT_TOLERANCE
+				local level = math.abs(stood.Y - state.center.Y) <= K.BOSS_HEIGHT_TOLERANCE
 				if level and d >= a.inner and d <= a.outer then
 					-- THE WEDGE THE ARM CROSSED THIS FRAME, not the bearing
 					-- it happens to be on now. A 150-degree arc in 1.8s
@@ -7550,7 +11692,7 @@ ATTACK_HANDLERS.rimsweep = {
 					-- pad is the forearm's own girth in radians at that
 					-- player's distance rather than a guessed constant.
 					local pad = (p.girth or PyreliskPath.WALK_ARM_SIZE.Z) * 0.5 / math.max(d, 1)
-					local rel = pyreliskWrap(math.atan2(to.Z, to.X) - from) * a.dir
+					local rel = Fn.pyreliskWrap(math.atan2(to.Z, to.X) - from) * a.dir
 					if rel >= -pad and rel <= step + pad then
 						a.hit[entry.player] = true
 						PlayerService.damage(entry.player, math.random(lo, hi), creature, { bypassIframe = true })
@@ -7560,7 +11702,7 @@ ATTACK_HANDLERS.rimsweep = {
 		end
 	end,
 	recover = function(creature, def, _p, u, _sub)
-		pyreliskRecoverPose(colossusState(creature, def), u)
+		Fn.pyreliskRecoverPose(Fn.colossusState(creature, def), u)
 	end,
 }
 
@@ -7575,31 +11717,32 @@ ATTACK_HANDLERS.rimsweep = {
 --     the one thing PyreliskPath's contract forbids;
 --   * it takes its cone's origin from `creature.pos`, which for a colossus is
 --     the proxy's pivot lifted by half its own thickness, and
---     damagePlayersInCone gates on 12 studs of height difference - so at this
+--     Fn.damagePlayersInCone gates on 12 studs of height difference - so at this
 --     body's scale the cone would simply miss everyone, every time, with no
 --     error anywhere;
 --   * it PivotTo's the model each frame, dragging the invisible authority
 --     hitbox around under a body the client draws from the pose.
 -- The tick-and-pool SHAPE below is conebreath's, deliberately, so the two
 -- moves stay recognisably the same move.
-ATTACK_HANDLERS.ventbreath = {
+K.ATTACK_HANDLERS.ventbreath = {
 	windup = function(creature, def, p, u, _sub)
-		local state = colossusState(creature, def)
+		local state = Fn.colossusState(creature, def)
 		local a = creature.attack
 		if not a.aimed then
 			a.aimed = true
 			local _, angle = pyreliskLatch(creature, def, p)
 			a.facing = Vector3.new(math.cos(angle), 0, math.sin(angle))
 			-- No telegraph of its own: the row's stock `coneTell` IS this
-			-- move's warning, drawn along bossFacing at the pivot, and
-			-- placeColossus now holds this boss's yaw0 on the tracked player
+			-- move's warning, drawn along Fn.bossFacing at the pivot, and
+			-- Fn.placeColossus now holds this boss's yaw0 on the tracked player
 			-- one frame ahead of this latch - so the wedge that was drawn is
 			-- the wedge that burns.
 		end
-		pyreliskWindupPose(state, "ventbreath", u)
+		Fn.pyreliskWindupPose(state, "ventbreath", u)
+		Fn.pyreliskOpenSeams(state, p)
 	end,
 	fire = function(creature, def, p, _now, _root)
-		local state = colossusState(creature, def)
+		local state = Fn.colossusState(creature, def)
 		local a = creature.attack
 		local reach = p.range or p.reach or 250
 		-- The jet, once, from the jaw rather than from the pivot: this body's
@@ -7614,17 +11757,17 @@ ATTACK_HANDLERS.ventbreath = {
 		})
 	end,
 	strike = function(creature, def, p, now, _dt, u, _root, _sub)
-		local state = colossusState(creature, def)
+		local state = Fn.colossusState(creature, def)
 		local a = creature.attack
 		state.strike = u
 		local reach = p.range or p.reach or 250
 		if now >= (a.nextTickAt or 0) then
 			a.nextTickAt = now + (p.tick or p.tickEvery or 0.35)
-			local lo, hi = bossRoll(creature, def, p.damage)
+			local lo, hi = Fn.bossRoll(creature, def, p.damage)
 			-- From the CENTRE at path height, not from the head: the cone
 			-- test is horizontal and gates on height, and the players are on
 			-- the floor the lake's surface defines.
-			damagePlayersInCone(state.center, a.facing, reach, p.cone or math.rad(44), false, lo, hi, creature)
+			Fn.damagePlayersInCone(state.center, a.facing, reach, p.cone or math.rad(44), false, lo, hi, creature)
 			-- The fire walking out along the wedge, one cheap ring a tick.
 			local walk = reach * (0.3 + 0.6 * u)
 			fireEvent("strikeHit", state.center + a.facing * walk, { radius = 18, skin = p.skin })
@@ -7640,7 +11783,7 @@ ATTACK_HANDLERS.ventbreath = {
 		end
 	end,
 	recover = function(creature, def, _p, u, _sub)
-		pyreliskRecoverPose(colossusState(creature, def), u)
+		Fn.pyreliskRecoverPose(Fn.colossusState(creature, def), u)
 	end,
 }
 
@@ -7658,41 +11801,51 @@ ATTACK_HANDLERS.ventbreath = {
 -- do not move afterwards, so the telegraph still cannot lie. The latch is
 -- still taken, for the body: it decides which way the mountain is facing when
 -- it throws its arms up.
-ATTACK_HANDLERS.ashfall = {
+K.ATTACK_HANDLERS.ashfall = {
 	windup = function(creature, def, p, u, _sub)
-		local state = colossusState(creature, def)
+		local state = Fn.colossusState(creature, def)
 		local a = creature.attack
 		if not a.aimed then
 			a.aimed = true
 			pyreliskLatch(creature, def, p)
 		end
-		pyreliskWindupPose(state, "ashfall", u)
+		Fn.pyreliskWindupPose(state, "ashfall", u)
+		Fn.pyreliskOpenSeams(state, p)
 	end,
 	fire = function(creature, def, p, now, root)
-		local base = ATTACK_HANDLERS.barrage.fire
+		local base = K.ATTACK_HANDLERS.barrage.fire
 		if base then
 			base(creature, def, p, now, root)
 		end
 	end,
 	strike = function(creature, def, _p, _now, _dt, u, _root, _sub)
-		colossusState(creature, def).strike = u
+		Fn.colossusState(creature, def).strike = u
 	end,
 	recover = function(creature, def, _p, u, _sub)
-		pyreliskRecoverPose(colossusState(creature, def), u)
+		Fn.pyreliskRecoverPose(Fn.colossusState(creature, def), u)
 	end,
 }
+
+-- CROWNSHED: the head shakes and slabs of its own crown come down the ARM.
+--
+-- (`K.ATTACK_HANDLERS.crownshed` stood here - act 3's one aimed hazard, slabs
+-- of the burning crown coming down the climb route, landings banded along the
+-- limb by `Fn.pyreliskRampPoints`. It is cut with the act that was its only
+-- phase pool, and its row is gone from `Bosses.items.pyrelisk.attacks` in the
+-- same unit. Nothing else referenced it: `Fn.pickBossAttack` draws from the
+-- phase pools and a handler nothing names is unreachable.)
 
 -- SHARDHURL: it tears a slab off its own shell and throws it. Chip damage,
 -- and the only thing in the book that reaches the outer band under the lip.
 --
--- The throw is `volley`'s primitive (throwGlob: one queued rock that lands on
+-- The throw is `volley`'s primitive (Fn.throwGlob: one queued rock that lands on
 -- its own clock and takes the damage with it), but volley's own `fire` cannot
 -- be used - it scatters around `root` at the moment of the strike, which
 -- re-aims after the telegraph and cannot respect this arena's bands. So the
 -- landings are chosen at WINDUP, marked there, and merely spent at `fire`.
-ATTACK_HANDLERS.shardhurl = {
+K.ATTACK_HANDLERS.shardhurl = {
 	windup = function(creature, def, p, u, _sub)
-		local state = colossusState(creature, def)
+		local state = Fn.colossusState(creature, def)
 		local a = creature.attack
 		if not a.aimed then
 			a.aimed = true
@@ -7709,7 +11862,7 @@ ATTACK_HANDLERS.shardhurl = {
 				local spread = math.sqrt(math.random()) * (p.spread or 30)
 				local at = impact + Vector3.new(math.cos(theta) * spread, 0, math.sin(theta) * spread)
 				local out = Vector3.new(at.X - state.center.X, 0, at.Z - state.center.Z)
-				local d = math.clamp(out.Magnitude, PY_LAKE_R + 4, PY_PATH_OUT)
+				local d = math.clamp(out.Magnitude, K.PY_LAKE_R + 4, K.PY_PATH_OUT)
 				local dir = if out.Magnitude > 0.01 then out.Unit else Vector3.xAxis
 				local landing = state.center + dir * d
 				table.insert(a.landings, landing)
@@ -7725,12 +11878,45 @@ ATTACK_HANDLERS.shardhurl = {
 				})
 			end
 		end
-		pyreliskWindupPose(state, "shardhurl", u)
+		Fn.pyreliskWindupPose(state, "shardhurl", u)
+		Fn.pyreliskOpenSeams(state, p)
 	end,
 	fire = function(creature, def, p, now, _root)
 		local a = creature.attack
+		local state = Fn.colossusState(creature, def)
+		-- FROM THE HAND THAT THREW IT. Fn.throwGlob's default origin is the
+		-- pivot, which on this boss is the proxy standing in the lake at its
+		-- feet: the slabs flew out of the ground while the drawn arm was
+		-- cocked across the chest 333 studs up, so the one attack whose whole
+		-- read is "it tears a piece off itself and throws it" showed nothing
+		-- leaving it.
+		--
+		-- ASK THE RIG WHERE THE HAND IS, rather than rebuilding it. This used
+		-- to take `fistOffset(..., 0)` - body-local polar - and push it back
+		-- through `toWorld` to pick up the yaw. That was correct while
+		-- `fistOffset` returned an UNCOMMITTED point; since the jointed
+		-- rebuild it returns one that already carries the body's pitch and
+		-- tilt (PyreliskPath's THE BODY COMMITMENT), so `toWorld` would apply
+		-- that rotation a second time and the rock would leave from a hand
+		-- that is not the drawn one. `fistPoint` is the drawn fist, in world,
+		-- and `fire` runs on the first strike frame - which is exactly the
+		-- windup's held shape, the moment of release.
+		-- WHERE THE ROCK LEAVES FROM: the fist, in every act this move is cast
+		-- in, which is now only 1 and 2.
+		--
+		-- (A `>= 3` branch stood here and took the origin from the SHOULDER
+		-- instead, because act 3's colossus had no arms to throw with. The
+		-- climb is cut: the phase pool that could draw this move past the arms
+		-- is gone, the colossus is falling within a frame of the second arm's
+		-- death, and `state.act` is never 3 on this model at all - so the
+		-- branch was unreachable, and an unreachable branch about a limb that
+		-- may or may not exist is exactly the kind of dead code that gets read
+		-- as a live rule later. ACTS 1 AND 2 ARE BYTE-IDENTICAL either way:
+		-- `state.act` is 1 or 2 through both and the test never fired in them.)
+		local side = state.aimSide or 1
+		local hand = PyreliskPath.fistPoint(state, side)
 		for i, landing in (a.landings or {}) do
-			throwGlob(
+			Fn.throwGlob(
 				creature,
 				def,
 				p,
@@ -7738,28 +11924,678 @@ ATTACK_HANDLERS.shardhurl = {
 				(p.flight or 1.2) + (i - 1) * (p.stagger or 0.25),
 				now,
 				"strikeHit",
-				"spine"
+				"spine",
+				nil,
+				hand
 			)
 		end
 	end,
 	strike = function(creature, def, _p, _now, _dt, u, _root, _sub)
-		colossusState(creature, def).strike = u
+		Fn.colossusState(creature, def).strike = u
 	end,
 	recover = function(creature, def, _p, u, _sub)
-		pyreliskRecoverPose(colossusState(creature, def), u)
+		Fn.pyreliskRecoverPose(Fn.colossusState(creature, def), u)
 	end,
 }
 
-ATTACK_HANDLERS.lightsweep = {
+-- --------------------------------------------- the choir swings its own limbs
+--
+-- THE THREE SWINGS. Until now the choir was scenery with hitboxes: every move
+-- in her book spawned a telegraph somewhere on the stone and the seven limbs
+-- stood there breathing while something else did the hurting. These three make
+-- the limbs themselves the weapon, and none of the geometry is here - the pose,
+-- the floor stripe and the hitbox all live in NoctyssPath ("the tentacles
+-- attack"), derived on both sides from ONE descriptor. All this file does is
+-- choose a limb, latch a point, hand the descriptor over once, and tick damage.
+--
+-- MIND THE TWO CLOCKS. `now` in a handler is `os.clock()`; every NoctyssPath
+-- call runs on `Workspace:GetServerTimeNow()` (NoctyssPath.clock), which is the
+-- one the client shares and the one every `start` is stamped from.
+-- `Fn.updateNoctyss` writes the second onto `state.time` at the top of its
+-- frame, so that is what goes into attackPhase / attackLive / attackHits below.
+-- Feeding a handler's `now` to those would ask for the shape at a time in a
+-- different epoch - the two differ by however long the server has been up.
+
+-- WHICH LIMB SWINGS: the nearest stalk that can actually reach the point,
+-- never a fallen one, never one already mid-swing (NoctyssPath.stalkBusy), and
+-- - for the two heavy swings - never the MARKED one. The true lure is the
+-- thing the party is hunting; a lure that hurls itself across the arena while
+-- someone is lining up the shot is the fight dodging its own answer. The jab is
+-- exempt: it is short, it is thrown as a punish, and it moves the lantern
+-- barely further than an ordinary lean already does.
+--
+-- Returns the socket index and the point to latch, or nil if no limb covers it.
+function Fn.pickAttackStalk(state, root: BasePart?, kind: string): (number?, Vector3?)
+	if not root then
+		return nil
+	end
+	-- ON THE FLOOR, one eye-radius up: a swing aimed at a player's chest drives
+	-- the limb through the stone to get there. Latched from this, not from the
+	-- root part, so the point the stripe is drawn to is the point tested.
+	local aim = NoctyssPath.aimPoint(state, root.Position)
+	local clock = state.time or NoctyssPath.clock()
+	local best, bestDist = nil, math.huge
+	for index, stalk in state.stalks do
+		-- `growOf` is the regrow's gate, and it is here rather than at the four
+		-- call sites for the same reason `stalkBusy` is: a pick must never hand
+		-- back a limb the caller then has to check. A stalk half out of its
+		-- collar cannot reach anything (the whole curve is scaled about the
+		-- root), so a swing thrown from one would draw a stripe to a point the
+		-- arm is nowhere near.
+		if
+			stalk.alive
+			and NoctyssPath.growOf(state, index) >= 1
+			and not NoctyssPath.stalkBusy(state, index, clock)
+			and (kind == "feelerstrike" or index ~= state.trueLure)
+		then
+			local socket = state.center + NoctyssPath.socketPoint(index)
+			local span = (aim - socket).Magnitude
+			local near, far = NoctyssPath.stalkReach(state, index)
+			-- COVERS IT, rather than merely "is nearest to it". `setAttack`
+			-- pulls a target the arm cannot reach back inside the arm, so a
+			-- stalk picked out of range would draw its stripe short of the
+			-- player it was aimed at and land nothing - the one lie a telegraph
+			-- is not allowed to tell.
+			if span >= near and span <= far and span < bestDist then
+				best, bestDist = index, span
+			end
+		end
+	end
+	return best, aim
+end
+
+-- CAN THIS MOVE BE THROWN AT ALL? A book that offers a limb swing while every
+-- limb is down, busy or out of reach spends the move's whole windup + strike +
+-- recover doing nothing and then sits on its cooldown - which is exactly the
+-- hole `lightsweep` had, and it is several seconds of the fight standing still.
+-- Asked before `Fn.beginBossAttack`, the one place a move can still be swapped.
+function Fn.choirMoveReady(state, name: string, root: BasePart?): boolean
+	if name == "lightsweep" then
+		return Fn.pickChoirStalk(state, root) ~= nil
+	end
+	if name == "stalkslam" or name == "gloomscythe" or name == "feelerstrike" then
+		return (Fn.pickAttackStalk(state, root, name)) ~= nil
+	end
+	-- THE HERDING SNAP NEEDS TWO ADJACENT LIMBS AND A HEAD THAT IS DOWN.
+	-- `herdTargets` answers the first question in full - two neighbouring
+	-- sockets, both alive, neither already swinging, or nil - so there is
+	-- nothing to re-check at the call site. The second is `mawRise`: the snap
+	-- publishes a PARTIAL rise onto that same number, so offering it while the
+	-- real window is up, coming up or sinking would put two authors on the one
+	-- value and read on screen as a maw that stalled half way. Any rise at all
+	-- disqualifies it; a fully sunk head is exactly 0.
+	if name == "herdingsnap" then
+		if (state.mawRise or 0) > 0.01 then
+			return false
+		end
+		-- AND SEVEN STALKS THAT ARE ALL THE WAY OUT. `herdTargets` picks the
+		-- pair off the arena's geometry and knows about death and about being
+		-- busy, but not about a regrow - so the one move whose limbs are chosen
+		-- by NoctyssPath rather than by `Fn.pickAttackStalk` asks here. (The
+		-- portcullis' pair is screened in `Fn.armChoirAttackAt` instead: it is
+		-- a window event and never passes through this function at all.)
+		if not Fn.choirGrown(state) then
+			return false
+		end
+		return root ~= nil and (NoctyssPath.herdTargets(state, root.Position)) ~= nil
+	end
+	return true
+end
+
+-- ARM ONE. Called on the first windup frame of all three handlers: pick the
+-- limb, latch the point, hand the same table to NoctyssPath and to every
+-- client, once. Everything afterwards is derived from it on both sides.
+function Fn.armChoirAttack(creature, def, kind: string, root: BasePart?)
+	local state = Fn.colossusState(creature, def)
+	local a = creature.attack
+	-- Set even when the arming fails, so a swing that found no limb on its
+	-- first frame does not re-run the search sixty times a second for the rest
+	-- of a windup during which nothing has changed.
+	a.armed = true
+	local index, aim = Fn.pickAttackStalk(state, root, kind)
+	if not index or not aim then
+		return nil
+	end
+	-- LATCHED HERE AND NOWHERE ELSE. The point is read once, as the telegraph
+	-- is drawn, and the strike, the stripe and the hit test all read this same
+	-- number afterwards. A limb that tracked would make its own telegraph a
+	-- lie, and in a pitch-black arena the telegraph is all a player has.
+	local attack = NoctyssPath.setAttack(state, {
+		kind = kind,
+		index = index,
+		target = aim,
+		start = NoctyssPath.clock(),
+		-- The sweep's other three fields (the bearing it opens on, the arc, the
+		-- radius the eye drags at) are `setAttack`'s to fill, and it fills them
+		-- identically from the descriptor on the client - so the only one sent
+		-- is the coin flip, which cannot be derived from anything.
+		dir = if kind ~= "gloomscythe" then nil elseif math.random() < 0.5 then -1 else 1,
+	})
+	if not attack then
+		return nil
+	end
+	a.swingIndex = index
+	a.hit = {}
+	a.nextTick = 0
+	-- THE ONLY THING SENT, AND IT IS SENT ONCE. NoctyssBodyController runs the
+	-- pose, the floor mark and the sound off this table's `start` on the shared
+	-- clock; nothing about a swing is replicated per frame, ever.
+	Remotes.ChoirAttack:FireAllClients(attack)
+	return attack
+end
+
+-- ONE FRAME OF A SWING: hold the limb's lean at zero, and land whatever the
+-- hitbox is touching.
+--
+-- LEAN 0 FOR THE WHOLE ATTACK, and it is not cosmetic. `lean` swings the crook
+-- onto the beam bearing, and the attack pose is SOLVED FROM the shape the stalk
+-- is in - so a limb that entered a slam still leaning out of a lightsweep would
+-- be posed off a curve the solver never aimed, and the eye would land off its
+-- own stripe. Set rather than saved and restored: `Fn.updateChoir` eases every
+-- un-attacking lean back to 0 on its own, so letting go IS the restore.
+--
+-- `once` is the difference between the two damage shapes. The slam and the jab
+-- land at most once per player per swing - a heavy single hit that ticked would
+-- be three heavy hits - and the scythe ticks on `p.tick` for as long as its eye
+-- is dragging over you.
+function Fn.tickChoirAttack(creature, def, p, now: number, once: boolean)
+	local state = Fn.colossusState(creature, def)
+	local a = creature.attack
+	local index = a.swingIndex
+	if not index then
+		return
+	end
+	local clock = state.time or NoctyssPath.clock()
+	-- SHOT OUT FROM UNDER ITS OWN SWING. `attackFor` retires a descriptor whose
+	-- stalk is dead (and one whose time is up), so a lantern broken mid-slam
+	-- stops damaging on the frame it breaks rather than at the end of the phase
+	-- - which is the reward for shooting the thing that is winding up at you.
+	local attack = NoctyssPath.attackFor(state, index, clock)
+	if not attack then
+		a.swingIndex = nil
+		return
+	end
+	local stalk = state.stalks[index]
+	if stalk then
+		stalk.lean = 0
+	end
+	if not NoctyssPath.attackLive(attack, clock) then
+		return
+	end
+	if not once then
+		if now < (a.nextTick or 0) then
+			return
+		end
+		-- 0.45 against Tuning's 0.35 i-frame: a tick landing inside the contact
+		-- window is refused outright, so a faster interval would not be more
+		-- damage, it would be a number in the book that means nothing.
+		a.nextTick = now + (p.tick or 0.45)
+	end
+	local lo, hi = Fn.bossRoll(creature, def, p.damage)
+	for _, player in Players:GetPlayers() do
+		local character = player.Character
+		local playerRoot = character and character:FindFirstChild("HumanoidRootPart")
+		-- NO PAD. The client draws the slam's stripe at exactly SLAM.RADIUS and
+		-- the scythe's band at exactly SCYTHE.RADIUS, so stepping off what is
+		-- drawn is stepping out of what is tested - exactly, not approximately.
+		if
+			playerRoot
+			and not (once and a.hit[player])
+			and NoctyssPath.attackHits(state, attack, playerRoot.Position, p.girth or 0, clock)
+		then
+			if once then
+				a.hit[player] = true
+			end
+			PlayerService.damage(player, math.random(lo, hi), creature)
+		end
+	end
+end
+
+-- EVERY SWING RETIRED AT ONCE, and every limb put back down. `attackFor` drops
+-- a descriptor whose stalk is dead or whose time is up, but nothing ever asks
+-- it about a socket standing empty - so a choir withdrawn mid-swing
+-- (`closeMaw`) leaves its descriptor in the pose state, and the regrow's
+-- `stalk.alive = true` a few seconds later would hand the new choir a limb the
+-- fight believes is still busy (and could hand it the true lure). Called from
+-- both ends of that gap, which is the only gap: a boss that DIES takes its pose
+-- state with it (Noctyss is not `entrenched`, so there is no collapse to hold
+-- one open), and a stalk that dies alone is `attackFor`'s own case above.
+function Fn.clearChoirAttacks(state)
+	if not state then
+		return
+	end
+	state.attacks = {}
+	-- AND THE SNAP, which is the head's own descriptor rather than a socket's.
+	-- `snapFor` retires one whose time is up, but nothing ever asks it about a
+	-- head that has gone back down: a window that shuts (or a choir that
+	-- regrows) mid-herd would otherwise leave `state.snap` standing, and the
+	-- next frame that read it would publish a partial rise onto a maw that is
+	-- not there - or bite for it.
+	state.snap = nil
+	for index, stalk in state.stalks do
+		stalk.lean = 0
+		-- AND THE RISE, which is retired here for the same reason the swings
+		-- are: this is called from both ends of the gap in which a choir does
+		-- not exist (`closeMaw` withdraws one, `Fn.spawnBossParts` stands the
+		-- next one up), and a `grow` left half way through from the last cycle
+		-- would be a stalk the fight believes is still climbing out of its
+		-- collar - untargetable, unpickable for every limb move, until the next
+		-- regrow happened to overwrite it. Put back to 1 (a stalk that is all
+		-- the way out), which is also what every caller that never heard of a
+		-- regrow reads. `creature.choirGrowAt` is the other half and is stamped
+		-- fresh by the regrow itself.
+		NoctyssPath.setGrow(state, index, 1)
+	end
+end
+
+-- ---------------------------------------- the head throwing the limbs (2026-09-09)
+--
+-- TWO MOVES, ONE NEW IDEA: the head chooses the targets and the limbs deliver
+-- them, in PAIRS. See NoctyssPath's "the head and the limbs together" - a
+-- portcullis is two ordinary slams across the doorway, a herding snap is two
+-- ordinary slams plus a bite at her own rim. Neither is a new pose and neither
+-- is a new hit shape, so all that lives here is the arming and the ticking.
+--
+-- WHY A SLOT AND NOT `creature.attack`. Fn.armChoirAttack / Fn.tickChoirAttack
+-- keep their one swing on `creature.attack` (`swingIndex`, `hit`, `nextTick`),
+-- which is the engine's single attack record - and both of these moves need
+-- TWO at once. The portcullis needs its two OUTSIDE a book move entirely: it
+-- is a window event, and she goes on throwing book attacks while the jaw
+-- shuts, so writing the door's limbs into `creature.attack` would overwrite
+-- whatever swing that move is half-way through. So the three fields travel in
+-- a plain table the caller owns, and these two functions are the same code
+-- reading it from there.
+
+-- Damage for a bar when the row somehow has no `stalkslam` to borrow from: a
+-- portcullis IS a slam and is paid as one. A K field rather than a table built
+-- per frame at the call site.
+K.PORTCULLIS_FALLBACK = { damage = { 34, 40 } }
+
+-- ARM ONE, AT AN INDEX AND A POINT THE CALLER ALREADY CHOSE. Fn.armChoirAttack
+-- picks its own limb off the player; the head's two moves have theirs from
+-- NoctyssPath (`flankingStalks` + `doorTargets`, `herdTargets`), which is the
+-- whole point of them - the geometry is the attack. A nil index is not an
+-- error: `flankingStalks` returns nil for a side with nobody left, and one bar
+-- is a legitimate half-door.
+-- `hold` and `pair` are the descriptor's two optional fields (NoctyssPath, "the
+-- tentacles attack"), and BOTH of them exist for this function's two callers -
+-- the only moves in the fight made of two slams thrown on one frame:
+--
+--   hold  EXTRA seconds `attackKeep` pins the landed pose before the peel front
+--         starts. A herd bar passes SNAP.RISE (1.0): the funnel has to still be
+--         on the stone while the mouth climbs out of the middle of it, and a V
+--         visibly peeling apart as the jaws breach unmakes itself at the exact
+--         moment it is needed. A door bar passes 0 - the portcullis' beat is
+--         the jaw shutting, not a rise, and its bars land ON that frame.
+--   pair  which of the two speaks. Two bodies firing two `slamImpact`s on one
+--         frame is a doubled, phase-cancelled crack that sounds SMALLER than
+--         one bar, and nothing in it says the two stripes are one move. `true`
+--         on the voice, `false` (and not nil - nil means an ordinary swing,
+--         which speaks) on its partner.
+function Fn.armChoirAttackAt(creature, def, kind: string, index: number?, target: Vector3?, slot, hold, pair)
+	if not index or not target or not slot then
+		return nil
+	end
+	local state = Fn.colossusState(creature, def)
+	-- A LIMB STILL COMING OUT OF ITS COLLAR IS NOT AVAILABLE. `Fn.pickAttackStalk`
+	-- and `Fn.pickChoirStalk` screen this for the moves that pick their own limb;
+	-- the head's two moves have theirs from NoctyssPath's geometry, which knows
+	-- about reach and about who is busy but not about a regrow, so the screen for
+	-- them is here - one gate covering both callers.
+	--
+	-- AND A LIMB MID-LIGHTSWEEP IS NOT AVAILABLE EITHER. `state.activeStalk`
+	-- is the stalk the sweep owns for the length of its wind-up and beam, and
+	-- it keeps writing that stalk's `lean` and `beamAngle` every frame. Handed
+	-- the same limb as a door bar, the client pins lean = 0 and freezes
+	-- beamAngle to hold the slam pose while the server sweeps on underneath -
+	-- so the drawn lantern separates from the hitbox the beam is tested from
+	-- (~10 studs by the end of the windup) and the light lands nowhere near
+	-- where it is shown. Refusing the limb costs one bar; taking it breaks the
+	-- move the player is currently reading.
+	if NoctyssPath.growOf(state, index) < 1 or index == state.activeStalk then
+		return nil
+	end
+	local attack = NoctyssPath.setAttack(state, {
+		kind = kind,
+		index = index,
+		target = target,
+		start = NoctyssPath.clock(),
+		hold = hold,
+		pair = pair,
+	})
+	if not attack then
+		return nil
+	end
+	slot.index, slot.hit, slot.nextTick = index, {}, 0
+	-- The same one-shot replication every other swing gets: NoctyssBodyController
+	-- runs the pose, the floor mark and the sound off this table's `start`.
+	Remotes.ChoirAttack:FireAllClients(attack)
+	return attack
+end
+
+-- ONE FRAME OF ONE SLOT. Line for line Fn.tickChoirAttack's body, reading the
+-- three fields off `slot` instead of off `creature.attack` - including the two
+-- rules that matter: `attackFor` re-read every frame (a limb shot out from
+-- under its own bar stops damaging on the frame it breaks) and NO PAD beyond
+-- the row's `girth`, so what the client draws is exactly what is tested.
+function Fn.tickChoirSlot(creature, def, p, slot, now: number, once: boolean)
+	local index = slot and slot.index
+	if not index then
+		return
+	end
+	local state = Fn.colossusState(creature, def)
+	local clock = state.time or NoctyssPath.clock()
+	local attack = NoctyssPath.attackFor(state, index, clock)
+	if not attack then
+		slot.index = nil
+		return
+	end
+	local stalk = state.stalks[index]
+	if stalk then
+		stalk.lean = 0
+	end
+	if not NoctyssPath.attackLive(attack, clock) then
+		return
+	end
+	if not once then
+		if now < (slot.nextTick or 0) then
+			return
+		end
+		slot.nextTick = now + (p.tick or 0.45)
+	end
+	slot.hit = slot.hit or {}
+	local lo, hi = Fn.bossRoll(creature, def, p.damage)
+	for _, player in Players:GetPlayers() do
+		local character = player.Character
+		local playerRoot = character and character:FindFirstChild("HumanoidRootPart")
+		if
+			playerRoot
+			and not (once and slot.hit[player])
+			and NoctyssPath.attackHits(state, attack, playerRoot.Position, p.girth or 0, clock)
+		then
+			if once then
+				slot.hit[player] = true
+			end
+			PlayerService.damage(player, math.random(lo, hi), creature)
+		end
+	end
+end
+
+-- THE PORTCULLIS, ARMED. DOOR.LEAD (1.6s) before the jaw shuts, which is one
+-- SLAM.WINDUP (1.2) plus SLAM.LIVE (0.4): the bars finish landing on the exact
+-- frame the bite lands, so a player in the mouth reads the exit narrowing while
+-- the roof comes down and has the whole windup to run the slot.
+--
+-- IT NEVER SEALS. `doorTargets` stands the two capsules DOOR.HALF either side
+-- of the entrance lane, leaving 8 studs of walkable centreline - the punish is
+-- that you have to run the middle of it, not that you are trapped.
+function Fn.armPortcullis(creature, def)
+	local state = Fn.colossusState(creature, def)
+	local indexA, indexB = NoctyssPath.flankingStalks(state)
+	if not indexA and not indexB then
+		-- Silently, as far as the fight is concerned: no bars, the window runs
+		-- exactly as it did before. Logged because "the door never came down"
+		-- has no symptom on screen at all, and the cause is always the same
+		-- one - the choir this cycle has nobody left standing near the lane.
+		warn(string.format("[CreatureService] boss %q had no limb free to bar its door", def.id))
+		return
+	end
+	local targetA, targetB = NoctyssPath.doorTargets(state)
+	creature.doorSlots = { {}, {} }
+	-- `flankingStalks` and `doorTargets` both return (+lateral, -lateral) in
+	-- that order, which is what lets the voice be chosen by POSITION here
+	-- rather than by re-deriving a side: the first is the +lateral bar, so it
+	-- carries `pair = true` and sounds, and its partner carries `pair = false`
+	-- and comes down silent. `hold` is 0 for both - a door bar lands on the
+	-- frame the jaw shuts and has no rise to wait out.
+	--
+	-- THE SILENCE IS CONDITIONAL ON THE VOICE EXISTING. `armChoirAttackAt`
+	-- returns nil when its limb is unusable (no index, no target, mid-regrow,
+	-- mid-sweep), and a door whose A bar was refused would otherwise hand its
+	-- only surviving bar a hard `pair = false` - a half-door that comes down
+	-- with no slamSnuff, no slamImpact and no peel, which is indistinguishable
+	-- on screen and in the ears from the door never arming at all. So the B
+	-- bar is screened `false` only when there IS an A bar to be screened
+	-- behind; alone, it passes nil and speaks as the ordinary swing it is.
+	local voice = Fn.armChoirAttackAt(creature, def, "portcullis", indexA, targetA, creature.doorSlots[1], 0, true)
+	Fn.armChoirAttackAt(
+		creature,
+		def,
+		"portcullis",
+		indexB,
+		targetB,
+		creature.doorSlots[2],
+		0,
+		(if voice then false else nil)
+	)
+end
+
+-- ...AND TICKED, once per frame for as long as the window is open. `once` is
+-- true: a bar is a slam, and a slam lands at most once per player per swing.
+function Fn.tickPortcullis(creature, def)
+	local slots = creature.doorSlots
+	if not slots then
+		return
+	end
+	local p = (def.attacks and def.attacks.stalkslam) or K.PORTCULLIS_FALLBACK
+	local now = os.clock()
+	Fn.tickChoirSlot(creature, def, p, slots[1], now, true)
+	Fn.tickChoirSlot(creature, def, p, slots[2], now, true)
+	if not slots[1].index and not slots[2].index then
+		creature.doorSlots = nil
+	end
+end
+
+-- ONE FRAME OF A HERDING SNAP: the two bars, and then the head.
+--
+-- THE PARTIAL RISE IS NOT THE PUNISH WINDOW. `state.mawRise` is published to
+-- NoctyssBodyController every frame by Fn.placeColossus, and the client eases
+-- toward it exactly as it does during the window - so a snap costs no new
+-- replication. What it deliberately does NOT touch is `creature.mawOpen` and
+-- ATTR.EXPOSED: those two are the damage window, and a mouth that breached to
+-- NoctyssPath.SNAP.RISE_TO is not one. Written AFTER Fn.updateNoctyss' own rise/decay
+-- for the frame, because this call hangs off Fn.updateBossAttack at the bottom
+-- of that function - and skipped outright while the real window is up, so a
+-- true lure broken mid-snap cannot have its rise stalled at SNAP.RISE_TO by
+-- a snap that is still sinking.
+--
+-- MawGape is floored at 0.12 for the same frames: the client suppresses its
+-- bite note under that, and a snap with no bite note is a mouth closing in
+-- silence.
+function Fn.tickHerd(creature, def, p, now: number)
+	local state = Fn.colossusState(creature, def)
+	local a = creature.attack
+	if a.herd then
+		Fn.tickChoirSlot(creature, def, p, a.herd[1], now, true)
+		Fn.tickChoirSlot(creature, def, p, a.herd[2], now, true)
+	end
+	local clock = state.time or NoctyssPath.clock()
+	local snap = NoctyssPath.snapFor(state, clock)
+	if not snap or creature.mawOpen then
+		return
+	end
+	state.mawRise = NoctyssPath.snapRise(snap.start, clock)
+	state.mawGape = math.max(state.mawGape or 0, 0.12)
+	if (NoctyssPath.snapPhase(snap.start, clock)) ~= "bite" then
+		return
+	end
+	-- ONCE PER PLAYER PER SNAP, like the bite at the close and for the same
+	-- reason: BITE is 0.3s and a disc that ticked would be three of these.
+	a.snapHit = a.snapHit or {}
+	local lo, hi = Fn.bossRoll(creature, def, p.damage)
+	for _, player in Players:GetPlayers() do
+		local character = player.Character
+		local playerRoot = character and character:FindFirstChild("HumanoidRootPart")
+		if
+			playerRoot
+			and not a.snapHit[player]
+			and NoctyssPath.snapHits(state, playerRoot.Position, p.girth or 0, clock, snap.start)
+		then
+			a.snapHit[player] = true
+			PlayerService.damage(player, math.random(lo, hi), creature)
+		end
+	end
+end
+
+-- STALKSLAM: the lantern goes out, the limb rears, and the whole stalk comes
+-- down along a line drawn on the stone from its own collar. A 1.2s windup
+-- against a 7-stud half-width, so the answer is seven studs sideways - about
+-- 0.44s at a walk of 16 - and the tell is a light dying in a room lit by seven.
+K.ATTACK_HANDLERS.stalkslam = {
+	windup = function(creature, def, p, _u, _sub)
+		local state = Fn.colossusState(creature, def)
+		if not creature.attack.armed then
+			Fn.armChoirAttack(creature, def, "stalkslam", (Fn.nearestPlayerRoot(state.center)))
+		end
+		Fn.tickChoirAttack(creature, def, p, os.clock(), true)
+	end,
+	strike = function(creature, def, p, now, _dt, _u, _root, _sub)
+		Fn.tickChoirAttack(creature, def, p, now, true)
+	end,
+	recover = function(creature, def, p, _u, _sub)
+		-- Still ticked through the recovery: no damage (the descriptor's live
+		-- window is long over) but the limb is still posed, and the lean has to
+		-- stay pinned until it lets go of its own accord.
+		Fn.tickChoirAttack(creature, def, p, os.clock(), true)
+	end,
+}
+
+-- GLOOMSCYTHE: it bows until the eye is ON the stone and then walks that eye
+-- around its own socket. The pool of light crawling across the floor arrives
+-- before the limb does and is visible from behind as a glow rising off the
+-- ground, which is what makes a 75-degree sweep dodgeable in locked first
+-- person. The dodge is the radial step out of the band, not a footrace with it.
+K.ATTACK_HANDLERS.gloomscythe = {
+	windup = function(creature, def, p, _u, _sub)
+		local state = Fn.colossusState(creature, def)
+		if not creature.attack.armed then
+			Fn.armChoirAttack(creature, def, "gloomscythe", (Fn.nearestPlayerRoot(state.center)))
+		end
+		Fn.tickChoirAttack(creature, def, p, os.clock(), false)
+	end,
+	strike = function(creature, def, p, now, _dt, _u, _root, _sub)
+		Fn.tickChoirAttack(creature, def, p, now, false)
+	end,
+	recover = function(creature, def, p, _u, _sub)
+		Fn.tickChoirAttack(creature, def, p, os.clock(), false)
+	end,
+}
+
+-- FEELERSTRIKE: coil, spear, snap back - and it is a real limb doing it now
+-- rather than a `barrage` of blind circles under everyone at once. Short enough
+-- to stay a punish rather than a set piece, which is what `lurepull` follows
+-- with it for.
+K.ATTACK_HANDLERS.feelerstrike = {
+	windup = function(creature, def, p, _u, _sub)
+		local state = Fn.colossusState(creature, def)
+		if not creature.attack.armed then
+			Fn.armChoirAttack(creature, def, "feelerstrike", (Fn.nearestPlayerRoot(state.center)))
+		end
+		Fn.tickChoirAttack(creature, def, p, os.clock(), true)
+	end,
+	strike = function(creature, def, p, now, _dt, _u, _root, _sub)
+		Fn.tickChoirAttack(creature, def, p, now, true)
+	end,
+	recover = function(creature, def, p, _u, _sub)
+		Fn.tickChoirAttack(creature, def, p, os.clock(), true)
+	end,
+}
+
+-- HERDINGSNAP: two adjacent limbs slam onto a V whose point is ON THE PIT'S
+-- RIM, and then she snaps at the rim. The V does not push anyone in - it makes
+-- walking in the direction that feels safest (away from the limbs, into the
+-- dark middle) the thing that kills you.
+--
+-- THE BEAT, and every number of it is NoctyssPath's rather than this row's:
+-- the bars land at SLAM.WINDUP (1.2s), the snap starts on that same frame and
+-- rises for SNAP.RISE (1.0s), bites for SNAP.BITE (0.3s) and sinks for
+-- SNAP.SINK (0.9s). So the tell for the bite is a full second of mouth
+-- breaching out of the floor you are standing on, AFTER the bars have already
+-- told you where the funnel points.
+K.ATTACK_HANDLERS.herdingsnap = {
+	windup = function(creature, def, p, _u, _sub)
+		local state = Fn.colossusState(creature, def)
+		local a = creature.attack
+		if not a.armed then
+			-- Set even when the arming finds nothing, so a snap that lost its
+			-- limbs on the first frame does not re-run the search sixty times
+			-- a second through a windup during which nothing has changed.
+			a.armed = true
+			a.herd = { {}, {} }
+			local root = Fn.nearestPlayerRoot(state.center)
+			if root then
+				-- BOTH BARS FROM ONE CALL, and latched here: `herdTargets`
+				-- already ran the same `clampToReach` `setAttack` will, so what
+				-- it hands back IS what is drawn and tested.
+				local indexA, indexB, targetA, targetB = NoctyssPath.herdTargets(state, root.Position)
+				-- BOTH BARS STAY DOWN UNTIL THE MOUTH IS UP (`hold` =
+				-- SNAP.RISE, 1.0s): the V is the funnel the bite is aimed
+				-- into, and a funnel whose walls are peeling off the stone
+				-- while the jaws climb is telling the player the move is over
+				-- one full second before it is. The first bar is the voice
+				-- (`pair`), so the pair cracks once instead of twice - and the
+				-- second is screened `false` ONLY if that voice actually armed.
+				-- A V that lost its A limb (regrow, or mid-lightsweep) would
+				-- otherwise put down one silent wall, with the bite still
+				-- coming and nothing in the mix saying a wall had landed.
+				local hold = NoctyssPath.SNAP.RISE
+				local voice = Fn.armChoirAttackAt(creature, def, "stalkslam", indexA, targetA, a.herd[1], hold, true)
+				Fn.armChoirAttackAt(
+					creature,
+					def,
+					"stalkslam",
+					indexB,
+					targetB,
+					a.herd[2],
+					hold,
+					(if voice then false else nil)
+				)
+			end
+		end
+		Fn.tickHerd(creature, def, p, os.clock())
+	end,
+	-- THE SNAP STARTS AS THE BARS LAND. `fire` runs on the frame the windup
+	-- ends, which is SLAM.WINDUP after the descriptors were stamped - so
+	-- snapStart == slam start + 1.2 exactly, which is the arithmetic every
+	-- dodge in this move was priced against.
+	fire = function(creature, def, _p, _now, _root, _player, _dist)
+		local state = Fn.colossusState(creature, def)
+		local snap = NoctyssPath.setSnap(state, {
+			kind = "herdingsnap",
+			-- 0 and the pit's centre only so the descriptor passes the same
+			-- wire validation every other one does; nothing reads either.
+			index = 0,
+			start = NoctyssPath.clock(),
+			target = state.center,
+		})
+		if snap then
+			-- Down the same one-shot pipe as a limb's swing: the client draws
+			-- the snap ring off this table's `start`, on the shared clock.
+			Remotes.ChoirAttack:FireAllClients(snap)
+		end
+		creature.attack.snapHit = {}
+	end,
+	strike = function(creature, def, p, now, _dt, _u, _root, _sub)
+		Fn.tickHerd(creature, def, p, now)
+	end,
+	recover = function(creature, def, p, _u, _sub)
+		-- The rise, the bite and the whole sink live in here: the row's
+		-- recover is sized so the engine lets go on the frame `snapFor`
+		-- retires the snap, and the bars' own descriptors expire under it.
+		Fn.tickHerd(creature, def, p, os.clock())
+	end,
+}
+
+K.ATTACK_HANDLERS.lightsweep = {
 	windup = function(creature, def, p, u, _sub)
-		local state = colossusState(creature, def)
+		local state = Fn.colossusState(creature, def)
 		local a = creature.attack
 		if not a.stalk then
 			-- Picked on the first windup frame rather than at `fire`, because
 			-- the lean IS the telegraph: the stalk has to start moving before
 			-- the light arrives or there is nothing to read.
-			local root = nearestPlayerRoot(state.center)
-			a.stalk = pickChoirStalk(state, root)
+			local root = Fn.nearestPlayerRoot(state.center)
+			a.stalk = Fn.pickChoirStalk(state, root)
 			local stalk = a.stalk and state.stalks[a.stalk]
 			if stalk then
 				local socket = state.center + NoctyssPath.socketPoint(a.stalk)
@@ -7787,7 +12623,7 @@ ATTACK_HANDLERS.lightsweep = {
 		end
 	end,
 	fire = function(creature, def, p, _now, _root)
-		local state = colossusState(creature, def)
+		local state = Fn.colossusState(creature, def)
 		local a = creature.attack
 		local stalk = a.stalk and state.stalks[a.stalk]
 		-- The stalk that spent the wind-up leaning may have been SHOT OUT
@@ -7834,7 +12670,7 @@ ATTACK_HANDLERS.lightsweep = {
 		a.nextTick = 0
 	end,
 	strike = function(creature, def, p, now, dt, _u, _root, _sub)
-		local state = colossusState(creature, def)
+		local state = Fn.colossusState(creature, def)
 		local a = creature.attack
 		local stalk = a.stalk and state.stalks[a.stalk]
 		if not stalk or not stalk.alive then
@@ -7848,7 +12684,7 @@ ATTACK_HANDLERS.lightsweep = {
 			return
 		end
 		a.nextTick = now + (p.tick or 0.45)
-		local lo, hi = bossRoll(creature, def, p.damage)
+		local lo, hi = Fn.bossRoll(creature, def, p.damage)
 		for _, player in Players:GetPlayers() do
 			local character = player.Character
 			local playerRoot = character and character:FindFirstChild("HumanoidRootPart")
@@ -7858,7 +12694,7 @@ ATTACK_HANDLERS.lightsweep = {
 		end
 	end,
 	finish = function(creature, def, _p, _now)
-		local state = colossusState(creature, def)
+		local state = Fn.colossusState(creature, def)
 		state.activeStalk = nil
 	end,
 }
@@ -7875,34 +12711,57 @@ ATTACK_HANDLERS.lightsweep = {
 -- The true lure flares and hauls the whole shelf toward the pit; the drag is
 -- the shared handler's, and all this adds is the one thing it could not do -
 -- announce itself somewhere the player can see.
-ATTACK_HANDLERS.lurepull = {
+K.ATTACK_HANDLERS.lurepull = {
 	windup = function(creature, def, p, u, sub)
 		local a = creature.attack
 		if not a.told then
 			a.told = true
-			local state = colossusState(creature, def)
+			local state = Fn.colossusState(creature, def)
 			-- At the rim, at shelf height, for the whole wind-up: the lure
 			-- flaring is the warning, and it has to be read from the floor.
-			fireEvent("telegraph", state.center + Vector3.new(0, 1.5, 0), {
+			-- SHELF_Y by name rather than the 1.5 it happens to be - this and
+			-- the `fire` below are the same height for the same reason, and a
+			-- literal here is a number that would not move with the arena.
+			fireEvent("telegraph", state.center + Vector3.new(0, NoctyssPath.SHELF_Y, 0), {
 				kind = "mark",
 				duration = p.windup,
 				radius = NoctyssPath.PIT_R + 3,
 				skin = p.skin,
 			})
 		end
-		local base = ATTACK_HANDLERS.pull.windup
+		local base = K.ATTACK_HANDLERS.pull.windup
 		if base then
 			base(creature, def, p, u, sub)
 		end
 	end,
-	fire = ATTACK_HANDLERS.pull.fire,
-	strike = ATTACK_HANDLERS.pull.strike,
-	finish = ATTACK_HANDLERS.pull.finish,
+	-- ...AND ITS OWN `fire`, FOR THE SAME REASON THE TELEGRAPH IS OVERRIDDEN.
+	-- The stock handler fires the `pull` event at `model:GetPivot().Position`,
+	-- which is right for every boss whose pivot is its body - and for this one
+	-- is 20 studs INSIDE the rock: `Fn.placeColossus` parks her model at
+	-- `NoctyssPath.mawCFrame`, whose resting Y is MAW.Y_DOWN. So the shockwave,
+	-- the dust and every other bit of the drag's feedback were rendering under
+	-- the shelf, and the fight's one displacement move announced itself with
+	-- nothing at all while the floor started sliding. Fired at the pit's rim
+	-- instead, under the mark the wind-up just drew.
+	--
+	-- VISUAL ONLY, deliberately: `stepPull`'s force is flat in distance, so
+	-- moving the event's origin moves what the player SEES and not a stud of
+	-- what the drag does.
+	fire = function(creature, def, p)
+		local state = Fn.colossusState(creature, def)
+		fireEvent("pull", state.center + Vector3.new(0, NoctyssPath.SHELF_Y, 0), {
+			radius = p.radius,
+			strength = p.strength,
+			duration = p.duration,
+		})
+	end,
+	strike = K.ATTACK_HANDLERS.pull.strike,
+	finish = K.ATTACK_HANDLERS.pull.finish,
 }
 
-ATTACK_HANDLERS.dousehunt = {
+K.ATTACK_HANDLERS.dousehunt = {
 	windup = function(creature, def, p, u, sub)
-		local state = colossusState(creature, def)
+		local state = Fn.colossusState(creature, def)
 		-- Out over the last third of the windup: fast enough to feel like the
 		-- choir being switched off, slow enough to be a tell.
 		local douse = math.clamp((u - 0.62) / 0.38, 0, 1)
@@ -7911,13 +12770,13 @@ ATTACK_HANDLERS.dousehunt = {
 				stalk.douse = douse
 			end
 		end
-		local base = ATTACK_HANDLERS.barrage.windup
+		local base = K.ATTACK_HANDLERS.barrage.windup
 		if base then
 			base(creature, def, p, u, sub)
 		end
 	end,
 	fire = function(creature, def, p, now, root)
-		local state = colossusState(creature, def)
+		local state = Fn.colossusState(creature, def)
 		for _, stalk in state.stalks do
 			if stalk.alive then
 				stalk.douse = 1
@@ -7930,19 +12789,19 @@ ATTACK_HANDLERS.dousehunt = {
 		-- holds the lanterns off: `dark` is the one number both sides run the
 		-- scare on, so the light cannot come back before the fear does.
 		fireEvent("choirDouse", state.center, { duration = p.dark or 1.6 })
-		local base = ATTACK_HANDLERS.barrage.fire
+		local base = K.ATTACK_HANDLERS.barrage.fire
 		if base then
 			base(creature, def, p, now, root)
 		end
 	end,
 	strike = function(creature, def, p, now, dt, u, root, sub)
-		local base = ATTACK_HANDLERS.barrage.strike
+		local base = K.ATTACK_HANDLERS.barrage.strike
 		if base then
 			base(creature, def, p, now, dt, u, root, sub)
 		end
 	end,
 	finish = function(creature, def, p, now)
-		local base = ATTACK_HANDLERS.barrage.finish
+		local base = K.ATTACK_HANDLERS.barrage.finish
 		if base then
 			base(creature, def, p, now)
 		end
@@ -7968,8 +12827,8 @@ ATTACK_HANDLERS.dousehunt = {
 --     a boss that swings around itself, wrong for one whose shot lands 80
 --     studs away. Each windup draws its own, pointing where the shot goes.
 --  3. NOTHING HERE TOUCHES THE PHASE MACHINE. No handler returns early out of
---     a phase, calls endBossAttack, or clears creature.attack. Every pattern
---     runs windup -> strike -> recover -> endBossAttack and therefore always
+--     a phase, calls Fn.endBossAttack, or clears creature.attack. Every pattern
+--     runs windup -> strike -> recover -> Fn.endBossAttack and therefore always
 --     writes its cooldown, silenced or not.
 local ProjectileService = require(script.Parent.ProjectileService)
 
@@ -7986,11 +12845,23 @@ local ProjectileService = require(script.Parent.ProjectileService)
 -- 88 against reaches of 106-183, so `lifetime` never fired on any of the eight
 -- ballistic rows and was a dead knob that read as a live one. Overridable per
 -- row as `p.bound`.
-local WRACK_BOUND_MARGIN = 60
-local WRACK_MUZZLE_LIFT = 5
+K.WRACK_BOUND_MARGIN = 60
+K.WRACK_MUZZLE_LIFT = 5
+
+-- ACT TWO FIRES AT FULL STRENGTH. See Fn.wrackScale: this replaces the retired
+-- `windowFire` (0.3), which meant "what a skeleton crew keeps up until the decks
+-- grow back" - a number that only had meaning inside a loop that came back.
+K.WRACK_ACT2_FIRE = 1.0
+
+-- THE SHOT OCCLUDER, while one is up. Held here rather than on the creature
+-- because `groundParams` needs it and is handed no creature - it is a
+-- module-level filter for a module-level part. Exactly one exists at a time
+-- (Fn.wrackOccluder sweeps any leak before building), and Fn.wrackOccluderDrop
+-- clears both the field and the part.
+K.WRACK_OCCLUDER = nil
 
 -- THE GUN DECKS ARE THE GUNS - and since 2026-09-06 that is literal: every
--- ball in the fight leaves a live battery (see wrackDeckPositions and
+-- ball in the fight leaves a live battery (see Fn.wrackDeckPositions and
 -- ProjectileService's muzzleOf / deckRunOut), not a circle drawn round the
 -- middle of the hull. Every pattern's ball count ALSO scales with how many
 -- batteries still stand - slewfire included, which used to be the one
@@ -8001,23 +12872,30 @@ local WRACK_MUZZLE_LIFT = 5
 -- floor is a judgement call: a straight linear scale made the last battery a
 -- formality, and no floor at all made three-down feel like the fight had
 -- already ended.
-local function wrackScale(creature, def, now: number): number
+function Fn.wrackScale(creature, def, now: number): number
 	local parts = def.parts
 	if not parts or creature.partsAlive == nil then
 		return 1
 	end
 	if creature.partsAlive <= 0 then
-		-- ALL FOUR DOWN: the hull is open (vulnerableWhen = "partsDown") and
-		-- the guns have nobody left to work them. `staggerFor` seconds of
-		-- true silence - the stagger, the beat you use to close the distance
-		-- and open your burst - and then a skeleton crew gets `windowFire` of
-		-- the normal density back up. Dead air is not a bullet hell; a burst
-		-- window you still have to dodge inside is.
+		-- ALL FOUR DOWN, AND THEY ARE NOT COMING BACK. `parts.regrow` is gone
+		-- from his row, so this is not the top of a burst window any more - it
+		-- is the ACT BREAK. `staggerFor` seconds of true silence while the guns
+		-- die and the hull wakes...
 		local downAt = creature.partsDownAt
 		if not downAt or now - downAt < (def.staggerFor or 4) then
 			return 0
 		end
-		return def.windowFire or 0.3
+		-- ...and then ACT TWO, at FULL density. This used to return
+		-- `def.windowFire` (0.3) - the thin fire of a skeleton crew holding the
+		-- decks until they grew back. Nothing grows back now and nobody is
+		-- working the guns: the SHIP is the emitter, firing from her ports and
+		-- her own body, and she is not a remnant of act one. Returning 0.3 here
+		-- would have left the whole second act at a third of its intended
+		-- pressure, under a field name that described a fight that no longer
+		-- exists - which is why `windowFire` was retired from the row rather
+		-- than left sitting at 0.3 for this line to find.
+		return K.WRACK_ACT2_FIRE
 	end
 	return 0.4 + 0.6 * (creature.partsAlive / math.max(parts.count, 1))
 end
@@ -8025,8 +12903,8 @@ end
 -- The latch. Fixes the firing bearing on the FIRST windup frame and never
 -- looks again for the rest of the move (rule 1 above). Returns the bearing.
 --
--- Note WHERE the fallback comes from. bossFacing() reads creature.yaw0, and
--- yaw0 is written by updateBoss's PROWL branch - which a `pose`d boss returns
+-- Note WHERE the fallback comes from. Fn.bossFacing() reads creature.yaw0, and
+-- yaw0 is written by Fn.updateBoss's PROWL branch - which a `pose`d boss returns
 -- before ever reaching. Wrack is planted with `speed = 0` and carries NO
 -- pose, so he stays in the prowl branch and `approachAngle` still writes his
 -- yaw0 every frame - but his `turnRate` is 0, so it writes the same value
@@ -8040,18 +12918,18 @@ end
 -- this bearing only when the arena is empty.
 --
 -- Spelled out because the previous version of this comment asserted the
--- opposite. A note saying "bossFacing is live for this boss", sitting beside
+-- opposite. A note saying "Fn.bossFacing is live for this boss", sitting beside
 -- a boss for whom it is frozen, is exactly what lets the next person
 -- re-introduce a frozen-bearing bug while believing they had checked.
 local function wrackAim(creature): Vector3
 	local a = creature.attack
 	if not a then
-		return bossFacing(creature)
+		return Fn.bossFacing(creature)
 	end
 	if not a.wrackAim then
 		local centre = creature.anchor or creature.pos
-		local root = nearestPlayerRoot(centre)
-		a.wrackAim = if root then flatUnit(root.Position - centre) else bossFacing(creature)
+		local root = Fn.nearestPlayerRoot(centre)
+		a.wrackAim = if root then flatUnit(root.Position - centre) else Fn.bossFacing(creature)
 		-- AND THE POINT, not only the bearing. Every aimed pattern now leaves
 		-- a gun deck standing up to 40 studs off the hull's centre, and a
 		-- bearing measured from the centre, fired from the bow, misses by that
@@ -8064,7 +12942,7 @@ local function wrackAim(creature): Vector3
 end
 
 -- The latched target, re-aimed from a gun that is not at the centre.
-local function wrackAimFrom(creature, from: Vector3): Vector3
+function Fn.wrackAimFrom(creature, from: Vector3): Vector3
 	local a = creature.attack
 	local mark = a and a.wrackMark
 	if not mark then
@@ -8074,24 +12952,43 @@ local function wrackAimFrom(creature, from: Vector3): Vector3
 	return if to.Magnitude > 0.001 then to.Unit else wrackAim(creature)
 end
 
--- THE LIVE GUN DECKS, where they actually stand. `livingArms` is not
+-- THE LIVE GUN DECKS, where they actually stand. `Fn.livingArms` is not
 -- Kraken-specific despite the name - `partOf` and `socketIndex` are stamped by
--- spawnBossParts for every parts boss - so this reuses it rather than growing
--- a second parts list to keep in sync, which is the thing spawnBossParts'
+-- Fn.spawnBossParts for every parts boss - so this reuses it rather than growing
+-- a second parts list to keep in sync, which is the thing Fn.spawnBossParts'
 -- `ringParts` comment refuses to do for exactly this reason. Sorted by socket,
 -- so a wisp's round-robin is stable across volleys.
-local function wrackDeckPositions(creature): { Vector3 }
+function Fn.wrackDeckPositions(creature): { Vector3 }
 	local out = {}
-	for _, part in livingArms(creature) do
+	for _, part in Fn.livingArms(creature) do
 		table.insert(out, part.pos)
+	end
+	-- ...AND THE WRECK'S GUNS, for the one act that has no live ones. The
+	-- Admiral's duel row carries `wreckMounts` - where the sunken ship's cannons
+	-- lie - so his "last broadside" leaves the same four points act one's did,
+	-- resolved against the arena centre. Reached through the SAME list every
+	-- other consumer already reads (the emitter's decks, `wrackDeckReach`,
+	-- the tell radii), rather than by teaching each of them about act three.
+	--
+	-- Only ever hit when there are no living parts at all, so it cannot shadow
+	-- a fight that has some.
+	if #out == 0 then
+		local def = bossDef(creature)
+		local mounts = def and def.wreckMounts
+		if mounts then
+			local centre = creature.anchor or creature.pos
+			for _, m in mounts do
+				table.insert(out, Vector3.new(centre.X + m.X, centre.Y + m.Y, centre.Z + m.Z))
+			end
+		end
 	end
 	return out
 end
 
 -- The four decks as flat offsets from the arena centre - what a radial
 -- pattern and the wisps read, and what picks the gun for an aimed one.
-local function wrackDeckOffsets(creature, centre: Vector3): ({ Vector3 }, { Vector3 })
-	local at = wrackDeckPositions(creature)
+function Fn.wrackDeckOffsets(creature, centre: Vector3): ({ Vector3 }, { Vector3 })
+	local at = Fn.wrackDeckPositions(creature)
 	local offsets = table.create(#at)
 	for _, world in at do
 		table.insert(offsets, Vector3.new(world.X - centre.X, 0, world.Z - centre.Z))
@@ -8110,11 +13007,11 @@ end
 -- hands off to the nearest battery still standing instead of firing out of a
 -- wreck. Returns the gun's world position and the bearing re-aimed from it,
 -- or nil when nothing is left standing (the burst window - nothing fires).
-local function wrackGunFor(creature): (Vector3?, Vector3)
+function Fn.wrackGunFor(creature): (Vector3?, Vector3)
 	local a = creature.attack
 	local centre = creature.anchor or creature.pos
 	local aim = wrackAim(creature)
-	local offsets, at = wrackDeckOffsets(creature, centre)
+	local offsets, at = Fn.wrackDeckOffsets(creature, centre)
 	if #at == 0 then
 		return nil, aim
 	end
@@ -8136,16 +13033,16 @@ local function wrackGunFor(creature): (Vector3?, Vector3)
 	if a and not a.wrackGunAt then
 		a.wrackGunAt = best
 	end
-	return best, wrackAimFrom(creature, best)
+	return best, Fn.wrackAimFrom(creature, best)
 end
 
 -- How far the furthest live deck stands from the centre. The ring and mark
 -- tells are drawn round the muzzle LOCUS, which is no longer a circle of
 -- radius `spawnAt` but that circle pushed out to each gun's own range.
-local function wrackDeckReach(creature): number
+function Fn.wrackDeckReach(creature): number
 	local centre = creature.anchor or creature.pos
 	local far = 0
-	for _, world in wrackDeckPositions(creature) do
+	for _, world in Fn.wrackDeckPositions(creature) do
 		local dx, dz = world.X - centre.X, world.Z - centre.Z
 		far = math.max(far, math.sqrt(dx * dx + dz * dz))
 	end
@@ -8153,8 +13050,8 @@ local function wrackDeckReach(creature): number
 end
 
 -- World angle of a flat bearing, in ProjectileService's convention
--- (bearing(t) = cos t, 0, sin t). bossFacing's yaw0 runs the other way.
-local function wrackAngle(dir: Vector3): number
+-- (bearing(t) = cos t, 0, sin t). Fn.bossFacing's yaw0 runs the other way.
+function Fn.wrackAngle(dir: Vector3): number
 	return math.atan2(dir.Z, dir.X)
 end
 
@@ -8163,36 +13060,51 @@ end
 -- the deck facing it, and wisps take one lantern per deck. See
 -- ProjectileService's "firing from the guns" block for why the radial two
 -- cannot simply be translated onto their decks.
-local WRACK_AIMED = { grapeshot = true, chainshot = true, anchorsweep = true }
+-- `megashot` joins them: the cannon overload's payload leaves the ONE battery
+-- the telegraph named, which is the entire read of the move, so it must go
+-- through the aimed path or the ball would appear at the middle of the hull
+-- while the disc pulsed on a gun twenty studs away. (The overload handler
+-- pre-seeds `a.wrackGunAt` with that battery's own position, so wrackGunFor
+-- returns the gun the tell drew on rather than picking its own.)
+--
+-- `anchorline` is deliberately NOT here. It is not fired from a gun at all -
+-- the anchor is lobbed past the player and the hazard is born where it lands -
+-- so it takes its geometry from the handler through wrackEmit's `extra`.
+K.WRACK_AIMED = { grapeshot = true, chainshot = true, anchorsweep = true, megashot = true }
 
 -- One volley out. Returns the ball count (0 when the decks are silent).
 --
 -- A silenced volley emits nothing and changes NOTHING else: the move still
 -- completes its strike and recover and still goes on cooldown through
--- endBossAttack, so a player standing in the burst window cannot farm free
+-- Fn.endBossAttack, so a player standing in the burst window cannot farm free
 -- openings by keeping the batteries down.
-local function wrackEmit(pattern: string, creature, def, p, now: number, gap: number?, phase: number?): number
-	local scale = wrackScale(creature, def, now)
+-- `extra` (added 2026-09-08) is the geometry a pattern needs that is neither a
+-- bearing nor a gun: the anchor line's landing point and drag direction, and
+-- the server-side handle that lets its handler retire that one hazard when the
+-- midlink is shot. Three named fields copied onto the ctx, not a merge, so the
+-- ctx's shape stays something a reader can enumerate.
+function Fn.wrackEmit(pattern: string, creature, def, p, now: number, gap: number?, phase: number?, extra): number
+	local scale = Fn.wrackScale(creature, def, now)
 	if scale <= 0 then
 		return 0
 	end
 	local centre = creature.anchor or creature.pos
-	local lo, hi = bossRoll(creature, def, p.damage)
+	local lo, hi = Fn.bossRoll(creature, def, p.damage)
 	-- Registers him for the closing beat on his first volley. A plain boss
 	-- gets no collapse (that is the perch-holding colossus's death), so the
 	-- gun decks going up one at a time is the fight's own ending.
-	-- The batteries' OWN positions, as spawnBossParts placed them (see
+	-- The batteries' OWN positions, as Fn.spawnBossParts placed them (see
 	-- `creature.mountAt`), so the closing explosions land on the brass.
 	ProjectileService.watch(creature, centre, creature.mountAt or {}, "cannon")
 	-- THE BRASS FIRES. `centre` stays the arena centre and keeps its one
 	-- remaining job (it is what `bound` is measured from); `decks` and
 	-- `muzzle` are where the shot actually leaves. An aimed pattern gets one
 	-- gun and a bearing re-aimed from it; the rest get the whole live list.
-	local decks = wrackDeckOffsets(creature, centre)
+	local decks = Fn.wrackDeckOffsets(creature, centre)
 	local aim = wrackAim(creature)
 	local muzzle, flash = nil, nil
-	if WRACK_AIMED[pattern] then
-		local gun, from = wrackGunFor(creature)
+	if K.WRACK_AIMED[pattern] then
+		local gun, from = Fn.wrackGunFor(creature)
 		if gun then
 			muzzle = Vector3.new(gun.X, centre.Y, gun.Z)
 			aim = from
@@ -8200,28 +13112,32 @@ local function wrackEmit(pattern: string, creature, def, p, now: number, gap: nu
 			-- studs up. The balls stay on the flat flight plane, because the
 			-- hit test is flat; only the muzzle burst knows about the mortar
 			-- deck it came off.
-			flash = gun + Vector3.new(0, WRACK_MUZZLE_LIFT, 0)
+			flash = gun + Vector3.new(0, K.WRACK_MUZZLE_LIFT, 0)
 		end
 	end
 	return ProjectileService.emit(pattern, {
 		owner = creature,
 		centre = centre,
+		spot = extra and extra.spot,
+		dir = extra and extra.dir,
+		tag = extra and extra.tag,
+		speed = extra and extra.speed,
 		muzzle = muzzle,
 		decks = decks,
-		origin = flash or (creature.model:GetPivot().Position + Vector3.new(0, WRACK_MUZZLE_LIFT, 0)),
+		origin = flash or (creature.model:GetPivot().Position + Vector3.new(0, K.WRACK_MUZZLE_LIFT, 0)),
 		aim = aim,
 		gap = gap or 0,
 		phase = phase,
 		scale = scale,
-		bound = p.bound or (def.arena.radius + WRACK_BOUND_MARGIN),
+		bound = p.bound or (def.arena.radius + K.WRACK_BOUND_MARGIN),
 		now = now,
 		min = lo,
 		max = hi,
 	}, p)
 end
 
--- WILL THIS VOLLEY ACTUALLY FIRE? `wrackEmit` returns 0 without emitting
--- anything while `wrackScale` is 0 - the `staggerFor` seconds of true silence
+-- WILL THIS VOLLEY ACTUALLY FIRE? `Fn.wrackEmit` returns 0 without emitting
+-- anything while `Fn.wrackScale` is 0 - the `staggerFor` seconds of true silence
 -- the moment the last battery falls - but the phase machine keeps running the
 -- move, so every windup hook below used to draw its full telegraph into that
 -- silence. The player spent the burst window they had just earned watching
@@ -8236,10 +13152,10 @@ end
 -- exactly once per attack.
 --
 -- `os.clock()` is the clock `now` is measured on everywhere in this section
--- (updateBoss's `now`, and `partsDownAt` in kill()), and the windup hook is
+-- (Fn.updateBoss's `now`, and `partsDownAt` in kill()), and the windup hook is
 -- the one place in the handler contract that is not handed it.
-local function wrackWillFire(creature, def): boolean
-	return wrackScale(creature, def, os.clock()) > 0
+function Fn.wrackWillFire(creature, def): boolean
+	return Fn.wrackScale(creature, def, os.clock()) > 0
 end
 
 -- THE TELL, AND WHY IT IS SHAPED LIKE THIS. The client implements exactly
@@ -8273,7 +13189,7 @@ end
 -- off-screen indicator, so the patterns that can arrive from behind announce
 -- themselves with a ring the player is standing inside rather than a wedge
 -- they may be facing away from.
-local function wrackRingTell(creature, p, radius: number)
+function Fn.wrackRingTell(creature, p, radius: number)
 	fireEvent("wrackTell", creature.anchor or creature.pos, {
 		shape = "ring",
 		radius = radius,
@@ -8282,7 +13198,7 @@ local function wrackRingTell(creature, p, radius: number)
 	})
 end
 
-local function wrackLaneTell(p, at: Vector3, aim: Vector3, width: number, length: number)
+function Fn.wrackLaneTell(p, at: Vector3, aim: Vector3, width: number, length: number)
 	fireEvent("wrackTell", at, {
 		shape = "lane",
 		aim = aim,
@@ -8297,8 +13213,8 @@ end
 -- along `facing` from the point it is given, so a cone drawn at the middle of a
 -- 67-stud hull for a fan that leaves the bowsprit points at ground the shot
 -- never crosses.
-local function wrackConeTell(p, at: Vector3, aim: Vector3, arcDeg: number, wedges: number)
-	local base = wrackAngle(aim)
+function Fn.wrackConeTell(p, at: Vector3, aim: Vector3, arcDeg: number, wedges: number)
+	local base = Fn.wrackAngle(aim)
 	local arc = math.rad(arcDeg)
 	local step = if wedges > 1 then arc / (wedges - 1) else 0
 	for i = 0, wedges - 1 do
@@ -8318,7 +13234,7 @@ end
 -- between broadsides (creature.wrackGap persists), so it is never twice in
 -- the same place and pre-standing in it does not work. p: count, speed,
 -- radius, damage, spawnAt, lifetime, gapDeg, gapStep, volleys, interval.
-ATTACK_HANDLERS.broadside = {
+K.ATTACK_HANDLERS.broadside = {
 	windup = function(creature, def, p, u, sub)
 		local a = creature.attack
 		-- THE GAP IS LATCHED WHETHER OR NOT THE VOLLEY FIRES, and separately
@@ -8332,7 +13248,7 @@ ATTACK_HANDLERS.broadside = {
 				+ math.rad(p.gapStep or 46) * (0.5 + math.random())
 			a.wrackGapAt = creature.wrackGap
 		end
-		if not a.wrackTold and wrackWillFire(creature, def) then
+		if not a.wrackTold and Fn.wrackWillFire(creature, def) then
 			a.wrackTold = true
 			-- Two cues, because a ring with a hole in it needs both: the ring
 			-- itself (loud, and readable from any facing), then the gap. Both
@@ -8340,8 +13256,8 @@ ATTACK_HANDLERS.broadside = {
 			-- circle of radius `spawnAt` but that circle pushed out to each
 			-- live deck's own range - so the cue never lands inside the wall
 			-- it is announcing.
-			local mark = wrackDeckReach(creature) + (p.spawnAt or 16) + (p.markAt or 22)
-			wrackRingTell(creature, p, mark)
+			local mark = Fn.wrackDeckReach(creature) + (p.spawnAt or 16) + (p.markAt or 22)
+			Fn.wrackRingTell(creature, p, mark)
 			-- THE ANSWER, DRAWN: a disc out on the sand where the gap opens.
 			local centre = creature.anchor or creature.pos
 			local dir = Vector3.new(math.cos(a.wrackGapAt), 0, math.sin(a.wrackGapAt))
@@ -8356,7 +13272,7 @@ ATTACK_HANDLERS.broadside = {
 	end,
 	fire = function(creature, def, p, now)
 		local a = creature.attack
-		wrackEmit("broadside", creature, def, p, now, a.wrackGapAt)
+		Fn.wrackEmit("broadside", creature, def, p, now, a.wrackGapAt)
 		a.wrackLeft = (p.volleys or 3) - 1
 		a.wrackNextAt = now + (p.interval or 1.1)
 	end,
@@ -8369,7 +13285,7 @@ ATTACK_HANDLERS.broadside = {
 			-- the safe lane never returns to where it just was.
 			a.wrackGapAt += math.rad(p.gapStep or 46)
 			creature.wrackGap = a.wrackGapAt
-			wrackEmit("broadside", creature, def, p, now, a.wrackGapAt)
+			Fn.wrackEmit("broadside", creature, def, p, now, a.wrackGapAt)
 		end
 		creature.model:PivotTo(poseCFrame(creature, sub + 0.25, math.sin(now * 26) * math.rad(2), math.rad(15)))
 	end,
@@ -8380,21 +13296,304 @@ ATTACK_HANDLERS.broadside = {
 -- burst (p.bursts) reuses the SAME bearing offset half a pellet, filling the
 -- first burst's lanes. p: pellets, fanDeg, speed, radius, damage, spawnAt,
 -- lifetime, bursts, burstGap.
-ATTACK_HANDLERS.grapeshot = {
+-- ==================================================== ACT THREE: THE DUEL (2026-09-09)
+--
+-- Five moves against the ship's fourteen, and that ratio IS the design. Two acts
+-- of reading a wall of cannonballs from eighty studs away, and then the fight
+-- ends in reach with a man who throws one thing at a time and means all of them.
+-- Every row here is readable, answerable, and expensive to answer wrong.
+--
+-- They all reuse Wrack's own telegraph vocabulary (`wrackLaneTell`,
+-- `wrackConeTell`, `wrackRingTell`, `telegraph`/`mark`) because the client
+-- already draws exactly those and act three should feel like the same fight's
+-- last act rather than a different game. Nothing new is wired.
+
+-- THE THRUST. He latches a bearing at windup and covers `reach` studs down a
+-- `lane`-wide corridor without steering. Step off the lane. Miss him and he is
+-- open for `expose` seconds - the row carries `holdExpose`, so the window is
+-- real rather than a beat before the next move.
+K.ATTACK_HANDLERS.sabrelunge = {
+	windup = function(creature, _def, p, u, sub)
+		local a = creature.attack
+		if not a.wrackAimed then
+			a.wrackAimed = true
+			wrackAim(creature)
+		end
+		if not a.wrackTold then
+			a.wrackTold = true
+			-- Drawn from HIM, along the bearing he latched, over the exact
+			-- distance he will travel: the tell is the corridor.
+			Fn.wrackLaneTell(p, creature.pos, wrackAim(creature), p.lane or 7, p.reach or 55)
+		end
+		-- Winding back onto the rear foot.
+		creature.model:PivotTo(poseCFrame(creature, sub - 0.4 * u, 0, math.rad(-14) * u))
+	end,
+	fire = function(creature, _def, _p, now)
+		local a = creature.attack
+		a.wrackLungeFrom = creature.pos
+		a.wrackLungeAt = now
+		a.wrackLungeHit = {}
+		a.wrackLungeLanded = false
+	end,
+	strike = function(creature, def, p, _now, _dt, u, _root, sub)
+		local a = creature.attack
+		local aim = wrackAim(creature)
+		local travel = (p.reach or 55) * math.clamp(u, 0, 1)
+		local at = (a.wrackLungeFrom or creature.pos) + aim * travel
+		creature.pos = groundedPos(at, creature.halfThickness or 0)
+		creature.model:PivotTo(poseCFrame(creature, sub + 1.1, 0, math.rad(10)))
+		local lo, hi = Fn.bossRoll(creature, def, p.damage)
+		for _, entry in Fn.livingRootsNear(creature.pos, (p.lane or 7) * 0.5 + 2) do
+			if not a.wrackLungeHit[entry.player] then
+				a.wrackLungeHit[entry.player] = true
+				a.wrackLungeLanded = true
+				PlayerService.damage(entry.player, math.random(lo, hi), creature, {})
+			end
+		end
+	end,
+	finish = function(creature, _def, p)
+		local a = creature.attack
+		-- A LANDED THRUST COSTS HIM NOTHING; A WHIFF COSTS HIM THE WINDOW.
+		-- `expose` on the row is applied by Fn.endBossAttack unconditionally, so
+		-- the punish is REMOVED here when he actually hit somebody. Without this
+		-- the correct play would be to stand in the lane and eat it: take the
+		-- damage, collect the free window anyway.
+		if a and a.wrackLungeLanded then
+			creature.exposedUntil = nil
+			creature.model:SetAttribute(ATTR.EXPOSED, nil)
+		end
+		if p then
+			creature.lungeOpen = false
+		end
+	end,
+}
+
+-- THE ARC. A cone at sabre length, told as a wedge. `beats` 2 sweeps back the
+-- other way after `beatGap`, so phase 3's version answers "dodge once" with
+-- "dodge twice, the other way".
+K.ATTACK_HANDLERS.cleave = {
+	windup = function(creature, _def, p, u, sub)
+		local a = creature.attack
+		if not a.wrackAimed then
+			a.wrackAimed = true
+			wrackAim(creature)
+			-- Which way the first beat sweeps, latched so the tell and the
+			-- damage cannot disagree about it.
+			a.wrackCleaveDir = if math.random() < 0.5 then 1 else -1
+		end
+		if not a.wrackTold then
+			a.wrackTold = true
+			Fn.wrackConeTell(p, creature.pos, wrackAim(creature), p.arcDeg or 120, 3)
+		end
+		creature.model:PivotTo(poseCFrame(creature, sub, 0, math.rad(-11) * u))
+	end,
+	fire = function(creature, def, p, now)
+		local a = creature.attack
+		a.wrackCleaveLeft = math.max(1, p.beats or 1) - 1
+		a.wrackCleaveNext = now + (p.beatGap or 0.45)
+		Fn.wrackCleaveBeat(creature, def, p, wrackAim(creature))
+	end,
+	strike = function(creature, def, p, now, _dt, _u, _root, sub)
+		local a = creature.attack
+		if a.wrackCleaveLeft > 0 and now >= a.wrackCleaveNext then
+			a.wrackCleaveLeft -= 1
+			a.wrackCleaveNext = now + (p.beatGap or 0.45)
+			-- THE SECOND BEAT IS THE FIRST ONE MIRRORED, and it is re-told:
+			-- a beat the player is not warned about is a beat they cannot
+			-- answer, which is the opposite of what this move is for.
+			a.wrackCleaveDir = -(a.wrackCleaveDir or 1)
+			Fn.wrackConeTell(p, creature.pos, wrackAim(creature), p.arcDeg or 120, 3)
+			Fn.wrackCleaveBeat(creature, def, p, wrackAim(creature))
+		end
+		creature.model:PivotTo(poseCFrame(creature, sub + 0.5, 0, math.rad(8)))
+	end,
+}
+
+-- One swing's worth of damage, in a cone about `aim`. Shared by both beats so
+-- the mirrored one cannot drift from the first.
+function Fn.wrackCleaveBeat(creature, def, p, aim: Vector3)
+	local lo, hi = Fn.bossRoll(creature, def, p.damage)
+	local half = math.rad((p.arcDeg or 120) * 0.5)
+	for _, entry in Fn.livingRootsNear(creature.pos, p.reach or 22) do
+		local to = entry.root.Position - creature.pos
+		local flat = Vector3.new(to.X, 0, to.Z)
+		if flat.Magnitude > 0.001 and math.acos(math.clamp(flat.Unit:Dot(aim), -1, 1)) <= half then
+			PlayerService.damage(entry.player, math.random(lo, hi), creature, {})
+		end
+	end
+end
+
+-- THE RIPOSTE STANCE. The duel's signature, and the only move in the fight
+-- whose answer is to do nothing.
+--
+-- He plants and holds guard for `hold`. `CreatureService.damage` calls
+-- Fn.wrackRiposte on the first hit that lands inside the window: everything
+-- within `punish` wears it and the stance REFRESHES, so panicking into it is a
+-- loop you pay for repeatedly. Let it run out untouched and he over-commits -
+-- the row's `expose`/`holdExpose` open the biggest window in the fight, earned
+-- by putting the gun down.
+--
+-- READABLE, NOT A GOTCHA: the ring tell is drawn at exactly `punish`, so the
+-- radius is published rather than learned by dying in it.
+K.ATTACK_HANDLERS.ripostestance = {
+	windup = function(creature, _def, p, u, sub)
+		local a = creature.attack
+		if not a.wrackTold then
+			a.wrackTold = true
+			Fn.wrackRingTell(creature, p, p.punish or 12)
+		end
+		creature.model:PivotTo(poseCFrame(creature, sub, 0, math.rad(-6) * u))
+	end,
+	fire = function(creature, _def, p, now)
+		creature.riposteUntil = now + (p.hold or 3.5)
+		creature.riposteP = p
+		creature.riposteHit = false
+		creature.model:SetAttribute(ATTR.WRACK_RIPOSTE, 1)
+	end,
+	strike = function(creature, _def, _p, _now, _dt, _u, _root, sub)
+		-- Planted. He does not track, he does not step: the stance is a
+		-- commitment on his side too, which is what makes ignoring it pay.
+		creature.model:PivotTo(poseCFrame(creature, sub, 0, 0))
+	end,
+	finish = function(creature)
+		creature.riposteUntil = nil
+		creature.riposteP = nil
+		creature.model:SetAttribute(ATTR.WRACK_RIPOSTE, nil)
+		-- HE ONLY OVER-COMMITS IF HE WAS NEVER TOUCHED. `expose` on the row is
+		-- applied unconditionally by Fn.endBossAttack, so a stance that DID
+		-- counter has its reward taken back here - otherwise hitting him would
+		-- be strictly better than not (a counter AND a free window), which is
+		-- the exact inversion the move exists to prevent.
+		if creature.riposteHit then
+			creature.exposedUntil = nil
+			creature.model:SetAttribute(ATTR.EXPOSED, nil)
+		end
+		creature.riposteHit = nil
+	end,
+}
+
+-- The counter itself. Called from CreatureService.damage, never from a handler,
+-- because it is triggered by the PLAYER rather than by the fight's clock.
+function Fn.wrackRiposte(creature, now: number)
+	local p = creature.riposteP
+	if not p then
+		return
+	end
+	local def = bossDef(creature)
+	if not def then
+		return
+	end
+	creature.riposteHit = true
+	-- 2, HELD FOR `counterFor`. The client cannot tell "he countered you" from
+	-- "the window expired untouched" off a 1 -> 0 edge, and those are the two
+	-- halves of the move the player is being asked to read - so the counter is
+	-- its own value rather than the absence of the stance.
+	creature.model:SetAttribute(ATTR.WRACK_RIPOSTE, 2)
+	-- ...AND THE STANCE REFRESHES. Shooting him is not a way to make the window
+	-- shorter; it is a way to make it longer.
+	creature.riposteUntil = now + (p.hold or 3.5)
+	local lo, hi = Fn.bossRoll(creature, def, p.damage)
+	for _, entry in Fn.livingRootsNear(creature.pos, p.punish or 12) do
+		PlayerService.damage(entry.player, math.random(lo, hi), creature, {})
+	end
+	fireEvent("bossStagger", creature.pos, { name = def.name, duration = p.counterFor or 0.45 })
+	task.delay(p.counterFor or 0.45, function()
+		-- Back to 1 only if the stance is still up: `finish` may have cleared it
+		-- underneath this, and re-lighting a stance that has ended would leave
+		-- the client drawing a guard he is not holding.
+		if creature.riposteUntil and not creature.dead and creature.model.Parent then
+			creature.model:SetAttribute(ATTR.WRACK_RIPOSTE, 1)
+		end
+	end)
+end
+
+-- THE PISTOL. One aimed ball, fast, no tracking - the windup is the whole
+-- dodge. Its tell is a MARK where the ball lands, not a lane: `sabrelunge`
+-- already owns the lane, and two aimed moves wearing one telegraph shape cannot
+-- be told apart, by the player or by the client choosing which gesture to draw.
+K.ATTACK_HANDLERS.flintlock = {
+	windup = function(creature, _def, p, u, sub)
+		local a = creature.attack
+		if not a.wrackAimed then
+			a.wrackAimed = true
+			wrackAim(creature)
+		end
+		if not a.wrackTold then
+			a.wrackTold = true
+			local mark = a.wrackMark or (creature.pos + wrackAim(creature) * 60)
+			fireEvent("telegraph", groundedPos(mark, 0), {
+				kind = "mark",
+				radius = p.radius or 3.0,
+				duration = p.windup,
+				skin = p.skin,
+			})
+		end
+		creature.model:PivotTo(poseCFrame(creature, sub, 0, math.rad(-4) * u))
+	end,
+	fire = function(creature, def, p, now)
+		Fn.wrackEmit("grapeshot", creature, def, {
+			pellets = 1,
+			fanDeg = 0,
+			speed = p.speed or 110,
+			spawnAt = p.spawnAt or 4,
+			radius = p.radius or 3.0,
+			lifetime = p.lifetime or 1.6,
+			damage = p.damage,
+			skin = p.skin,
+			bound = p.bound,
+		}, now, 0, 0)
+	end,
+	strike = function(creature, _def, _p, _now, _dt, _u, _root, sub)
+		creature.model:PivotTo(poseCFrame(creature, sub + 0.2, 0, math.rad(5)))
+	end,
+}
+
+-- THE LAST BROADSIDE. He raises the sabre and the WRECK answers: one ring with
+-- a gap, out of the drowned ship's own gun positions (`wreckMounts` on his row,
+-- served through Fn.wrackDeckPositions' fallback so the emitter needs no branch).
+--
+-- The fight's closing rhyme. The first thing act one taught was "find the gap in
+-- the ring"; the last thing act three asks is the same question, from a ship
+-- that is already dead.
+K.ATTACK_HANDLERS.lastbroadside = {
+	windup = function(creature, _def, p, u, sub)
+		local a = creature.attack
+		if not a.wrackAimed then
+			a.wrackAimed = true
+			a.wrackGapAt = Fn.wrackAngle(wrackAim(creature))
+		end
+		if not a.wrackTold then
+			a.wrackTold = true
+			-- The ring is drawn round the WRECK, which is where the balls come
+			-- from - not round him, which is where he is standing.
+			Fn.wrackRingTell(creature, p, Fn.wrackDeckReach(creature) + (p.spawnAt or 16) + (p.markAt or 26))
+		end
+		creature.model:PivotTo(poseCFrame(creature, sub + 0.6 * u, 0, math.rad(-16) * u))
+	end,
+	fire = function(creature, def, p, now)
+		local a = creature.attack
+		Fn.wrackEmit("broadside", creature, def, p, now, a.wrackGapAt)
+	end,
+	strike = function(creature, _def, _p, _now, _dt, _u, _root, sub)
+		creature.model:PivotTo(poseCFrame(creature, sub, 0, math.rad(6)))
+	end,
+}
+
+K.ATTACK_HANDLERS.grapeshot = {
 	windup = function(creature, def, p, u, sub)
 		local a = creature.attack
-		if not a.wrackTold and wrackWillFire(creature, def) then
+		if not a.wrackTold and Fn.wrackWillFire(creature, def) then
 			a.wrackTold = true
 			-- One wedge, from the gun that is going to fire it: the fan is a
 			-- wedge's width, and it leaves one battery.
-			local gun, from = wrackGunFor(creature)
-			wrackConeTell(p, gun or creature.model:GetPivot().Position, from, 0, 1)
+			local gun, from = Fn.wrackGunFor(creature)
+			Fn.wrackConeTell(p, gun or creature.model:GetPivot().Position, from, 0, 1)
 		end
 		creature.model:PivotTo(poseCFrame(creature, sub, 0, math.rad(-9) * u))
 	end,
 	fire = function(creature, def, p, now)
 		local a = creature.attack
-		wrackEmit("grapeshot", creature, def, p, now, 0, 0)
+		Fn.wrackEmit("grapeshot", creature, def, p, now, 0, 0)
 		a.wrackLeft = (p.bursts or 1) - 1
 		a.wrackNextAt = now + (p.burstGap or 0.35)
 	end,
@@ -8403,7 +13602,7 @@ ATTACK_HANDLERS.grapeshot = {
 		if a.wrackLeft > 0 and now >= a.wrackNextAt then
 			a.wrackLeft -= 1
 			a.wrackNextAt = now + (p.burstGap or 0.35)
-			wrackEmit("grapeshot", creature, def, p, now, 0, 0.5)
+			Fn.wrackEmit("grapeshot", creature, def, p, now, 0, 0.5)
 		end
 		creature.model:PivotTo(poseCFrame(creature, sub + 0.15, 0, math.rad(6)))
 	end,
@@ -8413,17 +13612,17 @@ ATTACK_HANDLERS.grapeshot = {
 -- pair LOOKS like a lane and is the hitbox; the real lane is between pairs,
 -- and the spin opens and closes it on a beat you can count. p: pairs, fanDeg,
 -- chain, chainRadius, spinDeg, speed, radius, damage, spawnAt, lifetime.
-ATTACK_HANDLERS.chainshot = {
+K.ATTACK_HANDLERS.chainshot = {
 	windup = function(creature, def, p, u, sub)
 		local a = creature.attack
-		if not a.wrackTold and wrackWillFire(creature, def) then
+		if not a.wrackTold and Fn.wrackWillFire(creature, def) then
 			a.wrackTold = true
 			-- One wedge per pair, so the tell shows where the PAIRS go and
 			-- the lanes between them read as the lanes they are. Drawn from
 			-- the gun the pairs actually leave, and capped at three wedges
 			-- because each one is another bossTell one-shot (see above).
-			local gun, from = wrackGunFor(creature)
-			wrackConeTell(
+			local gun, from = Fn.wrackGunFor(creature)
+			Fn.wrackConeTell(
 				p,
 				gun or creature.model:GetPivot().Position,
 				from,
@@ -8436,7 +13635,7 @@ ATTACK_HANDLERS.chainshot = {
 		)
 	end,
 	fire = function(creature, def, p, now)
-		wrackEmit("chainshot", creature, def, p, now)
+		Fn.wrackEmit("chainshot", creature, def, p, now)
 	end,
 	strike = function(creature, _def, _p, now, _dt, _u, _root, sub)
 		creature.model:PivotTo(poseCFrame(creature, sub + 0.3, math.sin(now * 18) * math.rad(2), math.rad(11)))
@@ -8447,23 +13646,23 @@ ATTACK_HANDLERS.chainshot = {
 -- is the tell and the answer both - the model turns with it, so you can read
 -- the rotation and walk against it to cross the arms the short way. p: arms,
 -- every, spinDeg, speed, radius, damage, spawnAt, lifetime.
-ATTACK_HANDLERS.slewfire = {
+K.ATTACK_HANDLERS.slewfire = {
 	windup = function(creature, def, p, u, sub)
 		local a = creature.attack
 		-- Latched even when the decks are silent: `strike` adds the spin to
 		-- `a.wrackGapAt` every tick and cannot be handed a nil.
 		if not a.wrackAimed then
 			a.wrackAimed = true
-			a.wrackGapAt = wrackAngle(wrackAim(creature))
+			a.wrackGapAt = Fn.wrackAngle(wrackAim(creature))
 		end
-		if not a.wrackTold and wrackWillFire(creature, def) then
+		if not a.wrackTold and Fn.wrackWillFire(creature, def) then
 			a.wrackTold = true
 			-- The annulus has to cover the whole muzzle locus, which runs from
 			-- `spawnAt` out to `spawnAt` + the furthest live deck's range.
 			fireEvent("telegraph", creature.anchor or creature.pos, {
 				kind = "ringTell",
 				duration = p.windup,
-				radius = wrackDeckReach(creature) + (p.spawnAt or 14) + 4,
+				radius = Fn.wrackDeckReach(creature) + (p.spawnAt or 14) + 4,
 				inner = math.max(0, (p.spawnAt or 14) - 4),
 				skin = p.skin,
 			})
@@ -8483,15 +13682,19 @@ ATTACK_HANDLERS.slewfire = {
 		local every = math.max(p.every or 0.14, 0.05)
 		while now >= a.wrackNextAt do
 			a.wrackNextAt += every
-			wrackEmit("slewfire", creature, def, p, now, a.wrackGapAt)
+			Fn.wrackEmit("slewfire", creature, def, p, now, a.wrackGapAt)
 			a.wrackGapAt += a.wrackSpin * every
 		end
 		-- THE HULL DOES NOT TURN WITH THE GUNS, and must not. This used to feed
 		-- `-a.wrackGapAt - creature.yaw0` into poseCFrame's yawOffset, which
 		-- ADDS to yaw0 - a full revolution of the drawn ship every 4-5 seconds,
-		-- dragging the four `Wrack_Battery*` objects the player aims at away
-		-- from the four `wrack_battery` hitboxes, which `parts.at = "mounts"`
-		-- resolved ONCE against yaw0 at spawn and which never move. His row
+		-- dragging the four drawn cannons the player aims at (the upright
+		-- rebuild's Bow / Starboard / Stern / Port, WrackBodyController.PIECES)
+		-- away from the four `wrack_battery` hitboxes, which `parts.at =
+		-- "mounts"` resolved ONCE against yaw0 at spawn and which never move.
+		-- The old careened mesh's `Wrack_Battery*` objects are gone with it;
+		-- the trap is not, and is worse on a 41-stud hull whose mounts are only
+		-- 10.9 studs apart. His row
 		-- says it outright ("HE MUST NOT TURN... only correct for a hull that
 		-- stays put") and so does WrackBodyController ("He does NOT slew").
 		-- The spiral's rotation is legible in the balls themselves - that is
@@ -8508,10 +13711,10 @@ ATTACK_HANDLERS.slewfire = {
 -- place, and it works on the bare floor the rebuild left. One lantern lifts
 -- off each live deck. p: count, speed, homingDeg, radius, damage, spawnAt,
 -- lifetime, spreadDeg.
-ATTACK_HANDLERS.wisps = {
+K.ATTACK_HANDLERS.wisps = {
 	windup = function(creature, def, p, u, sub)
 		local a = creature.attack
-		if not a.wrackTold and wrackWillFire(creature, def) then
+		if not a.wrackTold and Fn.wrackWillFire(creature, def) then
 			a.wrackTold = true
 			wrackAim(creature)
 			-- The ring they are born from, which is now the DECKS' ring: one
@@ -8520,14 +13723,14 @@ ATTACK_HANDLERS.wisps = {
 			fireEvent("telegraph", creature.anchor or creature.pos, {
 				kind = "mark",
 				duration = p.windup,
-				radius = wrackDeckReach(creature) + (p.spawnAt or 12),
+				radius = Fn.wrackDeckReach(creature) + (p.spawnAt or 12),
 				skin = p.skin,
 			})
 		end
 		creature.model:PivotTo(poseCFrame(creature, sub - 0.35 * u, 0, math.rad(-7) * u))
 	end,
 	fire = function(creature, def, p, now)
-		wrackEmit("wisps", creature, def, p, now)
+		Fn.wrackEmit("wisps", creature, def, p, now)
 	end,
 }
 
@@ -8537,31 +13740,1597 @@ ATTACK_HANDLERS.wisps = {
 -- end a head start so the arc visibly sweeps, which also leaves the trailing
 -- end passable for a beat if you commit to it. p: count, arcDeg, speed,
 -- radius, damage, spawnAt, lifetime, ripple.
-ATTACK_HANDLERS.anchorsweep = {
+K.ATTACK_HANDLERS.anchorsweep = {
 	windup = function(creature, def, p, u, sub)
 		local a = creature.attack
-		if not a.wrackTold and wrackWillFire(creature, def) then
+		if not a.wrackTold and Fn.wrackWillFire(creature, def) then
 			a.wrackTold = true
 			-- THE ONE BIG TELEGRAPH, and the one pattern that can arrive from
 			-- the camera's rear blind spot. So it gets a RING first - drawn
 			-- around the player's own ground, legible whichever way they face
 			-- - and then a lane naming the half about to become a wall.
-			local gun, from = wrackGunFor(creature)
-			wrackRingTell(creature, p, wrackDeckReach(creature) + (p.spawnAt or 16) + (p.tellReach or 30))
-			wrackLaneTell(p, gun or creature.model:GetPivot().Position, from, p.tellWidth or 96, p.tellRange or 90)
+			local gun, from = Fn.wrackGunFor(creature)
+			Fn.wrackRingTell(creature, p, Fn.wrackDeckReach(creature) + (p.spawnAt or 16) + (p.tellReach or 30))
+			Fn.wrackLaneTell(p, gun or creature.model:GetPivot().Position, from, p.tellWidth or 96, p.tellRange or 90)
 		end
 		local e = smoothstep(u)
 		creature.model:PivotTo(poseCFrame(creature, sub + 0.9 * e, 0, math.rad(-24) * e))
 	end,
 	fire = function(creature, def, p, now)
-		wrackEmit("anchorsweep", creature, def, p, now)
+		Fn.wrackEmit("anchorsweep", creature, def, p, now)
 	end,
 	strike = function(creature, _def, _p, _now, _dt, u, _root, sub)
 		creature.model:PivotTo(poseCFrame(creature, sub + 0.9 * (1 - u), 0, math.rad(26) * (1 - u)))
 	end,
 }
 
-local function spawnBossParts(creature, def)
+-- ---------------------------------------------------- Wrack: the five new verbs (2026-09-08)
+--
+-- Nine rows of balls is ONE verb - read the shape, walk to the hole - and a
+-- verb is finished the moment it is learned. Five of the nine were retired
+-- (see the boss row's header) and these five mechanics took their place. Each
+-- one asks for something walking cannot answer:
+--
+--   powderrun      a fuse-lit keg homes on you; SHOOT it, and where you shoot
+--                  it is the move (it detonates at its own position).
+--   ghostbraziers  three pillars charge a floor-wide wave; each one you DOUSE
+--                  opens the sector behind it as the only safe ground.
+--   cannonoverload one named battery winds up a mega-shot; enough damage into
+--                  THAT battery during the windup jams it entirely.
+--   anchorline     a chain drags back across the sand as a moving LINE; leave
+--                  by its end, or break its shootable midlink.
+--   longboat       a boarding party marches AT the hull to repair a gun deck;
+--                  the fight inverts and his health gate becomes yours.
+--
+-- FOUR OF THE FIVE PUT A SHOOTABLE OBJECT ON THE SAND, and every one of them
+-- is an ordinary creature row (Creatures.items.wrack_*) rather than a new kind
+-- of object, because "shootable" in this engine means "creature": targeting,
+-- the hit test, the damage numbers and the health bar all come for free.
+--
+-- THEY DO NOT CARRY `partOf`, AND THAT IS LOAD-BEARING. `kill()` decrements
+-- `owner.partsAlive` for ANY creature carrying `partOf`, with no test for what
+-- kind of part it is - so a keg or a brazier adopted into the parts ring would
+-- count DOWN the four gun decks as it died. Three braziers doused would open
+-- the hull's burst window without a single battery being broken, and the
+-- fight's whole gate would be bypassable by shooting scenery. So these props
+-- are tracked in the handler's own state (`creature.attack.*`) or on
+-- `creature.wrackKit`, and their deaths are noticed by POLLING them, which
+-- costs one table lookup per prop per frame and cannot corrupt anything.
+--
+-- EVERY PROP IS SPAWNED WITH A `lifetime`, always longer than the mechanic
+-- that owns it. That is the backstop against the one failure this design can
+-- have: a fight that ends underneath a mechanic (the boss killed mid-charge,
+-- the party wiping, the arena abandoned) leaving props standing on the beach
+-- with nothing left to update them. The linger sweep collects them.
+
+-- One prop. `p.rows` names the row in the brood handler's idiom - and in the
+-- plural even for a single row, because tools/check_content.py validates
+-- `rows = { ... }` against Creatures.items and does not look at a singular
+-- `row =`. The warn is the other half of that: a row that vanishes from under
+-- a book at runtime should say so, not spawn nothing quietly.
+function Fn.wrackProp(creature, p, at: Vector3, life: number)
+	local rowId = p.rows and p.rows[1]
+	local row = if rowId then Creatures.items[rowId] else nil
+	if not row then
+		warn(
+			string.format("[CreatureService] wrack move %q names unknown row %q", tostring(p.handler), tostring(rowId))
+		)
+		return nil
+	end
+	local model = CreatureService.spawn(row, at, nil, "Neutral", {
+		noLinger = true,
+		suppressDrops = true,
+		bounty = 0.25,
+		lifetime = life,
+		-- The party's scaling, exactly as the batteries inherit it: a prop that
+		-- stayed solo-sized while the fight scaled would make every one of
+		-- these mechanics EASIER per head as the party grew.
+		healthMult = creature.extra and creature.extra.healthMult,
+	})
+	local prop = byModel[model]
+	if prop then
+		prop.pos = at
+		model:PivotTo(restCFrame(prop))
+	end
+	return prop
+end
+
+-- Is this prop still standing? The whole "was it shot?" test, and it asks
+-- about the MODEL as well as the flag because a prop can also leave through
+-- despawn (its lifetime, the owner's teardown), which sets neither.
+function Fn.wrackPropLive(prop): boolean
+	return prop ~= nil and not prop.dead and prop.model.Parent ~= nil
+end
+
+-- Move a prop, and return where it actually ended up. Grounded every frame
+-- rather than once: the Careenage's sand rises 4.4 studs from rim to head, and
+-- a keg that kept its spawn height would be knee-deep by the time it crossed.
+--
+-- `yaw` (optional, world radians in Fn.bossFacing's convention - `restCFrame`
+-- feeds it straight to CFrame.Angles) turns the prop as well as moving it. The
+-- three props that had this function before it existed all travel as blobs and
+-- pass nil; the figurehead is a FIGUREHEAD, and one that flew sideways down its
+-- own lane would read as a bug in the mesh rather than as a dive. Written onto
+-- `yaw0` because that is the field `restCFrame` reads - the alternative, a
+-- second rotation applied here, would be a heading the record does not know
+-- about and every other placement of that prop would silently undo it.
+--
+-- `lift` (optional) holds the prop that many studs ABOVE the grounding, for the
+-- two pieces that do not travel on the sand: the figurehead flies and the boom's
+-- tackle swings. It is applied after the grounding rather than instead of it, so
+-- a flying piece still follows the shoal's 4.4-stud rise instead of drifting into
+-- it - the same reason the grounding is per-frame in the first place.
+function Fn.wrackPlaceProp(prop, at: Vector3, yaw: number?, lift: number?): Vector3?
+	if not Fn.wrackPropLive(prop) then
+		return nil
+	end
+	if yaw then
+		prop.yaw0 = yaw
+	end
+	local rest = groundedPos(at, prop.halfThickness or 0)
+	prop.pos = if lift then rest + Vector3.new(0, lift, 0) else rest
+	prop.model:PivotTo(restCFrame(prop))
+	return prop.pos
+end
+
+-- The two lists that outlive the attack that made them: runners burn an
+-- eight-second fuse and boarders march for eleven, both longer than any
+-- windup->recover the phase machine will hold open. Everything else the five
+-- mechanics own lives on `creature.attack` and dies with it.
+function Fn.wrackKit(creature)
+	local kit = creature.wrackKit
+	if not kit then
+		kit = { runners = {}, boarders = {} }
+		creature.wrackKit = kit
+	end
+	return kit
+end
+
+-- The keg going off. `atFuse` is the difference between the two ways it can
+-- end, and it is the whole risk curve: a keg you SHOT bursts at 15 studs
+-- wherever it happened to be, so killing it across the beach costs nothing and
+-- killing it at arm's length costs you; a keg whose fuse RAN OUT bursts at 20,
+-- centred on the player it had caught up with, and there is no dodge left
+-- because the dodge was the eight seconds already spent.
+function Fn.wrackKegBlast(creature, run, now: number, atFuse: boolean)
+	local at = run.at
+	local radius = if atFuse then run.blastFuse else run.blast
+	run.done = true
+	damagePlayersInRadius(at, radius, run.min, run.max, creature, 0.5, K.BOSS_HEIGHT_TOLERANCE)
+	fireEvent("decoyPop", at, { radius = radius, skin = run.skin })
+	if Fn.wrackPropLive(run.prop) then
+		CreatureService.despawn(run.prop.model)
+	end
+	-- SYMPATHETIC DETONATION, phase 3's whole addition to the move: a blast
+	-- lights any other keg within `chainAt`, and the chained one goes off where
+	-- IT is (the small radius) rather than on anybody's feet. Scheduled a beat
+	-- later instead of recursing, so a cluster pops as a run of bangs rather
+	-- than one frame's worth of stacked damage - and so this cannot re-enter
+	-- itself while the caller is walking the same list.
+	if (run.chainAt or 0) > 0 then
+		for _, other in Fn.wrackKit(creature).runners do
+			if other ~= run and not other.done and not other.popAt then
+				local dx, dz = other.at.X - at.X, other.at.Z - at.Z
+				if math.sqrt(dx * dx + dz * dz) <= run.chainAt then
+					other.popAt = now + 0.18
+					other.popFuse = false
+				end
+			end
+		end
+	end
+end
+
+-- Give a gun deck a quarter of its bar back. The lowest one, deliberately: a
+-- boarder that arrives should undo the party's most recent work, so the repair
+-- is felt as a setback on the battery they were about to break rather than
+-- spent invisibly on one already at full.
+--
+-- WITH EVERY BATTERY DOWN THIS DOES NOTHING AND RETURNS FALSE, which is the
+-- burst window's guarantee: bringing a gun deck back inside the one beat of
+-- the fight the party earned by silencing all four would take the reward away
+-- after it had been given.
+function Fn.wrackRepair(creature, fraction: number): boolean
+	local best = nil
+	for _, part in Fn.livingArms(creature) do
+		if best == nil or part.health < best.health then
+			best = part
+		end
+	end
+	if not best then
+		return false
+	end
+	local amount = math.max(1, math.floor(best.maxHealth * fraction + 0.5))
+	best.health = math.min(best.maxHealth, best.health + amount)
+	-- The replicated number, kept in step by hand because this is the one place
+	-- in the file that RAISES a creature's health and CreatureService.damage
+	-- (which owns the pairing everywhere else) cannot express a heal.
+	best.model:SetAttribute(ATTR.HEALTH, best.health)
+	fireEvent("strikeHit", best.pos, { radius = 8, skin = "wreck" })
+	return true
+end
+
+-- THE TWO MECHANICS THAT OUTLIVE THEIR OWN ATTACK, stepped from the creature
+-- walk rather than from a handler. Called every frame a Wrack has a kit; the
+-- kit is dropped the moment both lists empty, so the cost is bounded by the
+-- fight actually having something running.
+-- ---------------------------------------------------- the act clock (2026-09-09)
+--
+-- THE ONE PLACE THAT KNOWS WHICH ACT IT IS. Three jobs, and they are together
+-- because they are the same question asked three ways:
+--
+--   1. `creature.actFraction` - the synthetic dial `Fn.bossPhaseFraction`
+--      prefers, monotonic across both of the ship's acts:
+--          act 1:  0.60 + 0.40 * (gunsAlive / count)
+--          act 2:  0.60 * (hull hp / hull max)
+--      Act one HAS to be on the gun count: the hull is immune for its whole
+--      length, so its health bar never moves and a health-fraction table would
+--      sit in band one until the act was over.
+--   2. `ATTR.WRACK_ACT` - so the client can light the hull and open the ports.
+--   3. ACT TWO'S EARNED WINDOW. Every `acts.crackEvery` of the hull's bar the
+--      party takes off her, she cracks open for `acts.crackFor`.
+--
+-- THE WINDOW IS THE SHIPPED `expose` MACHINERY, NOT A NEW ONE. Setting
+-- `exposedUntil` gets the 2x in `hitModifiers`, `ATTR.EXPOSED` gets the client's
+-- shells-open animation, and pushing `nextAttackAt` past the window is exactly
+-- what `holdExpose` does for an authored move. The only thing that is new is
+-- the TRIGGER: a damage threshold rather than the end of an attack, because a
+-- window the player earns is what act two is about. Writing a second window
+-- system would have meant a second thing to keep in step with the client.
+function Fn.wrackActStep(creature, def, now: number)
+	local model = creature.model
+	if not model or not model.Parent then
+		return
+	end
+	local parts = def.parts
+	local alive = creature.partsAlive
+	if parts and alive and alive > 0 then
+		-- ACT ONE. The dial descends as the cannons fall and stops at 0.60.
+		creature.actFraction = 0.60 + 0.40 * (alive / math.max(parts.count, 1))
+		if creature.wrackAct ~= 1 then
+			creature.wrackAct = 1
+			model:SetAttribute(ATTR.WRACK_ACT, 1)
+		end
+		return
+	end
+	-- ACT TWO. The guns are gone for good (no `regrow`), so reaching here once
+	-- means reaching here for the rest of the fight.
+	creature.actFraction = 0.60 * (creature.health / math.max(creature.maxHealth, 1))
+	if creature.wrackAct ~= 2 then
+		creature.wrackAct = 2
+		model:SetAttribute(ATTR.WRACK_ACT, 2)
+		-- The first threshold is measured from the hull she still has when the
+		-- act opens, which is all of it - seeded here rather than at spawn so a
+		-- stray hit landing during act one (there cannot be one; the hull is
+		-- immune) could not consume a crack before act two began.
+		creature.wrackCrackAt = creature.health - (def.acts and def.acts.crackEvery or 0.20) * creature.maxHealth
+	end
+	local acts = def.acts
+	if not acts or not creature.wrackCrackAt then
+		return
+	end
+	if creature.health <= creature.wrackCrackAt and not creature.collapsing then
+		creature.wrackCrackAt = creature.health - (acts.crackEvery or 0.20) * creature.maxHealth
+		local until_ = now + (acts.crackFor or 3.0)
+		-- `math.max`, never a bare assignment: a crack landing while an earlier
+		-- one is still open must EXTEND it, not cut it short. Two thresholds can
+		-- fall inside one burst from a party.
+		creature.exposedUntil = math.max(creature.exposedUntil or 0, until_)
+		model:SetAttribute(ATTR.EXPOSED, true)
+		-- The window has to be a real one. `holdExpose`'s arithmetic, applied
+		-- here because this window is not an attack's and so never passes
+		-- through Fn.endBossAttack.
+		creature.nextAttackAt = math.max(creature.nextAttackAt or now, creature.exposedUntil)
+		fireEvent("bossStagger", creature.anchor or creature.pos, {
+			name = def.name,
+			duration = creature.exposedUntil - now,
+		})
+	end
+end
+
+function Fn.wrackKitStep(creature, now: number, dt: number)
+	local kit = creature.wrackKit
+	if not kit then
+		return
+	end
+	for i = #kit.runners, 1, -1 do
+		local run = kit.runners[i]
+		-- SHOT DOWN. Noticed by polling rather than by a hook: see the section
+		-- header on why these props cannot carry `partOf`.
+		if not run.popAt and not Fn.wrackPropLive(run.prop) then
+			run.popAt, run.popFuse = now, false
+		end
+		if run.popAt and now >= run.popAt then
+			Fn.wrackKegBlast(creature, run, now, run.popFuse == true)
+			table.remove(kit.runners, i)
+		elseif now >= run.fuseAt then
+			Fn.wrackKegBlast(creature, run, now, true)
+			table.remove(kit.runners, i)
+		else
+			-- HOMES ON THE PLAYER IT WAS LATCHED TO AT WINDUP, and re-latches
+			-- only if that player has gone. It turns instantly - there is no
+			-- wisp-style turn radius to run circles around, because the answer
+			-- to this one is the gun, not the feet.
+			local character = run.target and run.target.Character
+			local root = character and character:FindFirstChild("HumanoidRootPart")
+			if not root then
+				local nearest, player = Fn.nearestPlayerRoot(run.at)
+				root, run.target = nearest, player
+			end
+			if root then
+				local step = flatUnit(root.Position - run.at) * run.speed * dt
+				run.at = Fn.wrackPlaceProp(run.prop, run.at + step) or run.at
+			end
+		end
+	end
+	for i = #kit.boarders, 1, -1 do
+		local man = kit.boarders[i]
+		-- WRAPPED, never written through onto the creature record. The march's
+		-- state (`speed`, `reach`, `repair`) would otherwise be four new fields
+		-- invented on a shared struct that a dozen archetypes already read -
+		-- `speed` in particular is a name the row layer owns.
+		if not Fn.wrackPropLive(man.prop) then
+			table.remove(kit.boarders, i)
+		elseif now >= man.expireAt then
+			CreatureService.despawn(man.prop.model)
+			table.remove(kit.boarders, i)
+		else
+			local centre = creature.anchor or creature.pos
+			local at = man.prop.pos
+			local dx, dz = centre.X - at.X, centre.Z - at.Z
+			if math.sqrt(dx * dx + dz * dz) <= man.reach then
+				-- ABOARD. Whether or not there is anything left to repair (the
+				-- burst window: see Fn.wrackRepair), the boarder is spent - it
+				-- climbed the side and is gone.
+				Fn.wrackRepair(creature, man.repair)
+				CreatureService.despawn(man.prop.model)
+				table.remove(kit.boarders, i)
+			else
+				Fn.wrackPlaceProp(man.prop, at + flatUnit(Vector3.new(dx, 0, dz)) * man.speed * dt)
+			end
+		end
+	end
+	if #kit.runners == 0 and #kit.boarders == 0 then
+		creature.wrackKit = nil
+	end
+end
+
+-- THE POWDER RUNNER. p: rows, count, fuse, speed, spawnAt, blast, blastFuse,
+-- chainAt, damage.
+K.ATTACK_HANDLERS.powderrun = {
+	windup = function(creature, def, p, u, sub)
+		local a = creature.attack
+		-- LATCHED OUTSIDE THE TOLD-GATE, the documented trap in this section:
+		-- the tell is skipped while the decks are silent, and a latch that
+		-- lived inside it would leave the fire hook with no target at all on
+		-- exactly the windups that start inside the stagger and end outside it.
+		if not a.wrackAimed then
+			a.wrackAimed = true
+			wrackAim(creature)
+			local _, player = Fn.nearestPlayerRoot(creature.anchor or creature.pos)
+			a.wrackChase = player
+			-- WHERE THE KEG LANDS, latched with everything else. It is LOBBED
+			-- from the gun and comes down `spawnAt` studs short of the latched
+			-- target, on the line between them - it does not roll the whole way
+			-- across the beach, and that distinction is the difference between
+			-- a mechanic and a decoration.
+			--
+			-- The arithmetic, because it is the only thing holding this move up:
+			-- the keg closes at 2 studs/s (18 against a 16-stud walk) and the
+			-- fuse is 8 seconds, so it gains SIXTEEN STUDS in its whole life. A
+			-- keg born at its gun would be 68 studs from the drop ring and
+			-- would need thirty-four seconds to arrive - it could be ignored
+			-- completely, by anybody, forever. Born 28 studs out it ends the
+			-- fuse 12 studs from a player who ran flat out the entire time,
+			-- which is inside `blastFuse`: RUNNING DOES NOT BEAT IT, and it is
+			-- not supposed to. The answer to this one is the gun.
+			local centre = creature.anchor or creature.pos
+			local mark = a.wrackMark or (centre + wrackAim(creature) * 90)
+			a.wrackKegAt = mark
+			a.wrackKegBack = p.spawnAt or 28
+		end
+		if not a.wrackTold and Fn.wrackWillFire(creature, def) then
+			a.wrackTold = true
+			-- WHERE, not what: the keg is a visible model with a lit fuse from
+			-- the moment it exists, so the telegraph only has to name the ground
+			-- it comes down on - which is ground the player can already see,
+			-- between them and the ship.
+			local gun = Fn.wrackGunFor(creature)
+			local from = if gun then Vector3.new(gun.X, a.wrackKegAt.Y, gun.Z) else creature.model:GetPivot().Position
+			local back = a.wrackKegAt - from
+			local dir = if back.Magnitude > 0.001 then flatUnit(back) else wrackAim(creature)
+			fireEvent("telegraph", groundedPos(a.wrackKegAt - dir * a.wrackKegBack, 0), {
+				kind = "mark",
+				duration = p.windup,
+				radius = 8,
+				skin = p.skin,
+			})
+		end
+		creature.model:PivotTo(poseCFrame(creature, sub + 0.2 * u, 0, math.rad(-8) * u))
+	end,
+	fire = function(creature, def, p, now)
+		-- The burst window silences the SPAWN, not just the tell. Everything
+		-- else about the move still runs (cooldown included), so keeping the
+		-- batteries down cannot farm free openings - the same contract every
+		-- ball row above lives under.
+		if not Fn.wrackWillFire(creature, def) then
+			return
+		end
+		local a = creature.attack
+		local centre = creature.anchor or creature.pos
+		local decks = Fn.wrackDeckPositions(creature)
+		if #decks == 0 then
+			return
+		end
+		local lo, hi = Fn.bossRoll(creature, def, p.damage)
+		local kit = Fn.wrackKit(creature)
+		for i = 1, (p.count or 1) do
+			-- One deck each when there are two kegs, so phase 3's pair is lobbed
+			-- from two bearings and comes down on two sides of the target - it
+			-- cannot be answered by facing one way and firing.
+			local gun = decks[((i - 1) % #decks) + 1]
+			local mark = a.wrackKegAt or (centre + wrackAim(creature) * 90)
+			local back = Vector3.new(mark.X - gun.X, 0, mark.Z - gun.Z)
+			local dir = if back.Magnitude > 0.5 then back.Unit else wrackAim(creature)
+			-- Short of the target on the gun's own line: see the windup's latch
+			-- for why the distance is the whole move.
+			local at = groundedPos(mark - dir * (a.wrackKegBack or p.spawnAt or 28), 0)
+			local prop = Fn.wrackProp(creature, p, at, (p.fuse or 8) + 2)
+			if prop then
+				table.insert(kit.runners, {
+					prop = prop,
+					at = prop.pos,
+					target = a.wrackChase,
+					speed = p.speed or 18,
+					fuseAt = now + (p.fuse or 8),
+					blast = p.blast or 15,
+					blastFuse = p.blastFuse or 20,
+					chainAt = p.chainAt or 0,
+					min = lo,
+					max = hi,
+					skin = p.skin,
+				})
+				-- NO "decoy" SPAWN EVENT, and that is a decision rather than an
+				-- omission. The lure system's cue plants a persistent client-
+				-- side orb that is moved only by `decoyMove` - which this keg
+				-- never sends, because the keg is a real creature model the
+				-- server is already replicating. Firing it would leave a second
+				-- glowing ball sitting at the gun deck for the whole fuse while
+				-- the real one rolled away from it. Only the POP is borrowed
+				-- (see Fn.wrackKegBlast); `decoyPop` finds no orb to clear and
+				-- draws the blast anyway, which is exactly what is wanted.
+			end
+		end
+	end,
+	strike = function(creature, _def, _p, _now, _dt, _u, _root, sub)
+		creature.model:PivotTo(poseCFrame(creature, sub + 0.1, 0, math.rad(4)))
+	end,
+}
+
+-- THE GHOST BRAZIERS' WAVE. Everyone on the floor takes it except whoever is
+-- inside the sector behind a doused brazier - and "behind" is two conditions,
+-- not one: within `safeDeg` of that brazier's own bearing AND at least as far
+-- out as it stands. Standing between a doused pillar and the ship is not
+-- behind it in any sense a player would accept, and a sector test alone would
+-- award the safest ground in the arena to whoever was hugging the hull.
+--
+-- NO HEIGHT TEST, and that is deliberate rather than an omission: this is a
+-- floor-wide wave over one flat shoal, the only ground in the arena is the
+-- beach, and the boss's own record Y sits `submerge` studs above the sand the
+-- players stand on. A tolerance measured from it would be a rule about the
+-- boss's pivot pretending to be a rule about the floor.
+function Fn.wrackGhostWave(creature, def, p, a)
+	local centre = creature.anchor or creature.pos
+	local half = math.rad(p.safeDeg or 100) * 0.5
+	local inner = (p.ring or 70) - (p.behindAt or 8)
+	local reach = def.arena.radius + K.WRACK_BOUND_MARGIN
+	local lo, hi = a.wrackWaveLo, a.wrackWaveHi
+	for _, entry in Fn.livingRootsNear(centre, reach) do
+		local rp = entry.root.Position
+		local dx, dz = rp.X - centre.X, rp.Z - centre.Z
+		local sheltered = false
+		if math.sqrt(dx * dx + dz * dz) >= inner then
+			local at = math.atan2(dz, dx)
+			for _, brazier in a.wrackBraz do
+				if brazier.doused and math.abs(angleDelta(at, brazier.angle)) <= half then
+					sheltered = true
+					break
+				end
+			end
+		end
+		if not sheltered then
+			PlayerService.damage(entry.player, math.random(lo, hi), creature, { bypassIframe = true })
+		end
+	end
+	fireEvent("strikeHit", centre, { radius = reach, inner = 0, skin = p.skin })
+end
+
+-- THE GHOST BRAZIERS. p: rows, count, ring, charge, safeDeg, behindAt, damage.
+K.ATTACK_HANDLERS.ghostbraziers = {
+	windup = function(creature, def, p, u, sub)
+		local a = creature.attack
+		if not a.wrackAimed then
+			a.wrackAimed = true
+			-- The trio's bearings are latched off the aim so they never land in
+			-- the same three places twice, and latched OUTSIDE the told-gate
+			-- because `fire` lays the pillars out from this angle whether or
+			-- not the telegraph was drawn.
+			a.wrackGapAt = Fn.wrackAngle(wrackAim(creature))
+		end
+		if not a.wrackTold and Fn.wrackWillFire(creature, def) then
+			a.wrackTold = true
+			fireEvent("telegraph", creature.anchor or creature.pos, {
+				kind = "ringTell",
+				duration = p.windup,
+				radius = (p.ring or 70) + 6,
+				inner = math.max(0, (p.ring or 70) - 6),
+				skin = p.skin,
+			})
+		end
+		creature.model:PivotTo(poseCFrame(creature, sub + 0.3 * u, 0, math.rad(10) * u))
+	end,
+	fire = function(creature, def, p, now)
+		local a = creature.attack
+		if not Fn.wrackWillFire(creature, def) then
+			return
+		end
+		local centre = creature.anchor or creature.pos
+		local count = math.max(1, p.count or 3)
+		local lo, hi = Fn.bossRoll(creature, def, p.damage)
+		a.wrackBraz = {}
+		a.wrackWaveAt = now + (p.charge or 6)
+		a.wrackWaveLo, a.wrackWaveHi = lo, hi
+		for i = 0, count - 1 do
+			local angle = a.wrackGapAt + (math.pi * 2 / count) * i
+			local dir = Vector3.new(math.cos(angle), 0, math.sin(angle))
+			local at = groundedPos(centre + dir * (p.ring or 70), 0)
+			local prop = Fn.wrackProp(creature, p, at, (p.charge or 6) + 4)
+			if prop then
+				table.insert(a.wrackBraz, { prop = prop, angle = angle, at = prop.pos })
+				-- Each pillar counts down its own charge, on itself.
+				fireEvent("telegraph", prop.pos, {
+					kind = "mark",
+					duration = p.charge or 6,
+					radius = 7,
+					skin = p.skin,
+				})
+			end
+		end
+	end,
+	strike = function(creature, def, p, now, _dt, _u, _root, sub)
+		local a = creature.attack
+		if a.wrackBraz and not a.wrackWaved then
+			for _, brazier in a.wrackBraz do
+				if not brazier.doused and not Fn.wrackPropLive(brazier.prop) then
+					brazier.doused = true
+					fireEvent("decoyPop", brazier.at, { fizzle = true, skin = p.skin })
+					-- THE REWARD, DRAWN WHERE IT IS. Dousing a brazier opens a
+					-- sector, and a sector nobody can see is a mechanic nobody
+					-- can use - so the moment one goes out, the ground it just
+					-- made safe is marked, for as long as the charge has left.
+					local dir = Vector3.new(math.cos(brazier.angle), 0, math.sin(brazier.angle))
+					local out = (p.ring or 70) + 28
+					fireEvent("telegraph", groundedPos((creature.anchor or creature.pos) + dir * out, 0), {
+						kind = "mark",
+						duration = math.max(a.wrackWaveAt - now, 0.2),
+						radius = math.rad(p.safeDeg or 100) * out * 0.5,
+						skin = p.skin,
+					})
+				end
+			end
+			if now >= a.wrackWaveAt then
+				a.wrackWaved = true
+				Fn.wrackGhostWave(creature, def, p, a)
+			end
+		end
+		creature.model:PivotTo(poseCFrame(creature, sub, 0, math.rad(6)))
+	end,
+	finish = function(creature, _def, _p, _now)
+		-- The pillars are the charge, not scenery: whatever survived the wave
+		-- goes out with it. Their spawn `lifetime` is the belt to this brace,
+		-- for the fight that ends before `finish` is ever reached.
+		local a = creature.attack
+		if a and a.wrackBraz then
+			for _, brazier in a.wrackBraz do
+				if Fn.wrackPropLive(brazier.prop) then
+					CreatureService.despawn(brazier.prop.model)
+				end
+			end
+			a.wrackBraz = nil
+		end
+	end,
+}
+
+-- THE CANNON OVERLOAD. p: jam, bonus, markAt, speed, radius, spawnAt,
+-- lifetime, tellRange, damage, burst.
+K.ATTACK_HANDLERS.cannonoverload = {
+	windup = function(creature, def, p, u, sub)
+		local a = creature.attack
+		if not a.wrackAimed then
+			a.wrackAimed = true
+			local aim = wrackAim(creature)
+			local centre = creature.anchor or creature.pos
+			-- THE PART ITSELF, held rather than its index. Two reasons, and the
+			-- second is the fight's own history: indices shift the moment a
+			-- deck dies (wrackGunFor holds a POSITION for exactly that reason),
+			-- and this handler has to read that battery's HEALTH every frame,
+			-- which only the record can answer.
+			local best, bestScore = nil, -math.huge
+			for _, part in Fn.livingArms(creature) do
+				local off = Vector3.new(part.pos.X - centre.X, 0, part.pos.Z - centre.Z)
+				local mag = off.Magnitude
+				local score = if mag > 0.001 then (off.X * aim.X + off.Z * aim.Z) / mag else -1
+				if score > bestScore then
+					bestScore, best = score, part
+				end
+			end
+			a.wrackOver = best
+			a.wrackOverHp = best and best.health
+			-- AND THE TELL AND THE BALL LEAVE THE SAME BRASS. wrackGunFor picks
+			-- its own gun on first call and latches it; seeding `wrackGunAt`
+			-- here makes it return the battery the disc is about to pulse on
+			-- instead. On a hull whose mounts are 10.9 studs apart, a mega-shot
+			-- out of the wrong one is a tell that lies by a whole cannon.
+			if best then
+				a.wrackGunAt = best.pos
+				-- WHICH CANNON, on the wire as well as on the ground. The disc
+				-- and the wedge below are the telegraph; this is the same claim
+				-- in a form a renderer can hold for the whole windup and drop
+				-- when it ends, which a one-shot event cannot do (a client that
+				-- adopts the model mid-windup sees nothing at all).
+				best.model:SetAttribute(ATTR.WEAKPOINT_HOT, true)
+			end
+		end
+		if not a.wrackTold and a.wrackOver and Fn.wrackWillFire(creature, def) then
+			a.wrackTold = true
+			local gun, from = Fn.wrackGunFor(creature)
+			-- WHICH CANNON, said twice: a disc on the gun itself (sized under
+			-- half the gap to its neighbour, so it names one), and a wedge
+			-- leaving it along the bearing the shot will take.
+			fireEvent("telegraph", a.wrackOver.pos, {
+				kind = "mark",
+				duration = p.windup,
+				radius = p.markAt or 5,
+				skin = p.skin,
+			})
+			Fn.wrackConeTell(p, gun or a.wrackOver.pos, from, 0, 1)
+		end
+		-- THE JAM, tested every windup frame. It is measured against the health
+		-- this battery had when the windup STARTED, not against a fraction of
+		-- its current bar: the threshold has to mean "damage done during the
+		-- windup", and a battery that was already at 20% would otherwise be
+		-- jammable by a scratch.
+		local part = a.wrackOver
+		if part and not a.wrackJammed then
+			if not Fn.wrackPropLive(part) then
+				-- Broken outright mid-windup. There is no gun left to fire.
+				a.wrackJammed = true
+			elseif a.wrackOverHp and (a.wrackOverHp - part.health) >= (p.jam or 0.15) * part.maxHealth then
+				a.wrackJammed = true
+				-- The reward for choosing it: the jam is not only defence, it
+				-- is the fastest way to break that battery.
+				CreatureService.damage(
+					part,
+					math.max(1, math.floor(part.maxHealth * (p.bonus or 0.1) + 0.5)),
+					nil,
+					{ ignoreUntargetable = true }
+				)
+				fireEvent("strikeHit", part.pos, { radius = 9, skin = p.skin })
+			end
+		end
+		creature.model:PivotTo(poseCFrame(creature, sub + 0.2 * u, 0, math.rad(-12) * u))
+	end,
+	fire = function(creature, def, p, now)
+		local a = creature.attack
+		-- The glow goes out with the windup, jammed or not: the attribute means
+		-- "this gun is winding up", and it is no longer winding up. Cleared here
+		-- rather than only in `finish`, because a JAMMED overload has nothing
+		-- left to do and should stop advertising itself the instant it fires
+		-- nothing.
+		if Fn.wrackPropLive(a.wrackOver) then
+			a.wrackOver.model:SetAttribute(ATTR.WEAKPOINT_HOT, nil)
+		end
+		-- NOTHING IS CANCELLED and no phase is exited - rule 3 at the top of
+		-- this section. A jammed overload simply emits nothing, so it still
+		-- runs its strike and recover and still writes its own cooldown.
+		if a.wrackJammed then
+			return
+		end
+		Fn.wrackEmit("megashot", creature, def, p, now)
+	end,
+	strike = function(creature, _def, _p, _now, _dt, _u, _root, sub)
+		creature.model:PivotTo(poseCFrame(creature, sub + 0.3, 0, math.rad(9)))
+	end,
+	finish = function(creature, _def, _p, _now)
+		-- The belt to `fire`'s brace: a windup interrupted by a stagger or the
+		-- boss's own collapse never reaches `fire`, and a battery left glowing
+		-- for the rest of the fight would be a tell that never comes true.
+		local a = creature.attack
+		if a and Fn.wrackPropLive(a.wrackOver) then
+			a.wrackOver.model:SetAttribute(ATTR.WEAKPOINT_HOT, nil)
+		end
+	end,
+}
+
+-- THE ANCHOR LINE. p: rows, overshoot, drag, stopAt, chain, chainRadius,
+-- radius, lifetime, tellWidth, tellRange, damage.
+K.ATTACK_HANDLERS.anchorline = {
+	windup = function(creature, def, p, u, sub)
+		local a = creature.attack
+		if not a.wrackAimed then
+			a.wrackAimed = true
+			local centre = creature.anchor or creature.pos
+			local aim = wrackAim(creature)
+			local mark = a.wrackMark or (centre + aim * 90)
+			local out = Vector3.new(mark.X - centre.X, 0, mark.Z - centre.Z)
+			local dir = if out.Magnitude > 0.001 then out.Unit else aim
+			-- PAST them, not at them - the anchor is thrown OVER the player so
+			-- the hazard is behind them and comes back through. Landing it on
+			-- their feet would make it a disc dodge like everything else.
+			--
+			-- AND CLAMPED INSIDE THE BOUND, which is not a tidy-up: the chain
+			-- is a pair of ProjectileService balls, and the tick retires any
+			-- ball further from `centre` than `bound` (arena.radius + 60 = 140)
+			-- ON ITS FIRST FRAME. A player standing at the sand's edge (r 132)
+			-- plus a 25-stud overshoot lands at 157, so the hazard would have
+			-- been born already dead - a telegraph drawn, a chain spawned, and
+			-- nothing on the beach - and it would have failed ONLY for players
+			-- out at the rim, which is the hardest kind of bug to be told about.
+			local far = def.arena.radius + K.WRACK_BOUND_MARGIN - 8
+			local land = mark + dir * (p.overshoot or 25)
+			local lx, lz = land.X - centre.X, land.Z - centre.Z
+			local lr = math.sqrt(lx * lx + lz * lz)
+			if lr > far then
+				land = centre + Vector3.new(lx, 0, lz) * (far / lr)
+			end
+			a.wrackLand = groundedPos(land, 0)
+			a.wrackDragDir = -dir
+		end
+		if not a.wrackTold and Fn.wrackWillFire(creature, def) then
+			a.wrackTold = true
+			-- Where it lands, then the corridor it will drag through - drawn
+			-- before the hazard exists, which is the only warning a line
+			-- hazard can give that is worth anything.
+			fireEvent("telegraph", a.wrackLand, {
+				kind = "mark",
+				duration = p.windup,
+				radius = (p.chain or 34) * 0.5,
+				skin = p.skin,
+			})
+			Fn.wrackLaneTell(p, a.wrackLand, a.wrackDragDir, p.chain or 34, p.tellRange or 120)
+		end
+		creature.model:PivotTo(poseCFrame(creature, sub + 0.5 * smoothstep(u), 0, math.rad(-16) * u))
+	end,
+	fire = function(creature, def, p, now)
+		local a = creature.attack
+		if not Fn.wrackWillFire(creature, def) then
+			return
+		end
+		local centre = creature.anchor or creature.pos
+		local land = a.wrackLand
+		local dx, dz = land.X - centre.X, land.Z - centre.Z
+		-- THE DRAG TAKES `drag` SECONDS WHATEVER THE DISTANCE, which is why the
+		-- speed is computed here and handed down instead of being authored. A
+		-- fixed studs/s would be a formality against a player at the rim and
+		-- unsurvivable against one hugging the hull.
+		local span = math.max(math.sqrt(dx * dx + dz * dz) - (p.stopAt or 18), 4)
+		local speed = span / math.max(p.drag or 4.2, 0.2)
+		-- A FRESH TABLE IS THE HANDLE. Nothing reads it - it only has to be
+		-- unique and comparable, so that retiring this hazard cannot touch a
+		-- second anchor line, and cannot be confused with any other volley.
+		a.wrackTag = {}
+		a.wrackDragAt = land
+		a.wrackDragSpeed = speed
+		a.wrackDragFrom = now
+		Fn.wrackEmit("anchorline", creature, def, p, now, nil, nil, {
+			spot = land,
+			dir = a.wrackDragDir,
+			tag = a.wrackTag,
+			speed = speed,
+		})
+		-- THE OFF SWITCH, standing in the middle of its own chain.
+		a.wrackChainProp = Fn.wrackProp(creature, p, land, (p.drag or 4.2) + 2)
+	end,
+	strike = function(creature, _def, p, now, _dt, u, _root, sub)
+		local a = creature.attack
+		if a.wrackChainProp then
+			if not Fn.wrackPropLive(a.wrackChainProp) then
+				-- SNAPPED. The hazard dies on this frame, not at the end of its
+				-- lifetime - a shootable part that only PROMISES to end the
+				-- thing it is attached to is worse than no part at all.
+				local at = a.wrackChainProp.pos
+				a.wrackChainProp = nil
+				if a.wrackTag then
+					ProjectileService.retireTag(creature, a.wrackTag)
+					a.wrackTag = nil
+				end
+				fireEvent("decoyPop", at, { fizzle = true, skin = p.skin })
+			else
+				-- Ridden off the same kinematics the balls were given, rather
+				-- than read back off them: the pair travels at a constant
+				-- velocity from a known point, so the midlink can be placed
+				-- from the clock and the two can never disagree.
+				local t = math.min(now - a.wrackDragFrom, p.drag or 4.2)
+				Fn.wrackPlaceProp(a.wrackChainProp, a.wrackDragAt + a.wrackDragDir * (a.wrackDragSpeed * t))
+			end
+		end
+		creature.model:PivotTo(poseCFrame(creature, sub + 0.3 * (1 - u), 0, math.rad(12) * (1 - u)))
+	end,
+	finish = function(creature, _def, _p, _now)
+		local a = creature.attack
+		if not a then
+			return
+		end
+		if a.wrackTag then
+			ProjectileService.retireTag(creature, a.wrackTag)
+			a.wrackTag = nil
+		end
+		if Fn.wrackPropLive(a.wrackChainProp) then
+			CreatureService.despawn(a.wrackChainProp.model)
+		end
+		a.wrackChainProp = nil
+	end,
+}
+
+-- THE LONGBOAT. p: rows, count, beachAt, spread, speed, reach, march, repair.
+K.ATTACK_HANDLERS.longboat = {
+	windup = function(creature, def, p, u, sub)
+		local a = creature.attack
+		if not a.wrackAimed then
+			a.wrackAimed = true
+			local centre = creature.anchor or creature.pos
+			local aim = wrackAim(creature)
+			-- They beach on the player's OWN side of the arena, so the march is
+			-- something the party is standing in the middle of rather than a
+			-- rumour happening behind the ship.
+			a.wrackBeach = groundedPos(centre + aim * (def.arena.radius + (p.beachAt or 46)), 0)
+			a.wrackBeachSide = Vector3.new(-aim.Z, 0, aim.X)
+		end
+		if not a.wrackTold and Fn.wrackWillFire(creature, def) then
+			a.wrackTold = true
+			fireEvent("telegraph", a.wrackBeach, {
+				kind = "mark",
+				duration = p.windup,
+				radius = (p.spread or 11) + 6,
+				skin = p.skin,
+			})
+		end
+		creature.model:PivotTo(poseCFrame(creature, sub - 0.3 * u, 0, math.rad(7) * u))
+	end,
+	fire = function(creature, def, p, now)
+		if not Fn.wrackWillFire(creature, def) then
+			return
+		end
+		local a = creature.attack
+		local kit = Fn.wrackKit(creature)
+		local count = math.max(1, p.count or 3)
+		local life = p.march or 26
+		for i = 1, count do
+			-- Spread ALONG the beach rather than in a clump, so they arrive as
+			-- a line the party has to sweep instead of one target three shots
+			-- happen to overlap on.
+			local across = ((i - 0.5) / count - 0.5) * 2 * (p.spread or 11)
+			local at = groundedPos(a.wrackBeach + a.wrackBeachSide * across, 0)
+			local man = Fn.wrackProp(creature, p, at, life)
+			if man then
+				table.insert(kit.boarders, {
+					prop = man,
+					speed = p.speed or 9.5,
+					reach = p.reach or 20,
+					repair = p.repair or 0.25,
+					expireAt = now + life,
+				})
+			end
+		end
+		fireEvent("summon", a.wrackBeach, { count = count })
+	end,
+	strike = function(creature, _def, _p, _now, _dt, _u, _root, sub)
+		creature.model:PivotTo(poseCFrame(creature, sub - 0.2, 0, math.rad(-5)))
+	end,
+}
+
+-- ---------------------------------------------------- Wrack: the ship itself (2026-09-09)
+--
+-- The five verbs above are things the Admiral PUTS ON THE SAND - kegs, pillars,
+-- a chain, a boat. These three are things the SHIP DOES, and that is the whole
+-- reason they exist: after five mechanics of "shoot the thing that landed near
+-- you", the hull had still never once moved. Each of the three takes a piece of
+-- her and swings it at you.
+--
+--   ladybelow    the figurehead unships herself and hunts - two or three
+--                telegraphed lane dives at one player, then she re-docks. SHOOT
+--                HER and she is off the board a dive early.
+--   boomsweep    the main boom swings outboard and sweeps the near ring. There
+--                is nowhere to run TANGENTIALLY (see the arithmetic on the row);
+--                you leave radially, or you shoot the tackle and it drops.
+--   bilgeblow    three deck hatches blow in sequence and a geyser marches out
+--                along each one's radial. Nothing to shoot at all: it is ground
+--                being taken away, and it is scheduled against the moves that
+--                want you standing on that ground.
+--
+-- THEY INHERIT EVERY RULE OF THE SECTION ABOVE and add none:
+--   * aim latched once at windup, OUTSIDE the told-gate (the trap documented on
+--     powderrun: a latch inside it leaves `fire` with no target on exactly the
+--     windups that begin inside the stagger);
+--   * every tell drawn from the latched geometry, once-guarded, gated on
+--     `Fn.wrackWillFire`, and only in kinds the client actually draws
+--     (`wrackTell` lane/ring, `ringTell`, `mark` - see the boss row's note);
+--   * nothing touches the phase machine: no early return out of a phase, no
+--     Fn.endBossAttack, no clearing of `creature.attack`. A move silenced by the
+--     burst window still runs its strike and recover and still writes its
+--     cooldown, so keeping the batteries down cannot farm free openings;
+--   * the hull does not turn. Every pose below passes yawOffset 0, like all
+--     eleven before them, because `parts.mounts` are resolved once against
+--     `yaw0` and a slewing hull would leave the guns behind.
+--
+-- AND NONE OF THE THREE ADDS A SYSTEM THAT OUTLIVES ITS OWN ATTACK. The kit
+-- (`Fn.wrackKitStep`) exists for the two mechanics that had to - an eight-second
+-- fuse and an eleven-second march. The Lady re-docks, the boom stows and the
+-- hatches shut inside their own rows' `duration`, so all three are stepped from
+-- their own `strike` hook the way the anchor line's midlink is, and `finish`
+-- clears what is left if the fight ends underneath them. The one thing that DOES
+-- outlive its row is bilgeblow's queued eruptions, and that is deliberate: they
+-- are `creature.strikes` entries, which the creature walk already owns and
+-- already drops when the boss dies. A second copy of that machinery, on a kit,
+-- would be the thing the section header above refuses to build.
+
+-- The pose centre and the boss-local transform, in ONE place. `Fn.spawnBossParts`
+-- reaches the second of these for `parts.mounts`; the three handlers below reach
+-- it for the rigging. Same convention, same arithmetic, one definition: a point's
+-- Y is the piece's own CENTRE measured from the sand of the DRAWN hull (so the
+-- record's `halfThickness` and the row's `submerge` both come off), and X/Z are
+-- boss-local, resolved against the heading the hull spawned with.
+function Fn.wrackPoseCentre(creature): Vector3
+	local centre = creature.anchor or creature.pos
+	if creature.pose and creature.pose.center then
+		centre = creature.pose.center
+	end
+	return centre
+end
+
+-- ---------------------------------------------------- the shot occluder (2026-09-09)
+--
+-- "they shouldnt be able to shoot through the boss" (user, 2026-09-09). Nothing
+-- in this engine made that true: creature parts are `CanQuery = false` and
+-- targeting has always been proximity rather than raycast, so a shot at a
+-- cannon on the far side of a 42-stud ship was resolved exactly as if the ship
+-- were not there. Acts one and two are built on the opposite premise - four
+-- corner guns, only two reachable from any bearing, and repositioning to reach
+-- the far pair IS the loop - so the hull has to become a real obstacle.
+--
+-- ONE INVISIBLE PART DOES IT, AND WHERE IT IS PARENTED IS THE WHOLE MECHANISM.
+--
+--   * SERVER: `ShotAim.terrainLimit` builds its RaycastParams as
+--     `FilterType = Include` over `Workspace[World.FOLDER_NAME]` AND NOTHING
+--     ELSE. A collider parented to the Creatures folder, to the `BossArenas`
+--     folder, or to bare Workspace is invisible to every shot in the game -
+--     silently, with no error and no symptom except a boss you can shoot
+--     through. It also sets `RespectCanCollide = true`, which is why
+--     `CanCollide` must be set and `CanQuery` alone is not enough.
+--   * CLIENT: `RangedController.aimDistance` excludes the character and the
+--     four FX folders with `RespectCanCollide = true`. The World folder is not
+--     among them and this replicates as an ordinary anchored BasePart, so the
+--     client's depth probe stops on the same geometry the server does. Both
+--     halves agree by construction, from one object, rather than by two
+--     filters being kept in step.
+--
+-- Players cannot walk through her either. That is intended: she is a ship.
+--
+-- THE PACK PIECE IS THE REAL ANSWER AND THE BOX IS NOT A SUBSTITUTE.
+-- `Wrack_HullCollider` carries the four sponsons' casemates - a back wall and
+-- two cheeks per gun, folded into the one object so this stays a single clone -
+-- and those cheeks are what actually bound the fight to two guns per bearing.
+-- The hull ALONE leaks: the sponsons stand at |z| 9.5 while the hull is only
+-- |z| 6.6, so a bow-on ray from the sand's edge crosses her near face OUTSIDE
+-- the timber and runs down her side to a far gun. The fallback box below cannot
+-- reproduce cheeks and therefore leaks on the axial bearings; it exists so the
+-- fight is playable before the pack imports, and it is not the shipped shape.
+K.WRACK_OCCLUDER_NAME = "WrackOccluder"
+-- The authored hull-collider extents, boss-local, in the same Roblox
+-- (X, height, Z) convention as `parts.mounts`: x -21.5..20.5, y 0.70..15.00,
+-- z -6.60..6.60. Used only when the pack piece is absent.
+K.WRACK_HULL_BOX = Vector3.new(42.0, 14.3, 13.2)
+K.WRACK_HULL_MID = Vector3.new(-0.5, 7.85, 0.0)
+
+function Fn.wrackOccluderDrop(creature)
+	local part = creature and creature.wrackOccluder or K.WRACK_OCCLUDER
+	if part then
+		part:Destroy()
+	end
+	if creature then
+		creature.wrackOccluder = nil
+	end
+	K.WRACK_OCCLUDER = nil
+end
+
+function Fn.wrackOccluder(creature, def)
+	local world = Workspace:FindFirstChild(World.FOLDER_NAME)
+	if not world then
+		-- Named rather than generic: this is the one failure of the occluder
+		-- that produces NO symptom except a boss you can shoot through, so the
+		-- log line has to be enough to recognise it by.
+		warn(string.format("[CreatureService] no World folder: %s's hull will not stop shots", def.name))
+		return
+	end
+	-- SWEEP FIRST, ALWAYS. A fight that crashed, a server that reloaded, an
+	-- admin restart that raised a second Wrack on top of the first - any of
+	-- them can leave a collider behind, and a leaked one is worse than a
+	-- missing one: it is invisible, it blocks shots and bodies forever, and
+	-- `BossArenaService.floorY` would probe the NEXT fight's arena and find the
+	-- old ship's deck. Idempotent by name.
+	local stale = world:FindFirstChild(K.WRACK_OCCLUDER_NAME)
+	while stale do
+		stale:Destroy()
+		stale = world:FindFirstChild(K.WRACK_OCCLUDER_NAME)
+	end
+
+	local centre = Fn.wrackPoseCentre(creature)
+	local part
+	local assets = ReplicatedStorage:FindFirstChild("Assets")
+	local template = assets and assets:FindFirstChild("Wrack_HullCollider", true)
+	if template and template:IsA("BasePart") then
+		part = template:Clone()
+	else
+		part = Instance.new("Part")
+		part.Size = K.WRACK_HULL_BOX
+	end
+	part.Name = K.WRACK_OCCLUDER_NAME
+	part.Anchored = true
+	part.Transparency = 1
+	part.CanCollide = true
+	part.CanQuery = true
+	-- No touch events: it is geometry, not a trigger, and a 42-stud part firing
+	-- Touched for every player and every prop that brushes it is pure cost.
+	part.CanTouch = false
+	part.Massless = true
+	-- Resolved ONCE against `yaw0`, exactly as `parts.mounts` are and for the
+	-- same reason: he does not turn. A hull that slewed would need this every
+	-- frame, and the mounts would be wrong too.
+	local mid = K.WRACK_HULL_MID
+	part.CFrame = CFrame.new(centre) * CFrame.Angles(0, -(creature.yaw0 or 0), 0) * CFrame.new(mid)
+	part.Parent = world
+	creature.wrackOccluder = part
+	K.WRACK_OCCLUDER = part
+	-- IT DIES WITH HER, by every route. The model's own removal covers the
+	-- kill, `CreatureService.despawn`, the abandon reaper and adminStart's
+	-- teardown in one connection, which is the only way to be sure none of the
+	-- four was missed - and act three is fought on open sand with no ship in
+	-- it, so the wreck must not keep blocking.
+	local model = creature.model
+	model.AncestryChanged:Connect(function(_, parent)
+		if parent == nil then
+			Fn.wrackOccluderDrop(creature)
+		end
+	end)
+end
+
+function Fn.wrackMountPoint(creature, def, m: Vector3): Vector3
+	local centre = Fn.wrackPoseCentre(creature)
+	local sand = centre.Y - (creature.halfThickness or 0) - (def.submerge or 0)
+	local cos, sin = math.cos(creature.yaw0 or 0), math.sin(creature.yaw0 or 0)
+	return Vector3.new(centre.X + m.X * cos + m.Z * sin, sand + m.Y, centre.Z - m.X * sin + m.Z * cos)
+end
+
+-- THE MESH HANDOFF SLOT, AND THE ONLY HONEST WAY TO BE WITHOUT IT.
+--
+-- Where the figurehead docks, where the boom is stepped and how long it is, and
+-- where the three bilge hatches sit are MEASUREMENTS off the drawn hull - they
+-- belong to `WR_FIGUREHEAD` / `WR_BOOM` / `WR_HATCHES` in assets/boss_gen.py,
+-- exactly as the four gun mounts belong to `WR_CANNONS`, and they arrive on the
+-- boss row as `rigging`. They had not arrived when this was written.
+--
+-- So each reader takes a FALLBACK and says so out loud, once per attack, rather
+-- than carrying a made-up constant that would read like a measurement to the
+-- next person. Every fallback below is derived from a number the mesh has ALREADY
+-- published - the hull box (48 studs bow to stern, 12.6 in the beam, mesh HANDOFF
+-- 7673cd1) and the mount heights (9.0-12.4) - so the moves are playable and
+-- self-consistent now, and visibly provisional until the real points land.
+--
+-- The warn is the other half of that. A missing measurement that presents as a
+-- slightly-wrong-looking animation is the exact failure this file keeps having;
+-- one line per twenty seconds is cheap and it disappears the moment the constants
+-- are wired.
+function Fn.wrackRigging(creature, def, key: string, fallback)
+	local rigging = def.rigging
+	local value = rigging and rigging[key]
+	if value ~= nil then
+		return value
+	end
+	local told = creature.wrackRigTold
+	if not told then
+		told = {}
+		creature.wrackRigTold = told
+	end
+	if not told[key] then
+		told[key] = true
+		warn(
+			string.format(
+				"[CreatureService] boss %q has no rigging.%s yet (mesh HANDOFF pending) - using the derived fallback",
+				def.id,
+				key
+			)
+		)
+	end
+	return fallback
+end
+
+-- THE LADY BELOW. p: rows, dives, lead, rearm, redock, speed, approach, pastBy,
+-- lane, fly, damage.
+--
+-- She is a moving hitbox the server owns outright: a creature model stepped
+-- along a straight lane, tested against the players every frame she is on a pass,
+-- and drawn by nothing but her own replicated CFrame (see ATTR.WRACK_DIVE's note
+-- on why her position is deliberately NOT on the wire twice).
+--
+-- THE ONE PLACE THIS EXTENDS THE SECTION'S FIRST RULE, stated rather than
+-- smuggled: "aim is latched once at windup" is a rule about a TELL NOT LYING,
+-- not about a move having one target. Each dive re-latches at the instant its own
+-- lane is drawn, and then that lane is frozen for the whole of the pass it warns
+-- about. A player who walked out of dive one's lane has genuinely dodged dive
+-- one; dive two is a new telegraph with its own full `lead`, and the hunt is the
+-- move. What is forbidden - and what does not happen here - is her curving mid-
+-- pass toward someone the lane was never drawn on.
+K.ATTACK_HANDLERS.ladybelow = {
+	windup = function(creature, def, p, u, sub)
+		local a = creature.attack
+		if not a.wrackAimed then
+			a.wrackAimed = true
+			wrackAim(creature)
+			-- WHERE SHE UNSHIPS FROM. Fallback: just past the bow tip (the hull
+			-- box's own half-length, 24) at gun-deck height.
+			a.wrackLadyDock =
+				Fn.wrackMountPoint(creature, def, Fn.wrackRigging(creature, def, "dock", Vector3.new(25, 9, 0)))
+			a.wrackLadyLeft = math.max(1, p.dives or 2)
+			Fn.wrackLadyLane(creature, p, os.clock())
+		end
+		if not a.wrackTold and Fn.wrackWillFire(creature, def) then
+			a.wrackTold = true
+			-- Dive one's lane, drawn for the whole windup: the windup IS its
+			-- lead, which is why the row's `lead` and `windup` are the same
+			-- number and the row says so.
+			Fn.wrackLaneTell(p, a.wrackLadyFrom, a.wrackLadyAim, p.lane or 12, (p.approach or 56) + (p.pastBy or 56))
+		end
+		creature.model:PivotTo(poseCFrame(creature, sub + 0.25 * u, 0, math.rad(-10) * u))
+	end,
+	fire = function(creature, def, p, now)
+		if not Fn.wrackWillFire(creature, def) then
+			return
+		end
+		local a = creature.attack
+		-- She lives as long as the whole run plus a beat, so a fight that ends
+		-- underneath her is collected by the linger sweep even if `finish` never
+		-- runs. Same backstop every prop in this section carries.
+		local life = (p.dives or 2) * ((p.lead or 1.1) + ((p.approach or 56) + (p.pastBy or 56)) / (p.speed or 54))
+			+ (p.redock or 0.8)
+			+ 2
+		local prop = Fn.wrackProp(creature, p, a.wrackLadyDock, life)
+		if not prop then
+			return
+		end
+		a.wrackLadyProp = prop
+		a.wrackLadyAt = a.wrackLadyDock
+		local lo, hi = Fn.bossRoll(creature, def, p.damage)
+		a.wrackLadyLo, a.wrackLadyHi = lo, hi
+		-- SWINGING OUT to dive one's start, over what is left of the lead. The
+		-- speed is computed from the distance rather than authored, so her
+		-- arrival and the telegraph's countdown are the same clock - the anchor
+		-- line's rule, and for the same reason: a fixed studs/s would be early
+		-- against a player at the rim and late against one hugging the hull.
+		Fn.wrackLadyLeg(creature, p, "swing", now, a.wrackLadyFrom, p.lead or 1.1)
+		prop.model:SetAttribute(ATTR.WRACK_DIVE, 0)
+	end,
+	strike = function(creature, def, p, now, dt, _u, _root, sub)
+		Fn.wrackLadyStep(creature, def, p, now, dt)
+		creature.model:PivotTo(poseCFrame(creature, sub + 0.15, 0, math.rad(6)))
+	end,
+	finish = function(creature, _def, _p, _now)
+		local a = creature.attack
+		if a and Fn.wrackPropLive(a.wrackLadyProp) then
+			a.wrackLadyProp.model:SetAttribute(ATTR.WRACK_DIVE, nil)
+			CreatureService.despawn(a.wrackLadyProp.model)
+		end
+		if a then
+			a.wrackLadyProp = nil
+		end
+	end,
+}
+
+-- The next dive's lane: re-latched on the nearest player, then frozen. `from` is
+-- pushed back up the lane so the pass CROSSES the target rather than starting on
+-- them, and the tell that goes with it is drawn over exactly the span she flies.
+function Fn.wrackLadyLane(creature, p, _now: number)
+	local a = creature.attack
+	local centre = creature.anchor or creature.pos
+	local root = Fn.nearestPlayerRoot(centre)
+	local mark = if root then Vector3.new(root.Position.X, centre.Y, root.Position.Z) else (a.wrackMark or centre)
+	local dock = a.wrackLadyDock or centre
+	local run = Vector3.new(mark.X - dock.X, 0, mark.Z - dock.Z)
+	local aim = if run.Magnitude > 0.001 then run.Unit else wrackAim(creature)
+	a.wrackLadyAim = aim
+	a.wrackLadyFrom = mark - aim * (p.approach or 56)
+	a.wrackLadyTo = mark + aim * (p.pastBy or 56)
+end
+
+-- One leg of the flight. `kind` is what she is doing while she covers it, and
+-- the speed always falls out of the distance and the time she has been given.
+function Fn.wrackLadyLeg(creature, p, kind: string, now: number, to: Vector3, span: number)
+	local a = creature.attack
+	local from = a.wrackLadyAt or a.wrackLadyDock
+	a.wrackLadyKind = kind
+	a.wrackLadyLegFrom = from
+	a.wrackLadyLegTo = to
+	a.wrackLadyLegAt = now
+	if kind == "pass" then
+		-- The one leg with an authored speed: a dive's pace is the move's feel
+		-- and its dodge window, not a consequence of where the player stood.
+		local d = (Vector3.new(to.X - from.X, 0, to.Z - from.Z)).Magnitude
+		a.wrackLadyLegFor = math.max(d / math.max(p.speed or 54, 1), 0.05)
+		a.wrackLadyHit = {}
+	else
+		a.wrackLadyLegFor = math.max(span, 0.05)
+	end
+end
+
+-- Fly her, hurt whoever the current lane's pass runs over (once each), and hand
+-- the flight from leg to leg. Polled for her own death, like every prop in this
+-- section: she carries no `partOf` and must not, or shooting her down would
+-- count against the four gun decks and open the burst window for free.
+function Fn.wrackLadyStep(creature, def, p, now: number, _dt: number)
+	local a = creature.attack
+	local prop = a.wrackLadyProp
+	if not prop then
+		return
+	end
+	if not Fn.wrackPropLive(prop) then
+		-- SHOT DOWN. She is off the board for the rest of the move; the row's
+		-- remaining strike time simply runs out with nothing in it, and the
+		-- cooldown is written by Fn.endBossAttack exactly as if she had docked.
+		a.wrackLadyProp = nil
+		fireEvent("decoyPop", a.wrackLadyAt or (creature.anchor or creature.pos), { fizzle = true, skin = p.skin })
+		return
+	end
+	local t = math.clamp((now - a.wrackLadyLegAt) / a.wrackLadyLegFor, 0, 1)
+	local from, to = a.wrackLadyLegFrom, a.wrackLadyLegTo
+	local at = from:Lerp(to, t)
+	local head = Vector3.new(to.X - from.X, 0, to.Z - from.Z)
+	local yaw = if head.Magnitude > 0.001 then yawToward(head.Unit) else prop.yaw0
+	a.wrackLadyAt = Fn.wrackPlaceProp(prop, at, yaw, p.fly or 7) or a.wrackLadyAt
+	if a.wrackLadyKind == "pass" then
+		-- LANE DAMAGE, as a disc riding the lane she was telegraphed on: the
+		-- half-width IS the tell's half-width, so the ground that hurts is the
+		-- ground that was drawn. Once per player per pass - a line crosses you
+		-- once, and a per-frame test would otherwise bill a slow player for
+		-- every frame of contact.
+		--
+		-- No height test, for the ghost wave's reason: this is one flat shoal,
+		-- there is no other floor to be on, and a tolerance measured from a
+		-- pivot that floats `submerge` studs over the sand would be a rule about
+		-- the boss's record pretending to be a rule about the beach.
+		for _, entry in Fn.livingRootsNear(a.wrackLadyAt, (p.lane or 12) * 0.5) do
+			if not a.wrackLadyHit[entry.player] then
+				a.wrackLadyHit[entry.player] = true
+				PlayerService.damage(entry.player, math.random(a.wrackLadyLo, a.wrackLadyHi), creature, {
+					bypassIframe = true,
+				})
+			end
+		end
+	end
+	if t < 1 then
+		return
+	end
+	local kind = a.wrackLadyKind
+	if kind == "swing" or kind == "rearm" then
+		prop.model:SetAttribute(ATTR.WRACK_DIVE, (p.dives or 2) - a.wrackLadyLeft + 1)
+		Fn.wrackLadyLeg(creature, p, "pass", now, a.wrackLadyTo, 0)
+	elseif kind == "pass" then
+		a.wrackLadyLeft -= 1
+		prop.model:SetAttribute(ATTR.WRACK_DIVE, 0)
+		if a.wrackLadyLeft > 0 then
+			Fn.wrackLadyLane(creature, p, now)
+			if Fn.wrackWillFire(creature, def) then
+				Fn.wrackLaneTell(
+					p,
+					a.wrackLadyFrom,
+					a.wrackLadyAim,
+					p.lane or 12,
+					(p.approach or 56) + (p.pastBy or 56)
+				)
+			end
+			Fn.wrackLadyLeg(creature, p, "rearm", now, a.wrackLadyFrom, p.rearm or p.lead or 1.1)
+		else
+			Fn.wrackLadyLeg(creature, p, "home", now, a.wrackLadyDock, p.redock or 0.8)
+		end
+	elseif kind == "home" then
+		-- Re-docked. She is scenery again, and the model goes with her: the hull
+		-- has its own figurehead drawn on it, so leaving a second one standing at
+		-- the prow would be a shootable prop that answers nothing.
+		prop.model:SetAttribute(ATTR.WRACK_DIVE, nil)
+		a.wrackLadyProp = nil
+		CreatureService.despawn(prop.model)
+	end
+end
+
+-- THE MAIN BOOM. p: rows, arc, sweep, inner, outer, width, boomLen, tackleFly,
+-- damage.
+--
+-- A rotating line, which is the anchor line's drag bent into an arc - and the
+-- same discipline: the angle is computed from the clock in ONE place, and both
+-- the hitbox and the published bearing are taken from it a line apart, so the
+-- drawn spar and the thing that hurts cannot drift.
+--
+-- THE HIT TEST IS A PERPENDICULAR DISTANCE, NOT AN ANGLE. A fixed angular
+-- half-width would make the boom eleven studs wide at the hull and thirty at the
+-- band's edge - a spar that grows as it swings - and the player standing at the
+-- outer edge would be hit by ground the tell never covered.
+K.ATTACK_HANDLERS.boomsweep = {
+	windup = function(creature, def, p, u, sub)
+		local a = creature.attack
+		if not a.wrackAimed then
+			a.wrackAimed = true
+			local aim = wrackAim(creature)
+			-- Where the spar is stepped. Fallback: amidships, above the guns.
+			a.wrackBoomAt =
+				Fn.wrackMountPoint(creature, def, Fn.wrackRigging(creature, def, "boom", Vector3.new(0, 14, 0)))
+			local half = math.rad(p.arc or 140) * 0.5
+			-- IT STARTS ON ONE SIDE OF THE LATCHED PLAYER AND ENDS ON THE OTHER,
+			-- so the sweep crosses him halfway through rather than chasing him:
+			-- the whole warning is "this arc, in this direction, starting now".
+			-- The direction is rolled so the fight cannot be answered by always
+			-- stepping the same way.
+			a.wrackBoomDir = if math.random() < 0.5 then 1 else -1
+			a.wrackBoomFrom = Fn.wrackAngle(aim) - half * a.wrackBoomDir
+			a.wrackBoomAngle = a.wrackBoomFrom
+			a.wrackBoomHit = {}
+		end
+		if not a.wrackTold and Fn.wrackWillFire(creature, def) then
+			a.wrackTold = true
+			local inner = p.inner or 24
+			local outer = p.outer or 34
+			-- WHICH GROUND (the band) and WHICH SIDE (the spar's start), because
+			-- either alone is a lie: a ring says nothing about where the swing
+			-- begins, and a lane says nothing about how far out it reaches.
+			fireEvent("telegraph", creature.anchor or creature.pos, {
+				kind = "ringTell",
+				duration = p.windup,
+				radius = outer,
+				inner = inner,
+				skin = p.skin,
+			})
+			local dir = Vector3.new(math.cos(a.wrackBoomFrom), 0, math.sin(a.wrackBoomFrom))
+			Fn.wrackLaneTell(p, creature.anchor or creature.pos, dir, p.width or 10, outer)
+			-- THE SPAR ITSELF IS PART OF THE TELEGRAPH, which is why the tackle
+			-- is put up here and not in `fire`: it hangs over the sand for the
+			-- whole windup, it is shootable for the whole windup, and breaking it
+			-- there is the earliest and cheapest answer the move has.
+			local prop = Fn.wrackProp(creature, p, a.wrackBoomAt, (p.windup or 2.2) + (p.sweep or 3.0) + 2)
+			if prop then
+				a.wrackBoomProp = prop
+				Fn.wrackBoomPlace(creature, p, a.wrackBoomFrom)
+			end
+			creature.model:SetAttribute(ATTR.WRACK_BOOM, a.wrackBoomFrom)
+		end
+		creature.model:PivotTo(poseCFrame(creature, sub + 0.35 * smoothstep(u), 0, math.rad(-14) * u))
+	end,
+	fire = function(creature, def, p, now)
+		local a = creature.attack
+		-- NOTHING IS EMITTED: the sweep is the strike, and it is stepped below.
+		-- This hook exists to start the clock, and to be the one place the burst
+		-- window can stop the move without touching the phase machine.
+		a.wrackBoomFrom = a.wrackBoomFrom or 0
+		a.wrackBoomStart = now
+		a.wrackBoomLive = Fn.wrackWillFire(creature, def) and a.wrackBoomProp ~= nil
+		local lo, hi = Fn.bossRoll(creature, def, p.damage)
+		a.wrackBoomLo, a.wrackBoomHi = lo, hi
+	end,
+	strike = function(creature, _def, p, now, _dt, _u, _root, sub)
+		Fn.wrackBoomStep(creature, p, now)
+		creature.model:PivotTo(poseCFrame(creature, sub + 0.2, 0, math.rad(10)))
+	end,
+	finish = function(creature, _def, _p, _now)
+		local a = creature.attack
+		creature.model:SetAttribute(ATTR.WRACK_BOOM, nil)
+		if a and Fn.wrackPropLive(a.wrackBoomProp) then
+			CreatureService.despawn(a.wrackBoomProp.model)
+		end
+		if a then
+			a.wrackBoomProp = nil
+		end
+	end,
+}
+
+-- The tackle rides the spar's tip: same angle, same frame, one call apart from
+-- the attribute that publishes it. That is the whole reason the client can draw
+-- the boom two ways and get one answer.
+function Fn.wrackBoomPlace(creature, p, angle: number)
+	local a = creature.attack
+	local pivot = a.wrackBoomAt
+	if not pivot then
+		return
+	end
+	local dir = Vector3.new(math.cos(angle), 0, math.sin(angle))
+	Fn.wrackPlaceProp(a.wrackBoomProp, pivot + dir * (p.boomLen or 30), yawToward(dir), p.tackleFly or 6)
+end
+
+-- The swing, and the band it clears.
+function Fn.wrackBoomStep(creature, p, now: number)
+	local a = creature.attack
+	if not a.wrackBoomLive then
+		return
+	end
+	if not Fn.wrackPropLive(a.wrackBoomProp) then
+		-- THE TACKLE IS SHOT AWAY AND THE BOOM DROPS - on this frame, not at the
+		-- end of the sweep. A shootable part that only promises to end the thing
+		-- it is attached to is worse than no part at all (the midlink's rule).
+		local at = a.wrackBoomAt or (creature.anchor or creature.pos)
+		a.wrackBoomLive = false
+		a.wrackBoomProp = nil
+		creature.model:SetAttribute(ATTR.WRACK_BOOM, nil)
+		fireEvent("decoyPop", at, { fizzle = true, skin = p.skin })
+		return
+	end
+	local sweep = math.max(p.sweep or 3.0, 0.1)
+	local t = math.clamp(now - (a.wrackBoomStart or now), 0, sweep)
+	local angle = a.wrackBoomFrom + a.wrackBoomDir * math.rad(p.arc or 140) * (t / sweep)
+	a.wrackBoomAngle = angle
+	creature.model:SetAttribute(ATTR.WRACK_BOOM, angle)
+	Fn.wrackBoomPlace(creature, p, angle)
+	local centre = creature.anchor or creature.pos
+	local inner, outer = p.inner or 24, p.outer or 34
+	local halfWidth = (p.width or 10) * 0.5
+	for _, entry in Fn.livingRootsNear(centre, outer) do
+		if not a.wrackBoomHit[entry.player] then
+			local rp = entry.root.Position
+			local dx, dz = rp.X - centre.X, rp.Z - centre.Z
+			local r = math.sqrt(dx * dx + dz * dz)
+			-- Inside the band, and inside the SPAR's own width measured square to
+			-- it: r * sin(delta) is the perpendicular distance to the line, which
+			-- is the same eleven studs at every radius.
+			if r >= inner and r <= outer then
+				local off = math.abs(r * math.sin(angleDelta(math.atan2(dz, dx), angle)))
+				if off <= halfWidth then
+					a.wrackBoomHit[entry.player] = true
+					PlayerService.damage(entry.player, math.random(a.wrackBoomLo, a.wrackBoomHi), creature, {
+						bypassIframe = true,
+					})
+				end
+			end
+		end
+	end
+	if t >= sweep then
+		-- Stowed. The attribute goes to nil for the same reason it does when the
+		-- tackle is shot away: "no boom out" is one state, however it was reached.
+		a.wrackBoomLive = false
+		creature.model:SetAttribute(ATTR.WRACK_BOOM, nil)
+		if Fn.wrackPropLive(a.wrackBoomProp) then
+			CreatureService.despawn(a.wrackBoomProp.model)
+		end
+		a.wrackBoomProp = nil
+	end
+end
+
+-- BILGE BLOW. p: hatchGap, steps, spacing, startAt, interval, arm, radius,
+-- damage.
+--
+-- Three hatches, three radials, and NOTHING TO SHOOT. Every other move in this
+-- fight can be answered with the gun; this one can only be answered with the
+-- feet, which is what makes it worth pairing (see the phase table's note) with
+-- the two moves that most want you standing still on the near ring.
+--
+-- THE ERUPTIONS ARE `Fn.queueStrike` ENTRIES AND NOTHING ELSE. The tell (a `mark`
+-- carrying this row's skin), the arm window, the damage roll, the impact event
+-- and the cleanup are all the arsenal's, already written and already drawn by the
+-- client - a geyser is a barrage "line" that happens to start at a hatch instead
+-- of at the boss. The handler's whole job is to say where the lines are.
+K.ATTACK_HANDLERS.bilgeblow = {
+	windup = function(creature, def, p, u, sub)
+		local a = creature.attack
+		if not a.wrackAimed then
+			a.wrackAimed = true
+			local aim = wrackAim(creature)
+			-- The three hatches, boss-local. Fallback: three points off the
+			-- centreline of the published hull box, far enough off it that each
+			-- one has a radial worth marching along (a hatch ON the centre has no
+			-- outward direction at all, which is the one shape this cannot use).
+			local hatches = Fn.wrackRigging(creature, def, "hatches", {
+				Vector3.new(10, 9, 4),
+				Vector3.new(-2, 9, -5),
+				Vector3.new(-14, 9, 4),
+			})
+			local centre = creature.anchor or creature.pos
+			local aimAngle = Fn.wrackAngle(aim)
+			local order = {}
+			for i, m in hatches do
+				local at = Fn.wrackMountPoint(creature, def, m)
+				local angle = math.atan2(at.Z - centre.Z, at.X - centre.X)
+				table.insert(order, { index = i, at = at, angle = angle })
+			end
+			-- IT STARTS UNDER THE PLAYER IT LATCHED. The sequence runs from the
+			-- hatch whose radial points nearest at him outward through the other
+			-- two, so the first geyser is the one he has least time to read and
+			-- the move opens by taking the ground he is actually on.
+			table.sort(order, function(x, y)
+				return math.abs(angleDelta(x.angle, aimAngle)) < math.abs(angleDelta(y.angle, aimAngle))
+			end)
+			a.wrackHatch = order
+		end
+		if not a.wrackTold and Fn.wrackWillFire(creature, def) then
+			a.wrackTold = true
+			local reach = (p.startAt or 26) + ((p.steps or 6) - 1) * (p.spacing or 9)
+			fireEvent("telegraph", creature.anchor or creature.pos, {
+				kind = "ringTell",
+				duration = p.windup,
+				radius = reach + 5,
+				inner = math.max(0, (p.startAt or 26) - 5),
+				skin = p.skin,
+			})
+		end
+		creature.model:PivotTo(poseCFrame(creature, sub - 0.25 * u, 0, math.rad(8) * u))
+	end,
+	fire = function(creature, def, p, now)
+		local a = creature.attack
+		if not Fn.wrackWillFire(creature, def) or not a.wrackHatch then
+			return
+		end
+		local centre = creature.anchor or creature.pos
+		local gap = p.hatchGap or 0.9
+		local steps = math.max(1, p.steps or 6)
+		local interval = p.interval or 0.30
+		local arm = p.arm or 0.85
+		for k, hatch in a.wrackHatch do
+			local pop = now + (k - 1) * gap
+			local dir = Vector3.new(math.cos(hatch.angle), 0, math.sin(hatch.angle))
+			for i = 1, steps do
+				-- MARCHING OUT, one step at a time, each one told `arm` seconds
+				-- before it lands: the column is readable as a direction rather
+				-- than as a set of discs, and the answer is to step off the
+				-- radial, not to outrun it.
+				local at = groundedPos(centre + dir * ((p.startAt or 26) + (i - 1) * (p.spacing or 9)), 0)
+				local hitAt = pop + arm + (i - 1) * interval
+				Fn.queueStrike(creature, def, p, at, hitAt - arm, hitAt, {})
+			end
+			-- The lid's own clock, for the attribute below: open a beat before
+			-- its first eruption is told, shut when its last one has landed.
+			hatch.openAt = pop
+			hatch.shutAt = pop + arm + (steps - 1) * interval + 0.3
+		end
+	end,
+	strike = function(creature, _def, _p, now, _dt, _u, _root, sub)
+		Fn.wrackHatchPublish(creature, now)
+		creature.model:PivotTo(poseCFrame(creature, sub - 0.15, 0, math.rad(-6)))
+	end,
+	finish = function(creature, _def, _p, _now)
+		-- The lids shut with the move. The GEYSERS do not need collecting: they
+		-- are `creature.strikes`, which the creature walk owns and drops when the
+		-- boss dies - the one piece of these three moves that deliberately
+		-- outlives its own row, so a column told at the last moment still lands.
+		creature.model:SetAttribute(ATTR.WRACK_HATCHES, nil)
+		local a = creature.attack
+		if a then
+			a.wrackHatch = nil
+		end
+	end,
+}
+
+-- Which lids are open, as one bitmask, written only when it CHANGES. A number
+-- per frame would be three-quarters of a wire message saying nothing new; the
+-- edges are the whole content of this channel.
+function Fn.wrackHatchPublish(creature, now: number)
+	local a = creature.attack
+	if not a or not a.wrackHatch then
+		return
+	end
+	local mask = 0
+	for _, hatch in a.wrackHatch do
+		if hatch.openAt and now >= hatch.openAt and now < (hatch.shutAt or 0) then
+			mask += bit32.lshift(1, hatch.index - 1)
+		end
+	end
+	if mask ~= a.wrackHatchMask then
+		a.wrackHatchMask = mask
+		creature.model:SetAttribute(ATTR.WRACK_HATCHES, if mask == 0 then nil else mask)
+	end
+end
+
+function Fn.spawnBossParts(creature, def)
 	local parts = def.parts
 	local row = Creatures.items[parts.row]
 	if not row then
@@ -8569,7 +15338,7 @@ local function spawnBossParts(creature, def)
 		return
 	end
 	-- THE SAME CENTRE THE POSE USES, not the raw anchor. `spawn` lifts a
-	-- creature by half its own thickness and `colossusState` snaps that back
+	-- creature by half its own thickness and `Fn.colossusState` snaps that back
 	-- to the waterline so the arena's authored heights hold. Publishing the
 	-- unlifted anchor here put every client-drawn lantern ~5.5 studs above
 	-- the hitbox the server stands at that socket - which, against a
@@ -8585,7 +15354,25 @@ local function spawnBossParts(creature, def)
 	-- keeps the even ring, which is the Kraken's tentacles.
 	local offsets = nil
 	if parts.at == "sockets" then
-		local arena = def.islandId and BossArenas.items[def.islandId]
+		-- `arenaKey or islandId` - THE SAME FIELD, AND THE SAME REASON, AS
+		-- `BossService.arenaPosition`.
+		--
+		-- A boss's island says which FIGHT this is; `arenaKey` says which ROOM
+		-- it is fought in, and for every shipped boss they are the same string,
+		-- so this is inert for all of them. `pyrelisk_heart` is the first row
+		-- where they differ: its `islandId` is `"volcano"` on purpose (the
+		-- fight record, the participants, `Cleared_volcano` and the ride home
+		-- all key off it) while its eight pillar collars are authored in the
+		-- `pyrelisk_heart` arena row, 40,000 studs away.
+		--
+		-- WITHOUT THIS the lookup finds `BossArenas.items.volcano`, which has
+		-- no `sockets` at all, so `offsets` is nil and the plant falls through
+		-- to the even-ring branch - which reads `parts.ring`, which the heart's
+		-- row does not carry either. That is arithmetic on nil out of
+		-- `Fn.spawnBossParts`: the eight pillars never stand, and a heart
+		-- gated on `partsDown` with no parts is a boss nothing can ever make
+		-- vulnerable. Silent in the data, loud only in the log.
+		local arena = (def.arenaKey or def.islandId) and BossArenas.items[def.arenaKey or def.islandId]
 		offsets = arena and arena.sockets
 	end
 	-- `at = "mounts"` is the THREE-DIMENSIONAL form, authored on the BOSS row
@@ -8622,11 +15409,23 @@ local function spawnBossParts(creature, def)
 		end
 		count = math.min(count, #parts.bearings)
 	end
+	-- THE PARTY'S HEALTH MULTIPLIER, INHERITED. BossService scales a summoned
+	-- boss by the size of the party the call gathered (user decision,
+	-- 2026-09-06: "the boss will scale with party size") and rides the factor
+	-- in on `extra.healthMult`, which `spawn` already reads. The parts must
+	-- carry the SAME factor: in a parts-gated fight - the Kraken's arms, the
+	-- Lantern Choir's `choir_stalk` - the arms and lanterns ARE the wall, and
+	-- a wall that stayed solo-sized while the head scaled would make the fight
+	-- EASIER per head as the party grew, which is backwards. Read off the
+	-- record rather than passed in, so a ring that GROWS BACK mid-fight
+	-- (Fn.updateChoir / the phase regrowth calls below) inherits it too.
+	local healthMult = creature.extra and creature.extra.healthMult
+
 	-- THE TRUE LURE: one of them, redrawn every time the choir grows back, so
 	-- "which light is real" is never answered twice by the same socket.
 	local marked = if parts.mark then math.random(1, count) else nil
 	local planted, markedPlanted = 0, false
-	-- THE CHOIR, AS A LIST. `updateChoir` needs these seven every frame and
+	-- THE CHOIR, AS A LIST. `Fn.updateChoir` needs these seven every frame and
 	-- used to find them by scanning the whole world; this is the same seven,
 	-- written down once where they are made. Built for every parts boss but
 	-- published (below) only for a marked ring, so nothing else grows a
@@ -8651,7 +15450,6 @@ local function spawnBossParts(creature, def)
 			-- same one `poseCFrame` applies to the model, so a mount lands
 			-- where the artist put it on the drawn hull.
 			local m = mounts[i]
-			local cos, sin = math.cos(creature.yaw0 or 0), math.sin(creature.yaw0 or 0)
 			-- THE CONVENTION, IN FULL (and it is the same sentence in the
 			-- `mounts` comment on the boss row): a mount's Y is the piece's
 			-- own CENTRE, measured from the sand of the DRAWN hull.
@@ -8672,8 +15470,18 @@ local function spawnBossParts(creature, def)
 			-- `halfThickness` is read off the record and never baked into the
 			-- data, because it is measured from the server's own pack model
 			-- and moves the day that pack is re-imported.
-			local sand = centre.Y - (creature.halfThickness or 0) - (def.submerge or 0)
-			at = Vector3.new(centre.X + m.X * cos + m.Z * sin, sand + m.Y, centre.Z - m.X * sin + m.Z * cos)
+			--
+			-- THE TRANSFORM ITSELF NOW LIVES IN `Fn.wrackMountPoint`, one call
+			-- away, and this is the only place that reaches it through a parts
+			-- ring. It was lifted out (2026-09-09) because Wrack's rigging - the
+			-- figurehead's dock, the boom's pivot, the three bilge hatches -
+			-- arrives from the SAME mesh handoff in the SAME boss-local
+			-- convention as these mounts, and a second copy of this arithmetic
+			-- written beside those handlers would be a convention to get wrong
+			-- twice. `at = "mounts"` is Wrack's mode alone (the Kraken's ring
+			-- takes `bearings`, the Choir takes `sockets`), so nothing else
+			-- passes through here.
+			at = Fn.wrackMountPoint(creature, def, m)
 			-- CENTRE. `spawn` rests a creature ON the point it is handed - it
 			-- adds the new body's own halfThickness and SURFACE_OFFSET, which
 			-- is right for a fish put down on the ground and wrong for a
@@ -8712,6 +15520,7 @@ local function spawnBossParts(creature, def)
 			noLinger = true,
 			suppressDrops = true,
 			bounty = 0.5,
+			healthMult = healthMult, -- the party's scaling, see above (nil = 1x)
 		})
 		local part = byModel[model]
 		if part then
@@ -8733,7 +15542,14 @@ local function spawnBossParts(creature, def)
 			part.partOf = creature
 			part.socketIndex = i
 			part.marked = i == marked
-			-- A RING WAKES STAGGERED. `updateTentacle` reads
+			-- "SHOOT THIS" - published rather than left for each client to
+			-- infer from a row id. Only for a ring that actually GATES the
+			-- boss: a marked ring (Noctyss's choir) is a which-one puzzle, and
+			-- flagging all seven as the answer would give that puzzle away.
+			if creature.row.vulnerableWhen == "partsDown" then
+				model:SetAttribute(ATTR.WEAKPOINT, true)
+			end
+			-- A RING WAKES STAGGERED. `Fn.updateTentacle` reads
 			-- `nextSlamAt or 0`, so a freshly planted arm is off cooldown the
 			-- instant it exists: eight arms spawned in one loop iteration all
 			-- pass their own-initiative test on the same frame and the ring
@@ -8744,15 +15560,26 @@ local function spawnBossParts(creature, def)
 			-- Harmless on any other parts row: nothing else reads the field.
 			part.nextSlamAt = os.clock() + randomBetween(1.5, 4.0)
 			table.insert(ringParts, part)
-			model:SetAttribute(ATTR_SOCKET_INDEX, i)
+			model:SetAttribute(ATTR.SOCKET_INDEX, i)
 			-- The client needs this to draw the off-rhythm pulse, which IS
 			-- the tell - so it is published, not hidden. The honest
 			-- alternative (publishing each bulb's phase offset) carries the
 			-- same information in a form that is harder to read.
-			model:SetAttribute(ATTR_TRUE_LURE, part.marked)
-			model:SetAttribute(ATTR_POSE_CENTER, centre)
+			model:SetAttribute(ATTR.TRUE_LURE, part.marked)
+			model:SetAttribute(ATTR.POSE_CENTER, centre)
 			if parts.mark then
-				model:SetAttribute(ATTR_POSE, "choir_stalk")
+				model:SetAttribute(ATTR.POSE, "choir_stalk")
+				-- OUT OF THE STONE, NOT INTO EXISTENCE. Stamped 0 on the frame
+				-- the stalk is planted and ramped to 1 by `Fn.updateChoir` over
+				-- K.CHOIR_REGROW; see ATTR.GROW for why the server is allowed
+				-- to write this at all now. Both halves are here, not just the
+				-- attribute: `growPub` is the published copy the ramp diffs
+				-- against, and `untargetable` keeps the party from trading with
+				-- a lantern that is still inside its collar (the ramp rewrites
+				-- it every frame from here on).
+				part.growPub = 0
+				part.untargetable = true
+				model:SetAttribute(ATTR.GROW, 0)
 			end
 		end
 	end
@@ -8777,15 +15604,30 @@ local function spawnBossParts(creature, def)
 	-- A new choir is standing: nothing has been shot yet.
 	creature.choirKilled = 0
 	-- The ring is back up, so the window is shut again.
-	creature.model:SetAttribute(ATTR_EXPOSED, nil)
+	creature.model:SetAttribute(ATTR.EXPOSED, nil)
 	creature.choir = parts.mark == true
 	creature.trueLure = marked
 	if creature.choir and creature.pose then
-		-- A fresh choir stands up: clear the last cycle's fallen shapes.
+		-- A fresh choir stands up: clear the last cycle's fallen shapes, and
+		-- the last cycle's SWINGS. The stalk loop below marks all seven alive
+		-- again, which is exactly what would resurrect a stale descriptor into
+		-- a limb the fight thinks is busy - and `state.trueLure` is being
+		-- rewritten on the next line, so the socket carrying the answer could
+		-- be the one holding it.
+		Fn.clearChoirAttacks(creature.pose)
 		creature.pose.trueLure = marked
 		for _, stalk in creature.pose.stalks do
 			stalk.alive, stalk.fall, stalk.douse, stalk.lean = true, 0, 0, 0
 		end
+	end
+	-- THE RISE'S CLOCK, and it is one clock for all seven rather than one
+	-- each: they come out of the stone together, which is the beat (a choir
+	-- standing up), and one number is also what makes `Fn.choirGrown` a
+	-- question with an answer. Stamped last, after the pose state above has
+	-- finished putting the stalks back - the first `Fn.updateChoir` frame after
+	-- this writes the 0 into that state and into every model.
+	if creature.choir then
+		creature.choirGrowAt = os.clock()
 	end
 end
 
@@ -8796,15 +15638,20 @@ end
 -- INSIDE it until the jaw closes. Then the choir grows back with a different
 -- true lure and the question is asked again.
 local function openMaw(creature, def, now: number)
-	local state = colossusState(creature, def)
+	local state = Fn.colossusState(creature, def)
 	creature.mawOpen = true
 	creature.mawUntil = now + ((def.parts and def.parts.window) or 12)
 	creature.mawDueAt = nil
+	-- ONE PORTCULLIS PER WINDOW, and this is the flag that says so. Cleared at
+	-- the open rather than at the close, so the arming below cannot be
+	-- inherited from the previous cycle by any path that reaches `openMaw`.
+	creature.doorArmed = nil
+	creature.doorSlots = nil
 	creature.untargetable = false
-	creature.model:SetAttribute(ATTR_EXPOSED, true)
+	creature.model:SetAttribute(ATTR.EXPOSED, true)
 	-- She surfaces facing a gap between the shadow fins, aimed at whoever
 	-- broke the lure: the fight comes to meet the party, not a rock.
-	local root = nearestPlayerRoot(creature.anchor or creature.pos)
+	local root = Fn.nearestPlayerRoot(creature.anchor or creature.pos)
 	if root then
 		local to = root.Position - state.center
 		state.mawYaw = NoctyssPath.laneFor(math.atan2(to.Z, to.X))
@@ -8819,23 +15666,34 @@ local function openMaw(creature, def, now: number)
 end
 
 local function closeMaw(creature, def, now: number)
-	local state = colossusState(creature, def)
+	local state = Fn.colossusState(creature, def)
 	creature.mawOpen = false
 	creature.mawUntil = nil
 	creature.untargetable = true
+	-- ANY LIMB STILL SWINGING STOPS HERE. This close withdraws the whole choir
+	-- (`removeOwnedParts`, below), and a withdrawn stalk is never asked about
+	-- again - so a descriptor left in the pose state would outlive the limb it
+	-- described and be waiting when the regrow marks that socket alive. Damage
+	-- already cannot land (the tick re-reads `attackFor` every frame and the
+	-- stalk is about to be dead), so this is the busy flag, the lean and the
+	-- regrow's `grow` (see there).
+	Fn.clearChoirAttacks(state)
+	-- ...and the ring's rise clock with it: the choir this stamped is being
+	-- withdrawn on the next few lines, and the next one stamps its own.
+	creature.choirGrowAt = nil
 	-- CLEARED, not set false: the HUD only ever asks `Exposed == true` (both
 	-- read as sealed), but every other earned window in this file - the
 	-- stagger's, the collapse's - removes the attribute, and one boss leaving
 	-- a stale `false` behind is the kind of difference someone later reads as
 	-- meaning something.
-	creature.model:SetAttribute(ATTR_EXPOSED, nil)
+	creature.model:SetAttribute(ATTR.EXPOSED, nil)
 	-- THE BITE. Whoever is still standing in her mouth when it shuts wears
 	-- it: the window is generous, and leaving is the player's job.
 	-- Player MAX_HEALTH is 100: at 120-170 this was a guaranteed kill with no
 	-- counterplay for anyone knocked back into the mouth on the last beat.
 	-- 70-95 still ends a hurt player and still means "leave when it starts to
 	-- shut", which is the read the window is teaching.
-	local lo, hi = bossRoll(creature, def, { 70, 95 })
+	local lo, hi = Fn.bossRoll(creature, def, { 70, 95 })
 	-- ...AND IT ACTUALLY LANDS. `bypassIframe` skips the ordinary contact
 	-- window but NOT the previous bypassing burst's, and bursts gate each
 	-- other for 0.35s (PlayerService `lastBurst`). She keeps attacking while
@@ -8843,7 +15701,7 @@ local function closeMaw(creature, def, now: number)
 	-- the close swallowed the bite outright - and the one lesson the window
 	-- teaches, "leave when it starts to shut", was enforced or not by a coin
 	-- flip nobody could see. What could not be delivered is written down and
-	-- re-offered by `updateNoctyss` until it lands. The ROLL is kept: the
+	-- re-offered by `Fn.updateNoctyss` until it lands. The ROLL is kept: the
 	-- bite happened at the close, only its delivery is late.
 	local owed = nil
 	for _, player in Players:GetPlayers() do
@@ -8884,8 +15742,9 @@ local function closeMaw(creature, def, now: number)
 end
 
 -- THE CHOIR'S BEAT UNDER A BORROWED MOVE, REMOVED - and this is the headstone
--- rather than the code. Strobewave and abysscall are ordinary `barrage`
--- entries, and the punctuation that used to live here jolted the ring on the
+-- rather than the code. Strobewave is an ordinary `barrage` entry (so was
+-- abysscall, until the legibility pass cut that row), and the punctuation that
+-- used to live here jolted the ring on the
 -- move's own `interval` by writing `stalk.impulse`. That field is not
 -- replicated (see the note above `mawFloor`), so the jolt moved nothing any
 -- player could see; the recoils that survive are the ones the CLIENT raises
@@ -8895,11 +15754,11 @@ end
 
 -- The whole Gloomtrench fight, in one pass: keep the choir standing, answer
 -- a broken lure, run the maw window, and let the book pick what happens next.
--- Deliberately its own function rather than more branches inside updateBoss -
+-- Deliberately its own function rather than more branches inside Fn.updateBoss -
 -- nothing about this boss shares the prowl/entrench machinery, because she
 -- never moves and is never reachable except inside her own mouth.
-local function updateNoctyss(creature, def, now: number, dt: number, root, player, dist: number)
-	local state = colossusState(creature, def)
+function Fn.updateNoctyss(creature, def, now: number, dt: number, root, player, dist: number)
+	local state = Fn.colossusState(creature, def)
 	-- THE SHAPE'S CLOCK, ADVANCED. Sway, breath and every flinch are terms in
 	-- `state.time`, and the bulb they move IS the stalk's hitbox: left at 0
 	-- the server would stand each hitbox at the un-swayed lantern while the
@@ -8908,8 +15767,8 @@ local function updateNoctyss(creature, def, now: number, dt: number, root, playe
 	-- clock is server time on both sides, so feeding it here is what keeps
 	-- them the same object.
 	state.time = NoctyssPath.clock()
-	hideColossusModel(creature)
-	updateChoir(creature, state, dt)
+	Fn.hideColossusModel(creature)
+	Fn.updateChoir(creature, state, dt)
 
 	-- The lanterns come back on after a dousehunt.
 	if creature.relightAt and now >= creature.relightAt then
@@ -8930,15 +15789,25 @@ local function updateNoctyss(creature, def, now: number, dt: number, root, playe
 		-- WHITE, not black. This borrowed `inkBlast` until now, which blots
 		-- the screen dark - the exact opposite of a lantern going off in your
 		-- face, and the one moment in the fight the trench is bright.
-		fireEvent("lureFlare", at, { radius = 15, skin = "lure" })
+		fireEvent("lureFlare", at, { radius = 18, skin = "lure" })
 		-- The flare belongs at the lantern, but the DAMAGE has to reach the
 		-- floor. A stalk's position IS its bulb, ~30 studs up, and the AOE's
 		-- default height tolerance is 6 - so this burst was hitting nobody,
 		-- every time, and breaking a false lure cost the party nothing at all.
 		local ground = Vector3.new(at.X, (creature.anchor or creature.pos).Y, at.Z)
-		fireEvent("slam", ground, { radius = 12, skin = "ink" })
-		local lo, hi = bossRoll(creature, def, { 40, 58 })
-		damagePlayersInRadius(ground, 15, lo, hi, creature, 0.35)
+		-- THE RING IS THE FOOTPRINT, so it is drawn at the radius that hurts.
+		-- 12 against a 15-stud burst was the fight drawing a smaller shape than
+		-- it tested, which is the one lie a telegraph is never allowed to tell -
+		-- and this one is a reactive punish with no windup to re-read it in.
+		fireEvent("slam", ground, { radius = 18, skin = "ink" })
+		-- 55-75 IN r18, UP FROM 40-58 IN r15. `falselight` was cut by the
+		-- legibility pass (Bosses.luau, above `phases`) and this is where its
+		-- weight went: three ambient fake lanterns with no floor mark, replaced
+		-- by paying properly for the punish the fight already EARNS. Shooting
+		-- the wrong lantern is a mistake the player made by misreading the one
+		-- rhythm the whole fight is built on, and it should cost like one.
+		local lo, hi = Fn.bossRoll(creature, def, { 55, 75 })
+		damagePlayersInRadius(ground, 18, lo, hi, creature, 0.35)
 	end
 	creature.flareAt = nil
 
@@ -8953,6 +15822,21 @@ local function updateNoctyss(creature, def, now: number, dt: number, root, playe
 		-- over the last two seconds. THE CLOSING MOUTH IS THE TIMER: nobody
 		-- should need a UI bar to know how long they have left in there.
 		local left = (creature.mawUntil or now) - now
+		-- THE DOOR COMES DOWN. `creature.mawUntil` IS the jaw's shut time - it
+		-- is what the close below compares `now` against - so jawShutsAt is
+		-- that number and the bars are armed at jawShutsAt - DOOR.LEAD, which
+		-- is `left <= DOOR.LEAD`. Once per window (`doorArmed`), and tunable
+		-- off the row: `portcullis = false` puts the window back exactly as it
+		-- was, with no other line in the fight touched.
+		if def.portcullis ~= false and not creature.doorArmed and left <= NoctyssPath.DOOR.LEAD then
+			creature.doorArmed = true
+			Fn.armPortcullis(creature, def)
+		end
+		-- Ticked for the whole window and not only after the arming: the slots
+		-- are nil until then, and the bars' live window ends on the exact frame
+		-- the jaw shuts (LEAD 1.6 = SLAM.WINDUP 1.2 + SLAM.LIVE 0.4), so
+		-- nothing of theirs outlives the close.
+		Fn.tickPortcullis(creature, def)
 		local target = 1
 		if state.mawRise < 0.75 then
 			target = 0
@@ -8960,7 +15844,7 @@ local function updateNoctyss(creature, def, now: number, dt: number, root, playe
 			target = math.max(left / 2.0, 0)
 		end
 		state.mawGape = (state.mawGape or 0) + (target - (state.mawGape or 0)) * math.min(dt * 3.0, 1)
-		placeMawFloor(creature, state)
+		Fn.placeMawFloor(creature, state)
 		if now >= (creature.mawUntil or now) then
 			closeMaw(creature, def, now)
 		end
@@ -9001,14 +15885,14 @@ local function updateNoctyss(creature, def, now: number, dt: number, root, playe
 		and not creature.mawOpen
 	then
 		creature.choirDueAt = nil
-		spawnBossParts(creature, def)
+		Fn.spawnBossParts(creature, def)
 		fireEvent("regrow", creature.anchor or creature.pos, { count = def.parts.count, name = def.name })
 	end
 
 	if creature.mode == "attack" then
-		updateBossAttack(creature, def, now, dt, root, player, dist, -def.submerge)
+		Fn.updateBossAttack(creature, def, now, dt, root, player, dist, -def.submerge)
 	elseif root and now >= creature.nextAttackAt and dist <= def.aggro then
-		local name = pickBossAttack(creature, def, now)
+		local name = Fn.pickBossAttack(creature, def, now)
 		-- LIGHTSWEEP WITHOUT A STALK IS FOUR AND A HALF SECONDS OF NOTHING.
 		-- Its handler needs a living, LIT lantern to sweep from; with none it
 		-- plays no telegraph, fires no beam and lands nothing, then spends
@@ -9016,30 +15900,2592 @@ local function updateNoctyss(creature, def, now: number, dt: number, root, playe
 		-- That is not a rare case: it is the whole 4-second regrow dark after
 		-- every window, every dousehunt, and any moment the party has cleared
 		-- the choir - and lightsweep is listed TWICE in stances 1 and 3 and is
-		-- what `pickBossAttack`'s empty-pool fallback returns (the phase
+		-- what `Fn.pickBossAttack`'s empty-pool fallback returns (the phase
 		-- list's first entry). Checked here, before the attack begins, because
 		-- this is the fight's only call site and a handler cannot un-begin
-		-- itself once `beginBossAttack` has drawn its tell and set its clock.
-		if name == "lightsweep" and not pickChoirStalk(state, root) then
+		-- itself once `Fn.beginBossAttack` has drawn its tell and set its clock.
+		--
+		-- ...AND THE HOLE IS FOUR MOVES WIDE NOW. The three limb swings need a
+		-- stalk that is alive, not already mid-swing, and long enough to reach
+		-- the target, so `Fn.choirMoveReady` asks the question for all four.
+		-- Twice, because one re-pick can hand back another move with the same
+		-- problem.
+		for _ = 1, 2 do
+			if Fn.choirMoveReady(state, name, root) then
+				break
+			end
 			-- Held off for a beat so the re-pick below cannot hand back the
 			-- same move, and so a dark that lasts several attack gaps does not
 			-- re-ask the same question every time.
 			creature.cooldowns = creature.cooldowns or {}
-			creature.cooldowns.lightsweep = now + (def.attacks.lightsweep.cooldown or 5.5)
-			name = pickBossAttack(creature, def, now)
-			-- The fallback's fallback: everything else is on cooldown too, so
-			-- it returned the phase list's first entry, which is lightsweep
-			-- again. A feeler is her one move that needs nothing but a player.
-			if name == "lightsweep" and def.attacks.feelerstrike then
-				name = "feelerstrike"
-			end
+			creature.cooldowns[name] = now + ((def.attacks[name] and def.attacks[name].cooldown) or 5.5)
+			name = Fn.pickBossAttack(creature, def, now)
 		end
-		beginBossAttack(creature, def, name, now)
+		-- The fallback's fallback: everything else is on cooldown too, so it
+		-- returned the phase list's first entry, which is lightsweep again.
+		-- `feelerstrike` used to be the answer here because it needed nothing
+		-- but a player; it is a limb swing now and needs a limb, so it is only
+		-- offered if it actually has one.
+		--
+		-- AND WHEN IT DOES NOT, SHE DEFERS. `abysscall` used to stand here as
+		-- the move that needed neither a limb nor a lantern, which is also the
+		-- only reason it was still in the book - and twenty-one ink discs
+		-- marching out of the pit was the single largest contributor to the
+		-- mark count this fight was drowning in (see the legibility note above
+		-- `phases` in Bosses.luau). The hole it was plugging is not a hole:
+		-- there is no moment in this fight that needs a filler attack. The two
+		-- moments this branch is actually reached are the punish window - when
+		-- the choir is withdrawn and the pressure IS the closing jaw and the
+		-- portcullis - and the regrow dark, when the pressure is the dark. So
+		-- nothing is thrown, `nextAttackAt` is nudged a beat and the frame
+		-- falls through to Fn.placeColossus exactly as it would have.
+		--
+		-- 0.6s rather than a full attack gap: this is a re-ask, not a rest, and
+		-- the thing it is waiting on (a limb finishing its swing, the choir
+		-- clearing its collars) resolves in about that long.
+		local ready = Fn.choirMoveReady(state, name, root)
+		if not ready and def.attacks.feelerstrike and Fn.choirMoveReady(state, "feelerstrike", root) then
+			name, ready = "feelerstrike", true
+		end
+		if ready then
+			Fn.beginBossAttack(creature, def, name, now)
+		else
+			creature.nextAttackAt = now + 0.6
+		end
 	end
-	placeColossus(creature, def, now, root)
+	Fn.placeColossus(creature, def, now, root)
 end
 
-local function updateBoss(creature, now: number, dt: number)
+-- ============================================================ THE KRAKEN (2026-09-09)
+--
+-- THREE FIGHTS IN ONE BOOK. See Bosses.items.kraken for the design; this is the
+-- machinery. In one paragraph: the party is dropped on a SHIP with the animal's
+-- head planted 350 studs off the port beam, two ARMS are the damage targets,
+-- breaking both inside one cycle slumps the head and opens a ~10s window on its
+-- own health bar, four windows walk the fight through the waist, the full ship,
+-- and finally the gullet - a second arena the siphon swallows everyone into.
+--
+-- WHAT THIS SECTION DELIBERATELY DOES NOT DO:
+--   * it does not use `def.parts`. The generic ring regrows the WHOLE ring when
+--     the LAST member falls, and this fight needs a per-arm twelve seconds. See
+--     the `machine` comment on the row. Everything the ring gave for free is
+--     kept, because the arms still carry `partOf`.
+--   * it does not move the ship or tilt the deck (substitutions A and B on the
+--     row, owner-approved). Both would mean moving authored geometry that every
+--     height in this file is measured against, for a few seconds of feel.
+--   * it does not draw anything. Every visual is an event or an attribute, and
+--     the contract for both is at the top of this file.
+--
+-- THE GEOMETRY IS NOT GUESSED. Every number in K.KRAKEN is from
+-- assets/arena_gen.py's `HANDOFF kraken` lines or measured off the exported
+-- glb, and the axis mapping is stated once here: the generator authors X along
+-- the ship (bow +X), Y across the beam with PORT at +Y, and Z as height with
+-- the waterline at 0; the glTF export maps that to Roblox (X, Z, -Y). So
+-- everything below is arena-local Roblox: X along the hull, Y height off the
+-- sea, Z across the beam with PORT at NEGATIVE Z.
+K.KRAKEN = {
+	-- --------------------------------------------------------------- the ship
+	DECK_Y = 8.0, -- main deck top (KA_DECK_Z)
+	FC_Y = 15.0, -- forecastle (KA_DECK_Z + 7)
+	QD_Y = 17.0, -- quarterdeck (KA_DECK_Z + 9)
+	QD_TO_X = -40.0, -- x <= this is the quarterdeck (KA_QD_FRONT)
+	FC_FROM_X = 50.0, -- x >= this is the forecastle (KA_FC_AFT)
+	HULL_X = 85.0, -- the bow and stern posts (KA_SHIP_LEN / 2)
+	-- THE SWEEP PLANE, and it is the one number a scythe is nothing without: a
+	-- lateral sweep's underside sits deck + 3.0. Measured against that: the
+	-- bulwark tops at deck+2.8 (clears by 0.2 - the rail never saves you), the
+	-- tallest cargo at deck+2.7 (clears by 0.3 - the cover does), and a
+	-- STANDING head at deck+5.0, which is two studs inside it.
+	SWEEP_RISE = 3.0,
+	STAND_HEAD = 5.0,
+	-- How far a character's head stands over its HumanoidRootPart. Roblox has no
+	-- crouch, so the fight's "low is spared" is played by cover rather than by
+	-- posture - but the sweep still has to be tested against a head rather than
+	-- a hip, or it would pass over a standing player by two studs of arithmetic.
+	HEAD_OVER_ROOT = 2.5,
+	-- How far outboard of a cover's authored footprint still counts as behind
+	-- it. A body is about 2 studs wide and nobody stands INSIDE a crate; without
+	-- this the only safe spot would be a mathematical point on its edge.
+	COVER_MARGIN = 3.5,
+	-- THE HEAD, arena-local. Off the PORT beam, which is -Z. It never moves.
+	HEAD_AT = Vector3.new(0.0, 0.0, -370.0),
+	-- ...and where its EYE is, relative to the head's own centre, at the pack's
+	-- authored SCALE 6.0: the orbs sit at author (36.5, +/-16.3, 46.0), so 276
+	-- studs up and 219 studs toward whatever it is facing. Only the eye lance
+	-- reads this, and only to cast a line of sight from it - a ray that started
+	-- at the head's pivot would begin 276 studs inside the animal's own hide.
+	EYE_LIFT = 276.0,
+	EYE_REACH = 219.0,
+	-- SLAM DISCS, from the HANDOFF: the waist is 90 x 40, so r 12-16 owns its
+	-- width without owning either cover stack and r 22 owns the room. The
+	-- telegraph is the bigger one and the damage the smaller: the read is "get
+	-- out of the middle", not "stand one stud outside a painted line".
+	SLAM_R = 14.0,
+	SLAM_TELL_R = 22.0,
+	-- The knuckle: how far back along the limb from the hitbox toward the head
+	-- the glowing joint sits, and how far it stands proud of the deck. Published
+	-- for the renderer only - see ATTR.WEAKPOINT_POS.
+	KNUCKLE_BACK = 26.0,
+	KNUCKLE_LIFT = 6.0,
+	-- WHAT A HOT KNUCKLE IS WORTH. Triple, and it is the only 3x in the game
+	-- (the charger's expose window is 2x): the arm is only vulnerable while it
+	-- is committed to something that is hurting you, so the multiplier has to be
+	-- big enough that turning to hit it is worth eating the move.
+	WEAK_MULT = 3.0,
+	-- WHAT A LIT EYE IS WORTH, and it is deliberately the weakest window in the
+	-- fight (the new-attacks pass, 2026-09-12). The eye lance now holds its flare
+	-- for `glint` seconds after it fires and the HEAD takes this much for that
+	-- window - see Bosses.items.kraken.attacks.eyelance for why 1.5 and not the
+	-- 2.0 that `exposedUntil` means everywhere else: an eye that has just shot
+	-- somebody has not over-committed, it has merely finished.
+	GLINT_MULT = 1.5,
+	-- HOW FAR UNDER THE SEA A CIRCLING LIMB'S HITBOX RIDES, during the maelstrom
+	-- coil's three seconds of tracking. It has to be a real number rather than
+	-- "at the target like every other planted phase", because the whole premise of
+	-- the move is that the limb is UNDER the water and cannot be hit: parking the
+	-- hitbox on the deck station it is tracking would let the party shoot a
+	-- tentacle that visibly is not there, and shoot it at the exact moment the
+	-- move is supposed to be making them move instead.
+	--
+	-- 70 down and 46 outboard are KrakenPath.COIL_DEPTH and COIL_OUT - the drawn
+	-- limb's own station - so the thing you cannot hit is where the thing you
+	-- cannot see is. (Not required to agree, since nothing can reach either; but
+	-- two numbers that mean one thing should be one number's worth of wrong.)
+	COIL_SINK = 70.0,
+	COIL_OUT = 46.0,
+	-- ------------------------------------------------------------- the gullet
+	-- The room's own z = 0 floor datum, relative to its arena mesh's authored
+	-- bbox bottom of -16. DERIVED from BossArenas.maelstrom_gullet.meshBottom
+	-- rather than written down twice: move the row and the fight follows.
+	GULLET_ARENA = "maelstrom_gullet",
+	GULLET_BBOX = 16.0,
+	GULLET_R = 118.0, -- the wall foot (KG_R)
+	DAIS_R = 26.0, -- the finale dais (KG_DAIS_R)
+	DAIS_TOP = 2.2, -- its top over the floor datum
+	HEART_Y = 21.0, -- the heart mass, slung over the dais (KG_HEART_Z)
+	-- The heart's capture sphere, against the head's 280. See Fn.krakenSwallow.
+	HEART_HIT_R = 30.0,
+	-- How far a character's HumanoidRootPart floats over its own feet. The acid
+	-- tide is the one move in the fight with a height CEILING rather than a
+	-- tolerance band, and a ceiling tested against a root instead of a pair of
+	-- feet is three studs of free clearance - which on a 1.8-stud ceiling is
+	-- everybody, everywhere, always safe.
+	ROOT_OVER_FEET = 3.0,
+	ENTRY_AT = Vector3.new(0.0, 2.4, 86.0), -- the entry pad, mirrored into Roblox
+}
+
+-- The three ArmPhases that mean "the limb is at its target and staying there".
+-- Distinct to a renderer and identical to a hitbox; see Fn.krakenArmPlace.
+-- FOUR MORE OF THEM AFTER THE NEW-ATTACKS PASS (2026-09-12), on exactly the same
+-- argument: a phase belongs here when the hitbox is simply AT the arm's published
+-- target, however different the four look to a renderer.
+--   Spear  - the jab, at the mark it is going through.
+--   Stuck  - the tip buried in the planking at that same mark, held for four
+--            seconds. This is the grating spear's whole opening, so the hitbox
+--            being exactly where the drawn tip is matters more here than anywhere:
+--            a player is aiming at it for four seconds.
+--   Drape  - spent over the near bulwark above its own station.
+--   Erupt  - the column, which is only up for 0.6s and whose damage is at the
+--            target by construction.
+--
+-- `Coil` is POINTEDLY NOT HERE and has its own branch in Fn.krakenArmPlace: it is
+-- the one committed phase in the book whose limb is not where its target is, and
+-- planting it would hand the party a tentacle to shoot on the deck while the real
+-- one circles 70 studs under the sea. See K.KRAKEN.COIL_SINK.
+K.KRAKEN_PLANTED = {
+	Slam = true,
+	Down = true,
+	Wrapped = true,
+	Spear = true,
+	Stuck = true,
+	Drape = true,
+	Erupt = true,
+}
+
+-- How long a limb may stay committed with no attack running before the fight
+-- tick stands it back up. Comfortably past the longest hold any move in the book
+-- asks for (the wrench's 4-second channel plus its 6-second expose), so it can
+-- only ever fire on a limb whose handler was cancelled out from under it. See
+-- the STRANDED note in Fn.updateKrakenFight.
+K.KRAKEN_ARM_STRAND = 12.0
+
+-- THE FIGHT'S OWN STATE, created on first use. Kept on the creature struct
+-- rather than in a module table so it dies with the boss - the abandon reaper,
+-- the parentless-model drop and an admin restart all take it with them, and
+-- none of them has to know it exists.
+function Fn.krakenState(creature)
+	local state = creature.kraken
+	if not state then
+		state = {
+			-- Per-arm records, indexed by slot. `part` is the creature struct
+			-- while the arm is standing and nil while it is withdrawn.
+			arms = {},
+			-- Custom hazard waves - the gullet's annuli-with-a-gap and its
+			-- flood ranks. NOT `creature.strikes`: those resolve through
+			-- `damagePlayersInRadius` with the boss kit's flat 14-stud height
+			-- tolerance, and both of these moves are ABOUT height (the dais is
+			-- safe from the tide) or about an arc (the gap is the whole
+			-- mechanic). See Fn.krakenStepWaves.
+			waves = {},
+			-- Anchored props the fight steps itself: the wrench's sliding
+			-- barrels and the mast bell's spar. Every one carries its own
+			-- `expiresAt` AND a task.delay self-destruct, so a fight that ends
+			-- underneath one is never the reason a part is left in the world.
+			props = {},
+			windows = 0,
+			polypsPlanted = 0,
+		}
+		creature.kraken = state
+	end
+	return state
+end
+
+-- The ship arena's row, and the world point its authored origin sits on. The
+-- boss rose at the arena centre (BossService.arenaPosition), and for a
+-- sea-level arena `floorY` answers WATER_Y exactly - so `creature.anchor` IS
+-- arena-local (0, 0, 0) and every number in K.KRAKEN adds straight onto it.
+function Fn.krakenShip(creature)
+	return creature.krakenShip or creature.anchor or creature.pos
+end
+
+-- Arena-local (Roblox axes, see the header) to world.
+function Fn.krakenAt(creature, x: number, y: number, z: number): Vector3
+	local o = Fn.krakenShip(creature)
+	return Vector3.new(o.X + x, o.Y + y, o.Z + z)
+end
+
+-- ...and back: world to arena-local. Returns the three components rather than a
+-- Vector3 because every caller wants them apart (which deck is this X on, is
+-- this Z inside the lane, is this Y over the sweep plane).
+function Fn.krakenLocal(creature, at: Vector3): (number, number, number)
+	local o = Fn.krakenShip(creature)
+	return at.X - o.X, at.Y - o.Y, at.Z - o.Z
+end
+
+-- WHICH DECK IS UNDER THIS STATION, and its sweep plane. Phase one only ever
+-- sees the middle branch - the waist is the whole arena until the castles open -
+-- but the function does not need to know that, because phase one never asks
+-- about a station outside the waist.
+function Fn.krakenDeckY(x: number): number
+	local kr = K.KRAKEN
+	if x <= kr.QD_TO_X then
+		return kr.QD_Y
+	elseif x >= kr.FC_FROM_X then
+		return kr.FC_Y
+	end
+	return kr.DECK_Y
+end
+
+-- The three decks a phase can sweep, as { local X min, local X max, deck Y }.
+-- Phase one gets the waist alone; phase two gets all three, which is exactly
+-- what makes a single world-height sweep stop working (arena_gen's own warning:
+-- one plane would be head-high in the waist and knee-high nowhere).
+function Fn.krakenDecks(phase: number)
+	local kr = K.KRAKEN
+	if phase >= 2 then
+		return {
+			{ kr.QD_TO_X, kr.FC_FROM_X, kr.DECK_Y },
+			{ kr.FC_FROM_X, kr.HULL_X, kr.FC_Y },
+			{ -kr.HULL_X, kr.QD_TO_X, kr.QD_Y },
+		}
+	end
+	return { { kr.QD_TO_X, kr.FC_FROM_X, kr.DECK_Y } }
+end
+
+-- IS THIS POINT BEHIND A PIECE OF DECK CARGO? The answer to the scythe, to the
+-- wrench's barrels and to the heave's drag, and it is one function because it
+-- has to be one answer - three tests that disagreed about where safety is would
+-- all look right in isolation, which is the failure this project has a standing
+-- rule about.
+--
+-- Rectangular, because the cargo is crates: `sizeX`/`sizeZ` off the arena row
+-- (BossArenas), falling back to the circular `radius` for a row that has not
+-- opted in. Grown by COVER_MARGIN, because nobody stands inside a crate.
+function Fn.krakenBehindCover(creature, at: Vector3): boolean
+	local arena = BossArenas.items.maelstrom
+	local cover = arena and arena.cover
+	if not cover then
+		return false
+	end
+	local x, _y, z = Fn.krakenLocal(creature, at)
+	local margin = K.KRAKEN.COVER_MARGIN
+	for _, site in cover do
+		local hx = (site.sizeX or site.radius) + margin
+		local hz = (site.sizeZ or site.radius) + margin
+		if math.abs(x - site.offset.X) <= hx and math.abs(z - site.offset.Z) <= hz then
+			return true
+		end
+	end
+	return false
+end
+
+-- The four cover footprints in WORLD space, in the shape a client can test a
+-- character against without knowing anything about arena-local axes. Sent with
+-- the heave's pull, because that drag is applied by each client to its own
+-- character (the lure-pull channel) and the exemption has to travel with it.
+function Fn.krakenCoverBoxes(creature)
+	local arena = BossArenas.items.maelstrom
+	local boxes = {}
+	for _, site in (arena and arena.cover or {}) do
+		local at = Fn.krakenAt(creature, site.offset.X, 0, site.offset.Z)
+		table.insert(boxes, {
+			x = at.X,
+			z = at.Z,
+			hx = (site.sizeX or site.radius) + K.KRAKEN.COVER_MARGIN,
+			hz = (site.sizeZ or site.radius) + K.KRAKEN.COVER_MARGIN,
+		})
+	end
+	return boxes
+end
+
+-- Where the head's EYE is in world space. It faces the ship, so "forward" is
+-- from the head toward the arena origin.
+function Fn.krakenEye(creature): Vector3
+	local kr = K.KRAKEN
+	local head = Fn.krakenAt(creature, kr.HEAD_AT.X, 0, kr.HEAD_AT.Z)
+	local ship = Fn.krakenShip(creature)
+	local toward = Vector3.new(ship.X - head.X, 0, ship.Z - head.Z)
+	toward = if toward.Magnitude > 0.001 then toward.Unit else Vector3.new(0, 0, 1)
+	return head + toward * kr.EYE_REACH + Vector3.new(0, kr.EYE_LIFT, 0)
+end
+
+-- The gullet's floor datum in world Y, and its centre. DERIVED from the arena
+-- row so the room can be moved in one place: `meshBottom` pins the mesh's
+-- authored bbox floor (-16) and the room's own z = 0 is GULLET_BBOX above it.
+function Fn.krakenGulletFloor(): Vector3
+	local arena = BossArenas.items[K.KRAKEN.GULLET_ARENA]
+	if not arena then
+		return Vector3.zero
+	end
+	return Vector3.new(arena.center.X, (arena.meshBottom or 0) + K.KRAKEN.GULLET_BBOX, arena.center.Z)
+end
+
+-- ---------------------------------------------------------------- the arms
+
+-- Write one arm's state, publish it, and stamp the timestamp the client eases
+-- from. THE SMOOTHNESS RULE lives here and nowhere else: `ArmPhaseAt` is set
+-- once per transition and `ArmT` every frame, so a renderer never has to guess
+-- when a phase began and never sees a limb teleport between poses.
+function Fn.krakenArmPhase(arm, phase: string, now: number, target: Vector3?, wrap: number?)
+	arm.phase = phase
+	arm.phaseAt = now
+	arm.t = 0
+	arm.target = target
+	arm.wrap = wrap
+	local part = arm.part
+	if not part or part.dead or not part.model.Parent then
+		return
+	end
+	local model = part.model
+	model:SetAttribute(ATTR.ARM_PHASE, phase)
+	model:SetAttribute(ATTR.ARM_PHASE_AT, now)
+	model:SetAttribute(ATTR.ARM_T, 0)
+	model:SetAttribute(ATTR.WRAP_INDEX, wrap)
+	model:SetAttribute(ATTR.TARGET_X, target and target.X or nil)
+	model:SetAttribute(ATTR.TARGET_Z, target and target.Z or nil)
+end
+
+-- RE-AIM A LIMB WITHOUT RE-STAMPING ITS PHASE, and the distinction is the whole
+-- reason this exists next to Fn.krakenArmPhase rather than inside it.
+--
+-- `ArmPhaseAt` is THE CLIENT'S TRANSITION EDGE - KrakenBodyController.readArm
+-- opens a fresh crossfade on every change of it, and resets ArmT with it - so a
+-- move that wanted to move its aim mid-phase could not use krakenArmPhase: calling
+-- it every frame would restart the blend every frame and the limb would never
+-- finish arriving anywhere. That is exactly what the maelstrom coil needs to do
+-- for three seconds, and it is the only move in the book that tracks.
+--
+-- So this writes the AIM and nothing else: the struct field the server's own
+-- placement reads and the two attributes the drawn limb and its deck mark read.
+-- No phase, no timestamp, no ArmT. One writer for the pair, for the same reason
+-- Fn.krakenArmHot is one writer for its pair.
+function Fn.krakenArmAim(arm, at: Vector3)
+	arm.target = at
+	local part = arm.part
+	if not part or part.dead or not part.model.Parent then
+		return
+	end
+	part.model:SetAttribute(ATTR.TARGET_X, at.X)
+	part.model:SetAttribute(ATTR.TARGET_Z, at.Z)
+end
+
+-- WHERE A SPENT LIMB LIES, and it exists so the hitbox and the drawn limb cannot
+-- disagree about the most-used opening in the fight (the new-attacks pass,
+-- 2026-09-12).
+--
+-- `Drape` is a PLANTED phase - Fn.krakenArmPlace parks the hitbox exactly on the
+-- arm's published target - so whatever is handed to Fn.krakenArmPhase as that
+-- target is where the party's shots have to land. The drawn pose, meanwhile, rests
+-- its tip on the planking `KrakenPath.DRAPE_Z` studs inboard of the port bulwark at
+-- that station's own deck height. The first draft of the deck scythe's new ending
+-- handed it the SWEEP LANE's far end, which is at the sweep plane - deck + 3 + a
+-- shoulder's girth, 35 studs up - so the thing to shoot was a sphere floating three
+-- storeys above the limb you could see. Exactly the silent-absence shape: a window
+-- that is open, visibly open, and unhittable.
+--
+-- Taken from KrakenPath rather than from a number written twice, so re-authoring
+-- the pose moves the hitbox with it.
+function Fn.krakenDrapeAt(creature, x: number): Vector3
+	local clamped = math.clamp(x, K.KRAKEN.QD_TO_X + 8, K.KRAKEN.FC_FROM_X - 8)
+	return Fn.krakenAt(creature, clamped, Fn.krakenDeckY(clamped), KrakenPath.DRAPE_Z)
+end
+
+-- The knuckle glow, both halves together: the struct flag `damage()` reads
+-- through `hitModifiers` and the two attributes the client draws. ONE writer,
+-- so the multiplier and the glow can never disagree about whether the window is
+-- open - which is the only way a 3x window can be unfair.
+function Fn.krakenArmHot(arm, hot: boolean, at: Vector3?)
+	arm.hot = hot
+	local part = arm.part
+	if not part or part.dead or not part.model.Parent then
+		return
+	end
+	part.krakenHot = hot or nil
+	part.model:SetAttribute(ATTR.WEAKPOINT_HOT, hot or nil)
+	part.model:SetAttribute(ATTR.WEAKPOINT_POS, if hot then at else nil)
+end
+
+-- Plant one arm. The single-arm form of `Fn.spawnBossParts`, and it exists
+-- because this fight's regrow is per arm rather than per ring - see the row's
+-- `machine` comment. It keeps every property the generic ring gives a part:
+-- `partOf` (so `kill` counts `partsAlive` down and `removeOwnedParts` takes it
+-- with the boss), `socketIndex` (so `Fn.livingArms` finds it), the party's
+-- health multiplier, the `Weakpoint` stamp the partsDown rule earns, and
+-- noLinger / suppressed drops / a token bounty.
+function Fn.plantKrakenArm(creature, def, slot: number, now: number)
+	local row = Creatures.items["kraken_arm"]
+	local rest = def.machine and def.machine.armRest and def.machine.armRest[slot]
+	if not row or not rest then
+		return
+	end
+	local at = Fn.krakenAt(creature, rest.X, K.KRAKEN.DECK_Y, rest.Z)
+	local model = CreatureService.spawn(row, at, nil, "Neutral", {
+		noLinger = true,
+		suppressDrops = true,
+		bounty = 0.5,
+		healthMult = Fn.partyMult(creature), -- was creature.healthMult: NO SUCH FIELD (extra.healthMult is the real home) - nil rode through and the kraken's arms, dais adds and polyps never party-scaled
+	})
+	local part = byModel[model]
+	if not part then
+		return
+	end
+	part.partOf = creature
+	part.socketIndex = slot
+	part.pos = at
+	model:PivotTo(CFrame.new(at))
+	if creature.row.vulnerableWhen == "partsDown" then
+		model:SetAttribute(ATTR.WEAKPOINT, true)
+	end
+	local state = Fn.krakenState(creature)
+	local arm = state.arms[slot] or { slot = slot }
+	arm.part = part
+	arm.rest = rest
+	arm.returnAt = nil
+	state.arms[slot] = arm
+	creature.partsAlive = (creature.partsAlive or 0) + 1
+	Fn.krakenArmPhase(arm, "Rest", now)
+	Fn.krakenArmHot(arm, false)
+	return arm
+end
+
+-- An arm that is standing, not withdrawn, and not already committed to a move.
+-- `Rest` is the only idle phase; everything else is a limb in the middle of
+-- something and taking a second order would rewrite a telegraph a player is
+-- already reading (`Fn.commandArm`'s standing rule, applied to two arms instead
+-- of eight).
+function Fn.krakenFreeArm(creature, skip)
+	local state = Fn.krakenState(creature)
+	for slot = 1, 2 do
+		local arm = state.arms[slot]
+		if arm and arm ~= skip and arm.part and not arm.part.dead and arm.phase == "Rest" then
+			return arm
+		end
+	end
+	return nil
+end
+
+-- Where an arm's hitbox stands, given its phase. Called every frame, so this is
+-- the ONE place an arm's position is decided and the client's chain, the
+-- server's hitbox and the knuckle's glow are all read off it.
+function Fn.krakenArmPlace(creature, arm, now: number)
+	local part = arm.part
+	if not part or part.dead or not part.model.Parent then
+		return
+	end
+	local kr = K.KRAKEN
+	local rest = Fn.krakenAt(creature, arm.rest.X, kr.DECK_Y, arm.rest.Z)
+	local at = rest
+	local span = arm.phaseFor or 1
+	local u = math.clamp((now - (arm.phaseAt or now)) / math.max(span, 1e-3), 0, 1)
+	arm.t = u
+	local target = arm.target
+	if arm.phase == "Rear" and target then
+		-- Up and over the rail: the limb crests between its rest point and the
+		-- impact site, which is what makes the tell readable from the deck.
+		at = rest:Lerp(target, smoothstep(u) * 0.55) + Vector3.new(0, 26 * math.sin(u * math.pi * 0.5), 0)
+	elseif arm.phase == "SweepCock" and target then
+		at = rest:Lerp(target, smoothstep(u))
+	elseif arm.phase == "Sweep" and target and arm.sweepTo then
+		at = target:Lerp(arm.sweepTo, smoothstep(u))
+	elseif arm.phase == "Coil" and target then
+		-- UNDER THE SEA AND OUT OF REACH, the one committed phase whose hitbox is
+		-- not at its target. The limb is circling 70 studs down and 46 outboard of
+		-- the station it is tracking (KrakenPath's COIL_DEPTH / COIL_OUT, mirrored
+		-- in K.KRAKEN), so that is where the thing you cannot hit is - rather than
+		-- on the planking, where the party would find an invisible tentacle to
+		-- shoot at exactly the moment the move wants them moving.
+		--
+		-- Taken off the TARGET rather than off the rest point, because the target
+		-- moves: this is re-aimed every `trackStep` by Fn.krakenArmAim, and a
+		-- hitbox left at the seat would be the one part of the move that did not
+		-- follow anybody.
+		at = Vector3.new(target.X, Fn.krakenShip(creature).Y - kr.COIL_SINK, target.Z - kr.COIL_OUT)
+	elseif target and K.KRAKEN_PLANTED[arm.phase] then
+		-- PLANTED. Slam, Down and Wrapped are all "the limb is at its target and
+		-- staying there" - three names for one placement, because the three are
+		-- different things to the CLIENT (a blow, a punish window, a haul) and
+		-- the same thing to the hitbox. Named in a table rather than in a chain
+		-- of identical branches so the fact that they agree is stated once.
+		at = target
+	end
+	part.pos = at
+	part.model:PivotTo(CFrame.new(at))
+	part.model:SetAttribute(ATTR.ARM_T, u)
+	if arm.hot then
+		-- The knuckle: back along the limb toward the head, and proud of the
+		-- deck. Republished every frame because the limb is moving under it.
+		local head = Fn.krakenAt(creature, kr.HEAD_AT.X, kr.EYE_LIFT * 0.4, kr.HEAD_AT.Z)
+		local back = head - at
+		back = if back.Magnitude > 0.001 then back.Unit else Vector3.new(0, 0, -1)
+		part.model:SetAttribute(ATTR.WEAKPOINT_POS, at + back * kr.KNUCKLE_BACK + Vector3.new(0, kr.KNUCKLE_LIFT, 0))
+	end
+end
+
+-- ------------------------------------------------------------ the props
+
+-- One anchored part the fight steps itself: the wrench's barrels and the mast
+-- bell's spar. THE BACKSTOP IS NOT OPTIONAL - every prop in this file carries
+-- one, because a fight can end underneath a prop (the boss dies, the reaper
+-- takes it, an admin restarts it) and the tick that would have collected it
+-- stops running in the same frame. So: `expiresAt` for the tick, and a
+-- `task.delay` destroy that does not need the tick to be alive at all.
+function Fn.krakenProp(creature, name: string, size: Vector3, at: Vector3, life: number, spec)
+	local part = Instance.new("Part")
+	part.Name = name
+	part.Size = size
+	part.CFrame = CFrame.new(at)
+	part.Anchored = true
+	part.CanCollide = false
+	-- Solid to LOOK at and to CAST at, but never a floor and never a wall: a
+	-- rolling cask you could stand on would turn the wrench's own hazard into
+	-- the safest place on the deck.
+	part.CanQuery = false
+	part.Color = Color3.fromRGB(84, 66, 44)
+	part.Material = Enum.Material.Wood
+	part.Parent = Workspace
+	task.delay(life, function()
+		if part.Parent then
+			part:Destroy()
+		end
+	end)
+	local prop = spec or {}
+	prop.part = part
+	prop.expiresAt = os.clock() + life
+	prop.hit = {}
+	table.insert(Fn.krakenState(creature).props, prop)
+	return prop
+end
+
+function Fn.krakenClearProps(creature)
+	local state = creature.kraken
+	if not state then
+		return
+	end
+	for _, prop in state.props do
+		if prop.part and prop.part.Parent then
+			prop.part:Destroy()
+		end
+	end
+	table.clear(state.props)
+end
+
+-- Step every live prop: move it along its own leg, hurt whoever it runs over
+-- (once each per prop, the figurehead's rule), and retire it at its deadline.
+function Fn.krakenStepProps(creature, now: number)
+	local state = creature.kraken
+	if not state then
+		return
+	end
+	for i = #state.props, 1, -1 do
+		local prop = state.props[i]
+		if now >= prop.expiresAt or not prop.part or not prop.part.Parent then
+			if prop.part and prop.part.Parent then
+				prop.part:Destroy()
+			end
+			table.remove(state.props, i)
+			continue
+		end
+		local t = math.clamp((now - prop.startAt) / math.max(prop.travel, 1e-3), 0, 1)
+		local at
+		if prop.arc then
+			-- THE SPAR: a swing, not a slide. It sweeps back and forth across
+			-- the waist, so `t` is folded into a triangle wave and each fold is
+			-- one damaging pass. `hit` is cleared at the turn, so a player who
+			-- ate one pass can be caught by the next - which is the whole point
+			-- of a thing that swings.
+			local passes = prop.passes or 1
+			local phase = t * passes
+			local leg = math.floor(phase)
+			local frac = phase - leg
+			if leg ~= prop.leg then
+				prop.leg = leg
+				table.clear(prop.hit)
+			end
+			local swing = if leg % 2 == 0 then frac else 1 - frac
+			at = prop.from:Lerp(prop.to, smoothstep(swing))
+		else
+			at = prop.from:Lerp(prop.to, t)
+		end
+		prop.part.CFrame = CFrame.new(at, at + (prop.to - prop.from).Unit)
+		for _, entry in Fn.livingRootsNear(at, prop.radius) do
+			-- Cover stops a cask AND a spar: the same four crates that answer
+			-- the scythe, so the deck's furniture reads as one idea rather than
+			-- four special cases.
+			if not prop.hit[entry.player] and not Fn.krakenBehindCover(creature, entry.root.Position) then
+				prop.hit[entry.player] = true
+				PlayerService.damage(entry.player, math.random(prop.min, prop.max), creature, { bypassIframe = true })
+			end
+		end
+		if t >= 1 and not prop.arc then
+			prop.part:Destroy()
+			table.remove(state.props, i)
+		end
+	end
+end
+
+-- ------------------------------------------------------------ the waves
+
+-- THE GULLET'S OWN HAZARD LIST, and it is not `creature.strikes` for two
+-- reasons the generic stepper cannot express:
+--   * A GAP. Peristalsis is an annulus with an arc cut out of it, and the arc
+--     is the entire mechanic. `Fn.damagePlayersInAnnulus` has no notion of one.
+--   * A HEIGHT CEILING. The acid tide floods the floor and the dais stands
+--     above it, so "safe if you are more than 1.8 studs up" is the move.
+--     `damagePlayersInRadius` takes a height TOLERANCE (a symmetric band), not
+--     a ceiling, and the boss kit passes 14 - which would drown the dais.
+-- Everything else about them is the strike stepper's contract: a tell at
+-- `tellAt` whose duration runs to the blow, damage at `hitAt`, one event out.
+function Fn.krakenQueueWave(creature, def, p, spec)
+	local lo, hi = Fn.bossRoll(creature, def, spec.damage or p.damage or { 1, 1 })
+	spec.min, spec.max = lo, hi
+	spec.skin = spec.skin or p.skin
+	table.insert(Fn.krakenState(creature).waves, spec)
+end
+
+function Fn.krakenStepWaves(creature, now: number)
+	local state = creature.kraken
+	if not state then
+		return
+	end
+	for i = #state.waves, 1, -1 do
+		local w = state.waves[i]
+		if not w.told and now >= w.tellAt then
+			w.told = true
+			fireEvent("telegraph", w.at, {
+				kind = if w.inner then "ringTell" else "mark",
+				duration = math.max(w.hitAt - now, 0.1),
+				radius = w.outer or w.radius,
+				inner = w.inner,
+				-- THE GAP, ON THE WIRE. Two bearings in radians naming the arc
+				-- that is NOT part of the ring. A client that ignores them draws
+				-- a closed ring and lies to the player about the one piece of
+				-- safe ground in the move, so they are part of the telegraph
+				-- rather than a decoration on it.
+				gapFrom = w.gapFrom,
+				gapTo = w.gapTo,
+				skin = w.skin,
+			})
+		end
+		if now >= w.hitAt then
+			table.remove(state.waves, i)
+			for _, entry in Fn.livingRootsNear(w.at, (w.outer or w.radius) + 2) do
+				local root = entry.root
+				local off = Vector3.new(root.Position.X - w.at.X, 0, root.Position.Z - w.at.Z)
+				local d = off.Magnitude
+				local inBand = if w.inner then (d >= w.inner and d <= w.outer) else (d <= w.radius)
+				if inBand and w.gapFrom then
+					-- Inside the cut arc is outside the ring. Bearings are
+					-- wrapped into the gap's own frame so a gap that straddles
+					-- the -pi seam is not silently half a gap.
+					local bearing = math.atan2(off.Z, off.X)
+					local rel = (bearing - w.gapFrom) % (math.pi * 2)
+					local span = (w.gapTo - w.gapFrom) % (math.pi * 2)
+					if rel <= span then
+						inBand = false
+					end
+				end
+				-- A CEILING, MEASURED AT THE FEET. See K.KRAKEN.ROOT_OVER_FEET:
+				-- the root floats three studs over the ground a character is
+				-- standing on, so testing it against a 1.8-stud flood would
+				-- spare the entire room including the floor of it.
+				if inBand and w.maxY and (root.Position.Y - K.KRAKEN.ROOT_OVER_FEET) - w.at.Y > w.maxY then
+					inBand = false
+				end
+				if inBand and w.height and math.abs(root.Position.Y - w.at.Y) > w.height then
+					inBand = false
+				end
+				if inBand then
+					PlayerService.damage(entry.player, math.random(w.min, w.max), creature, { bypassIframe = true })
+				end
+			end
+			fireEvent(w.event or "strikeHit", w.at, {
+				radius = w.outer or w.radius,
+				inner = w.inner,
+				gapFrom = w.gapFrom,
+				gapTo = w.gapTo,
+				skin = w.skin,
+			})
+			if w.pool then
+				spawnPool(creature, w.at, w.pool, now)
+			end
+		end
+	end
+end
+
+-- ---------------------------------------------------------- the attack book
+
+-- Common setup for a handler that has to pick an arm and a target once, on its
+-- first windup frame. `a.krSetup` is the latch; a handler whose arm pick fails
+-- (both arms withdrawn) simply plays no telegraph and lands nothing, and burns
+-- its clock and its cooldown doing it - the jammed-overload ruling, and the
+-- honest outcome for a move whose limb is not there.
+function Fn.krakenSetup(creature): boolean
+	local a = creature.attack
+	if a.krSetup then
+		return false
+	end
+	a.krSetup = true
+	return true
+end
+
+-- Where a slam should land: the deck under the nearest player, clamped inside
+-- whatever floor this phase has opened. Clamped rather than skipped, because a
+-- disc drawn half over the sea is a telegraph that lies about its own shape.
+function Fn.krakenSlamTarget(creature, root): Vector3
+	local kr = K.KRAKEN
+	local phase = creature.krakenPhase or 1
+	local x, z = 0, 0
+	if root then
+		local lx, _ly, lz = Fn.krakenLocal(creature, root.Position)
+		x, z = lx, lz
+	end
+	local lowX, highX = kr.QD_TO_X + kr.SLAM_R, kr.FC_FROM_X - kr.SLAM_R
+	if phase >= 2 then
+		lowX, highX = -kr.HULL_X + kr.SLAM_R, kr.HULL_X - kr.SLAM_R
+	end
+	x = math.clamp(x, lowX, highX)
+	z = math.clamp(z, -12, 12)
+	return Fn.krakenAt(creature, x, Fn.krakenDeckY(x), z)
+end
+
+-- PILE SLAM. One arm rears clear of the rail and comes down.
+K.ATTACK_HANDLERS.krakenpileslam = {
+	windup = function(creature, _def, p, u, sub)
+		local a = creature.attack
+		if Fn.krakenSetup(creature) then
+			local arm = Fn.krakenFreeArm(creature)
+			a.krArm = arm
+			if arm then
+				local root = Fn.nearestPlayerRoot(Fn.krakenShip(creature))
+				local at = Fn.krakenSlamTarget(creature, root)
+				a.krAt = at
+				arm.phaseFor = a.windup
+				Fn.krakenArmPhase(arm, "Rear", os.clock(), at)
+				-- THE TELL IS THE DISC AND IT IS AT THE IMPACT SITE, drawn for
+				-- exactly as long as the blow takes to arrive.
+				fireEvent("telegraph", at, {
+					kind = "slam",
+					duration = a.windup,
+					radius = p.tellRadius or K.KRAKEN.SLAM_TELL_R,
+					skin = p.skin,
+				})
+			end
+		end
+		creature.model:PivotTo(poseCFrame(creature, sub + 0.4 * u, 0, math.rad(-8) * u))
+	end,
+	fire = function(creature, def, p, now)
+		local a = creature.attack
+		local at = a.krAt
+		if not at then
+			return
+		end
+		local arm = a.krArm
+		if arm then
+			arm.phaseFor = p.duration
+			Fn.krakenArmPhase(arm, "Slam", now, at)
+		end
+		local lo, hi = Fn.bossRoll(creature, def, p.damage)
+		damagePlayersInRadius(at, p.radius, lo, hi, creature, 0.5, K.BOSS_HEIGHT_TOLERANCE)
+		fireEvent("slam", at, { radius = p.radius, skin = p.skin })
+	end,
+	finish = function(creature, _def, p, now)
+		local a = creature.attack
+		local arm = a and a.krArm
+		if arm and arm.part and not arm.part.dead then
+			-- THE PUNISH. The limb lies on the planking with its knuckle lit
+			-- for `down` seconds; the fight tick stands it back up.
+			arm.phaseFor = p.down or 3.0
+			arm.downUntil = now + (p.down or 3.0)
+			Fn.krakenArmPhase(arm, "Down", now, a.krAt)
+			Fn.krakenArmHot(arm, true, a.krAt)
+		end
+	end,
+}
+
+-- One arm's lateral sweep along one deck. Shared by `deckscythe` (one arm) and
+-- `crossscythe` (both, on different decks) so the two cannot drift: the lane,
+-- the plane and the damage rule are written once.
+function Fn.krakenArmSweep(creature, p, arm, deck, now: number, windup: number)
+	local kr = K.KRAKEN
+	local planeY = deck[3] + kr.SWEEP_RISE
+	local from = Fn.krakenAt(creature, deck[1] + 4, planeY, 0)
+	local to = Fn.krakenAt(creature, deck[2] - 4, planeY, 0)
+	arm.phaseFor = windup
+	arm.sweepTo = to
+	Fn.krakenArmPhase(arm, "SweepCock", now, from)
+	-- "sweepLane": a CORRIDOR, not a circle. from/to are its ends and `height`
+	-- is the world Y of the blade's underside, which is what a player has to be
+	-- BELOW to survive it - so the client can draw the plane rather than a
+	-- flat decal that says nothing about the mechanic.
+	fireEvent("sweepLane", (from + to) * 0.5, {
+		from = from,
+		to = to,
+		height = planeY + (Fn.krakenShip(creature)).Y,
+		width = p.lane or 20,
+		duration = windup,
+		skin = p.skin,
+	})
+	return { from = from, to = to, deck = deck, planeY = planeY }
+end
+
+-- Resolve one swept lane. THE RULE, and every number in it is measured off the
+-- build rather than chosen: the blade's underside is at deck + 3.0, a standing
+-- head is at deck + 5.0, so anyone standing on this deck inside the lane is two
+-- studs into it - and the ONLY thing that clears is a cargo footprint. Players
+-- on another deck are untouched, because their station is outside this lane's
+-- X range, which is the whole reason the lane is expressed as one.
+function Fn.krakenResolveSweep(creature, def, p, lane)
+	local kr = K.KRAKEN
+	local lo, hi = Fn.bossRoll(creature, def, p.damage)
+	local planeWorld = Fn.krakenAt(creature, 0, lane.planeY, 0).Y
+	local half = p.lane or 20
+	for _, entry in Fn.livingRootsNear((lane.from + lane.to) * 0.5, 140) do
+		local root = entry.root
+		local x, _y, z = Fn.krakenLocal(creature, root.Position)
+		local headY = root.Position.Y + kr.HEAD_OVER_ROOT
+		if
+			x >= lane.deck[1]
+			and x <= lane.deck[2]
+			and math.abs(z) <= half
+			and headY > planeWorld
+			and not Fn.krakenBehindCover(creature, root.Position)
+		then
+			PlayerService.damage(entry.player, math.random(lo, hi), creature, { bypassIframe = true })
+		end
+	end
+	fireEvent("strikeHit", (lane.from + lane.to) * 0.5, { radius = half, skin = p.skin })
+end
+
+K.ATTACK_HANDLERS.krakenscythe = {
+	windup = function(creature, _def, p, u, sub)
+		local a = creature.attack
+		if Fn.krakenSetup(creature) then
+			local arm = Fn.krakenFreeArm(creature)
+			a.krArm = arm
+			if arm then
+				local decks = Fn.krakenDecks(creature.krakenPhase or 1)
+				a.krLane = Fn.krakenArmSweep(creature, p, arm, decks[math.random(#decks)], os.clock(), a.windup)
+			end
+		end
+		creature.model:PivotTo(poseCFrame(creature, sub + 0.3 * u, math.rad(10) * u, math.rad(-6) * u))
+	end,
+	fire = function(creature, def, p, now)
+		local a = creature.attack
+		if not a.krLane then
+			return
+		end
+		if a.krArm then
+			a.krArm.phaseFor = p.duration
+			Fn.krakenArmPhase(a.krArm, "Sweep", now, a.krLane.from)
+		end
+		Fn.krakenResolveSweep(creature, def, p, a.krLane)
+	end,
+	finish = function(creature, _def, p, now)
+		local a = creature.attack
+		local arm = a and a.krArm
+		if not arm then
+			return
+		end
+		-- THE DRAG (the new-attacks pass, 2026-09-12). The swing used to end by
+		-- snapping the limb straight back to Rest, which is the one moment in the
+		-- whole fight where the animal did something instantaneous - and it threw
+		-- away the best-read move in the book's best opportunity for a window.
+		--
+		-- `drape` seconds of the arm lying spent over the NEAR bulwark with its
+		-- knuckle lit instead. The fight tick stands it up when `downUntil`
+		-- expires, exactly as it does for a slam's `down` - no new lifetime rule,
+		-- and the STRANDED backstop still covers a cancelled cast because Drape is
+		-- not Rest.
+		--
+		-- Guarded on the field rather than on a default, so a row that does not ask
+		-- for the opening keeps the old behaviour verbatim: `crossscythe` shares
+		-- Fn.krakenArmSweep with this move but has its OWN finish (both arms), and
+		-- giving two simultaneous limbs a window would be a different balance
+		-- decision than the one the owner asked for.
+		if p.drape and arm.part and not arm.part.dead then
+			-- At the END of the lane, which is where the swing actually stopped -
+			-- and through Fn.krakenDrapeAt, because the lane's own `to` is at the
+			-- SWEEP PLANE (35 studs up) and the limb drapes on the planking. See
+			-- that function's note: this was a real bug in the first draft.
+			local at = Fn.krakenDrapeAt(creature, if a.krLane then select(1, Fn.krakenLocal(creature, a.krLane.to)) else 0)
+			arm.phaseFor = p.drape
+			arm.downUntil = now + p.drape
+			Fn.krakenArmPhase(arm, "Drape", now, at)
+			Fn.krakenArmHot(arm, true, at)
+			return
+		end
+		arm.phaseFor = 0.8
+		Fn.krakenArmPhase(arm, "Rest", now)
+	end,
+}
+
+-- BOTH ARMS, TWO DECKS. Phase two only, and it is a phase-two move because it
+-- needs a second deck to be a second question rather than the same one twice.
+K.ATTACK_HANDLERS.krakencross = {
+	windup = function(creature, _def, p, u, sub)
+		local a = creature.attack
+		if Fn.krakenSetup(creature) then
+			local first = Fn.krakenFreeArm(creature)
+			local second = Fn.krakenFreeArm(creature, first)
+			local decks = Fn.krakenDecks(creature.krakenPhase or 1)
+			a.krLanes = {}
+			a.krArms = {}
+			local pick = math.random(#decks)
+			for index, arm in { first, second } do
+				if arm then
+					local deck = decks[((pick + index - 2) % #decks) + 1]
+					table.insert(a.krArms, arm)
+					table.insert(a.krLanes, Fn.krakenArmSweep(creature, p, arm, deck, os.clock(), a.windup))
+				end
+			end
+		end
+		creature.model:PivotTo(poseCFrame(creature, sub + 0.4 * u, 0, math.rad(-10) * u))
+	end,
+	fire = function(creature, def, p, now)
+		local a = creature.attack
+		for index, lane in (a.krLanes or {}) do
+			local arm = a.krArms[index]
+			if arm then
+				arm.phaseFor = p.duration
+				Fn.krakenArmPhase(arm, "Sweep", now, lane.from)
+			end
+			Fn.krakenResolveSweep(creature, def, p, lane)
+		end
+	end,
+	finish = function(creature, _def, _p, now)
+		local a = creature.attack
+		for _, arm in (a and a.krArms or {}) do
+			arm.phaseFor = 0.8
+			Fn.krakenArmPhase(arm, "Rest", now)
+		end
+	end,
+}
+
+-- WRAP WRENCH. The set-piece of phase one: the arm takes a boarding gap and
+-- hauls, cargo breaks loose and crosses the deck, and burning the arm's hot
+-- knuckle cancels the whole thing. See the row for substitution A.
+K.ATTACK_HANDLERS.krakenwrench = {
+	windup = function(creature, _def, p, u, sub)
+		local a = creature.attack
+		if Fn.krakenSetup(creature) then
+			local arm = Fn.krakenFreeArm(creature)
+			a.krArm = arm
+			local wraps = (BossArenas.items.maelstrom or {}).wraps
+			if arm and wraps then
+				local index = math.random(#wraps)
+				local w = wraps[index]
+				local at = Fn.krakenAt(creature, w.X, w.Y, w.Z)
+				a.krAt, a.krWrap = at, index
+				arm.phaseFor = a.windup
+				Fn.krakenArmPhase(arm, "Wrapped", os.clock(), at, index)
+				fireEvent("telegraph", at, { kind = "mark", duration = a.windup, radius = 10, skin = p.skin })
+			end
+		end
+		creature.model:PivotTo(poseCFrame(creature, sub + 0.5 * u, 0, math.rad(12) * u))
+	end,
+	fire = function(creature, def, p, now)
+		local a = creature.attack
+		local arm = a.krArm
+		if not arm or not arm.part or arm.part.dead then
+			return
+		end
+		arm.phaseFor = p.duration
+		Fn.krakenArmPhase(arm, "Wrapped", now, a.krAt, a.krWrap)
+		Fn.krakenArmHot(arm, true, a.krAt)
+		-- THE COUNTER'S BASELINE. Measured against the health this arm had when
+		-- the haul STARTED, not against a fraction of its current bar - the
+		-- threshold has to mean "damage done during the channel", or an arm
+		-- already at 20% would be cancellable by a scratch (the overload's
+		-- ruling, and the same arithmetic).
+		a.krHp0 = arm.part.health
+		-- SUBSTITUTION A: the LIST is the client's, the CONSEQUENCE is the
+		-- server's. `shipList` carries the direction and the duration so the
+		-- camera roll, the rigging strain and the debris all run on the same
+		-- clock the barrels do.
+		local side = if a.krAt.Z < Fn.krakenShip(creature).Z then -1 else 1
+		fireEvent("shipList", Fn.krakenShip(creature), {
+			duration = p.duration,
+			side = side,
+			active = true,
+			skin = p.skin,
+		})
+		local lo, hi = Fn.bossRoll(creature, def, p.damage)
+		local count = p.barrels or 4
+		for i = 1, count do
+			-- Crossing the waist from the hauling side to the other, staggered
+			-- along the deck so the four are a moving fence rather than a wall.
+			local x = -30 + (i - 1) * (70 / math.max(count - 1, 1))
+			local deck = Fn.krakenDeckY(x)
+			local from = Fn.krakenAt(creature, x, deck + 2, side * 26)
+			local to = Fn.krakenAt(creature, x, deck + 2, -side * 26)
+			local travel = (to - from).Magnitude / math.max(p.barrelSpeed or 26, 1)
+			Fn.krakenProp(creature, "KrakenBarrel", Vector3.new(4.4, 4.4, 6.6), from, travel + 1.5, {
+				from = from,
+				to = to,
+				startAt = now + (i - 1) * 0.35,
+				travel = travel,
+				radius = p.barrelRadius or 6,
+				min = lo,
+				max = hi,
+			})
+		end
+	end,
+	strike = function(creature, _def, p, now, _dt, _u, _root, sub)
+		local a = creature.attack
+		local arm = a.krArm
+		creature.model:PivotTo(poseCFrame(creature, sub + 0.5 + math.sin(now * 4) * 0.2, 0, math.rad(14)))
+		if a.krBroken or not arm then
+			return
+		end
+		-- THE COUNTER, TESTED EVERY FRAME. Either the arm went down outright, or
+		-- the party put `breakDamage` into it since the haul began.
+		local part = arm.part
+		local broke = not part or part.dead
+		if not broke and a.krHp0 and (a.krHp0 - part.health) >= (p.breakDamage or 2000) then
+			broke = true
+		end
+		if not broke then
+			return
+		end
+		a.krBroken = true
+		Fn.krakenClearProps(creature)
+		fireEvent("shipList", Fn.krakenShip(creature), { active = false, duration = 0.4, skin = p.skin })
+		if part and not part.dead then
+			-- The reward: the limb is torn off the rail and lies open. `Exposed`
+			-- is the attribute every body controller already reads for "this
+			-- thing is wide open"; the 3x is the knuckle, still lit.
+			part.exposedUntil = now + (p.expose or 6.0)
+			part.model:SetAttribute(ATTR.EXPOSED, true)
+			arm.phaseFor = p.expose or 6.0
+			arm.downUntil = now + (p.expose or 6.0)
+			Fn.krakenArmPhase(arm, "Down", now, a.krAt)
+			Fn.krakenArmHot(arm, true, a.krAt)
+		end
+		-- THE HAUL IS OVER, so the move is over: the strike phase is cut short
+		-- rather than left to run out with nothing in it. Damage, cooldown and
+		-- the recover all follow the ordinary path from here.
+		a.phaseUntil = now
+	end,
+	finish = function(creature, _def, p, now)
+		local a = creature.attack
+		Fn.krakenClearProps(creature)
+		if a and not a.krBroken then
+			fireEvent("shipList", Fn.krakenShip(creature), { active = false, duration = 0.5, skin = p.skin })
+			local arm = a.krArm
+			if arm and arm.part and not arm.part.dead then
+				arm.phaseFor = 1.0
+				Fn.krakenArmPhase(arm, "Rest", now)
+				Fn.krakenArmHot(arm, false)
+			end
+		end
+	end,
+}
+
+-- INK MORTAR. The siphon flares and four globs come down on marked ground,
+-- leaving slicks. Existing tech end to end: `Fn.throwGlob` for the flight, its
+-- `tolerance` opt-in for the height gate a ship's decks need, and its `pool`
+-- rider for the slick.
+K.ATTACK_HANDLERS.krakenmortar = {
+	windup = function(creature, _def, _p, u, sub)
+		creature.model:PivotTo(poseCFrame(creature, sub + 0.25 * u, 0, math.rad(6) * u))
+	end,
+	fire = function(creature, def, p, now)
+		local eye = Fn.krakenEye(creature)
+		fireEvent("inkFlare", eye, { duration = p.duration, skin = p.skin })
+		local phase = creature.krakenPhase or 1
+		local kr = K.KRAKEN
+		local lowX, highX = kr.QD_TO_X + 6, kr.FC_FROM_X - 6
+		if phase >= 2 then
+			lowX, highX = -kr.HULL_X + 8, kr.HULL_X - 8
+		end
+		for i = 1, (p.count or 4) do
+			local x = randomBetween(lowX, highX)
+			local z = randomBetween(-14, 14)
+			local at = Fn.krakenAt(creature, x, Fn.krakenDeckY(x), z)
+			local flight = (p.flight or 1.4) + (i - 1) * (p.stagger or 0.25)
+			-- The disc, at the impact site, for exactly the flight time.
+			fireEvent("telegraph", at, { kind = "mark", duration = flight, radius = p.radius, skin = p.skin })
+			Fn.throwGlob(creature, def, p, at, flight, now, "strikeHit", "spit", {
+				tolerance = K.BOSS_HEIGHT_TOLERANCE,
+				pool = p.pool,
+			}, eye)
+		end
+	end,
+}
+
+-- MAST BELL. The main spar tears loose and swings across the waist while the
+-- rigging comes down in pieces.
+K.ATTACK_HANDLERS.krakenmastbell = {
+	windup = function(creature, _def, p, u, sub)
+		local a = creature.attack
+		if Fn.krakenSetup(creature) then
+			-- The spar's arc, published before it moves so the tell and the
+			-- flight are one clock: the same rule the anchor line runs on.
+			local deck = K.KRAKEN.DECK_Y
+			a.krFrom = Fn.krakenAt(creature, -18, deck + 6, -22)
+			a.krTo = Fn.krakenAt(creature, 22, deck + 6, 22)
+			fireEvent("mastBell", (a.krFrom + a.krTo) * 0.5, {
+				from = a.krFrom,
+				to = a.krTo,
+				passes = p.passes or 3,
+				duration = p.duration,
+				lead = a.windup,
+				radius = p.sparRadius or 7,
+				skin = p.skin,
+			})
+		end
+		creature.model:PivotTo(poseCFrame(creature, sub + 0.3 * u, 0, math.rad(-6) * u))
+	end,
+	fire = function(creature, def, p, now)
+		local a = creature.attack
+		if not a.krFrom then
+			return
+		end
+		local lo, hi = Fn.bossRoll(creature, def, p.damage)
+		Fn.krakenProp(creature, "KrakenSpar", Vector3.new(3.2, 3.2, 44), a.krFrom, p.duration + 1.0, {
+			from = a.krFrom,
+			to = a.krTo,
+			startAt = now,
+			travel = p.duration,
+			passes = p.passes or 3,
+			arc = true,
+			leg = -1,
+			radius = p.sparRadius or 7,
+			min = lo,
+			max = hi,
+		})
+		-- ...and the rigging coming down with it: ordinary queued marks, because
+		-- rubble does not need to be simulated to be dodged.
+		local kr = K.KRAKEN
+		for i = 1, (p.strikes or 3) do
+			local x = randomBetween(kr.QD_TO_X + 8, kr.FC_FROM_X - 8)
+			local z = randomBetween(-15, 15)
+			local at = Fn.krakenAt(creature, x, Fn.krakenDeckY(x), z)
+			local hitAt = now + 1.0 + (i - 1) * (p.duration / math.max(p.strikes or 3, 1))
+			Fn.queueStrike(creature, def, p, at, hitAt - 1.0, hitAt, { damage = p.debrisDamage })
+		end
+	end,
+	strike = function(creature, _def, _p, now, _dt, _u, _root, sub)
+		creature.model:PivotTo(poseCFrame(creature, sub + 0.3, math.sin(now * 2.2) * math.rad(5), math.rad(-6)))
+	end,
+	finish = function(creature, _def, _p, _now)
+		Fn.krakenClearProps(creature)
+	end,
+}
+
+-- UNDERTOW HEAVE. The sea heels toward the animal for five seconds, then the
+-- arm comes down where everyone ended up. See the row for substitution B.
+K.ATTACK_HANDLERS.krakenheave = {
+	windup = function(creature, _def, _p, u, sub)
+		creature.model:PivotTo(poseCFrame(creature, sub + 0.6 * u, 0, math.rad(18) * u))
+	end,
+	fire = function(creature, _def, p, now)
+		local a = creature.attack
+		-- The port rail amidships: the drag's centre and, five seconds later,
+		-- the slam's. One point, so the move is one sentence.
+		local rail = Fn.krakenAt(creature, 0, K.KRAKEN.DECK_Y, -19)
+		a.krAt = rail
+		a.krTickAt = now + 0.8
+		-- THE EXISTING PULL, aimed at a rail instead of a whirlpool. `braced`
+		-- is the exemption travelling with it: this drag is applied by each
+		-- client to its own character (the lure-pull channel), so the client
+		-- has to be told which footprints hold you. The server enforces the
+		-- same list on its own damage tick below, so bracing means something
+		-- even to a client that ignores it.
+		fireEvent("pull", rail, {
+			radius = p.radius,
+			strength = p.strength,
+			duration = p.duration,
+			braced = Fn.krakenCoverBoxes(creature),
+			skin = p.skin,
+		})
+	end,
+	strike = function(creature, def, p, now, _dt, u, _root, sub)
+		local a = creature.attack
+		creature.model:PivotTo(poseCFrame(creature, sub + 0.6 + math.sin(now * 3) * 0.25, 0, math.rad(16)))
+		if now >= (a.krTickAt or math.huge) then
+			a.krTickAt = now + 0.8
+			local lo, hi = Fn.bossRoll(creature, def, p.damage)
+			for _, entry in Fn.livingRootsNear(Fn.krakenShip(creature), 140) do
+				if not Fn.krakenBehindCover(creature, entry.root.Position) then
+					PlayerService.damage(entry.player, math.random(lo, hi), creature, {})
+				end
+			end
+		end
+		-- THE FOLLOW-UP, queued at the last moment of the drag rather than at
+		-- the start: its telegraph has to open when the pull STOPS, or players
+		-- would be reading a disc while still being moved through it.
+		if u >= 1 and not a.krFollow then
+			a.krFollow = true
+			local arm = Fn.krakenFreeArm(creature)
+			if arm then
+				arm.phaseFor = p.slamTell or 1.1
+				Fn.krakenArmPhase(arm, "Rear", now, a.krAt)
+				a.krArm = arm
+			end
+			fireEvent("telegraph", a.krAt, {
+				kind = "slam",
+				duration = p.slamTell or 1.1,
+				radius = p.slamRadius or 18,
+				skin = p.skin,
+			})
+			Fn.queueStrike(creature, def, p, a.krAt, now, now + (p.slamTell or 1.1), {
+				radius = p.slamRadius or 18,
+				damage = p.slamDamage,
+			})
+		end
+	end,
+	finish = function(creature, _def, p, now)
+		local a = creature.attack
+		fireEvent("pull", Fn.krakenShip(creature), { radius = p.radius, strength = 0, duration = 0, skin = p.skin })
+		local arm = a and a.krArm
+		if arm and arm.part and not arm.part.dead then
+			arm.phaseFor = p.down or 2.5
+			arm.downUntil = now + (p.down or 2.5)
+			Fn.krakenArmPhase(arm, "Down", now, a.krAt)
+			Fn.krakenArmHot(arm, true, a.krAt)
+		end
+	end,
+}
+
+-- EYE LANCE. One player, two seconds of lock, and a tip through where they will
+-- be - unless they have put the ship between themselves and the eye.
+K.ATTACK_HANDLERS.krakeneyelance = {
+	windup = function(creature, _def, p, u, sub)
+		local a = creature.attack
+		if Fn.krakenSetup(creature) then
+			local root, player = Fn.nearestPlayerRoot(Fn.krakenShip(creature))
+			a.krRoot, a.krPlayer = root, player
+			if root then
+				fireEvent("eyeLock", root.Position, {
+					duration = a.windup,
+					from = Fn.krakenEye(creature),
+					userId = player and player.UserId or nil,
+					skin = p.skin,
+				})
+			end
+		end
+		creature.model:PivotTo(poseCFrame(creature, sub + 0.2 * u, 0, math.rad(-4) * u))
+	end,
+	fire = function(creature, def, p, now)
+		local a = creature.attack
+		local root = a.krRoot
+		if not root or not root.Parent then
+			return
+		end
+		local eye = Fn.krakenEye(creature)
+		-- LINE OF SIGHT, AT FIRE TIME. Against the arena folder and nothing
+		-- else: the ship's masts, castle bulkheads and cargo are what a player
+		-- can break the animal's view behind, and casting against everything
+		-- would let another player's body block a lance aimed through them.
+		local arenaFolder = Workspace:FindFirstChild("BossArenas")
+		if arenaFolder then
+			local params = RaycastParams.new()
+			params.FilterType = Enum.RaycastFilterType.Include
+			params.FilterDescendantsInstances = { arenaFolder }
+			local to = root.Position - eye
+			if Workspace:Raycast(eye, to, params) then
+				fireEvent("eyeLanceBlocked", eye, { to = root.Position, skin = p.skin })
+				return
+			end
+		end
+		-- ...and the lead, so standing still is not strictly better than moving.
+		local lead = root.AssemblyLinearVelocity * (p.lead or 0.35)
+		local at = groundedPos(root.Position + Vector3.new(lead.X, 0, lead.Z), 0)
+		Fn.queueStrike(creature, def, p, at, now, now + (p.lead or 0.35), { radius = p.radius })
+		-- THE GLINT (the new-attacks pass, 2026-09-12). The orb stays lit for
+		-- `glint` seconds and the head takes 1.5x for exactly that window - see
+		-- CreatureService.hitModifiers' own branch and the row for why 1.5.
+		--
+		-- HELD HERE AND NOT IN `finish`, and it is a real difference: this move's
+		-- `duration` is 0.6 and its `recover` 0.7, so a window opened at finish
+		-- would start 0.6 seconds after the thing it is a reward for reading. The
+		-- window is the consequence of the eye having FIRED, so it starts when the
+		-- eye fires.
+		--
+		-- AND IT IS SET ON THE WHIFF PATH TOO, which is upstream of here: the
+		-- blocked branch returns before this line, so a lance that was broken by
+		-- cover gets no glint. That is the right way round - the opening is
+		-- payment for the eye committing to a shot, and a shot into a bulkhead
+		-- committed just as hard. The deliberate asymmetry is that the party who
+		-- broke the line of sight already got their reward, which was not being hit
+		-- for 118-156.
+		if p.glint then
+			creature.krakenGlintUntil = now + p.glint
+			fireEvent("krakenGlint", Fn.krakenEye(creature), { duration = p.glint, skin = p.skin })
+		end
+	end,
+}
+
+-- INK DELUGE. A wall of ink crossing the main deck end to end. The castles are
+-- above it, which is what makes phase two's three floors a resource.
+K.ATTACK_HANDLERS.krakendeluge = {
+	windup = function(creature, _def, p, u, sub)
+		local a = creature.attack
+		if Fn.krakenSetup(creature) then
+			fireEvent("inkFlare", Fn.krakenEye(creature), { duration = a.windup, charge = true, skin = p.skin })
+		end
+		creature.model:PivotTo(poseCFrame(creature, sub + 0.5 * u, 0, math.rad(10) * u))
+	end,
+	fire = function(creature, def, p, now)
+		local kr = K.KRAKEN
+		local ranks = p.ranks or 5
+		local arm = p.arm or 0.9
+		-- Sternward or bowward, rolled per cast: the wall has a direction and
+		-- which way it comes from is half the read.
+		local reverse = math.random() < 0.5
+		for rank = 0, ranks - 1 do
+			local t = rank / math.max(ranks - 1, 1)
+			local x = kr.QD_TO_X + (kr.FC_FROM_X - kr.QD_TO_X) * (if reverse then 1 - t else t)
+			local hitAt = now + arm + rank * (p.interval or 0.42)
+			for _, z in { -13, 0, 13 } do
+				Fn.queueStrike(creature, def, p, Fn.krakenAt(creature, x, kr.DECK_Y, z), hitAt - arm, hitAt, {
+					pool = p.pool,
+				})
+			end
+		end
+	end,
+}
+
+-- ============================================== THE NEW MOVES (2026-09-12)
+--
+-- Four moves, and the thing they have in common is the thing the owner asked for:
+-- each one ENDS with the arm somewhere a player can hurt it. The fight's problem
+-- was never difficulty, it was that phase one had two windows and phase two had
+-- none that were not the siphon window - so a party's only real decision was
+-- which crate to stand behind. Every move below is a decision instead.
+--
+-- NO NEW MECHANISM IN ANY OF THEM, which is why four moves fit in one block:
+-- Fn.queueStrike draws and resolves the volley, `Fn.krakenArmPhase` /
+-- `Fn.krakenArmHot` open every window, `arm.downUntil` closes them on the fight
+-- tick's existing rule, and the misfire's deluge is `krakendeluge.fire` called on
+-- a different row. The only genuinely new piece of machinery in the pass is
+-- Fn.krakenArmAim (see its note): the ability to move a limb's aim WITHOUT
+-- restamping its phase, which the maelstrom coil's three seconds of tracking
+-- needs and nothing in the book had ever wanted before.
+
+-- THE GRATING SPEAR'S THREE MARKS, walking down the deck to the target's station.
+--
+-- THE MARCH ALWAYS COMES FROM THE FAR END, and that is not a flourish: the third
+-- mark IS the target's own station, so the first two have to be somewhere, and
+-- putting them BEHIND the target (aft of an aft target, forward of a forward one)
+-- would walk the sequence off the end of the ship and clamp two of the three marks
+-- on top of each other. Walking IN from the opposite end keeps all three on open
+-- planking and makes the read unambiguous: a line of light coming at you.
+function Fn.krakenSpearLine(creature, root, p)
+	local kr = K.KRAKEN
+	local phase = creature.krakenPhase or 1
+	local tx, tz = 0, 0
+	if root then
+		local lx, _ly, lz = Fn.krakenLocal(creature, root.Position)
+		tx, tz = lx, lz
+	end
+	local lowX = if phase >= 2 then -kr.HULL_X + 8 else kr.QD_TO_X + 8
+	local highX = if phase >= 2 then kr.HULL_X - 8 else kr.FC_FROM_X - 8
+	local count = p.stabs or 3
+	local step = p.stabMarch or 17
+	-- Toward the BOW if the target is aft of amidships, toward the stern if
+	-- forward of it - i.e. the marches always run the long way.
+	local toward = if tx >= 0 then -1 else 1
+	tz = math.clamp(tz, -14, 14)
+	local out = {}
+	for i = 1, count do
+		local x = math.clamp(tx + toward * step * (count - i), lowX, highX)
+		table.insert(out, Fn.krakenAt(creature, x, Fn.krakenDeckY(x), tz))
+	end
+	return out
+end
+
+-- One stab: the phase, the damage and - on the LAST one - the opening.
+--
+-- THE STUCK TRANSITION IS QUEUED RATHER THAN IMMEDIATE, and it has to be. Setting
+-- Spear and then Stuck in the same frame would give the drawn jab a zero-length
+-- phase: the client would crossfade straight from the cocked poise into the buried
+-- tip and the stab that did the damage would never be drawn at all. So the third
+-- stab lands like the other two and `a.krStuckAt` hands the tip over 0.28s later,
+-- which is the jab's own travel time.
+function Fn.krakenSpearStab(creature, def, p, now: number, index: number)
+	local a = creature.attack
+	local at = a.krMarks and a.krMarks[index]
+	if not at then
+		return
+	end
+	a.krStab = index
+	local step = p.stabStep or 0.7
+	local arm = a.krArm
+	if arm and arm.part and not arm.part.dead then
+		arm.phaseFor = step * 0.45
+		Fn.krakenArmPhase(arm, "Spear", now, at)
+	end
+	local lo, hi = Fn.bossRoll(creature, def, p.damage)
+	damagePlayersInRadius(at, p.radius or 7, lo, hi, creature, 0.5, K.BOSS_HEIGHT_TOLERANCE)
+	fireEvent("strikeHit", at, { radius = p.radius or 7, skin = p.skin })
+	if index >= #a.krMarks then
+		a.krStuckAt = now + step * 0.40
+	end
+end
+
+-- GRATING SPEAR. Three jabs walking down the deck, and the third one sticks.
+K.ATTACK_HANDLERS.krakenspear = {
+	windup = function(creature, _def, p, u, sub)
+		local a = creature.attack
+		if Fn.krakenSetup(creature) then
+			local arm = Fn.krakenFreeArm(creature)
+			a.krArm = arm
+			if arm then
+				local root = Fn.nearestPlayerRoot(Fn.krakenShip(creature))
+				a.krMarks = Fn.krakenSpearLine(creature, root, p)
+				a.krStab = 0
+				a.krCocked = 1
+				arm.phaseFor = a.windup
+				Fn.krakenArmPhase(arm, "SpearCock", os.clock(), a.krMarks[1])
+				-- ALL THREE DISCS AT ONCE, EXPIRING IN ORDER. Each telegraph's
+				-- `duration` is the time until ITS OWN stab, so the three come up
+				-- together and go out one after another down the line - which is
+				-- the sequence the move is, drawn with nothing but the existing
+				-- tell. (The arm's own deck mark rides the SpearCock phase and
+				-- says which is next; see KrakenBodyController's MARK table.)
+				local step = p.stabStep or 0.7
+				for i, at in a.krMarks do
+					fireEvent("telegraph", at, {
+						kind = "mark",
+						duration = a.windup + (i - 1) * step,
+						radius = p.tellRadius or 11,
+						skin = p.skin,
+					})
+				end
+			end
+		end
+		creature.model:PivotTo(poseCFrame(creature, sub + 0.3 * u, math.rad(6) * u, math.rad(-5) * u))
+	end,
+	fire = function(creature, def, p, now)
+		local a = creature.attack
+		if not a.krMarks then
+			return
+		end
+		-- The first jab lands AT fire, because the windup is the first cock: the
+		-- limb is already poised over mark one with ArmT at 1.
+		a.krT0 = now
+		Fn.krakenSpearStab(creature, def, p, now, 1)
+	end,
+	strike = function(creature, def, p, now, _dt, _u, _root, sub)
+		local a = creature.attack
+		creature.model:PivotTo(poseCFrame(creature, sub + 0.3, math.sin(now * 5) * math.rad(4), math.rad(-5)))
+		if not a.krMarks or not a.krT0 then
+			return
+		end
+		local step = p.stabStep or 0.7
+		local arm = a.krArm
+		local next_ = (a.krStab or 0) + 1
+		if next_ <= #a.krMarks then
+			-- The cock, a little ahead of its own stab: the tip lifts off the last
+			-- mark and swings to the next one over 45% of the gap, then drives.
+			if (a.krCocked or 0) < next_ and now >= a.krT0 + (next_ - 1) * step - step * 0.45 then
+				a.krCocked = next_
+				if arm and arm.part and not arm.part.dead then
+					arm.phaseFor = step * 0.45
+					Fn.krakenArmPhase(arm, "SpearCock", now, a.krMarks[next_])
+				end
+			end
+			if now >= a.krT0 + (next_ - 1) * step then
+				Fn.krakenSpearStab(creature, def, p, now, next_)
+			end
+		end
+		-- THE OPENING, and it is the move's own ending rather than a counter: the
+		-- tip is through the planking and cannot come out for `stuck` seconds, at
+		-- the same 3x a Down knuckle takes. The fight tick stands it up on
+		-- `downUntil` like every other window in the fight.
+		if a.krStuckAt and now >= a.krStuckAt then
+			a.krStuckAt = nil
+			local at = a.krMarks[#a.krMarks]
+			if arm and arm.part and not arm.part.dead then
+				arm.phaseFor = p.stuck or 4.0
+				arm.downUntil = now + (p.stuck or 4.0)
+				Fn.krakenArmPhase(arm, "Stuck", now, at)
+				Fn.krakenArmHot(arm, true, at)
+			end
+			fireEvent("krakenSpearStuck", at, { duration = p.stuck or 4.0, skin = p.skin })
+		end
+	end,
+	finish = function(creature, _def, _p, now)
+		local a = creature.attack
+		local arm = a and a.krArm
+		-- Only if the stick never happened - a cancelled cast, or a mark list that
+		-- never got built because no arm was free. A limb that IS stuck is owned by
+		-- `downUntil` from here, and standing it up at finish would close the
+		-- window the move exists for about four seconds early.
+		if arm and arm.phase ~= "Stuck" and arm.part and not arm.part.dead then
+			arm.phaseFor = 1.0
+			Fn.krakenArmPhase(arm, "Rest", now)
+			Fn.krakenArmHot(arm, false)
+		end
+	end,
+}
+
+-- SUCKER VOLLEY. The arm rears right back and whips over, throwing a fan of
+-- suckers onto marked ground - and then hangs over the bulwark, spent.
+K.ATTACK_HANDLERS.krakenvolley = {
+	windup = function(creature, _def, p, u, sub)
+		local a = creature.attack
+		if Fn.krakenSetup(creature) then
+			local arm = Fn.krakenFreeArm(creature)
+			a.krArm = arm
+			if arm then
+				local root = Fn.nearestPlayerRoot(Fn.krakenShip(creature))
+				local at = Fn.krakenSlamTarget(creature, root)
+				a.krAt = at
+				arm.phaseFor = a.windup
+				-- REAR, REUSED RATHER THAN RE-AUTHORED. The volley's windup is the
+				-- pile slam's silhouette - a limb hauling 260 studs clear of the
+				-- rail over two and a half seconds - and that is exactly right: the
+				-- two moves start identically and the BLOW is the surprise. A
+				-- player who reads a rear as "get out of the disc" is not wrong,
+				-- they are just about to find out there are six discs.
+				Fn.krakenArmPhase(arm, "Rear", os.clock(), at)
+				fireEvent("telegraph", at, {
+					kind = "mark",
+					duration = a.windup,
+					radius = p.spread or 30,
+					skin = p.skin,
+				})
+			end
+		end
+		creature.model:PivotTo(poseCFrame(creature, sub + 0.45 * u, 0, math.rad(-12) * u))
+	end,
+	fire = function(creature, def, p, now)
+		local a = creature.attack
+		local at = a.krAt
+		if not at then
+			return
+		end
+		local kr = K.KRAKEN
+		local phase = creature.krakenPhase or 1
+		local lowX = if phase >= 2 then -kr.HULL_X + 8 else kr.QD_TO_X + 8
+		local highX = if phase >= 2 then kr.HULL_X - 8 else kr.FC_FROM_X - 8
+		local cx, _cy, cz = Fn.krakenLocal(creature, at)
+		local count = p.count or 6
+		local spread = p.spread or 30
+		local marks = {}
+		for i = 1, count do
+			-- A FAN AND NOT A SCATTER, which is the difference between this and the
+			-- mortar: evenly spaced along the deck about the aim point, alternating
+			-- to either side of the centreline, so what lands is a readable arc
+			-- with gaps in it rather than six rolls of the dice. The mortar is
+			-- random on purpose (it is about taking the floor away); this is
+			-- ordered on purpose (it is about one step sideways).
+			local t = if count > 1 then (i - 1) / (count - 1) - 0.5 else 0
+			local x = math.clamp(cx + t * spread * 2, lowX, highX)
+			local z = math.clamp(cz + (if i % 2 == 0 then 7 else -7), -14, 14)
+			local mark = Fn.krakenAt(creature, x, Fn.krakenDeckY(x), z)
+			table.insert(marks, mark)
+			-- Fn.queueStrike end to end: it draws the disc at `tellAt`, resolves
+			-- the hit at `hitAt` with the boss height tolerance, and fires the
+			-- impact. No new tech, which is why this move is two dozen lines.
+			Fn.queueStrike(creature, def, p, mark, now, now + (p.flight or 1.1) + (i - 1) * (p.stagger or 0.14), {
+				radius = p.radius or 8,
+			})
+		end
+		local arm = a.krArm
+		fireEvent("krakenVolley", at, {
+			from = if arm and arm.part then arm.part.pos else Fn.krakenEye(creature),
+			marks = marks,
+			flight = p.flight or 1.1,
+			stagger = p.stagger or 0.14,
+			skin = p.skin,
+		})
+		-- THE OPENING, OPENED AT FIRE AND NOT AT FINISH, deliberately: the drape IS
+		-- the whip's follow-through, so the crossfade out of Rear has to start while
+		-- the suckers are still in the air. What a player sees is one motion - the
+		-- limb throws and falls onto the rail - with the window already open by the
+		-- time the first disc resolves.
+		if arm and arm.part and not arm.part.dead then
+			-- Over the bulwark at the fan's own station, through Fn.krakenDrapeAt so
+			-- the hitbox lands on the planking where the limb is drawn rather than
+			-- on the aim point out in the middle of the deck.
+			local rest = Fn.krakenDrapeAt(creature, cx)
+			arm.phaseFor = p.drape or 2.5
+			arm.downUntil = now + (p.drape or 2.5)
+			Fn.krakenArmPhase(arm, "Drape", now, rest)
+			Fn.krakenArmHot(arm, true, rest)
+		end
+	end,
+	strike = function(creature, _def, _p, now, _dt, _u, _root, sub)
+		creature.model:PivotTo(poseCFrame(creature, sub + 0.2, math.sin(now * 1.6) * math.rad(3), math.rad(-6)))
+	end,
+}
+
+-- MAELSTROM COIL. Three seconds of being followed by something under the water,
+-- then a column - and if the column comes up through nobody, the limb flops.
+K.ATTACK_HANDLERS.krakencoil = {
+	windup = function(creature, _def, p, u, sub)
+		local a = creature.attack
+		if Fn.krakenSetup(creature) then
+			local arm = Fn.krakenFreeArm(creature)
+			a.krArm = arm
+			if arm then
+				local root, player = Fn.nearestPlayerRoot(Fn.krakenShip(creature))
+				a.krPlayer = player
+				a.krAt = Fn.krakenSlamTarget(creature, root)
+				a.krTrackAt = 0
+				arm.phaseFor = a.windup
+				Fn.krakenArmPhase(arm, "Coil", os.clock(), a.krAt)
+				fireEvent("krakenCoil", a.krAt, { duration = a.windup, skin = p.skin })
+			end
+		end
+		-- THE TRACK. Re-aimed on its own clock rather than every frame (see the
+		-- row's `trackStep`), through Fn.krakenArmAim rather than krakenArmPhase -
+		-- which is the whole reason that function exists: restamping the phase
+		-- would restart the client's crossfade every sixth of a second and the limb
+		-- would never finish sinking.
+		--
+		-- AND IT STOPS BEFORE THE END, which is the move's counterplay and the only
+		-- reason it is a dodge rather than a tax: the last 15% of the windup is
+		-- COMMITTED, so a step taken once the mark goes still is a step out of the
+		-- column. Without this the attack would be unavoidable by construction, and
+		-- an unavoidable attack does not need a three-second tell.
+		local arm = a.krArm
+		if arm and arm.part and not arm.part.dead and u < 0.85 and os.clock() >= (a.krTrackAt or 0) then
+			a.krTrackAt = os.clock() + (p.trackStep or 0.15)
+			-- The player it PICKED, while they are alive and on the board; whoever
+			-- is nearest otherwise, so a tracked player logging out mid-cast does
+			-- not leave a wake circling an empty deck.
+			local character = a.krPlayer and a.krPlayer.Character
+			local root = character and character:FindFirstChild("HumanoidRootPart")
+			if not root then
+				root, a.krPlayer = Fn.nearestPlayerRoot(Fn.krakenShip(creature))
+			end
+			if root then
+				a.krAt = Fn.krakenSlamTarget(creature, root)
+				Fn.krakenArmAim(arm, a.krAt)
+			end
+		end
+		creature.model:PivotTo(poseCFrame(creature, sub + 0.2 * u, 0, math.rad(4) * u))
+	end,
+	fire = function(creature, def, p, now)
+		local a = creature.attack
+		local at = a.krAt
+		if not at then
+			return
+		end
+		local arm = a.krArm
+		if arm and arm.part and not arm.part.dead then
+			arm.phaseFor = p.duration
+			Fn.krakenArmPhase(arm, "Erupt", now, at)
+		end
+		-- THE HITS ARE COUNTED, not just dealt, because the WHIFF is the mechanic:
+		-- whether anybody was standing there decides whether the party gets a
+		-- three-second window or the boss gets its damage. Written out rather than
+		-- handed to `damagePlayersInRadius` for exactly that reason - that helper
+		-- returns nothing, and a move whose reward turns on the answer cannot ask a
+		-- question it does not get an answer to.
+		local lo, hi = Fn.bossRoll(creature, def, p.damage)
+		local hits = 0
+		for _, entry in Fn.livingRootsNear(at, p.radius or 18) do
+			if math.abs(entry.root.Position.Y - at.Y) <= K.BOSS_HEIGHT_TOLERANCE then
+				hits += 1
+				PlayerService.damage(entry.player, math.random(lo, hi), creature, { bypassIframe = true })
+			end
+		end
+		a.krHits = hits
+		fireEvent("krakenErupt", at, { radius = p.radius or 18, hit = hits > 0, skin = p.skin })
+	end,
+	finish = function(creature, _def, p, now)
+		local a = creature.attack
+		local arm = a and a.krArm
+		if not arm or not arm.part or arm.part.dead then
+			return
+		end
+		if (a.krHits or 0) > 0 then
+			-- IT LANDED, so there is no reward: the column sinks back the way it
+			-- came. Routed through Coil rather than straight to Rest, and that is a
+			-- measured choice rather than a tidy one - Erupt's crest is 158 studs
+			-- over the deck and Rest's tip is 150 studs under the sea, so the
+			-- direct crossfade passes through a shape neither pose is (it measured
+			-- 0.39 of the girth bound, the worst pair in the pass). Erupt -> Coil is
+			-- 1.05 and Coil -> Rest is 1.25, so the two-step is strictly better AND
+			-- is what the move looks like: the column goes back under.
+			arm.phaseFor = 0.9
+			arm.downUntil = now + 0.9
+			Fn.krakenArmPhase(arm, "Coil", now, a.krAt)
+			Fn.krakenArmHot(arm, false)
+			return
+		end
+		-- THE WHIFF. The only place in this fight where a successful dodge is worth
+		-- damage: a column with nobody under it has nothing holding it up, so the
+		-- limb comes down across the deck Exposed AND hot - the 2x window every
+		-- body controller already draws, plus the 3x knuckle, which is the same
+		-- pairing the wrench's break earns.
+		arm.part.exposedUntil = now + (p.flop or 3.0)
+		arm.part.model:SetAttribute(ATTR.EXPOSED, true)
+		arm.phaseFor = p.flop or 3.0
+		arm.downUntil = now + (p.flop or 3.0)
+		Fn.krakenArmPhase(arm, "Down", now, a.krAt)
+		Fn.krakenArmHot(arm, true, a.krAt)
+		fireEvent("krakenErupt", a.krAt, { radius = p.radius or 18, hit = false, whiff = true, skin = p.skin })
+	end,
+}
+
+-- SIPHON OVERCHARGE. Five seconds of charging a deluge at half again the usual
+-- coverage, at DOUBLE damage taken, and the party can make it blow up in the
+-- animal's own funnel.
+K.ATTACK_HANDLERS.krakenovercharge = {
+	windup = function(creature, _def, p, u, sub)
+		local a = creature.attack
+		local now = os.clock()
+		if Fn.krakenSetup(creature) then
+			-- THE BASELINE, measured off the health the head had when the charge
+			-- STARTED. The wrench's ruling, applied to a boss instead of an arm: a
+			-- threshold has to mean "damage done during the charge", or a head
+			-- already at 20% would misfire to a scratch.
+			a.krHp0 = creature.health
+			-- THE 2x, and it is the ordinary expose window rather than a new
+			-- multiplier: `exposedUntil` already means "hits land double" in
+			-- hitModifiers and the client already draws the dazed tell off
+			-- ATTR.EXPOSED, so the biggest risk window in the fight costs one
+			-- assignment and inherits a language players have seen on every
+			-- charger since the first island.
+			creature.exposedUntil = now + a.windup
+			creature.model:SetAttribute(ATTR.EXPOSED, true)
+			-- The siphon gapes and its core winds up: `inkFlare` drives
+			-- KrakenBodyController.flareSiphon for the whole charge, which is the
+			-- only Neon the animal owns besides its eyes.
+			fireEvent("inkFlare", Fn.krakenEye(creature), { duration = a.windup, charge = 1, skin = p.skin })
+		end
+		-- THE INTERRUPT, TESTED EVERY FRAME, and cutting the phase short rather
+		-- than setting a flag and waiting: `a.phaseUntil = now` is the wrench's own
+		-- idiom for "this is over", and it hands control to `fire` on the next tick
+		-- with the ordinary damage, cooldown and recover path intact.
+		if not a.krMisfire and a.krHp0 and (a.krHp0 - creature.health) >= (p.breakDamage or 3600) then
+			a.krMisfire = true
+			a.phaseUntil = now
+		end
+		creature.model:PivotTo(poseCFrame(creature, sub + 0.55 * u, 0, math.rad(8) * u))
+	end,
+	fire = function(creature, def, p, now)
+		local a = creature.attack
+		-- THE CHARGE WINDOW CLOSES HERE, however the charge ended. Re-asserted
+		-- rather than simply cleared, because the head may ALSO be inside a real
+		-- siphon window (both arms broken in one cycle), which owns the same
+		-- attribute and is not this move's to close: the generic expose tick will
+		-- have set it false on the frame `exposedUntil` expired, so the window's own
+		-- tell has to be put back.
+		creature.exposedUntil = nil
+		creature.model:SetAttribute(ATTR.EXPOSED, if creature.krakenWindowUntil then true else nil)
+		if a.krMisfire then
+			-- THE MISFIRE, and the reward is the largest in the fight: BOTH arms on
+			-- the planking with both knuckles lit, for `down` seconds. Not "the arms
+			-- that were free" - both of them, whatever they were doing, because the
+			-- deluge going off inside the animal is something that happens to the
+			-- whole animal.
+			fireEvent("krakenMisfire", Fn.krakenEye(creature), { duration = 1.2, skin = p.skin })
+			local state = Fn.krakenState(creature)
+			for slot = 1, 2 do
+				local arm = state.arms[slot]
+				if arm and arm.part and not arm.part.dead then
+					-- Apart on X, so two limbs crashing down at once are two
+					-- targets rather than one pile: Fn.krakenArmPlace parks a Down
+					-- hitbox on its target exactly, and KrakenPath's Down pose
+					-- takes its station from the same point.
+					local x = -22 + (slot - 1) * 44
+					local at = Fn.krakenAt(creature, x, Fn.krakenDeckY(x), 0)
+					arm.phaseFor = p.down or 4.0
+					arm.downUntil = now + (p.down or 4.0)
+					Fn.krakenArmPhase(arm, "Down", now, at)
+					Fn.krakenArmHot(arm, true, at)
+				end
+			end
+			return
+		end
+		-- NOBODY STOPPED IT: the wall lands, off `krakendeluge`'s own fire path with
+		-- THIS row's numbers. One implementation of "a wall of ink crosses the main
+		-- deck", two sets of constants - seven ranks at r11 here against five at r9
+		-- there - so the overcharge can never drift away from the move it is a
+		-- bigger version of.
+		K.ATTACK_HANDLERS.krakendeluge.fire(creature, def, p, now)
+	end,
+	strike = function(creature, _def, _p, now, _dt, _u, _root, sub)
+		creature.model:PivotTo(poseCFrame(creature, sub + 0.3, math.sin(now * 2.4) * math.rad(4), math.rad(6)))
+	end,
+}
+
+-- ---------------------------------------------------------- the gullet's book
+
+-- The room's centre at floor level: the dais, and what every wave in phase
+-- three expands out of.
+function Fn.krakenDais(creature): Vector3
+	return creature.anchor or creature.pos
+end
+
+K.ATTACK_HANDLERS.krakenheartbeat = {
+	windup = function(creature, _def, _p, u, sub)
+		creature.model:PivotTo(poseCFrame(creature, sub + 0.2 * math.sin(u * math.pi), 0, 0))
+	end,
+	fire = function(creature, def, p, now)
+		local at = Fn.krakenDais(creature)
+		local width = p.ringWidth or 7
+		local arm = p.arm or 0.85
+		-- THE METRONOME TIGHTENS as the polyps fall - `creature.krakenBeat` is
+		-- written by the fight tick off the row's `machine.polypStep`, so the
+		-- room speeds up because the party is winning rather than because a
+		-- health bar moved.
+		local interval = (p.interval or 0.62) * (creature.krakenBeat or 1)
+		for i, r in p.rings do
+			local hitAt = now + arm + (i - 1) * interval
+			Fn.krakenQueueWave(creature, def, p, {
+				at = at,
+				inner = math.max(0, r - width * 0.5),
+				outer = r + width * 0.5,
+				tellAt = hitAt - arm,
+				hitAt = hitAt,
+				-- A thin band the same height as the room: the dodge is
+				-- crossing it before it detonates, which is how every ring wave
+				-- in this project is answered.
+				height = K.BOSS_HEIGHT_TOLERANCE,
+			})
+		end
+	end,
+}
+
+K.ATTACK_HANDLERS.krakenperistalsis = {
+	windup = function(creature, _def, _p, u, sub)
+		creature.model:PivotTo(poseCFrame(creature, sub + 0.3 * u, 0, 0))
+	end,
+	fire = function(creature, def, p, now)
+		local at = Fn.krakenDais(creature)
+		local width = p.ringWidth or 9
+		local arm = p.arm or 0.9
+		-- ONE GAP FOR THE WHOLE WAVE, rolled per cast. Rolling it per RING
+		-- would be a different move: four unrelated arcs is a coin flip, one arc
+		-- travelling outward is a lane you run down.
+		local gapFrom = math.random() * math.pi * 2
+		local gapTo = gapFrom + (p.gap or math.rad(70))
+		for i, r in p.rings do
+			local hitAt = now + arm + (i - 1) * (p.interval or 0.72)
+			Fn.krakenQueueWave(creature, def, p, {
+				at = at,
+				inner = math.max(0, r - width * 0.5),
+				outer = r + width * 0.5,
+				gapFrom = gapFrom,
+				gapTo = gapTo,
+				tellAt = hitAt - arm,
+				hitAt = hitAt,
+				height = K.BOSS_HEIGHT_TOLERANCE,
+			})
+		end
+	end,
+}
+
+K.ATTACK_HANDLERS.krakenacidtide = {
+	windup = function(creature, _def, _p, u, sub)
+		creature.model:PivotTo(poseCFrame(creature, sub + 0.4 * u, 0, math.rad(8) * u))
+	end,
+	fire = function(creature, def, p, now)
+		local at = Fn.krakenDais(creature)
+		local ranks = p.ranks or 6
+		local arm = p.arm or 0.85
+		-- Wall to wall on a rolled bearing, so the high ground is the answer
+		-- rather than a memorised corner.
+		local bearing = math.random() * math.pi * 2
+		local dir = Vector3.new(math.cos(bearing), 0, math.sin(bearing))
+		local across = rotateFlat(dir, math.pi * 0.5)
+		local width = p.width or 250
+		local lanes = math.max(2, math.floor(width / 24) + 1)
+		for rank = 0, ranks - 1 do
+			local d = -width * 0.5 + rank * (p.rankSpacing or 34)
+			local hitAt = now + arm + rank * (p.interval or 0.36)
+			for k = 0, lanes - 1 do
+				local offset = (k / (lanes - 1) - 0.5) * width
+				Fn.krakenQueueWave(creature, def, p, {
+					at = at + dir * d + across * offset,
+					radius = p.radius or 12,
+					tellAt = hitAt - arm,
+					hitAt = hitAt,
+					-- THE FLOOD HAS A CEILING, not a tolerance band: anything
+					-- more than `safeHeight` over the room's floor is over the
+					-- tide. The dais's top is 2.2 and the entry pad's 1.1, so
+					-- the middle of the room is the high ground - which is
+					-- where every other move here wants you anyway.
+					maxY = p.safeHeight or 1.8,
+					pool = p.pool,
+				})
+			end
+		end
+	end,
+}
+
+K.ATTACK_HANDLERS.krakenantibodies = {
+	windup = function(creature, _def, _p, u, sub)
+		creature.model:PivotTo(poseCFrame(creature, sub + 0.2 * u, 0, 0))
+	end,
+	fire = function(creature, _def, p, _now)
+		local row = Creatures.items[p.row or "kraken_antibody"]
+		if not row then
+			return
+		end
+		local at = Fn.krakenDais(creature)
+		local count = math.random(p.countMin or 3, p.countMax or 5)
+		for i = 1, count do
+			local bearing = (i / count) * math.pi * 2 + math.random() * 0.6
+			local spawn = at
+				+ Vector3.new(math.cos(bearing) * (p.spawnR or 96), 1.5, math.sin(bearing) * (p.spawnR or 96))
+			-- NOT `partOf`. These are adds, not a gate: an antibody counted
+			-- against `partsAlive` would make the heart unaimable for as long as
+			-- one of them lived, which is not what the move is for and would
+			-- turn a pressure spawn into a second boss gate.
+			--
+			-- ...and NOT `noLinger` either, which is the other half of the same
+			-- decision. Every other body this fight spawns has an owner that
+			-- takes it down (`partOf`, and `removeOwnedParts`); an antibody has
+			-- neither, so the linger sweep has to be the thing that collects it
+			-- or a wipe would leave five chasers loose in a sealed room forever.
+			CreatureService.spawn(row, spawn, nil, "Neutral", {
+				suppressDrops = true,
+				bounty = 0.4,
+				healthMult = Fn.partyMult(creature), -- was creature.healthMult: NO SUCH FIELD (extra.healthMult is the real home) - nil rode through and the kraken's arms, dais adds and polyps never party-scaled
+			})
+			fireEvent("emerge", spawn, { radius = 6, skin = p.skin })
+		end
+	end,
+}
+
+-- ------------------------------------------------------- the phase machine
+
+-- THE SWALLOW. Phase two ends, the siphon opens, and everyone still standing is
+-- moved 20,000 studs into the animal.
+--
+-- WHAT MOVES AND WHAT DOES NOT: the boss's ANCHOR and POS move (the fight
+-- measures every phase-three wave off the dais, and `Fn.nearestPlayerRoot`,
+-- `aggro` and the pool tick all read `creature.pos`), and so does its pose
+-- centre, so nothing is drawn at a ship the party has left. The MODEL is
+-- already hidden - it has been since the rise - so there is no teleport to see.
+-- The party is moved by BossService, which is the only owner of the list of who
+-- they are; this side only says where.
+function Fn.krakenSwallow(creature, def, now: number)
+	local state = Fn.krakenState(creature)
+	local gullet = Fn.krakenGulletFloor()
+	fireEvent("krakenSwallow", Fn.krakenEye(creature), {
+		to = gullet,
+		duration = 2.0,
+		name = def.name,
+	})
+	-- The arms go with the ship. Retired rather than killed: nobody earned
+	-- these, and a kill would count `partsAlive` down into the window machinery
+	-- one last time on the way out.
+	for slot = 1, 2 do
+		local arm = state.arms[slot]
+		if arm and arm.part and not arm.part.dead then
+			Fn.krakenRetireArm(creature, arm)
+		end
+		state.arms[slot] = nil
+	end
+	Fn.krakenClearProps(creature)
+	creature.partsAlive = 0
+	creature.partsDownAt = nil
+	creature.krakenPhase = 3
+	creature.krakenShip = Fn.krakenShip(creature)
+	creature.anchor = gullet
+	creature.pos = gullet
+	-- A HEART IS NOT A HEAD. The capture sphere was 280 studs so that a party on
+	-- the deck could reach a mantle standing 350 studs off the beam; the same
+	-- sphere in a room 236 studs across would BE the room, and every shot fired
+	-- anywhere in it would land on the heart whether or not it was aimed there -
+	-- including the shots aimed at the six polyps that are supposed to gate it.
+	-- The heart mass is ~34 x 29 x 37 slung over the dais, so 30 is the animal.
+	creature.hitRadius = K.KRAKEN.HEART_HIT_R
+	if creature.pose then
+		creature.pose.center = gullet
+	end
+	creature.model:SetAttribute(ATTR.PHASE_INDEX, 3)
+	creature.model:SetAttribute(ATTR.SIPHON_OPEN, nil)
+	creature.model:SetAttribute(ATTR.EXPOSED, nil)
+	creature.model:SetAttribute(ATTR.POSE_CENTER, gullet)
+	-- The one thing BossService cannot work out for itself - see `fightCenter`
+	-- there, and ATTR.FIGHT_CENTER's note at the top of this file.
+	creature.model:SetAttribute(ATTR.FIGHT_CENTER, gullet)
+	CreatureService.ArenaMove:Fire(def.islandId, K.KRAKEN.GULLET_ARENA)
+	Fn.plantKrakenPolyps(creature, def)
+	creature.nextAttackAt = now + 4.0
+end
+
+-- Take one arm off the board WITHOUT killing it. `removeOwnedParts`' per-part
+-- retire, for one part: no Killed event, no loot, no drop, and no ring count -
+-- which is the whole difference from a break. Used by the withdrawal and by the
+-- swallow.
+function Fn.krakenRetireArm(creature, arm)
+	local part = arm.part
+	arm.part = nil
+	if not part or part.dead then
+		return
+	end
+	part.dead = true
+	part.partOf = nil
+	part.krakenHot = nil
+	byModel[part.model] = nil
+	if part.model.Parent then
+		part.model:Destroy()
+	end
+	if not updating then
+		local index = table.find(creatures, part)
+		if index then
+			removeAt(index)
+		end
+	end
+	creature.partsAlive = math.max(0, (creature.partsAlive or 0) - 1)
+end
+
+-- The six growths, on the gullet's authored socket collars. `partOf` again, so
+-- the `vulnerableWhen = "partsDown"` rule the arms used on the ship gates the
+-- heart in the room - one mechanism, two fights.
+function Fn.plantKrakenPolyps(creature, def)
+	local row = Creatures.items["kraken_polyp"]
+	local arena = BossArenas.items[K.KRAKEN.GULLET_ARENA]
+	local sockets = arena and arena.sockets
+	if not row or not sockets then
+		return
+	end
+	local state = Fn.krakenState(creature)
+	local want = math.min((def.machine and def.machine.polyps) or 6, #sockets)
+	local floor = Fn.krakenGulletFloor()
+	local planted = 0
+	for i = 1, want do
+		local socket = sockets[i]
+		local at = Vector3.new(floor.X + socket.X, floor.Y + socket.Y, floor.Z + socket.Z)
+		local model = CreatureService.spawn(row, at, nil, "Neutral", {
+			noLinger = true,
+			suppressDrops = true,
+			bounty = 0.5,
+			healthMult = Fn.partyMult(creature), -- was creature.healthMult: NO SUCH FIELD (extra.healthMult is the real home) - nil rode through and the kraken's arms, dais adds and polyps never party-scaled
+		})
+		local part = byModel[model]
+		if part then
+			part.partOf = creature
+			part.socketIndex = i
+			part.pos = at
+			model:PivotTo(CFrame.new(at))
+			model:SetAttribute(ATTR.SOCKET_INDEX, i)
+			if creature.row.vulnerableWhen == "partsDown" then
+				model:SetAttribute(ATTR.WEAKPOINT, true)
+			end
+			planted += 1
+		end
+	end
+	creature.partsAlive = planted
+	creature.partsDownAt = nil
+	state.polypsPlanted = planted
+	creature.krakenBeat = 1
+end
+
+-- THE HEART'S DEATH, off the gimmick hook (`Creatures.items.kraken.gimmick`) -
+-- which is the only place in this file a boss's own death can be answered from,
+-- because `Fn.updateBoss` is not called for a creature that is already dead.
+--
+-- It fires the collapse and asks BossService to put the party back on the ship.
+-- The ride HOME from there is BossService's own, four seconds later
+-- (RETURN_DELAY): by then the participants are standing on the Tidebreak, which
+-- is where `sendHome` looks for them once FightCenter is cleared.
+K.GIMMICKS.krakenheart = {
+	onKill = function(creature)
+		if creature.krakenPhase ~= 3 then
+			return
+		end
+		Fn.krakenClearProps(creature)
+		fireEvent("krakenCollapse", creature.pos, { duration = 3.0 })
+		creature.model:SetAttribute(ATTR.FIGHT_CENTER, nil)
+		local def = bossDef(creature)
+		if def and def.islandId then
+			CreatureService.ArenaMove:Fire(def.islandId, def.islandId)
+		end
+	end,
+}
+
+-- THE FIGHT'S OWN FRAME. Called at the top of `Fn.updateBoss` for this pose and
+-- nowhere else, BEFORE the collapse branch and before the mode dispatch, so it
+-- runs whatever the boss is doing - a machine that stalled because an attack was
+-- running would be a fight that stops advancing when it is busiest.
+function Fn.updateKrakenFight(creature, def, now: number)
+	local state = Fn.krakenState(creature)
+	local machine = def.machine
+	if not machine then
+		return
+	end
+	-- Props and waves first, and unconditionally: they are hazards already in
+	-- the world, and a boss that is collapsing must not leave a cask rolling.
+	if creature.collapsing or creature.dead then
+		Fn.krakenClearProps(creature)
+		table.clear(state.waves)
+		return
+	end
+	Fn.krakenStepProps(creature, now)
+	Fn.krakenStepWaves(creature, now)
+	if not creature.mode then
+		return
+	end
+
+	if not creature.krakenPhase then
+		-- FIRST FRAME, AND IT IS DURING THE RISE ON PURPOSE. The head's own
+		-- health bar is gated on `partsAlive > 0` (the row's `vulnerableWhen =
+		-- "partsDown"`), and the rise's last frame clears `untargetable` - so
+		-- planting the arms only once the boss was on its feet would leave one
+		-- frame with the flag down and no arm standing, which is one frame of a
+		-- finale boss taking full damage for free. The arms come up WITH it,
+		-- which is also what the animal looks like.
+		--
+		-- The ship's origin is latched here rather than read every frame,
+		-- because phase three moves `creature.anchor` into the gullet and the
+		-- ship's own coordinates have to survive that.
+		creature.krakenPhase = 1
+		creature.krakenShip = creature.anchor or creature.pos
+		-- THE BOSS IS NOT AT THE ARENA CENTRE, and this is the line that makes
+		-- that true rather than a comment about it. `BossArenaService.
+		-- placeAuthored` lands the SHIP on the arena centre (`KrakenArena_Base`
+		-- is the hull), and `BossService.arenaPosition` therefore raises the
+		-- boss there too - in the middle of the deck the party is standing on.
+		-- The head belongs 350 studs off the port beam (K.KRAKEN.HEAD_AT, the
+		-- generator's own HANDOFF: "do not expect the boss at the arena
+		-- centre"), and moving it is the wiring's job.
+		--
+		-- IT MOVES THREE THINGS AT ONCE, and all three for the same reason -
+		-- they are the same claim seen from three sides: `pos` is the capture
+		-- sphere a shot has to reach, `anchor` is what `Fn.updateBoss` re-pins
+		-- `pos` to every frame and what the range check measures, and the pose
+		-- centre is where the client draws the animal. Leaving any one of them
+		-- at the arena centre would put the head, its hitbox and its range check
+		-- in three different places - and each of them would look right alone.
+		--
+		-- The ship's own origin is latched ABOVE, before this, because every
+		-- deck coordinate in this fight is relative to it and phase three moves
+		-- `anchor` again - 20,000 studs, into the gullet.
+		local head = Fn.krakenAt(creature, K.KRAKEN.HEAD_AT.X, 0, K.KRAKEN.HEAD_AT.Z)
+		creature.anchor = head
+		creature.pos = head
+		-- (The hide is already the size of the animal: `Fn.updateBoss`'s init
+		-- block set `creature.hitRadius` from the row's 200 x the body scale =
+		-- 280, which is the mantle's own half-width at the pack's authored
+		-- SCALE 6.0. That is what puts its nearest face ~70 studs off the port
+		-- rail and therefore inside a weapon's reach during the siphon window;
+		-- see the row. Phase three shrinks it - a heart is not a head.)
+		creature.partsAlive = 0
+		creature.model:SetAttribute(ATTR.PHASE_INDEX, 1)
+		Fn.plantKrakenArm(creature, def, 1, now)
+		Fn.plantKrakenArm(creature, def, 2, now)
+	end
+	creature.tellMult = (machine.tellMult or {})[creature.krakenPhase] or 1
+	if creature.mode == "rising" then
+		-- Everything past here is the fight: windows, withdrawals and the phase
+		-- step. None of it can happen before the animal is up, and the arms are
+		-- placed by the loop below only once it is - during the rise they sit
+		-- where they were planted, which is their rest point.
+		return
+	end
+
+	if creature.krakenPhase >= 3 then
+		-- --------------------------------------------------------- the gullet
+		local live = #Fn.livingArms(creature)
+		creature.partsAlive = live
+		-- The heart is unaimable while any polyp stands - the same declarative
+		-- rule the arms used, so nothing here has to touch `untargetable`.
+		local dead = math.max(state.polypsPlanted - live, 0)
+		creature.krakenBeat = (machine.polypStep or 0.86) ^ dead
+		if live == 0 and state.polypsPlanted > 0 and not creature.krakenFrantic then
+			-- FRANTIC OVERLAP. All six are cut and the heart is open, so the
+			-- room stops taking turns: the tells tighten again and the gaps
+			-- between moves collapse. Expressed as the existing `enraged` flag
+			-- rather than a second pacing system - it is exactly what that flag
+			-- means, and `Fn.endBossAttack` already halves the cooldowns off it.
+			creature.krakenFrantic = true
+			creature.enraged = true
+			creature.model:SetAttribute(ATTR.ENRAGED, true)
+			creature.tellMult = ((machine.tellMult or {})[3] or 1) * 0.7
+			creature.model:SetAttribute(ATTR.SIPHON_OPEN, true)
+			fireEvent("enrage", creature.pos, { name = def.name })
+		end
+		-- kill() stamped these when the last polyp fell; the window they mean on
+		-- the ship does not exist here, so they are cleared rather than left to
+		-- open a siphon inside the animal's own gut.
+		creature.partsDownAt = nil
+		return
+	end
+
+	-- ------------------------------------------------------------ the ship
+	-- Arms: place them, stand a Down one back up, and bring a withdrawn one
+	-- back when its twelve seconds are up.
+	for slot = 1, 2 do
+		local arm = state.arms[slot]
+		if arm then
+			local part = arm.part
+			if part and part.dead then
+				-- BROKEN. `kill` has already counted `partsAlive` down and, at
+				-- zero, stamped Exposed - the window below reads that. What is
+				-- left is the withdrawal, which is this fight's own.
+				arm.part = nil
+				arm.returnAt = now + (machine.armReturn or 12.0)
+				Fn.krakenArmPhase(arm, "Withdrawn", now)
+				fireEvent("regrow", Fn.krakenAt(creature, arm.rest.X, K.KRAKEN.DECK_Y, arm.rest.Z), {
+					count = 1,
+					name = def.name,
+					withdraw = true,
+				})
+			elseif part then
+				-- TWO WAYS A COMMITTED LIMB COMES BACK UP, and they end in the
+				-- same place because "back up" is one state:
+				--
+				--   * its punish window expired - a slam's three seconds on the
+				--     planking, a broken haul's six of lying open;
+				--   * OR IT WAS STRANDED, which is the case nothing else can
+				--     notice. An attack can be cancelled without ever reaching
+				--     its own `finish`: a juggle clears `creature.attack`
+				--     outright (`Fn.applyKnockback`), and so does the boss's
+				--     collapse, and the handler that would have stood this limb
+				--     back up goes with it. `Fn.krakenFreeArm` only ever hands
+				--     out an arm at Rest, so one limb left mid-sweep is one the
+				--     fight never uses again and two is a fight with no attacks
+				--     left in it that still runs forever. The test is "nothing
+				--     is running AND this limb has been committed longer than
+				--     any move commits one", which cannot be true of a live
+				--     handler - the longest hold in the book is the wrench's
+				--     four-second channel plus its six-second expose.
+				local expired = arm.downUntil and now >= arm.downUntil
+				local stranded = not creature.attack
+					and arm.phase ~= "Rest"
+					and now - (arm.phaseAt or now) > K.KRAKEN_ARM_STRAND
+				if expired or stranded then
+					arm.downUntil = nil
+					arm.phaseFor = 1.0
+					Fn.krakenArmPhase(arm, "Rest", now)
+					Fn.krakenArmHot(arm, false)
+				end
+				Fn.krakenArmPlace(creature, arm, now)
+			elseif arm.returnAt and now >= arm.returnAt and not creature.krakenWindowUntil then
+				-- HELD WHILE THE WINDOW IS OPEN. A party that broke both arms
+				-- earned all ten seconds; an arm whose twelve happened to expire
+				-- in the middle of it would close the window early and take the
+				-- reward back for a reason nobody could see.
+				arm.returnAt = nil
+				Fn.plantKrakenArm(creature, def, slot, now)
+			end
+		end
+	end
+
+	-- THE WINDOW. `kill` sets `partsDownAt` the moment the ring empties, which
+	-- on this fight means BOTH arms are down inside one cycle - the whole loop.
+	-- Latched here and the flag cleared, so `Fn.updateBoss`'s generic regrow
+	-- branch (which would replant a ring this fight does not have) can never
+	-- see it.
+	if creature.partsDownAt and not creature.krakenWindowUntil then
+		creature.partsDownAt = nil
+		state.windows += 1
+		creature.krakenWindowUntil = now + (machine.siphonWindow or 10.0)
+		creature.model:SetAttribute(ATTR.SIPHON_OPEN, true)
+		creature.model:SetAttribute(ATTR.EXPOSED, true)
+		fireEvent("exposed", Fn.krakenEye(creature), { name = def.name })
+	end
+	if creature.krakenWindowUntil and now >= creature.krakenWindowUntil then
+		creature.krakenWindowUntil = nil
+		creature.model:SetAttribute(ATTR.SIPHON_OPEN, nil)
+		creature.model:SetAttribute(ATTR.EXPOSED, nil)
+		-- THE PHASE STEP, and it is counted rather than measured: two windows
+		-- open the castles, two more and the animal swallows the ship's crew.
+		local per = machine.windowsPerPhase or 2
+		if state.windows >= per * 2 then
+			Fn.krakenSwallow(creature, def, now)
+			return
+		end
+		if state.windows >= per and creature.krakenPhase < 2 then
+			creature.krakenPhase = 2
+			creature.model:SetAttribute(ATTR.PHASE_INDEX, 2)
+			fireEvent("bossStance", Fn.krakenEye(creature), { name = def.name, stance = 2 })
+		end
+		-- The arms come back the instant the window shuts, both of them, so the
+		-- next cycle starts from a clean board rather than from whatever was
+		-- left of the last one.
+		for slot = 1, 2 do
+			local arm = state.arms[slot]
+			if arm and not arm.part then
+				arm.returnAt = nil
+				Fn.plantKrakenArm(creature, def, slot, now)
+			end
+		end
+	end
+end
+
+-- ============================================================ gnashroot: the wire (2026-09-12)
+--
+-- THE MUD COLOSSUS IS DRAWN BY THE CLIENT, and this function is everything the
+-- server owes it. GnashrootBodyController adopts a model on `Pose ==
+-- "gnashroot"` and then draws the whole animal off GnashrootPath from the eight
+-- channels in that module's THE STATE block. Until this existed nothing
+-- published one, so the fight ran on the row's CreaturePack stand-in - the old
+-- crocodile - and the rig was only ever seen in the intro cutscene, which
+-- drives a stand-in of its own.
+--
+-- RIMEFANG'S ARRANGEMENT, NOT THE COLOSSUS ONE. This boss takes the plain
+-- branch through every line of Fn.updateBoss; the row opts in with `rig`, NOT
+-- `pose`, precisely so none of that changes (see the row). So this publishes,
+-- hides the authority model, and touches nothing else.
+--
+-- IT IS ROOTED AS OF 2026-09-12 (the user: "he must be COMPLETELY
+-- STATIONARY") and it is STILL not a `pose` boss: the row does it with
+-- `speed = 0` and `standoff = 200`, so the prowl branch's move line is a
+-- no-op it never reaches, exactly as `admiral_wrack` does. Nothing in this
+-- function changed for that - it publishes `creature.yaw0` as the face and
+-- takes the position from the pivot either way - but the sentence above used
+-- to say "roams its mere", and a stale claim in the one comment that explains
+-- the wiring is how the next reader learns the wrong thing.
+--
+-- AND IT DOES NOT PUBLISH `Eyes`. That channel is the client's
+-- (GnashrootPath's THE STATE block): the eye row is a look with no hitbox, no
+-- target pick and no HUD behind it, and GnashrootIntro drives it locally.
+-- Publishing it would be a replicated write per frame for a decoration.
+--
+-- It returns on its first line for every row that is not Old Gnashroot -
+-- Fn.rimefangDrive's and Fn.updatePyreliskHeart's rule - so one unconditional
+-- call from the boss frame is the whole of the wiring.
+K.GN_RIG = "gnashroot"
+
+-- A RANGE GATE FOR THE ONE BOSS THAT CANNOT CLOSE A DISTANCE.
+--
+-- Old Gnashroot is rooted (`speed = 0`, `standoff = 200`), so unlike every
+-- other row in this file it cannot answer "you are standing too far away" by
+-- walking. Its book still holds a close-range move - `gnash`, a 33-stud snap
+-- cone that is the punish for standing on the near bank - and the picker is
+-- otherwise a uniform random draw over whatever is off cooldown. Against a
+-- party at r 60 that draw spends one of the fight's attack slots on a bite
+-- into empty water, on a 4.5s cooldown, roughly one pick in five: not a
+-- balance problem so much as a boss that visibly does not work.
+--
+-- SO IT IS A ROW FIELD AND NOT A SPECIAL CASE. An attack may carry
+-- `minRange` / `maxRange`, in studs from the boss's pivot to the nearest
+-- player, and this refuses to offer it outside that band. Today exactly one
+-- attack in the project has either (`old_gnashroot.gnash.maxRange = 36`), and
+-- this function returns true on its first line for every row that is not that
+-- boss - the same shape as `Fn.rfPickAllows`, for the same reason: a gate
+-- that is inert for 30 rows should cost 30 rows nothing and should be
+-- readable as inert.
+--
+-- IT GATES THE PICK, NOT THE BLOW. Once `beginBossAttack` has committed, the
+-- attack runs to its end whatever the party does - a move that could be
+-- cancelled by walking away is a move with no tell worth reading, and the aim
+-- is latched at windup anyway (GnashrootPath's contract).
+function Fn.gnPickAllows(creature, def, p): boolean
+	if def.rig ~= K.GN_RIG or p == nil then
+		return true
+	end
+	local low, high = p.minRange, p.maxRange
+	if low == nil and high == nil then
+		return true
+	end
+	local root, _player, dist = Fn.nearestPlayerRoot(creature.pos)
+	-- Nobody to measure against: let the picker do what it always did rather
+	-- than emptying the pool on an arena with no players left in it.
+	if not root then
+		return true
+	end
+	if low and dist < low then
+		return false
+	end
+	if high and dist > high then
+		return false
+	end
+	return true
+end
+
+function Fn.gnashrootPublish(creature, def, now: number)
+	if def.rig ~= K.GN_RIG or not creature.model.Parent then
+		return
+	end
+	local model = creature.model
+	local cache = creature.gnWrote
+	local first = cache == nil
+	if first then
+		cache = {}
+		creature.gnWrote = cache
+		-- The authority model stops being a picture: hits, the HUD and the
+		-- cutscene's BossName handoff all still read it, but nothing on it is
+		-- drawn or the animal would be there twice. Transparency only - it
+		-- never touches CanCollide or the query flags, so every hit test in
+		-- this fight keeps working on exactly the parts it always used.
+		Fn.hideColossusModel(creature)
+	end
+
+	-- THE RISE IS THE RIG'S, AND THERE IS EXACTLY ONE OF IT. GnashrootPath.lift
+	-- is `RISE_DEPTH * (rise - 1)`, and RISE_DEPTH is taken off the animal's own
+	-- CROWN (42 world studs) precisely so the rig can bury itself - so
+	-- publishing the FRACTION is what puts the whole 40-stud body under the
+	-- peat. The price is that the server pivot must not climb as well, which is
+	-- why the rising branch below holds a rigged boss at `-def.submerge`: pivot
+	-- plus lift would be two rises stacked, and the row's 18 was sized for a
+	-- stand-in a quarter of this thing's height.
+	--
+	-- The -20 degree nose-down pitch that branch also drops here was never
+	-- visible either way: the controller takes POSITION from the pivot and
+	-- nothing else (its rotation is GnashrootPath.bearing/lean).
+	--
+	-- The cubic is the easing the rising branch gives its own `e`. This runs
+	-- before the mode dispatch, so it cannot be handed that number.
+	local rise = 1
+	if creature.mode == "rising" then
+		rise = 1 - (1 - modeProgress(creature, now)) ^ 3
+	end
+
+	-- A DYING BOSS IS NOT MID-SWING. The collapse returns before
+	-- Fn.updateBossAttack can run again, so an attack left standing by the
+	-- death would hold both arms in a blow that never lands while the body goes
+	-- down. Dropped here, the arms ease home (the controller holds the name
+	-- until its own blend decays) and the fall is the last thing it does.
+	local a = if creature.collapsing then nil else creature.attack
+	local name, blend, strike = "", 0, 0
+	if a then
+		local p = a.p
+		name = a.name
+		-- THE PHASE CLOCK THE DAMAGE IS ON. Fn.updateBossAttack measures its own
+		-- progress against these same three spans - `a.windup` (the SCALED
+		-- figure, so an escalating fight's shorter tell moves the pose with it),
+		-- then p.duration, then p.recover - so the body and the blow cannot be
+		-- reading different times.
+		if a.phase == "windup" then
+			blend = math.clamp((now - a.phaseStart) / math.max(a.windup or p.windup, 1e-3), 0, 1)
+		elseif a.phase == "strike" then
+			-- The blow lands on the frame the strike phase OPENS (that is where
+			-- the handler's `fire` runs), so it is struck for all of it.
+			blend, strike = 1, 1
+		else
+			local u = math.clamp((now - a.phaseStart) / math.max(p.recover, 1e-3), 0, 1)
+			blend, strike = 1 - u, 1 - u
+		end
+		-- AIM IS LATCHED ONCE, AT THE WINDUP, AND HELD UNTIL THE ATTACK ENDS -
+		-- GnashrootPath's contract, and the attack TABLE's identity is the
+		-- latch: Fn.beginBossAttack builds a fresh one per move and
+		-- Fn.endBossAttack drops it, so this runs exactly once per attack and
+		-- no phase change can re-enter it.
+		if creature.gnAimFor ~= a then
+			creature.gnAimFor = a
+			-- Toward the target, not off the current yaw: `yaw0` lags the player
+			-- by up to a turn and then spends the whole windup catching up,
+			-- while the cone the blow actually cuts is taken from Fn.bossFacing
+			-- at `fire` - that is, from where yaw0 will have ARRIVED. The
+			-- target's bearing is the value those two converge on, so the fist
+			-- commits to where the damage is going.
+			local root = Fn.nearestPlayerRoot(creature.pos)
+			creature.gnAim = if root then yawToward(root.Position - creature.pos) else creature.yaw0
+			-- GnashrootPath.plantSide's rule, named so the two stay together:
+			-- the +1 flank sits at body-local -Z, so a target at a negative
+			-- body-local bearing is the one that arm reaches without the animal
+			-- crossing over itself.
+			local bearing = (creature.gnAim - creature.yaw0 + math.pi) % (math.pi * 2) - math.pi
+			creature.gnAimSide = if math.sin(bearing) < 0 then 1 else -1
+		end
+	end
+	local aim = if a then creature.gnAim or creature.yaw0 else creature.yaw0
+	local side = if a then creature.gnAimSide or 1 else 1
+
+	-- `rfPut` rather than a second copy of it: the change-cache and the NaN
+	-- guard are the same contract here (an attribute write is a replicated
+	-- write, and a NaN latches a channel off for the life of the creature), and
+	-- it is handed whichever cache it is told to use.
+	rfPut(model, cache, "Rise", rise)
+	-- The idle watch, free to move every frame by the contract. `yaw0` is what
+	-- the plain branch turns and what poseCFrame draws the hidden model with, so
+	-- the drawn body and its authority point face the same way.
+	rfPut(model, cache, "FaceAngle", creature.yaw0)
+	rfPut(model, cache, "AttackBlend", blend)
+	rfPut(model, cache, "Strike", strike)
+	rfPut(model, cache, "AimAngle", aim)
+	rfPut(model, cache, "AimSide", side)
+	-- A string, so it cannot ride rfPut - same change-cache rule, same reason.
+	-- "" BETWEEN ATTACKS AND NEVER nil: the controller's `isFed` tests this
+	-- attribute's EXISTENCE, so an idle boss that published nothing at all would
+	-- be reported as a rig with nobody driving it.
+	if cache.Attack ~= name then
+		cache.Attack = name
+		model:SetAttribute("Attack", name)
+	end
+
+	-- AND THE PUNISH WINDOW HAS TO SHUT AGAIN. `hammerfall` carries `expose =
+	-- 3.5`, so Fn.endBossAttack opens the window by setting BOTH
+	-- `creature.exposedUntil` and ATTR.EXPOSED - but the only code that ever
+	-- clears that attribute again lives in Fn.updateKitted, which a plain
+	-- `archetype = "boss"` row never runs. It is the trap Fn.rimefangDrive
+	-- documents at its `OpenUntil` publish, and this rig walked straight into
+	-- it: the attribute LATCHED at the first hammerfall, so the core burned
+	-- open for the rest of the fight and no later window could reopen a cue
+	-- that had never shut.
+	--
+	-- THE ATTRIBUTE, AND NOTHING ELSE. `creature.exposedUntil` is the DAMAGE
+	-- side and is left exactly where it is - clearing it here would be a
+	-- balance change wearing a rendering fix. The test is the one `damage()`
+	-- makes (`os.clock() < creature.exposedUntil`, hitModifiers): same clock -
+	-- `update` takes `now` from os.clock() - and same comparison, so the drawn
+	-- core and the window that is really taking double damage open and shut on
+	-- the same frame.
+	--
+	-- IT ONLY EVER CLEARS. The window's `true` stays Fn.endBossAttack's to
+	-- write, so a future exposure with no `exposedUntil` behind it (the parts
+	-- ring's, say) cannot be stomped by this line a frame after it is set - it
+	-- would simply not be latched here, which is exactly today's behaviour.
+	if creature.exposedUntil and now < creature.exposedUntil then
+		cache.Exposed = true
+	elseif cache.Exposed then
+		cache.Exposed = false
+		model:SetAttribute(ATTR.EXPOSED, false)
+	end
+
+	if first then
+		-- LAST, AND IN THIS ORDER. `Pose` is the signal the controller adopts on
+		-- and it reads `PoseCenter` in the same breath. Every channel above is
+		-- already on the model by now, so the adopt reads the real pose instead
+		-- of readTarget's defaults - and that one matters: its default `Rise` is
+		-- 1, a fully risen colossus that would then sink to meet its own rise.
+		--
+		-- PoseCenter is the ADOPT-TIME origin only. drawBody takes the centre
+		-- from the model's pivot every frame after that, which is what keeps the
+		-- mass you dodge and the mass you see the same object while this boss
+		-- walks its mere.
+		model:SetAttribute(ATTR.POSE_CENTER, creature.anchor or creature.pos)
+		model:SetAttribute(ATTR.POSE, K.GN_RIG)
+	end
+end
+
+function Fn.updateBoss(creature, now: number, dt: number)
 	local def = bossDef(creature)
 	local model = creature.model
 	if not def then
@@ -9065,7 +18511,17 @@ local function updateBoss(creature, now: number, dt: number)
 		end
 		creature.cooldowns = {}
 		creature.nextAttackAt = now + def.riseTime + 1.2
-		model:SetAttribute(ATTR_BOSS_NAME, def.name)
+		model:SetAttribute(ATTR.BOSS_NAME, def.name)
+		-- A MULTI-ACT SHIP GETS A HULL THAT STOPS SHOTS. Built here because
+		-- this is the one place a boss is initialised, and it needs `yaw0` and
+		-- the pose centre, both of which exist by now. Opted in by
+		-- `succeededBy` - the field that says "this creature's death is an act
+		-- break, not an ending" - rather than by a boss id, so the collider
+		-- belongs to the SHAPE of the fight and not to a name someone might
+		-- copy. See Fn.wrackOccluder for why the World folder is the mechanism.
+		if def.succeededBy then
+			Fn.wrackOccluder(creature, def)
+		end
 		setMode(creature, "rising", def.riseTime, now)
 		fireEvent("bossRise", creature.pos, { name = def.name, duration = def.riseTime })
 	end
@@ -9074,19 +18530,44 @@ local function updateBoss(creature, now: number, dt: number)
 	creature.lastFoughtAt = now
 	creature.knockVel = nil
 
+	-- THE KRAKEN'S OWN FRAME, and it runs BEFORE the collapse branch and before
+	-- the mode dispatch on purpose. Its arms, its hazards and its phase machine
+	-- all have to advance while an attack is running - a machine that stalled
+	-- because the boss was busy would be a fight that stops progressing exactly
+	-- when it is loudest - and its props have to be collected on the frame the
+	-- boss starts coming down, which is a frame the branch below returns on.
+	-- `Fn.updateKrakenFight` returns on its first line for any row without a
+	-- `machine` block, which is every boss but this one.
+	if def.pose == "kraken" then
+		Fn.updateKrakenFight(creature, def, now)
+	end
+	-- THE HEART'S FRAME, here for the Kraken's reason exactly: it publishes
+	-- levels (the act, the pillar mask, the room's cadence) that must stay true
+	-- whatever the boss is doing, and the branch below returns on the frames a
+	-- fight is busiest. `Fn.updatePyreliskHeart` returns on its first line for
+	-- every row that is not the Ashfall Heart, which is every row but one.
+	Fn.updatePyreliskHeart(creature, def, now)
+	-- THE MUD RIG'S FRAME, here for the same reason as the two above: the body
+	-- is drawn entirely from what this publishes, so it has to be published on
+	-- EVERY frame the boss has - including the ones the branches below return
+	-- on (the rise, an attack, the collapse). `Fn.gnashrootPublish` returns on
+	-- its first line for every row without `rig = "gnashroot"`, which is every
+	-- row but one.
+	Fn.gnashrootPublish(creature, def, now)
+
 	-- Coming down. Checked before every other mode so that nothing - a stance
 	-- change, an enrage, a queued attack - gets to speak over the death.
 	if creature.collapsing then
-		updateBossCollapse(creature, def, now)
+		Fn.updateBossCollapse(creature, def, now)
 		return
 	end
 
 	local sub = -def.submerge
-	local root, player, dist = nearestPlayerRoot(creature.pos)
+	local root, player, dist = Fn.nearestPlayerRoot(creature.pos)
 
 	if not creature.enraged and creature.health / creature.maxHealth <= def.enrageBelow then
 		creature.enraged = true
-		model:SetAttribute(ATTR_ENRAGED, true)
+		model:SetAttribute(ATTR.ENRAGED, true)
 		fireEvent("enrage", model:GetPivot().Position, { name = def.name })
 	end
 
@@ -9103,9 +18584,9 @@ local function updateBoss(creature, now: number, dt: number)
 			-- boss and it has a rig), but "holds a perch" and "is drawn by a
 			-- rig" are different claims and only the second one earns this.
 			if def.pose then
-				hideColossusModel(creature)
+				Fn.hideColossusModel(creature)
 			end
-			local state = colossusState(creature, def)
+			local state = Fn.colossusState(creature, def)
 			-- AND THE RISE, on the same curve the non-entrenched branch below
 			-- uses. Nothing wrote it here, and `rise` is not a wake-up flourish
 			-- for a rigged colossus - it is a HEIGHT: PyreliskPath.lift returns
@@ -9116,7 +18597,7 @@ local function updateBoss(creature, now: number, dt: number)
 			-- there rather than a second meaning for the same field.
 			state.rise = 1 - (1 - u) ^ 3
 			state.slump = 1 - (1 - (1 - u) ^ 2)
-			placeColossus(creature, def, now, root)
+			Fn.placeColossus(creature, def, now, root)
 			if u >= 1 then
 				state.rise = 1
 				state.slump = 0
@@ -9136,9 +18617,19 @@ local function updateBoss(creature, now: number, dt: number)
 			-- A posed boss is drawn entirely by the client, so "rising" is a
 			-- number it publishes rather than a pivot it performs: the head
 			-- climbs out of the whirlpool on the client's side of the wire.
-			hideColossusModel(creature)
-			colossusState(creature, def).rise = e
-			placeColossus(creature, def, now, root)
+			Fn.hideColossusModel(creature)
+			Fn.colossusState(creature, def).rise = e
+			Fn.placeColossus(creature, def, now, root)
+		elseif def.rig == K.GN_RIG then
+			-- A RIGGED BOSS CLIMBS ON ITS OWN SIDE OF THE WIRE, so the pivot
+			-- only holds its ground. `Fn.gnashrootPublish` publishes the rise as
+			-- a fraction and GnashrootPath.lift turns that into 42 world studs
+			-- of climb, sized off the animal's crown; lifting the pivot as well
+			-- would be the same rise performed twice, from a depth (the row's
+			-- 18) that was measured for the stand-in this replaced. Held at
+			-- `sub`, where the prowl leaves it, so the frame the rise ends is
+			-- not a step either.
+			model:PivotTo(poseCFrame(creature, sub, 0, 0))
 		else
 			model:PivotTo(poseCFrame(creature, -def.riseDepth + (def.riseDepth + sub) * e, 0, math.rad(-20) * (1 - e)))
 		end
@@ -9147,7 +18638,7 @@ local function updateBoss(creature, now: number, dt: number)
 			setMode(creature, "prowl", 0, now)
 			-- The tentacle ring rises with it (the Kraken).
 			if def.parts then
-				spawnBossParts(creature, def)
+				Fn.spawnBossParts(creature, def)
 			end
 		end
 		return
@@ -9155,12 +18646,12 @@ local function updateBoss(creature, now: number, dt: number)
 
 	-- ---------------------------------------------------------- colossus
 	if def.pose == "noctyss" then
-		updateNoctyss(creature, def, now, dt, root, player, dist)
+		Fn.updateNoctyss(creature, def, now, dt, root, player, dist)
 		return
 	end
 
 	if def.entrenched then
-		local state = colossusState(creature, def)
+		local state = Fn.colossusState(creature, def)
 		-- THE CHIP FLOOR'S TWO FIELDS, WRITTEN ONCE A FRAME AND NOWHERE ELSE.
 		-- `chip` is copied off the row so `damage()` - which is handed no
 		-- `def` - can find it; `punishOpen` is RECOMPUTED rather than latched,
@@ -9169,20 +18660,112 @@ local function updateBoss(creature, now: number, dt: number)
 		-- windows are the stagger and the lunge's held plant; the post-surge
 		-- window IS a stagger, so it is already counted.
 		creature.chip = def.chip
-		creature.punishOpen = creature.mode == "stagger" or (creature.mode == "attack" and creature.lungeOpen == true)
+		-- THE WINDOWS ARE NOW FOUR, not two: the stagger (which the post-surge
+		-- one already is), the lunge's plant, the coilslam's fallen loop and
+		-- the bite's low head. All three handler-owned ones are FULL damage
+		-- (contract §4: "the server makes the creature damageable at full
+		-- rate"), so they all lift the chip scaling the same way, and all three
+		-- are recomputed rather than latched by their handlers.
+		creature.punishOpen = creature.mode == "stagger"
+			or (
+				creature.mode == "attack"
+				and (creature.lungeOpen == true or creature.coilOpen == true or creature.biteOpen == true)
+			)
+		-- THE FILLED METER, CASHED OUT. A flank whose meter filled owes two
+		-- things, and they are DIFFERENT THINGS with different triggers, which
+		-- is the whole of this block.
+		--
+		-- It is paid HERE - on the boss's own tick, where the fight's window
+		-- machinery lives - rather than inside the `damage()` call that
+		-- finished the meter off, which runs out of CombatService's shot queue.
+		-- Held, not spent, while a window is already open or the boss is coming
+		-- down.
+		if def.pose == "pyrelisk" and creature.seamBreakSide and not creature.collapsing then
+			if creature.mode ~= "stagger" and creature.mode ~= "rising" then
+				local side = creature.seamBreakSide
+				creature.seamBreakSide = nil
+				-- ONE: THE 0.15, AND IT IS ON THE SCAR'S 0 -> 1 TRANSITION.
+				-- `Fn.pyreliskMeterFill` ors this flank's mask into
+				-- `state.seamsBroken`, which is MONOTONIC and therefore
+				-- idempotent - so "was this flank already paid for?" is a
+				-- question with the answer `no` exactly twice in the life of a
+				-- fight. See `Fn.pyreliskFlankPaid` for why paying on
+				-- meter-full instead would walk the dial down through 0.55 and
+				-- 0.40 on cycles that are supposed to cost nothing but time.
+				if not Fn.pyreliskFlankPaid(creature, side) then
+					Fn.pyreliskMarkFlankPaid(creature, side)
+					Fn.pyreliskChip(creature, def, K.PY_FLANK_FRACTION)
+				end
+				-- TWO: THE DROP, and the gate is deliberately NOT "this
+				-- cash-out completed the pair". That is an EDGE, it happens
+				-- once, and after a failed window it can never happen again -
+				-- which would leave a party that lost the first window with no
+				-- route back into act 2 at all. It is a LEVEL test on the scar
+				-- mask instead: with both flanks already scarred, EITHER meter
+				-- re-filling returns the arms. One meter, not two, which is the
+				-- right price for a retry.
+				if Fn.pyreliskBothFlanksBroken(state) and not creature.pyreliskArmsOut then
+					Fn.pyreliskDropArms(creature, def, now)
+				end
+			end
+		end
+		-- THE ACT, PUBLISHED AS A LEVEL. Act 1 is the resting statement and it
+		-- is made on the colossus's first entrenched frame rather than at rise,
+		-- so a client that adopts the model at any instant reads it.
+		if def.pose == "pyrelisk" and creature.pyreliskAct == nil then
+			Fn.pyreliskPublishAct(creature, 1)
+		end
+		-- EACH ARM'S 0.35, RECONCILED OFF `partsAlive` RATHER THAN HOOKED INTO
+		-- `kill()`. The generic parts path already counts the ring down and has
+		-- no business learning about this fight; watching the count fall is the
+		-- same information one frame later, and it cannot be missed by a death
+		-- that took a different route (a collapse taking its parts with it, a
+		-- pool tick landing the blow). Gated on `pyreliskArmsOut`, which
+		-- `Fn.pyreliskArmsRetire` clears in the same call that zeroes the
+		-- count - so a RETIREMENT can never be read as two kills.
+		--
+		-- GATED ON ACT 2, AND THE GATE IS KEPT THOUGH ITS FIRST REASON IS GONE.
+		-- It was written because `creature.pyreliskArmsOut` stays SET past the
+		-- arms (it is the re-cycle latch, and the act break is one-way) while
+		-- act 3 planted seven more parts on this same `partsAlive` counter - so
+		-- an ungated reconciliation read the first arm rock as an arm. Act 3 is
+		-- cut and nothing plants on the counter again, but the test still says
+		-- the true thing: these chips are act 2's, and the frame the second one
+		-- lands on is the frame the body starts falling.
+		--
+		-- THE SECOND CHIP IS THE LETHAL ONE and it still floors here, at
+		-- `K.PY_CHIP_FLOOR`. `Fn.pyreliskArmsDone`, below in the stagger
+		-- branch, takes the remaining hair through `damage()` on this same
+		-- frame - so the dial reads spent without a subtraction ever having
+		-- entered the death path.
+		if def.pose == "pyrelisk" and creature.pyreliskArmsOut and (creature.pyreliskAct or 0) == 2 then
+			local live = creature.partsAlive or 0
+			local was = creature.pyreliskArmsLive or live
+			if live < was then
+				Fn.pyreliskChip(creature, def, K.PY_ARM_FRACTION * (was - live))
+				creature.pyreliskArmsLive = live
+			end
+		end
+		-- (ACT 3'S SEVEN were reconciled here - a survivor mask rebuilt from
+		-- what still stood, `K.PY_ROCK_FRACTION` per rock gone, the core's bar
+		-- published every frame and its disappearance taken as the colossus's
+		-- death, with `Fn.pyreliskVentHazard` ticked alongside because the deck
+		-- was not safe ground either. All of it is cut with the climb. The
+		-- arms' reconciliation above is the only chip path left, and the second
+		-- arm's death is the ending.)
 		-- THE STONES REGROW ON A CLOCK. Here rather than in the stance branch
 		-- below, because that one fires on a health threshold and this has to
 		-- run whether or not the fight is making progress - which is the
 		-- entire point: three baits cannot produce a stance's worth of damage,
 		-- so a party that misread them used to have no way back into the fight
 		-- at all. The stance-change restore is kept on top of it.
-		regrowStones(creature, def, now)
+		Fn.regrowStones(creature, def, now)
 		-- Stance follows the health phase: each one it loses costs it ground.
 		local stance = (def.stances or 1) - (bossPhaseIndex(def, creature.health / creature.maxHealth) - 1)
 		stance = math.max(stance, 1)
 		-- `~=` alone never fires on the first pass (both start at MAX_COIL),
 		-- so anything reading Stance saw nil for the fight's first third.
-		if model:GetAttribute(ATTR_STANCE) == nil or state.coil ~= stance then
+		if model:GetAttribute(ATTR.STANCE) == nil or state.coil ~= stance then
 			-- THE FIRST PASS IS NOT A STANCE CHANGE. `state.coil` is nil until
 			-- this line runs, so the attribute test above - which exists so
 			-- anything reading Stance is not left staring at nil for the
@@ -9193,10 +18776,10 @@ local function updateBoss(creature, now: number, dt: number)
 			-- stones, say nothing.
 			local announce = state.coil ~= nil
 			state.coil = stance
-			model:SetAttribute(ATTR_STANCE, stance)
-			restoreStones(creature, def)
+			model:SetAttribute(ATTR.STANCE, stance)
+			Fn.restoreStones(creature, def)
 			-- A new stance is a new hand: the once-per-stance moves (`once`
-			-- in pickBossAttack) are offered again. Cleared even on the first
+			-- in Fn.pickBossAttack) are offered again. Cleared even on the first
 			-- pass, which is harmless - there is nothing in it yet.
 			creature.stanceUsed = nil
 			if announce then
@@ -9205,15 +18788,38 @@ local function updateBoss(creature, now: number, dt: number)
 		end
 
 		if creature.mode == "stagger" then
+			-- ACT 2 RUNS INSIDE THIS BRANCH, for up to 120 seconds, and it
+			-- takes it over: `mode == "stagger"` means `untargetable` is false
+			-- and `Exposed` is stamped, which is exactly the state act 2 wants,
+			-- but the shipped shaping below is written for a 20-second window
+			-- and would spend twenty seconds easing into the slump.
+			--
+			-- TWO EXITS, AND BOTH ARE REAL. The arms dying is the act break;
+			-- the window expiring with them still standing is the failure
+			-- branch, which is not a reset (see `Fn.pyreliskArmsFailed`).
+			if creature.pyreliskArmsOut and (creature.pyreliskAct or 0) == 2 then
+				if (creature.partsAlive or 0) <= 0 then
+					Fn.pyreliskArmsDone(creature, def, now)
+					return
+				end
+				if now >= (creature.exposedUntil or now) then
+					Fn.pyreliskArmsFailed(creature, def, now)
+					return
+				end
+				Fn.pyreliskArmBars(creature)
+				state.slump = math.clamp((now - (creature.modeStart or now)) / K.PY_ARM_SLUMP_EASE, 0, 1)
+				Fn.placeColossus(creature, def, now, root)
+				return
+			end
 			-- The punish window: it is down, open, and taking hits. The head
 			-- eases to the sand and back so the window has a shape.
 			local u = modeProgress(creature, now)
 			state.slump = math.clamp(math.min(u * 6, 1) - math.max(u - 0.82, 0) / 0.18, 0, 1)
-			placeColossus(creature, def, now, root)
+			Fn.placeColossus(creature, def, now, root)
 			if u >= 1 then
 				state.slump = 0
 				creature.untargetable = def.chip == nil -- see the rise's note
-				creature.model:SetAttribute(ATTR_EXPOSED, nil)
+				creature.model:SetAttribute(ATTR.EXPOSED, nil)
 				creature.nextAttackAt = now + 0.6
 				setMode(creature, "entrenched", 0, now)
 			end
@@ -9221,17 +18827,51 @@ local function updateBoss(creature, now: number, dt: number)
 		end
 
 		if creature.mode == "attack" then
-			updateBossAttack(creature, def, now, dt, root, player, dist, sub)
-			placeColossus(creature, def, now, root)
+			Fn.updateBossAttack(creature, def, now, dt, root, player, dist, sub)
+			Fn.placeColossus(creature, def, now, root)
 			return
 		end
 
 		-- Entrenched: hold the perch, watch, and pick the next pattern. The
 		-- tail eases back onto the tower between attacks.
 		state.unwind = math.max((state.unwind or 0) - dt * 1.8, 0)
-		placeColossus(creature, def, now, root)
+		Fn.placeColossus(creature, def, now, root)
+		-- THE ONE REACTIVE MOVE IN THE PROJECT (contract REVISION 2 §8). Every
+		-- other attack in every book is drawn from a phase list on a cooldown;
+		-- `bite` is not in any list and is fired from HERE, by standing still
+		-- in the wrong place.
+		--
+		-- WHY THE DWELL TIMER IS NOT A DISTANCE CHECK. Firing on proximity
+		-- alone would snap at anybody who ran through the tower's foot on the
+		-- way to a punish window - which is most of the fight's good play. Two
+		-- seconds inside 14 studs is PARKING, and parking is the thing the move
+		-- exists to answer: it is the ground the whip cannot reach (SWEEP_INNER
+		-- 13), the ring launches outside (10), the masonry's sector starts past
+		-- (12) and the bell's rings are nil under (4).
+		--
+		-- MEASURED FROM THE TOWER'S FOOT, not from `dist`: `dist` is to
+		-- `creature.pos`, which is the head sixty studs up the lighthouse, so
+		-- it would never fall under 14 no matter where anyone stood. This is
+		-- the flat radius the rest of the fight's geometry is expressed in.
+		--
+		-- Gated on the row carrying the move, so the branch is inert for any
+		-- other entrenched boss that shares this code.
+		local biteRow = def.attacks and def.attacks.bite
+		if biteRow and root then
+			local near = Fn.brineRadiusOf(state, root.Position) <= (biteRow.reach or 14)
+			creature.biteDwellSince = if near then (creature.biteDwellSince or now) else nil
+			local ready = now >= (creature.cooldowns and creature.cooldowns.bite or 0)
+			if creature.biteDwellSince and now - creature.biteDwellSince >= (biteRow.dwell or 2.0) and ready then
+				-- Cleared BEFORE the attack begins, so a camper who never moves
+				-- re-earns the full dwell after each snap instead of triggering
+				-- again the frame the cooldown expires.
+				creature.biteDwellSince = nil
+				Fn.beginBossAttack(creature, def, "bite", now)
+				return
+			end
+		end
 		if root and now >= creature.nextAttackAt and dist <= def.aggro then
-			beginBossAttack(creature, def, pickBossAttack(creature, def, now), now)
+			Fn.beginBossAttack(creature, def, Fn.pickBossAttack(creature, def, now), now)
 		end
 		return
 	end
@@ -9239,13 +18879,33 @@ local function updateBoss(creature, now: number, dt: number)
 	-- The ring regrows: `parts.regrow` seconds after the last tentacle falls
 	-- (the head's exposure window), the arms come back - as long as the boss
 	-- still lives. Checked in every mode so an attack can't stall the clock.
+	-- `regrow` MAY BE ABSENT, AND ITS ABSENCE MEANS NEVER.
+	--
+	-- The guard read `now - partsDownAt >= def.parts.regrow` with nothing
+	-- checking that the field exists - which was true of every parts boss when
+	-- it was written and has not been since. A ring whose `regrow` is DELETED
+	-- is now the idiom for an ACT BREAK (`admiral_wrack`'s four gun decks, and
+	-- the Pyrelisk's two arms): nothing resets the count, so the last kill
+	-- opens the next act forever.
+	--
+	-- Without the nil check that is not a ring which fails to regrow, it is a
+	-- comparison against nil - an ERROR out of the boss's own update, every
+	-- frame, from the moment the last part falls. The Pyrelisk never reached it
+	-- (its entrenched branch returns unconditionally further up), which is
+	-- exactly why this sat here unnoticed: the boss that has the deleted
+	-- `regrow` AND passes through this line is the Admiral.
+	--
+	-- nil is "never", not "immediately", so the test is `and def.parts.regrow`
+	-- rather than `or math.huge` - same behaviour, and it reads as the
+	-- statement it is.
 	if
 		def.parts
+		and def.parts.regrow
 		and creature.partsAlive == 0
 		and creature.partsDownAt
 		and now - creature.partsDownAt >= def.parts.regrow
 	then
-		spawnBossParts(creature, def)
+		Fn.spawnBossParts(creature, def)
 		-- THE WINDOW IS CLOSING, so say so. kill() sets Exposed when the last
 		-- part falls, and nothing unset it for a ring that grows BACK: the
 		-- attribute latched true on the first window, so the head went on
@@ -9258,14 +18918,14 @@ local function updateBoss(creature, now: number, dt: number)
 		-- The latch matters more than the wrong state. Re-setting an attribute
 		-- to the value it already holds fires no change signal, so a renderer
 		-- watching Exposed would open the head once per fight and never again.
-		creature.model:SetAttribute(ATTR_EXPOSED, nil)
+		creature.model:SetAttribute(ATTR.EXPOSED, nil)
 		fireEvent("regrow", creature.anchor or creature.pos, { count = def.parts.count, name = def.name })
 	end
 
 	if creature.mode == "attack" then
-		updateBossAttack(creature, def, now, dt, root, player, dist, sub)
+		Fn.updateBossAttack(creature, def, now, dt, root, player, dist, sub)
 		if def.pose then
-			placeColossus(creature, def, now, root)
+			Fn.placeColossus(creature, def, now, root)
 		end
 		return
 	end
@@ -9275,13 +18935,13 @@ local function updateBoss(creature, now: number, dt: number)
 	-- 28 studs of it - so closing to `standoff` would shove the thing you are
 	-- standing on. It turns to face, and its arms do the travelling.
 	if def.pose then
-		hideColossusModel(creature)
-		local state = colossusState(creature, def)
+		Fn.hideColossusModel(creature)
+		local state = Fn.colossusState(creature, def)
 		state.rise = math.min((state.rise or 0) + dt * 0.5, 1)
 		creature.pos = creature.anchor or creature.pos
-		placeColossus(creature, def, now, root)
+		Fn.placeColossus(creature, def, now, root)
 		if root and now >= creature.nextAttackAt and dist <= def.aggro then
-			beginBossAttack(creature, def, pickBossAttack(creature, def, now), now)
+			Fn.beginBossAttack(creature, def, Fn.pickBossAttack(creature, def, now), now)
 		end
 		return
 	end
@@ -9290,17 +18950,17 @@ local function updateBoss(creature, now: number, dt: number)
 	if root then
 		creature.yaw0 = approachAngle(creature.yaw0, yawToward(root.Position - creature.pos), def.turnRate * dt)
 		if dist > def.standoff then
-			creature.pos = resolveHorizontal(creature, flatUnit(root.Position - creature.pos) * def.speed * dt)
+			creature.pos = Fn.resolveHorizontal(creature, flatUnit(root.Position - creature.pos) * def.speed * dt)
 		end
 	end
-	clampToArena(creature, def)
+	Fn.clampToArena(creature, def)
 	local breathe = math.sin(now * 1.6) * 0.25
 	model:PivotTo(
 		poseCFrame(creature, sub + breathe, math.sin(now * 0.9) * math.rad(3), math.sin(now * 1.6 + 1) * math.rad(2))
 	)
 
 	if root and now >= creature.nextAttackAt and dist <= def.aggro then
-		beginBossAttack(creature, def, pickBossAttack(creature, def, now), now)
+		Fn.beginBossAttack(creature, def, Fn.pickBossAttack(creature, def, now), now)
 	end
 end
 
@@ -9317,18 +18977,18 @@ end
 
 -- Slagheart Golem: shambles like the drowned. The armour is in damage(); all
 -- that's left is closing the window again when it expires.
-local function updateCrust(creature, now: number, dt: number)
+function Fn.updateCrust(creature, now: number, dt: number)
 	if creature.crustOpenUntil and now >= creature.crustOpenUntil then
 		creature.crustOpenUntil = nil
-		creature.model:SetAttribute(ATTR_CRACKED, false)
+		creature.model:SetAttribute(ATTR.CRACKED, false)
 	end
-	updateShambler(creature, now, dt)
+	Fn.updateShambler(creature, now, dt)
 end
 
 -- Ashfeather Phoenix: charges like the skipper, except while it's down. Being
 -- down is a real pause - untargetable, motionless, no contact damage - so the
 -- rise reads as a second fight starting rather than a hiccup in the first.
-local function updateReborn(creature, now: number, dt: number)
+function Fn.updateReborn(creature, now: number, dt: number)
 	if creature.downUntil then
 		if now < creature.downUntil then
 			creature.model:PivotTo(poseCFrame(creature, 0, 0, 0))
@@ -9338,18 +18998,18 @@ local function updateReborn(creature, now: number, dt: number)
 		creature.untargetable = false
 		creature.health = math.max(1, math.floor(creature.maxHealth * C.REBORN_FRACTION + 0.5))
 		creature.lastFoughtAt = now -- coming back doesn't count as being left alone
-		creature.model:SetAttribute(ATTR_HEALTH, creature.health)
-		creature.model:SetAttribute(ATTR_DOWNED, false)
+		creature.model:SetAttribute(ATTR.HEALTH, creature.health)
+		creature.model:SetAttribute(ATTR.DOWNED, false)
 		fireEvent("rebornRise", creature.pos, {})
 	end
-	updateCharger(creature, now, dt)
+	Fn.updateCharger(creature, now, dt)
 end
 
 -- Cinder Djinn: shambles, shedding burning smoke as it goes. The puffs are
 -- static once dropped and burn on their own clocks (ticked in update()), so the
 -- danger is the ground it HAS covered - following it through its own trail is
 -- the mistake the fight is built around.
-local function updateGasCloud(creature, now: number, dt: number)
+function Fn.updateGasCloud(creature, now: number, dt: number)
 	creature.puffs = creature.puffs or {}
 	if now >= (creature.nextPuffAt or 0) then
 		creature.nextPuffAt = now + C.GAS_INTERVAL
@@ -9364,7 +19024,7 @@ local function updateGasCloud(creature, now: number, dt: number)
 		end
 		fireEvent("gasPuff", creature.pos, { radius = C.GAS_RADIUS, lifetime = C.GAS_LIFETIME })
 	end
-	updateShambler(creature, now, dt)
+	Fn.updateShambler(creature, now, dt)
 end
 
 -- Lodestone Eel: dashes like the skipper, and every few seconds hauls the
@@ -9376,10 +19036,10 @@ end
 -- set on the server is unreliable at best. The existing event applies a proper
 -- VectorForce on the owning client, ramped and cancelled on respawn, which is
 -- both correct and already tested.
-local function updateMagnetize(creature, now: number, dt: number)
+function Fn.updateMagnetize(creature, now: number, dt: number)
 	if now >= (creature.nextPullAt or 0) then
 		creature.nextPullAt = now + C.MAG_INTERVAL
-		local root, _player, dist = nearestPlayerRoot(creature.pos)
+		local root, _player, dist = Fn.nearestPlayerRoot(creature.pos)
 		if root and dist <= C.MAG_RANGE then
 			fireEvent("pull", creature.pos, {
 				radius = C.MAG_RANGE,
@@ -9388,22 +19048,22 @@ local function updateMagnetize(creature, now: number, dt: number)
 			})
 		end
 	end
-	updateCharger(creature, now, dt)
+	Fn.updateCharger(creature, now, dt)
 end
 
 -- ============================================================ tentacle archetype (the finale)
--- A Kraken arm: PLANTED where spawnBossParts put it - it never walks, never
+-- A Kraken arm: PLANTED where Fn.spawnBossParts put it - it never walks, never
 -- takes knockback or launch (both multipliers 0), and never lingers
 -- (noLinger rides its spawn). It sways, faces the nearest player, and slams
 -- a telegraphed ring around itself on a cooldown; the counterplay is that
 -- killing the whole ring is what exposes the head. Reuses the boss slam's
 -- telegraph + slam events, so every client tell already exists.
-local function updateTentacle(creature, now: number, dt: number)
-	local root, _player, dist = nearestPlayerRoot(creature.pos)
+function Fn.updateTentacle(creature, now: number, dt: number)
+	local root, _player, dist = Fn.nearestPlayerRoot(creature.pos)
 	if root then
 		creature.yaw0 = approachAngle(creature.yaw0, yawToward(root.Position - creature.pos), math.rad(110) * dt)
 	end
-	-- A slam its owner ordered (commandArm): the boss's clock, the boss's
+	-- A slam its owner ordered (Fn.commandArm): the boss's clock, the boss's
 	-- reach, and no aggro or cooldown check - those gate an arm deciding for
 	-- itself, which this is not.
 	local windup = creature.slamWindup or C.TENTACLE_WINDUP
@@ -9416,7 +19076,7 @@ local function updateTentacle(creature, now: number, dt: number)
 		if u >= 1 then
 			creature.tentaclePhase = "recover"
 			creature.tentacleStart = now
-			-- BOSS_HEIGHT_TOLERANCE, like every other AoE in the boss kit,
+			-- K.BOSS_HEIGHT_TOLERANCE, like every other AoE in the boss kit,
 			-- and this was the only one in the family without it. An arm
 			-- stands at the waterline while the whole fight is conducted from
 			-- rock caps 4-6 studs up - plus the character's own hip height -
@@ -9430,7 +19090,7 @@ local function updateTentacle(creature, now: number, dt: number)
 				C.TENTACLE_DAMAGE_MAX,
 				creature,
 				0.5,
-				BOSS_HEIGHT_TOLERANCE
+				K.BOSS_HEIGHT_TOLERANCE
 			)
 			fireEvent("slam", creature.pos, { radius = C.TENTACLE_RADIUS })
 		end
@@ -9456,9 +19116,9 @@ local function updateTentacle(creature, now: number, dt: number)
 		creature.model:PivotTo(poseCFrame(creature, sway * 0.5, sway * math.rad(5), math.sin(now * 0.8) * math.rad(4)))
 		-- THE ORDER EXPIRES BEFORE IT IS READ. This is the only place an order
 		-- can ever be performed, so it is the only place it can be retired -
-		-- see SLAM_ORDER_GRACE. An arm busy when the beat came round arrives
+		-- see K.SLAM_ORDER_GRACE. An arm busy when the beat came round arrives
 		-- here late and finds nothing to obey, which is the intended outcome.
-		if creature.slamAt and now > creature.slamAt + SLAM_ORDER_GRACE then
+		if creature.slamAt and now > creature.slamAt + K.SLAM_ORDER_GRACE then
 			creature.slamAt = nil
 			creature.slamOrderWindup = nil
 			creature.slamOrderLift = nil
@@ -9507,7 +19167,7 @@ local B = Tuning.Bait
 -- The nearest thing a companion should bite: alive, targetable, and not
 -- another friendly. Bosses count - a hatchling will cheerfully attack a
 -- leviathan, it just won't achieve very much.
-local function nearestHostile(pos: Vector3, radius: number)
+function Fn.nearestHostile(pos: Vector3, radius: number)
 	local best, bestDist = nil, radius
 	for _, other in creatures do
 		if not other.dead and not other.friendly and not other.untargetable and other.pos then
@@ -9521,20 +19181,20 @@ local function nearestHostile(pos: Vector3, radius: number)
 	return best, bestDist
 end
 
-local function updateCompanion(creature, now: number, dt: number)
-	slideKnockback(creature, dt)
+function Fn.updateCompanion(creature, now: number, dt: number)
+	Fn.slideKnockback(creature, dt)
 	creature.lastBiteAt = creature.lastBiteAt or 0
 
 	-- It swims rather than flops: a quick steady bob, never the fish's
 	-- landed-and-dying thrash.
 	local bob = math.abs(math.sin(now * B.HATCHLING_HOP_RATE)) * B.HATCHLING_HOP
 
-	local target, dist = nearestHostile(creature.pos, B.HATCHLING_SEEK)
+	local target, dist = Fn.nearestHostile(creature.pos, B.HATCHLING_SEEK)
 	if target then
 		local delta = target.pos - creature.pos
 		creature.yaw0 = approachAngle(creature.yaw0, yawToward(delta), C.RUSH_TURN_RATE * dt)
 		if dist > B.HATCHLING_BITE_RANGE then
-			creature.pos = resolveHorizontal(creature, flatUnit(delta) * B.HATCHLING_SPEED * dt)
+			creature.pos = Fn.resolveHorizontal(creature, flatUnit(delta) * B.HATCHLING_SPEED * dt)
 		elseif now - creature.lastBiteAt >= B.HATCHLING_BITE_COOLDOWN then
 			creature.lastBiteAt = now
 			-- Credited to its owner, so its kills pay the player who brought it
@@ -9553,7 +19213,7 @@ local function updateCompanion(creature, now: number, dt: number)
 		local delta = (root :: BasePart).Position - creature.pos
 		creature.yaw0 = approachAngle(creature.yaw0, yawToward(delta), C.RUSH_TURN_RATE * dt)
 		if Vector3.new(delta.X, 0, delta.Z).Magnitude > B.HATCHLING_FOLLOW_RANGE then
-			creature.pos = resolveHorizontal(creature, flatUnit(delta) * B.HATCHLING_FOLLOW_SPEED * dt)
+			creature.pos = Fn.resolveHorizontal(creature, flatUnit(delta) * B.HATCHLING_FOLLOW_SPEED * dt)
 		end
 	end
 	creature.model:PivotTo(poseCFrame(creature, bob, 0, 0))
@@ -9580,19 +19240,19 @@ local function flyOrbit(creature, root: BasePart, dt: number)
 	local toward = math.clamp((r - C.FLY_ORBIT_RADIUS) * 0.15, -1, 1)
 	local dir = (tangent - radial * toward).Unit
 	creature.yaw0 = approachAngle(creature.yaw0, yawToward(dir), C.FLY_TURN_RATE * dt)
-	creature.pos = resolveHorizontal(creature, dir * C.FLY_SPEED * dt)
+	creature.pos = Fn.resolveHorizontal(creature, dir * C.FLY_SPEED * dt)
 end
 
 -- The flyer's whole machine, WITHOUT the knockback slide (the registry
 -- wrappers below own that), so the skythief can delegate its shared modes
 -- here without sliding twice in one frame.
-local function updateFlyerCore(creature, now: number, dt: number)
+function Fn.updateFlyerCore(creature, now: number, dt: number)
 	local model = creature.model
 	if not creature.mode then
 		creature.flyHeight = 0
 		setMode(creature, "climb", 0, now)
 	end
-	local root, _player, dist = nearestPlayerRoot(creature.pos)
+	local root, _player, dist = Fn.nearestPlayerRoot(creature.pos)
 
 	if creature.mode == "grounded" then
 		-- Downed after a dive: the melee window. It flops like a catch.
@@ -9645,14 +19305,14 @@ local function updateFlyerCore(creature, now: number, dt: number)
 			creature.yaw0 = yawToward(to)
 			local step = flatUnit(to) * math.min(creature.diveRun * dt, to.Magnitude)
 			if creature.flyHeight and creature.flyHeight > 2.5 then
-				-- Still airborne: the obstacle ray in resolveHorizontal runs at
+				-- Still airborne: the obstacle ray in Fn.resolveHorizontal runs at
 				-- the GROUND-clamped pos, so a rock the bird is flying OVER
 				-- would stop the dive short of the telegraphed ring (review
 				-- find, 2026-08-25). Clear of the ground, it only re-grounds.
 				creature.pos = groundedPos(creature.pos + step, creature.halfThickness)
 			else
 				-- The final approach happens at head height; scenery counts.
-				creature.pos = resolveHorizontal(creature, step)
+				creature.pos = Fn.resolveHorizontal(creature, step)
 			end
 		end
 		creature.flyHeight = creature.diveHeight * (1 - u)
@@ -9671,7 +19331,7 @@ local function updateFlyerCore(creature, now: number, dt: number)
 				0.7
 			)
 			fireEvent("splash", creature.pos, { radius = C.FLY_DIVE_RADIUS })
-			model:SetAttribute(ATTR_FLOPS, (model:GetAttribute(ATTR_FLOPS) or 0) + 1)
+			model:SetAttribute(ATTR.FLOPS, (model:GetAttribute(ATTR.FLOPS) or 0) + 1)
 			setMode(creature, "grounded", randomBetween(C.FLY_GROUNDED_MIN, C.FLY_GROUNDED_MAX), now)
 		end
 	else -- circle
@@ -9688,15 +19348,15 @@ local function updateFlyerCore(creature, now: number, dt: number)
 	end
 end
 
-local function updateFlyer(creature, now: number, dt: number)
-	slideKnockback(creature, dt)
-	updateFlyerCore(creature, now, dt)
+function Fn.updateFlyer(creature, now: number, dt: number)
+	Fn.slideKnockback(creature, dt)
+	Fn.updateFlyerCore(creature, now, dt)
 end
 
 -- The nearest resting PASSIVE catch worth stealing: alive, targetable, on the
 -- ground, nobody's companion, not already in someone's claws, and a flopper -
 -- the skythief takes your loot, not your fight.
-local function nearestStealable(pos: Vector3, radius: number)
+function Fn.nearestStealable(pos: Vector3, radius: number)
 	local best, bestDist = nil, radius
 	for _, other in creatures do
 		if
@@ -9724,8 +19384,8 @@ end
 -- SKYTHIEF_ESCAPE studs and bird and fish are both gone (the expiry path -
 -- nothing died, you just lost it). With nothing to steal it dive-bombs like
 -- a plain flyer.
-local function updateSkythief(creature, now: number, dt: number)
-	slideKnockback(creature, dt)
+function Fn.updateSkythief(creature, now: number, dt: number)
+	Fn.slideKnockback(creature, dt)
 	local model = creature.model
 
 	if creature.mode == "swoop" then
@@ -9737,7 +19397,7 @@ local function updateSkythief(creature, now: number, dt: number)
 		end
 		local to = Vector3.new(victim.pos.X - creature.pos.X, 0, victim.pos.Z - creature.pos.Z)
 		creature.yaw0 = approachAngle(creature.yaw0, yawToward(to), C.FLY_TURN_RATE * dt)
-		creature.pos = resolveHorizontal(creature, flatUnit(to) * C.SKYTHIEF_SWOOP_SPEED * dt)
+		creature.pos = Fn.resolveHorizontal(creature, flatUnit(to) * C.SKYTHIEF_SWOOP_SPEED * dt)
 		creature.flyHeight = math.max(1.2, (creature.flyHeight or C.FLY_HEIGHT) - C.SKYTHIEF_SWOOP_SPEED * 0.6 * dt)
 		model:PivotTo(poseCFrame(creature, creature.flyHeight, 0, math.rad(30)))
 		if to.Magnitude <= C.SKYTHIEF_GRAB_RADIUS and creature.flyHeight <= 3 then
@@ -9763,14 +19423,14 @@ local function updateSkythief(creature, now: number, dt: number)
 			return
 		end
 		-- Out to sea: straight away from the nearest player, climbing.
-		local root = nearestPlayerRoot(creature.pos)
+		local root = Fn.nearestPlayerRoot(creature.pos)
 		local away = if root
 			then flatUnit(creature.pos - root.Position)
 			else Vector3.new(math.cos(creature.yaw0), 0, -math.sin(creature.yaw0))
 		creature.yaw0 = approachAngle(creature.yaw0, yawToward(away), C.FLY_TURN_RATE * dt)
 		local step = away * C.SKYTHIEF_FLEE_SPEED * dt
 		local before = creature.pos
-		creature.pos = resolveHorizontal(creature, step)
+		creature.pos = Fn.resolveHorizontal(creature, step)
 		-- Escape is measured by ground actually covered, never by intent: a
 		-- bird pinned against a cliff or a bounds clamp must not "escape" in
 		-- place and vaporize the cargo (review find, 2026-08-25).
@@ -9785,16 +19445,16 @@ local function updateSkythief(creature, now: number, dt: number)
 	elseif creature.mode == "circle" then
 		-- Before each dive decision, look for something better: your catch.
 		if now >= creature.modeUntil then
-			local victim = nearestStealable(creature.pos, C.SKYTHIEF_SEEK)
+			local victim = Fn.nearestStealable(creature.pos, C.SKYTHIEF_SEEK)
 			if victim then
 				creature.stealTarget = victim
 				setMode(creature, "swoop", 0, now)
 				return
 			end
 		end
-		updateFlyerCore(creature, now, dt)
+		Fn.updateFlyerCore(creature, now, dt)
 	else
-		updateFlyerCore(creature, now, dt)
+		Fn.updateFlyerCore(creature, now, dt)
 	end
 end
 
@@ -9802,42 +19462,63 @@ ARCHETYPE_UPDATERS = {
 	-- Rimefang publishes its body as pose attributes, and has to do it AFTER
 	-- the shared boss frame whatever branch that frame took - rising, an
 	-- attack, the beached window, prowling. Every other boss is byte-identical
-	-- to before: rimefangDrive returns on its first line unless the row is
+	-- to before: Fn.rimefangDrive returns on its first line unless the row is
 	-- Rimefang's.
 	boss = function(creature, now: number, dt: number)
-		updateBoss(creature, now, dt)
-		rimefangDrive(creature, now, dt)
+		Fn.updateBoss(creature, now, dt)
+		Fn.rimefangDrive(creature, now, dt)
 	end,
-	companion = updateCompanion,
-	flyer = updateFlyer,
-	skythief = updateSkythief,
-	rusher = updateRusher,
-	shambler = updateShambler,
-	charger = updateCharger,
-	spitter = updateSpitter,
-	bloater = updateBloater,
-	drifter = updateDrifter,
-	burrower = updateBurrower,
-	mimic = updateMimic,
-	thief = updateThief,
-	pulser = updatePulser,
+	companion = Fn.updateCompanion,
+	flyer = Fn.updateFlyer,
+	skythief = Fn.updateSkythief,
+	rusher = Fn.updateRusher,
+	shambler = Fn.updateShambler,
+	charger = Fn.updateCharger,
+	spitter = Fn.updateSpitter,
+	bloater = Fn.updateBloater,
+	drifter = Fn.updateDrifter,
+	burrower = Fn.updateBurrower,
+	mimic = Fn.updateMimic,
+	thief = Fn.updateThief,
+	pulser = Fn.updatePulser,
 	-- Volcano. `splitter` and `thornback` have no updater of their own: an ooze
 	-- rushes and divides in kill(), a shardback rushes and reflects in
 	-- hitModifiers, so both keep the rusher loop their rows already name.
-	crust = updateCrust,
-	reborn = updateReborn,
-	gascloud = updateGasCloud,
-	magnetize = updateMagnetize,
-	splitter = updateRusher,
-	thornback = updateRusher,
+	crust = Fn.updateCrust,
+	reborn = Fn.updateReborn,
+	gascloud = Fn.updateGasCloud,
+	magnetize = Fn.updateMagnetize,
+	splitter = Fn.updateRusher,
+	thornback = Fn.updateRusher,
 	-- The finale: a Kraken arm, planted by the boss's parts ring.
-	tentacle = updateTentacle,
+	tentacle = Fn.updateTentacle,
 	-- A Lantern Stalk, planted by Noctyss's. It has no updater of its own on
 	-- purpose: the boss's pose driver puts every stalk where it belongs
-	-- (updateChoir) and her attack book is the only thing that makes one do
+	-- (Fn.updateChoir) and her attack book is the only thing that makes one do
 	-- anything. Without this row the generic flop would send a 35-stud
 	-- lantern hopping across the arena floor.
 	choirstalk = function() end,
+	-- The Kraken's two arms and its six gullet polyps, and both are no-ops for
+	-- the `choirstalk` reason exactly: the boss's own fight tick
+	-- (Fn.updateKrakenFight) puts every one of them where it belongs, and its
+	-- attack book is the only thing that makes one do anything. Without these
+	-- rows the generic flop would send a limb the size of a building hopping
+	-- across the deck - and, worse, would move the hitbox out from under the
+	-- chain the client is drawing to it.
+	--
+	-- NOT `tentacle`, which is the other thing they could plausibly have been:
+	-- that archetype is an autonomous slam machine with its own aggro range and
+	-- its own cooldown, and an arm that also attacked on its own initiative
+	-- would put untelegraphed damage on a deck whose entire counterplay is
+	-- reading telegraphs.
+	krakenarm = function() end,
+	krakenpolyp = function() end,
+	-- The Pyrelisk's two fallen arms, and this one is NOT a no-op - it is the
+	-- only pressure in act 2. See `Fn.updatePyreliskArm`: an arm bleeds a lava
+	-- pool onto the rim path near itself on a clock, so the ground the party
+	-- has to stand on to hit it shrinks while they do. 120 seconds with a
+	-- silent boss and inert arms is a damage check, not an act.
+	pyreliskarm = Fn.updatePyreliskArm,
 }
 
 -- ============================================================ update
@@ -9871,7 +19552,7 @@ local function update(dt: number)
 		-- A model destroyed from OUTSIDE this service (BossService's abandon
 		-- reaper does exactly this) leaves the struct behind, and nothing
 		-- else ever collects it: bosses are exempt from the linger sweep and
-		-- updateBoss refreshes lastFoughtAt every frame, so it would run
+		-- Fn.updateBoss refreshes lastFoughtAt every frame, so it would run
 		-- forever on a parentless model - still picking attacks, still
 		-- calling PlayerService.damage on anyone who came back, and still
 		-- answering inRange/raycastNearest, while the island happily summons
@@ -9887,7 +19568,7 @@ local function update(dt: number)
 		-- Timers that must run whatever state the creature is in - even
 		-- mid-juggle or still flying from the bobber.
 		if creature.spit and now >= creature.spit.landAt then
-			landSpit(creature) -- the cod's glob lands on its own clock
+			Fn.landSpit(creature) -- the cod's glob lands on its own clock
 		end
 		if creature.globs then
 			-- A boss's volley / spines: each comes down on its own clock.
@@ -9899,13 +19580,13 @@ local function update(dt: number)
 					-- every glob that does not ask for one - so this is the
 					-- default 6-stud AOE gate, to the stud, for everything
 					-- that has ever thrown one. A glob lands on GROUND
-					-- (scatterAround runs its point through groundedPos), and
+					-- (Fn.scatterAround runs its point through groundedPos), and
 					-- when the scatter falls off a rock cap into open water
 					-- that ground is the waterline while the target is still
 					-- up on the cap: 7-9 studs, which the default gate throws
 					-- away. The rest of the boss kit already answers this with
-					-- BOSS_HEIGHT_TOLERANCE; a glob simply had no way to say
-					-- so. See ATTACK_HANDLERS.undertow, the one caller today.
+					-- K.BOSS_HEIGHT_TOLERANCE; a glob simply had no way to say
+					-- so. See K.ATTACK_HANDLERS.undertow, the one caller today.
 					damagePlayersInRadius(glob.landing, glob.radius, glob.min, glob.max, creature, 0.5, glob.tolerance)
 					fireEvent(glob.event, glob.landing, { radius = glob.radius })
 					if glob.pool then
@@ -9927,7 +19608,7 @@ local function update(dt: number)
 				if now >= pool.expiresAt then
 					table.remove(creature.pools, idx)
 				elseif now >= pool.nextTickAt then
-					pool.nextTickAt = now + BOSS_POOL_TICK
+					pool.nextTickAt = now + K.BOSS_POOL_TICK
 					if pool.min then
 						damagePlayersInRadius(
 							pool.pos,
@@ -9936,14 +19617,14 @@ local function update(dt: number)
 							pool.max,
 							creature,
 							0.4,
-							BOSS_HEIGHT_TOLERANCE
+							K.BOSS_HEIGHT_TOLERANCE
 						)
 					end
 					if pool.slow then
 						fireEvent("chill", pool.pos, {
 							radius = pool.radius,
 							mult = pool.slow,
-							duration = BOSS_POOL_TICK * 1.7,
+							duration = K.BOSS_POOL_TICK * 1.7,
 							skin = pool.skin,
 						})
 					end
@@ -9970,9 +19651,9 @@ local function update(dt: number)
 				if now >= s.hitAt then
 					table.remove(creature.strikes, idx)
 					if s.shape == "annulus" then
-						damagePlayersInAnnulus(s.pos, s.inner, s.outer, s.min, s.max, creature)
+						Fn.damagePlayersInAnnulus(s.pos, s.inner, s.outer, s.min, s.max, creature)
 					elseif s.min then
-						damagePlayersInRadius(s.pos, s.radius, s.min, s.max, creature, 0.5, BOSS_HEIGHT_TOLERANCE)
+						damagePlayersInRadius(s.pos, s.radius, s.min, s.max, creature, 0.5, K.BOSS_HEIGHT_TOLERANCE)
 					end
 					fireEvent(s.hitEvent or "strikeHit", s.pos, {
 						radius = s.outer or s.radius,
@@ -10005,7 +19686,7 @@ local function update(dt: number)
 			-- their movement to the clients at a low cadence.
 			for idx = #creature.lures, 1, -1 do
 				local lure = creature.lures[idx]
-				local root, _, dist = nearestPlayerRoot(lure.pos)
+				local root, _, dist = Fn.nearestPlayerRoot(lure.pos)
 				if root and lure.drift then
 					lure.pos += flatUnit(root.Position - lure.pos) * lure.drift * dt
 					if now >= lure.nextMoveAt then
@@ -10022,7 +19703,7 @@ local function update(dt: number)
 						lure.max,
 						creature,
 						0.5,
-						BOSS_HEIGHT_TOLERANCE
+						K.BOSS_HEIGHT_TOLERANCE
 					)
 					fireEvent("decoyPop", lure.pos, { radius = lure.blast, skin = lure.skin })
 				elseif now >= lure.expiresAt then
@@ -10032,6 +19713,26 @@ local function update(dt: number)
 			end
 			if #creature.lures == 0 then
 				creature.lures = nil
+			end
+		end
+		-- Admiral Wrack's two mechanics that OUTLIVE the attack that made them:
+		-- a powder runner burns an eight-second fuse and a boarding party
+		-- marches for eleven, both longer than any windup->recover the phase
+		-- machine holds open, so neither can be stepped from its own handler.
+		-- Same shape as the three timed systems above it - a list on the record,
+		-- walked here, dropped when it empties.
+		if creature.wrackKit then
+			Fn.wrackKitStep(creature, now, dt)
+		end
+		-- ...and the ACT CLOCK, which is not a kit and runs whether or not one
+		-- exists: it is what turns "four cannons died" and "the hull is at 40%"
+		-- into the single dial the phase table is cut against, and it owns act
+		-- two's earned window. Guarded on `succeededBy` rather than on a boss
+		-- id, so it is the multi-act SHAPE that opts a fight in, not a name.
+		if creature.row.boss and not creature.dead then
+			local actDef = Bosses.items[creature.row.boss]
+			if actDef and actDef.succeededBy then
+				Fn.wrackActStep(creature, actDef, now)
 			end
 		end
 		-- Brine Rot: each stack burns on its own clock and keeps burning while
@@ -10102,7 +19803,7 @@ local function update(dt: number)
 			--
 			-- RING OWNERS AND THIS EXIT (checked 2026-08-30): no parts owner
 			-- can reach it today. `partsAlive` is only ever set by
-			-- spawnBossParts, which only runs behind bossDef(), which needs
+			-- Fn.spawnBossParts, which only runs behind bossDef(), which needs
 			-- `row.boss` - so every owner is a boss, and the LINGER arm above
 			-- excludes bosses. But that is only half the branch: the
 			-- `expiresAt` arm has NO boss test, and it fires for anything
@@ -10134,7 +19835,7 @@ local function update(dt: number)
 			if carrier.dead or not carrier.model.Parent then
 				creature.carriedBy = nil
 				creature.pos = groundedPos(creature.pos, creature.halfThickness)
-				creature.model:SetAttribute(ATTR_FLOPS, (creature.model:GetAttribute(ATTR_FLOPS) or 0) + 1)
+				creature.model:SetAttribute(ATTR.FLOPS, (creature.model:GetAttribute(ATTR.FLOPS) or 0) + 1)
 			else
 				creature.lastFoughtAt = now
 				creature.pos = carrier.pos
@@ -10144,7 +19845,7 @@ local function update(dt: number)
 		elseif isAirborne(creature) then
 			-- Juggled: hanging in the air from a hit. Suspends whatever the
 			-- archetype would be doing until it lands.
-			updateAirborne(creature, dt)
+			Fn.updateAirborne(creature, dt)
 		elseif creature.stunnedUntil and now < creature.stunnedUntil then
 			-- Dazed by a stun bait: the archetype loop is suspended, so even a
 			-- hostile just flops there and takes free hits. Same pre-emption
@@ -10152,11 +19853,11 @@ local function update(dt: number)
 			-- doesn't feel like a rock.
 			if not creature.stunShown then
 				creature.stunShown = true
-				creature.model:SetAttribute(ATTR_STUNNED, true)
+				creature.model:SetAttribute(ATTR.STUNNED, true)
 				-- Same interrupt rule as the juggle: the stun eats the move.
 				creature.attack = nil
 			end
-			slideKnockback(creature, dt)
+			Fn.slideKnockback(creature, dt)
 			local hop, yaw, pitch = flop(creature, now)
 			creature.model:PivotTo(poseCFrame(creature, hop, yaw, pitch))
 		else
@@ -10165,11 +19866,11 @@ local function update(dt: number)
 				-- drawing the daze.
 				creature.stunShown = nil
 				creature.stunnedUntil = nil
-				creature.model:SetAttribute(ATTR_STUNNED, false)
+				creature.model:SetAttribute(ATTR.STUNNED, false)
 			end
 			-- A row with `moves` fights on the kit engine; the archetype
 			-- string then only names its between-moves locomotion.
-			local updater = if creature.row.moves then updateKitted else ARCHETYPE_UPDATERS[creature.row.archetype]
+			local updater = if creature.row.moves then Fn.updateKitted else ARCHETYPE_UPDATERS[creature.row.archetype]
 			if updater then
 				-- A hostile: its own state machine owns the knockback slide,
 				-- flop and pivot for this frame.
@@ -10179,7 +19880,7 @@ local function update(dt: number)
 				-- place. The pose is heading + swish about world up, then a
 				-- little nose pitch, then the flat-lay orientation - no roll,
 				-- so it can't flip over.
-				slideKnockback(creature, dt)
+				Fn.slideKnockback(creature, dt)
 				local hop, yaw, pitch = flop(creature, now)
 				creature.model:PivotTo(poseCFrame(creature, hop, yaw, pitch))
 			end

@@ -16,6 +16,7 @@ local Weapons = require(Shared.Data.Weapons)
 local Remotes = require(Shared.Net.Remotes)
 
 local Theme = require(script.Parent.Parent.UI.Theme)
+local Sfx = require(script.Parent.Parent.Modules.Sfx)
 
 local player = Players.LocalPlayer
 
@@ -37,6 +38,8 @@ local function show(itemId)
 	if type(itemId) ~= "string" then
 		return
 	end
+	Sfx.play("itemDrop")
+
 	local text = string.format("You found: %s!", nameFor(itemId))
 	label.Text = text
 	label.Visible = true

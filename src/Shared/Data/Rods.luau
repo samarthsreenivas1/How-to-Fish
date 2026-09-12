@@ -1689,12 +1689,17 @@ Rods.items.ribboncutter_rod = {
 		},
 		neon = { "Rod_Trim" },
 	},
-	stats = { luck = 1.90, power = 1.45, control = 1.35 },
-	reel = { clicksRequired = 3, barSpeed = 0.63, redWidth = 0.055, greenWidth = 0.17 },
+	-- BAND SWAP 2026-09-12 (quest-reach audit): Old Ribbonjaw moved from the
+	-- ice band to the WRECK band, so its rod moved with it - L20/2400 coins on
+	-- ice materials became L41/18000 on the bay's, and the stat/reel line took
+	-- the Bellringer's old wreck-band numbers. Name, lore, id and the
+	-- Nothing Wasted perk are unchanged.
+	stats = { luck = 2.40, power = 1.60, control = 1.55 },
+	reel = { clicksRequired = 3, barSpeed = 0.61, redWidth = 0.05, greenWidth = 0.165 },
 	recipe = {
-		requiresLevel = 20,
-		coins = 2400,
-		materials = { whetstone_heart = 1, everice = 6, rime_pelt = 10 },
+		requiresLevel = 41,
+		coins = 18000,
+		materials = { whetstone_heart = 1, ghost_plank = 12, tarnished_doubloon = 12 },
 	},
 	perk = {
 		id = "nothing_wasted",
@@ -1770,12 +1775,17 @@ Rods.items.bellringer_rod = {
 		},
 		neon = { "Rod_Trim", "Rod_BobberTop" },
 	},
-	stats = { luck = 2.40, power = 1.60, control = 1.55 },
-	reel = { clicksRequired = 3, barSpeed = 0.61, redWidth = 0.05, greenWidth = 0.165 },
+	-- BAND SWAP 2026-09-12 (quest-reach audit): Tollmaw moved from the wreck
+	-- band to the ICE band, so its rod moved with it - L41/18000 coins on the
+	-- bay's materials became L20/2400 on Frostmaw's, and the stat/reel line
+	-- took the Ribboncutter's old ice-band numbers. Name, lore, id and The Toll
+	-- perk are unchanged.
+	stats = { luck = 1.90, power = 1.45, control = 1.35 },
+	reel = { clicksRequired = 3, barSpeed = 0.63, redWidth = 0.055, greenWidth = 0.17 },
 	recipe = {
-		requiresLevel = 41,
-		coins = 18000,
-		materials = { bell_clapper = 1, ghost_plank = 12, tarnished_doubloon = 12 },
+		requiresLevel = 20,
+		coins = 2400,
+		materials = { bell_clapper = 1, everice = 6, rime_pelt = 10 },
 	},
 	perk = {
 		id = "the_toll",
@@ -1802,7 +1812,7 @@ Rods.order = {
 	"silverscale_rod",
 	"aurora_rod",
 	"frostheart_rod",
-	"ribboncutter_rod", -- hermit saga: The Saltmother's Price
+	"bellringer_rod", -- hermit saga: The Drowned Bell (ice band since 2026-09-12)
 	"cinderline_rod",
 	"obsidian_rod",
 	"cinderglass_rod",
@@ -1819,7 +1829,7 @@ Rods.order = {
 	"doubloon_rod",
 	"sailcloth_rod",
 	"wraithheart_rod",
-	"bellringer_rod", -- hermit saga: The Drowned Bell
+	"ribboncutter_rod", -- hermit saga: The Saltmother's Price (wreck band since 2026-09-12)
 	"squallcaster_rod",
 	"riptide_rod",
 	"thunderhead_rod",

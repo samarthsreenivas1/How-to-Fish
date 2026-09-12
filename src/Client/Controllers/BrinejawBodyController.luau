@@ -52,9 +52,14 @@ local OVERLAP = 1.35
 -- Every Nth vertebra is the finned variant, for silhouette.
 local FIN_EVERY = 4
 -- The head sits this far up-body of the chain's start (the mesh is centred
--- on its neck joint and reaches forward from there).
-local HEAD_LEAD = 8.9
-local HEAD_SCALE = 1.35
+-- on its neck joint and reaches forward from there). BOTH OF THESE LIVE IN
+-- BrinejawPath NOW and are read from it: a pose that lays the skull on the
+-- sand has to do arithmetic with the lead and the scale (the stagger's head
+-- was drawn 10.11 studs under the beach because the pose math could not see
+-- them), and a drawing constant the shared math cannot read is exactly the
+-- "one value, two homes" defect that file's header is about.
+local HEAD_LEAD = BrinejawPath.HEAD_LEAD
+local HEAD_SCALE = BrinejawPath.HEAD_SCALE
 local TAIL_SCALE = 0.55
 local TAPER = 0.62
 
@@ -67,7 +72,67 @@ local TAPER = 0.62
 -- entirely outside the arm that KILLED you past r=41. At 55 the lag is 2.4
 -- degrees / 2.7 studs, inside the lane at every radius. The others chase
 -- steps rather than ramps, so their rates are about how soft a move looks.
-local EASE = { unwind = 6.0, sweepAngle = 55.0, sweepHeight = 7.0, slump = 5.0, faceAngle = 5.0, coil = 1.6 }
+--
+-- AND `unwind` IS ASYMMETRIC, which is the second half of the whip's
+-- smoothness fix. Peeling OFF the tower is the telegraph and has to be crisp,
+-- so it keeps 6.0. Winding BACK on is a 407-degree unwind of a tail that has
+-- wound itself round the tower during the sweep, and the server pulls Unwind
+-- from 1 to 0 in 0.55 s (`dt * 1.8`): chased at 6.0 the drawn tip crossed
+-- 16.32 studs in a single frame, which is the "not smooth at all" the user
+-- reported, still there after the branch latch below removed the 78.20 one.
+-- At 0.9 the same springback peaks at 5.82 studs/frame and takes about 3.3 s
+-- to settle - inside the whip's own 5 s cooldown, and it reads as a heavy
+-- tail being dragged back rather than as a snap.
+--
+-- IT IS SAFE TO LAG. Nothing lethal reads Unwind: `sweepHits` is built from
+-- SweepAngle, SweepHeight and the reach, so this rate moves the drawn tail
+-- and nothing else. (Measured over 24 start bearings x both directions x a
+-- full whip at 60 Hz; the honest fix for the rest of it is the server's own
+-- 1.8/s retraction, which is not this file's to change.)
+--
+-- AND `entry` IS THE CHEAPEST ROW IN THE TABLE TO GET WRONG, so it is stated:
+-- 3.0/s is a FEEL number and it is allowed to be. `Entry` is written only by a
+-- cutscene onto a client-only stand-in, nothing lethal reads it (the fight
+-- never sets it at all - BrinejawPath's contract header), and a serpent
+-- arriving from the sea wants weight rather than crispness. At 3.0/s a 0.15
+-- step is 99% closed in 1.5 s.
+local EASE = {
+	unwind = 6.0,
+	unwindBack = 0.9,
+	sweepAngle = 55.0,
+	sweepHeight = 7.0,
+	slump = 5.0,
+	faceAngle = 5.0,
+	coil = 1.6,
+	entry = 3.0,
+}
+
+-- The `Entry` channel's two thresholds and the splash gate's one.
+--
+-- HOME is where the DRAWN body is close enough to the rest pose that the
+-- difference is not worth a frame: 0.002 of the track is 0.6 studs on a
+-- 288-stud body. Collapsing `state.entry` to nil there is what makes the
+-- handoff to the real rig a property of the code rather than a promise in a
+-- comment - see `drawBody`.
+--
+-- STEP_MAX is the splash hook's honesty guard. A skip (`kit.fastForward`)
+-- moves the timeline, not the ease, so the catch-up walks `Entry` across a
+-- whole arrival in a handful of frames and every one of the hundred links
+-- crosses the water plane at once. One frame that advances `Entry` by more
+-- than this is therefore re-baselined SILENTLY: a skip fires no splashes,
+-- which is exactly the kit's own rule for a one-shot crossed by a skip (fired
+-- muted). The cost is that a hitch during a genuine arrival loses a splash or
+-- two, which is the right way round.
+--
+-- CUT is where an `Entry` step stops being a movement and becomes an edit. No
+-- arrival moves the channel by anything like this in a frame (the longest
+-- track in BrinejawIntro covers 0.52 in five seconds, 0.0017 a frame), so a
+-- jump this big is a SKIP catching up or a late joiner adopting mid-run - and
+-- easing across it would fly the serpent in from the sea after the cinematic
+-- had already ended, which is the "no serpent left in the sea" requirement
+-- inverted. It is taken as a cut instead, and the splash guard above means the
+-- cut is silent.
+local ENTRY = { HOME = 0.998, ATTR_HOME = 0.995, STEP_MAX = 0.02, CUT = 0.25 }
 
 local HEAD_PIECES = { "Head", "HeadBone", "Eyes", "Frill", "Jaw", "JawBone" }
 -- The two pieces that hinge, and where. boss_gen prints the pivot in its
@@ -103,6 +168,14 @@ local FALLBACK_SIZE = {
 
 -- model -> the live body { folder, chain, state, target, segments, head, rattle }
 local bodies = {}
+
+-- model -> a splash hook installed BEFORE the adopt. `kit.actor` writes `Pose`
+-- last and the adopt rides `ChildAdded`/`AttributeChanged`, both of which are
+-- DEFERRED signals - so a cutscene that calls `setEntrySplash` on the line
+-- after `kit.actor` would be handing the hook to a model this file has not met
+-- yet. Dropping it there would be silent and would present as "the splashes
+-- don't fire", so it is parked here and claimed by `adoptBoss`.
+local pendingSplash = {}
 
 -- ---------------------------------------------------------------- pieces
 
@@ -200,6 +273,19 @@ local function readTarget(model: Model, target)
 	target.attackU = model:GetAttribute("AttackU") or 0
 	target.aimX = model:GetAttribute("AimX") or 0
 	target.aimZ = model:GetAttribute("AimZ") or 0
+	-- THE CUTSCENE-ONLY ELEVENTH, AND IT MUST BE NAMED HERE. This function
+	-- forwards nothing it does not spell out - there is no loop over the
+	-- model's attributes anywhere in this file - so an attribute the path
+	-- module reads and this function does not name is an attribute that is
+	-- written, replicated, and then silently dropped one frame before it would
+	-- have mattered. That is this codebase's dominant defect shape, and
+	-- `Entry` would have presented as "the cutscene's Entry track does
+	-- nothing", not as a missing read.
+	--
+	-- `or` IS DELIBERATELY ABSENT: nil is a MEANING here ("use the fight
+	-- pose"), not a missing value, and `or 0` would put every fight's serpent
+	-- 288 studs out at sea under the water.
+	target.entry = model:GetAttribute("Entry")
 	return target
 end
 
@@ -370,9 +456,47 @@ local function destroyBody(model: Model)
 		return
 	end
 	bodies[model] = nil
+	pendingSplash[model] = nil
 	if body.folder then
 		body.folder:Destroy()
 	end
+end
+
+-- ---------------------------------------------------------------- the splash hook
+--
+-- WHO SPLASHES WHEN A LINK LEAVES THE SEA. Only this file knows: the drawn
+-- body is 100 links laid by arc length along a curve whose length breathes,
+-- so where link 37 is at `Entry = 0.31` is a fact about THIS frame's chain and
+-- about nothing else. A cutscene that computed the crossing times from its own
+-- copy of the schedule would be remembering a value it could read - and it
+-- would be wrong the first time anyone retuned a knot or the ease.
+--
+-- So the controller detects the crossing and calls a hook. `fn(index,
+-- position, entry)` is called ONCE per link per arrival, on the first frame
+-- that link is above the water plane, with the link's own world position.
+-- The plane is `state.center.Y + BrinejawPath.ENTRY_WATER_Y` - the body's own
+-- origin plus the path module's own constant, not a second copy of
+-- World.WATER_Y.
+--
+-- MUTING IS THE CALLER'S, AND IT IS FREE. The hook a cutscene installs calls
+-- `kit.vfx.splash`, and `kit.vfx` is a muted proxy for the whole of a
+-- fast-forward (CutsceneKit's header), so a skip that crosses the arrival
+-- fires nothing audible or visible by construction. The frame-step guard in
+-- `drawBody` (ENTRY.STEP_MAX) is the second half of that, for the catch-up
+-- frames a skip leaves behind it.
+--
+-- The hook is keyed on the MODEL, cleared with the body, and is never set on a
+-- real fight rig - the fight never writes `Entry`, so the detection loop below
+-- never runs there at all.
+function BrinejawBodyController.setEntrySplash(model: Model, fn)
+	local body = bodies[model]
+	if not body then
+		pendingSplash[model] = fn
+		return true
+	end
+	body.entrySplash = fn
+	table.clear(body.aboveWater)
+	return true
 end
 
 local function adoptBoss(model: Model)
@@ -398,6 +522,14 @@ local function adoptBoss(model: Model)
 		end),
 		segments = {},
 		head = {},
+		-- The `Entry` channel's per-link water-plane memory: index -> was this
+		-- link above the plane last frame. Empty means "no arrival in
+		-- progress", and the FIRST frame of one seeds it without firing, so a
+		-- stand-in born mid-arrival (a late joiner) does not splash a hundred
+		-- times on its first frame.
+		aboveWater = {},
+		entrySplash = nil,
+		entryLast = nil,
 		-- The attribute-driven telegraphs' pooled parts, built on first use.
 		tells = {},
 		nextDustAt = 0,
@@ -412,6 +544,9 @@ local function adoptBoss(model: Model)
 	end
 	body.rattle = makePiece("Rattle", folder)
 
+	body.entrySplash = pendingSplash[model]
+	pendingSplash[model] = nil
+
 	bodies[model] = body
 	model.AncestryChanged:Connect(function(_, parent)
 		if parent == nil then
@@ -425,12 +560,55 @@ end
 local function drawBody(model: Model, body, dt: number, now: number)
 	local state, target = body.state, readTarget(model, body.target)
 	state.coil = approach(state.coil, target.coil, EASE.coil, dt)
-	state.unwind = approach(state.unwind, target.unwind, EASE.unwind, dt)
+	state.unwind =
+		approach(state.unwind, target.unwind, if target.unwind > state.unwind then EASE.unwind else EASE.unwindBack, dt)
 	state.sweepAngle = approachAngle(state.sweepAngle, target.sweepAngle, EASE.sweepAngle, dt)
 	state.sweepHeight = approach(state.sweepHeight, target.sweepHeight, EASE.sweepHeight, dt)
 	state.slump = approach(state.slump, target.slump, EASE.slump, dt)
 	state.faceAngle = approachAngle(state.faceAngle, target.faceAngle, EASE.faceAngle, dt)
 	state.time = now
+
+	-- THE ENTRY CHANNEL, AND THE HANDOFF IS ENFORCED HERE RATHER THAN TRUSTED.
+	--
+	-- Three rules, and each one is the fix for a specific way this could have
+	-- gone wrong:
+	--
+	--  1. The attribute ABSENT means the fight pose, so `nil` is copied
+	--     straight through - never defaulted to 0, which would put every
+	--     serpent in the game out at sea (readTarget's note).
+	--  2. An attribute at or past ATTR_HOME MEANS the rest pose, and it is
+	--     eased to rather than cut to: a script that writes `Entry = 1` at the
+	--     end of its arrival is saying "you are home", not "teleport". Cutting
+	--     to nil on the attribute alone would snap the drawn body by however
+	--     far the ease still had to go - 2.7 studs of track at 0.99, measured.
+	--  3. The DRAWN value crossing HOME collapses to nil, and that is the
+	--     handoff: from that frame the body is computed by exactly the code
+	--     path the real rig uses, so there is no seam left for the swap to
+	--     land on. A cutscene that forgets to remove the attribute therefore
+	--     still ends in the fight pose.
+	local wantedEntry = target.entry
+	if wantedEntry ~= nil and wantedEntry >= ENTRY.ATTR_HOME then
+		wantedEntry = 1.0
+	end
+	if wantedEntry == nil then
+		state.entry = nil
+	else
+		-- A skip or a mid-run adopt is a CUT, not a movement: land on it and
+		-- ease from there.
+		if state.entry and math.abs(wantedEntry - state.entry) > ENTRY.CUT then
+			state.entry = wantedEntry
+		end
+		local eased = approach(state.entry or wantedEntry, wantedEntry, EASE.entry, dt)
+		state.entry = if eased >= ENTRY.HOME then nil else eased
+	end
+	-- The plane, and the frame step the splash hook is allowed to believe.
+	-- `entryLast` is nil whenever no arrival is in progress, which is also what
+	-- re-baselines the per-link memory after one ends.
+	local entryStep = if state.entry and body.entryLast then math.abs(state.entry - body.entryLast) else math.huge
+	body.entryLast = state.entry
+	if state.entry == nil and next(body.aboveWater) ~= nil then
+		table.clear(body.aboveWater)
+	end
 
 	-- THE ATTACK CHANNEL IS COPIED RAW, and that is a decision, not an
 	-- oversight on the four values that got no EASE row.
@@ -469,6 +647,17 @@ local function drawBody(model: Model, body, dt: number, now: number)
 	end
 	body.lastSweepAngle = state.sweepAngle
 
+	-- WHICH WAY ROUND THE TAIL IS WOUND, held for the whole sweep. The path
+	-- module picked this by rounding to the nearest turn on every call, and a
+	-- round is a step: measured on a plain whip the branch fell from 5 to 4 as
+	-- the arm crossed the coil's antipode and the drawn body moved 20.75 studs
+	-- in one frame (78.20 at the worst start bearing of 24). Latching it while
+	-- any of the tail is off the tower makes the tail WIND with the arm and
+	-- unwind afterwards, which is both continuous and what a tail on a tower
+	-- does. Purely a drawing concern - no hit test reads the branch - which is
+	-- why this call lives here and the server needs no counterpart.
+	BrinejawPath.stepSweepBranch(state)
+
 	drawTells(body, state, now)
 
 	local chain = body.chain
@@ -484,7 +673,30 @@ local function drawBody(model: Model, body, dt: number, now: number)
 	-- constant count gives every vertebra a stable identity and a stable
 	-- girth for the whole fight; only its LENGTH breathes, which is what a
 	-- real spine does anyway.
+	-- The water-plane crossing test, hoisted out of the loop: three values, and
+	-- the loop below reads them rather than asking per link. `watch` is false
+	-- for every frame of every fight, because the fight never writes `Entry`.
+	local splash = body.entrySplash
+	local watchWater = splash ~= nil and state.entry ~= nil
+	local waterY = (state.center or Vector3.zero).Y + BrinejawPath.ENTRY_WATER_Y
+	local splashOk = entryStep <= ENTRY.STEP_MAX
+	local aboveWater = body.aboveWater
+
 	chain:eachN(BODY_LINKS, function(index, cframe, u, spacing)
+		if watchWater then
+			local was = aboveWater[index]
+			local above = cframe.Position.Y > waterY
+			aboveWater[index] = above
+			-- `was == false` and not `not was`: nil is "this link has not been
+			-- seen yet", and firing on it would splash the whole body on the
+			-- first frame of an arrival that starts part-way through.
+			if above and was == false and splashOk then
+				local ok, err = pcall(splash, index, cframe.Position, state.entry)
+				if not ok then
+					warn("[BrinejawBody] entry splash hook failed: " .. tostring(err))
+				end
+			end
+		end
 		local segment = body.segments[index]
 		if not segment then
 			segment = makePiece(if index % FIN_EVERY == 2 then "SegFin" else "Seg", body.folder)

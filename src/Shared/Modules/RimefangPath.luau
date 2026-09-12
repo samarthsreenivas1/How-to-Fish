@@ -26,6 +26,17 @@
 --   rise (0..1)      the SPY-HOP: stands on its tail and looks at you
 --   roll (radians)   bank; the wave wash rolls it onto its side
 --   arch (0..1)      the BREACH, as progress along the leap
+--   burst (0..1)     the ICE BREACH, as progress: it runs BURST_DEPTH under
+--                    the sheet, erupts VERTICALLY through `center` nose-first
+--                    to BURST_HEIGHT at 0.55, then topples forward over the
+--                    heading and lands flat at 1. `center` is the BURST
+--                    POINT on the surface and does not move for the move.
+--   skyfall (0..1)   the SKY SLAM, as progress: launches nose-up, apexes
+--                    SKY_HEIGHT up at 0.45, pitches over onto its flank by
+--                    ~0.58 and comes down flat onto `center` at 1. `center`
+--                    is the ground point UNDER THE HEAD, which the server
+--                    eases from the launch point to the impact point; the
+--                    path supplies the whole vertical and the orientation.
 --   beached (0..1)   landed on the floe and thrashing - the punish window
 --   flukeUp (0..1)   the LOBTAIL, as progress through the whole swing:
 --                    1 reared clear, ~0.2 hammered down, 0 back at rest
@@ -100,6 +111,23 @@ local RimefangPath = {}
 RimefangPath.BODY_LENGTH = 56.0
 RimefangPath.SEG_SPACING = 3.6
 RimefangPath.HEAD_OFFSET = 5.2 -- how far ahead of the first vertebra the skull sits
+
+-- THE ARENA MOVES' VERTICAL EXTENTS, public because three files need the same
+-- numbers: the path draws them, RimefangBodyController sizes its settle kick
+-- and camera cues off them, and CreatureService's rimefangDrive places the
+-- telegraph, the hole in the ice and the impact test at them. One source.
+--
+--   BURST_DEPTH   how deep the whale runs under the sheet before it erupts.
+--                 Deliberately the same 18 as SUBMERGE_DEPTH, so `burst = 0`
+--                 and `submerge = 1` are the SAME body, and the server can
+--                 hold submerge at 1 while burst ramps off zero with nothing
+--                 to see at the seam.
+--   BURST_HEIGHT  how far the head clears the surface at the top of the
+--                 eruption (burst = 0.55), before it topples.
+--   SKY_HEIGHT    the sky slam's apex (skyfall = 0.45), head above surface.
+RimefangPath.BURST_DEPTH = 18.0
+RimefangPath.BURST_HEIGHT = 22.0
+RimefangPath.SKY_HEIGHT = 70.0
 
 -- Swim cycle. Two thirds of a wave down the body, so the tail trails the
 -- head rather than the whole animal snaking in step.
@@ -184,18 +212,112 @@ local RISE_RELAX = math.rad(6.0)
 -- land - the tail went up and the attack simply ended. Now the same
 -- monotone ramp the server already publishes (windup 0 -> 1, strike 1 -> 0)
 -- reads as a sink-and-heave anticipation and then a hammer through the
--- waterline: the fluke tip rears to +19.8, crosses rest at FLUKE_CROSS, and
--- drives to -11.2 studs before a small elastic rebound settles it back to rest
+-- waterline: the fluke tip rears to +19.0, crosses rest at FLUKE_CROSS, and
+-- drives to -11.5 studs before a small elastic rebound settles it back to rest
 -- with follow-through (FLUKE_REBOUND), the peduncle curving through the swing.
 --
 -- Neither angle goes near 90: a vertical tail tip is the one case
 -- ChainPose.alongX genuinely cannot orient, and the fluke is drawn on it.
-local FLUKE_RISE = math.rad(62.0)
-local FLUKE_PUNCH = math.rad(34.0)
+--
+-- THE ANGLES ARE NOT THE TRAVEL, and that distinction is what lets these
+-- three numbers move without the attack changing. What the server times its
+-- damage to and the rig eases against is where the fluke TIP goes and when:
+-- +18.98 studs reared at 1, through the rest line at FLUKE_CROSS, -11.49 at
+-- its deepest around 0.22. Those are held to a tenth of a stud below. The
+-- angles fell (62 -> 55, 34 -> 31, 9 -> 8.2) only because FLUKE_START and
+-- FLUKE_RAMP now spread the same travel over more peduncle, so it takes less
+-- bend per vertebra to go the same distance. Re-tune the pair together or the
+-- lobtail lands somewhere else.
+local FLUKE_RISE = math.rad(55.0)
+local FLUKE_PUNCH = math.rad(31.0)
 local FLUKE_CROSS = 0.45
 -- The follow-through: a small elastic rebound of the peduncle just after the
 -- fluke hammers through, decaying to nothing at rest. Weight, not a wag.
-local FLUKE_REBOUND = math.rad(9.0)
+local FLUKE_REBOUND = math.rad(8.2)
+-- WHERE THE PEDUNCLE BENDS, and HOW SHARPLY AT ITS SHARPEST. The lobtail was
+-- the one pose in this file still over the 8-degree-per-joint budget: 9.78
+-- degrees at flukeUp = 1, at t = 0.59, and it had been there since the swing
+-- was authored. The cause is arithmetic. A smoothstep envelope's slope peaks
+-- at 1.5x its mean, so 62 degrees of bend spread over 0.72 of the body puts
+-- 62 * 1.5 / 0.72 = 129 degrees per unit of t through the middle of the
+-- peduncle - and a sixteenth of that is 8.1 degrees before the swim wave adds
+-- anything at all. Widening the envelope alone would have fixed it only by
+-- dragging the flex into the forebody, which is the one thing this whale's
+-- silhouette cannot afford.
+--
+-- So the envelope is now flat-topped instead: FLUKE_RAMP of smoothstep at
+-- each end - rigid forebody, slack fluke tip, both preserved - and a CONSTANT
+-- rate between them. A constant rate is a circular arc, which is both what a
+-- peduncle actually does and the shape that minimises peak curvature for a
+-- given total bend, so the same travel costs 1/(1 - FLUKE_RAMP) rather than
+-- 1.5x the mean. With the start moved only 0.28 -> 0.22 that lands the worst
+-- joint at 7.25 degrees, and the tip still goes exactly as far as it did.
+local FLUKE_START = 0.22
+local FLUKE_RAMP = 0.20
+
+-- THE ICE BREACH, and THE SKY SLAM. Both are PROGRESS channels like `arch`,
+-- and both end lying flat on the floe, because the server hands each one off
+-- to `beached` at 1. That handoff is the constraint that shapes both tails:
+-- at progress 1 the direction field, the head's height and the roll are the
+-- BEACHED ONES EXACTLY (`beachedYaw` is faded in over the last LAND_FADE of
+-- progress, the pitch has already gone to zero, the anchor is at BEACHED_Y),
+-- so the switch of channel moves no link at all. Measured: 0.000 studs.
+--
+-- BURST. The eruption is not a lift. `burst` 0..BURST_MID drives the head from
+-- BURST_DEPTH under to BURST_HEIGHT over, with BURST_SAG studs of sink first -
+-- the anticipation - and a late-weighted climb, so it gathers and then goes.
+-- BURST_TILT is how far off horizontal the body stands at the top: 72 degrees,
+-- not 90, for exactly the reason RISE_STAND is not zero (see the spy-hop's
+-- note below) - a plumb body has no azimuth and ChainPose.alongX cannot orient
+-- it. BURST_RELAX lets the tilt fall off toward the flukes so the rear trails
+-- rather than following as a pole, and BURST_S adds the S: one full wave down
+-- the body, zero at the nose and the flukes so it bends the middle only.
+-- Past BURST_MID it topples: the tilt unwinds, the head falls to BEACHED_Y and
+-- runs BURST_LEAD studs forward along the heading, so the skull lands ahead of
+-- the hole it came out of.
+local BURST_MID = 0.55
+local BURST_FADE = 0.22 -- how much progress the stance takes to reach full weight
+local BURST_TILT = math.rad(72.0)
+local BURST_SAG = 4.0
+local BURST_LEAD = 16.0
+local BURST_RELAX = 0.30
+local BURST_S = math.rad(9.0)
+local BURST_BANK = math.rad(18.0)
+-- Where both moves converge on the beached shape: the last 28% of progress.
+local LAND_FADE = 0.28
+--
+-- SKYFALL. Nose-up at SKY_LAUNCH off the surface, swelling to SKY_TILT as it
+-- climbs; apex at SKY_APEX; then the PITCH-OVER.
+--
+-- SKY_TURN0/SKY_TURN1 ARE WIDER THAN THE 0.45..0.58 THE MOVE IS DESCRIBED BY,
+-- and that is a measurement, not a liberty. The rotation is 70-odd degrees of
+-- a 56-stud body, so the far link's speed is (turn rate) x (28 studs): run
+-- through a smootherstep, whose slope peaks at 1.875x its mean, a 0.13-wide
+-- window put 604 studs per unit of progress into one link while the rest of
+-- the move ran at 280 - a whip, not an animation. Spreading the same rotation
+-- over 0.22 brings the peak to 393, in line with the move's own worst
+-- elsewhere, at the cost of 6 degrees off plumb at 0.45 and 3 off flat at
+-- 0.58. The eye reads the beat; it does not read the six degrees.
+--
+-- SKY_PIVOT is the other half of that fix: without it the body swings about
+-- its HEAD (the anchor), so the flukes carry the whole 50-stud arc alone.
+-- Dropping the head by SKY_PIVOT of the fall during the turn moves the pivot
+-- to mid-body - which is where a whale's actually is - and halves the radius.
+-- It also reads better: the animal HANGS while it turns over, instead of
+-- hanging its head and flailing its tail.
+local SKY_FADE = 0.18
+local SKY_APEX = 0.45
+local SKY_TURN0 = 0.40
+local SKY_TURN1 = 0.62
+local SKY_LAUNCH = math.rad(38.0)
+local SKY_TILT = math.rad(72.0)
+local SKY_PIVOT = 0.32
+local SKY_RELAX = 0.28
+local SKY_S = math.rad(8.0)
+local SKY_SAG = math.rad(5.0)
+-- The corkscrew: one continuous winding, not a swell-and-unwind like the
+-- breach's, because this one has somewhere to arrive - the flank it lands on.
+local SKY_FLANK = math.rad(70.0)
 
 -- Midpoint steps for the whole body. 24 puts the worst position error at
 -- 0.018 studs against an exact integral, and the error varies smoothly with
@@ -222,6 +344,31 @@ end
 local function smootherstep(x: number): number
 	x = math.clamp(x, 0, 1)
 	return x * x * x * (x * (x * 6 - 15) + 10)
+end
+
+-- THE FLAT-TOPPED ENVELOPE, 0 to 1 across x, with FLUKE_RAMP of smoothstep at
+-- each end and a constant rate between. Zero slope at both ends like
+-- `smoothstep`, but its peak slope is 1/(1 - FLUKE_RAMP) instead of 1.5 - and
+-- peak slope IS the per-joint angle, which is why the lobtail uses it. The
+-- ramps are the integral of `smoothstep` scaled to meet the middle, so the
+-- value, the slope AND the curvature all match at both joins.
+local RAMP_K = 1.0 / (1.0 - FLUKE_RAMP)
+local function peduncleBend(x: number): number
+	if x <= 0 then
+		return 0
+	end
+	if x >= 1 then
+		return 1
+	end
+	if x < FLUKE_RAMP then
+		local s = x / FLUKE_RAMP
+		return RAMP_K * FLUKE_RAMP * (s * s * s - 0.5 * s * s * s * s)
+	end
+	if x > 1 - FLUKE_RAMP then
+		local s = (1 - x) / FLUKE_RAMP
+		return 1 - RAMP_K * FLUKE_RAMP * (s * s * s - 0.5 * s * s * s * s)
+	end
+	return RAMP_K * (x - 0.5 * FLUKE_RAMP)
 end
 
 -- A single travelling-sine SLOPE (d/dt of amp*t^grow*sin(phase), the wave
@@ -252,6 +399,8 @@ function RimefangPath.newState(center: Vector3)
 		rise = 0,
 		roll = 0,
 		arch = 0,
+		burst = 0,
+		skyfall = 0,
 		beached = 0,
 		flukeUp = 0,
 		faceAngle = 0,
@@ -315,11 +464,12 @@ local function flukePitch(state, t: number): number
 	if f <= 0 then
 		return 0
 	end
-	-- The bend is spread over the rear 72% of the body (was 42%), so the
-	-- peduncle CURVES into the swing instead of hinging at one vertebra - the old
-	-- envelope put a 13-degree kink at the pinch; this holds it under 8. It still
-	-- reaches full at the flukes, so the tip travels just as far.
-	local rear = smoothstep((t - 0.28) / 0.72)
+	-- The bend is spread over the rear 78% of the body (was 42%, then 72%), so
+	-- the peduncle CURVES into the swing instead of hinging at one vertebra - the
+	-- original envelope put a 13-degree kink at the pinch, and the smoothstep that
+	-- replaced it still peaked at 9.8. It still reaches full at the flukes, and
+	-- FLUKE_RISE is retuned against it, so the tip travels just as far.
+	local rear = peduncleBend((t - FLUKE_START) / (1 - FLUKE_START))
 	if rear <= 0 then
 		return 0
 	end
@@ -404,6 +554,125 @@ local function beachedYaw(state, t: number): number
 	return main + headCurl + follow
 end
 
+-- THE ICE BREACH. Four scalars of progress, then one pitch field.
+--
+-- `burstRot` is HOW FAR OVER the body has come: 0 lying flat under the sheet,
+-- 1 stood up at BURST_TILT, back to 0 lying flat on top of it. `burstLift` is
+-- where the head is vertically, `burstLead` how far forward the topple has
+-- carried it, `burstLand` how much of the beached shape has arrived.
+--
+-- Every piece is built out of `smootherstep`, whose first AND second
+-- derivatives vanish at both ends, and every seam (BURST_MID, 0 and 1) is a
+-- join between two such ends - so the whole channel is C2 in progress with no
+-- special-casing. That matters more here than anywhere else in the file: the
+-- controller eases `burst` at 18/s, so a kink in shape-vs-progress arrives as
+-- a kink in shape-vs-time at whatever rate the ease happens to be running.
+local function burstRot(b: number): number
+	if b <= BURST_MID then
+		return smootherstep(b / BURST_MID)
+	end
+	local v = (b - BURST_MID) / (1 - BURST_MID)
+	return 1 - (0.45 * smootherstep(v) + 0.55 * smootherstep(v) ^ 2)
+end
+
+local function burstLift(b: number): number
+	if b <= BURST_MID then
+		local u = b / BURST_MID
+		-- Late-weighted, so the drive is a surge rather than a ride up: the
+		-- squared term contributes almost nothing over the first third.
+		local climb = 0.35 * smootherstep(u) + 0.65 * smootherstep(u) ^ 2
+		-- The anticipation: it SINKS about two studs first, deepest at u ~ 0.36,
+		-- and the sag is gone by the time it reaches the surface.
+		local sag = BURST_SAG * math.sin(math.pi * u) ^ 2 * (1 - u)
+		return -RimefangPath.BURST_DEPTH + (RimefangPath.BURST_HEIGHT + RimefangPath.BURST_DEPTH) * climb - sag
+	end
+	local v = (b - BURST_MID) / (1 - BURST_MID)
+	-- The topple hangs a moment at the top and then drops with gravity's shape.
+	local fall = 0.30 * smootherstep(v) + 0.70 * smootherstep(v) ^ 2
+	return RimefangPath.BURST_HEIGHT + (BEACHED_Y - RimefangPath.BURST_HEIGHT) * fall
+end
+
+local function burstLead(b: number): number
+	if b <= BURST_MID then
+		return 0.0 -- it comes up THROUGH the burst point, not past it
+	end
+	local v = (b - BURST_MID) / (1 - BURST_MID)
+	return BURST_LEAD * (0.45 * smootherstep(v) + 0.55 * smootherstep(v) ^ 2)
+end
+
+-- How much of the beached pose has arrived, for both arena moves: zero until
+-- the last LAND_FADE of progress, one exactly at 1.
+local function landFade(p: number): number
+	return smootherstep((p - (1 - LAND_FADE)) / LAND_FADE)
+end
+
+local function burstPitch(state, t: number): number
+	local b = math.clamp(state.burst or 0, 0, 1)
+	local rot = burstRot(b)
+	-- The tilt eases off through the back 60%, so the rear trails the drive
+	-- instead of standing plumb with it.
+	local spine = 1 - BURST_RELAX * smoothstep((t - 0.40) / 0.60)
+	-- One full wave down the body, zero at both ends: the graceful S, and the
+	-- reason the eruption is not a pole with a whale painted on it.
+	return -BURST_TILT * rot * spine + BURST_S * math.sin(2 * math.pi * t) * rot
+end
+
+local function burstYaw(state, t: number): number
+	return beachedYaw(state, t) * landFade(math.clamp(state.burst or 0, 0, 1))
+end
+
+-- THE SKY SLAM. Same four-scalar shape, with the pitch-over in the middle.
+
+-- How far through the pitch-over: 0 climbing, 1 flat and side-on.
+local function skyTurn(p: number): number
+	return smootherstep((p - SKY_TURN0) / (SKY_TURN1 - SKY_TURN0))
+end
+
+-- The body's tilt off horizontal, as a fraction of SKY_TILT. The product of
+-- two smootherstep factors - the climb winding it up, the turn winding it down
+-- - which is why the two windows may overlap without a seam to defend.
+local function skyRot(p: number): number
+	local launch = SKY_LAUNCH / SKY_TILT
+	return (launch + (1 - launch) * smootherstep(p / SKY_APEX)) * (1 - skyTurn(p))
+end
+
+-- The bell: 0 at the surface, SKY_HEIGHT at SKY_APEX, exactly 0 at 1. The fall
+-- is two terms - SKY_PIVOT of it spent during the pitch-over (that is the head
+-- dropping so the body turns about its middle) and the rest a hang-then-
+-- accelerate down to the floe.
+local function skyBell(p: number): number
+	if p <= SKY_APEX then
+		return RimefangPath.SKY_HEIGHT * smootherstep(p / SKY_APEX)
+	end
+	local v = (p - SKY_APEX) / (1 - SKY_APEX)
+	local over = (SKY_TURN1 - SKY_APEX) / (1 - SKY_APEX)
+	local fall = SKY_PIVOT * smootherstep(v / over)
+		+ (1 - SKY_PIVOT) * (0.28 * smootherstep(v) + 0.72 * smootherstep(v) ^ 2)
+	return RimefangPath.SKY_HEIGHT * (1 - fall)
+end
+
+-- The bell hits zero at 1 as promised; BEACHED_Y is the floe's own freeboard,
+-- added only as the beached shape arrives, so the landed body rests exactly
+-- where `beached` rests it and the handoff moves nothing.
+local function skyLift(p: number): number
+	return skyBell(p) + BEACHED_Y * landFade(p)
+end
+
+local function skyPitch(state, t: number): number
+	local p = math.clamp(state.skyfall or 0, 0, 1)
+	local rot = skyRot(p)
+	local spine = 1 - SKY_RELAX * smoothstep((t - 0.38) / 0.62)
+	-- A gentle single hump while it comes down flat, dying as the beached
+	-- shape arrives: the tail hangs a little below the line rather than the
+	-- whole animal falling as a plank.
+	local flat = skyTurn(p) * (1 - landFade(p))
+	return -SKY_TILT * rot * spine + SKY_S * math.sin(2 * math.pi * t) * rot - SKY_SAG * math.sin(math.pi * t) * flat
+end
+
+local function skyYaw(state, t: number): number
+	return beachedYaw(state, t) * landFade(math.clamp(state.skyfall or 0, 0, 1))
+end
+
 -- ---------------------------------------------------------------- compose
 
 -- HOW MUCH OF EACH STANCE, and this is a weighted average rather than a
@@ -414,7 +683,7 @@ end
 -- dragged back down onto the floe by a stale weight. Normalising means no
 -- stance can be applied on top of a body that is already fully somewhere
 -- else, and the result no longer depends on the order they are written in.
-local function weights(state): (number, number, number, number)
+local function weights(state): (number, number, number, number, number, number)
 	local arch = state.arch or 0
 	-- Faded in over the first ~28% of the leap (was 15%) so leaving the water is
 	-- a gradual emergence rather than a lurch: while the stance ramps, the head
@@ -422,20 +691,28 @@ local function weights(state): (number, number, number, number)
 	-- halves the worst per-frame slide at launch. Quintic, so the launch has no
 	-- jump in acceleration as the stance takes hold.
 	local wArch = if arch > 0 then smootherstep(arch / 0.28) else 0
+	-- The two arena moves join the same normalised pool, for the same reason
+	-- and by the same rule: at progress 0 they weigh NOTHING, so the ordinary
+	-- poses own the body, and they fade in over their own launch window.
+	local burst = state.burst or 0
+	local wBurst = if burst > 0 then smootherstep(burst / BURST_FADE) else 0
+	local skyfall = state.skyfall or 0
+	local wSky = if skyfall > 0 then smootherstep(skyfall / SKY_FADE) else 0
 	local wRise = math.clamp(state.rise or 0, 0, 1)
 	local wBeach = math.clamp(state.beached or 0, 0, 1)
-	local total = wArch + wRise + wBeach
+	local total = wArch + wRise + wBeach + wBurst + wSky
 	if total > 1 then
 		wArch, wRise, wBeach = wArch / total, wRise / total, wBeach / total
+		wBurst, wSky = wBurst / total, wSky / total
 		total = 1
 	end
-	return wArch, wRise, wBeach, 1 - total
+	return wArch, wRise, wBeach, wBurst, wSky, 1 - total
 end
 
 -- Where the head is. This is `pointAt(state, 0)` exactly, and it is the one
 -- thing the server asks for every frame, so it costs no integration at all.
 local function anchorOf(state): Vector3
-	local wArch, wRise, wBeach, wBase = weights(state)
+	local wArch, wRise, wBeach, wBurst, wSky, wBase = weights(state)
 	local center = state.center or Vector3.zero
 	local point = Vector3.zero
 	if wBase > 0 then
@@ -452,12 +729,22 @@ local function anchorOf(state): Vector3
 	if wBeach > 0 then
 		point += (center + UP * BEACHED_Y) * wBeach
 	end
+	if wBurst > 0 then
+		local b = math.clamp(state.burst or 0, 0, 1)
+		point += (center + UP * burstLift(b) + heading(state) * burstLead(b)) * wBurst
+	end
+	if wSky > 0 then
+		-- No horizontal term at all: `center` IS the ground point under the
+		-- head, and the server walks it launch -> impact. The path owns the
+		-- vertical, and nothing else.
+		point += (center + UP * skyLift(math.clamp(state.skyfall or 0, 0, 1))) * wSky
+	end
 	return point
 end
 
 -- The unit direction DOWN-body (toward the flukes) at `t`.
 local function directionAt(state, t: number): Vector3
-	local wArch, wRise, wBeach, wBase = weights(state)
+	local wArch, wRise, wBeach, wBurst, wSky, wBase = weights(state)
 	local pitch, yaw = 0.0, 0.0
 	if wBase > 0 then
 		pitch += wBase * (swimPitch(state, t) + flukePitch(state, t))
@@ -481,6 +768,14 @@ local function directionAt(state, t: number): Vector3
 	end
 	if wBeach > 0 then
 		yaw += wBeach * beachedYaw(state, t)
+	end
+	if wBurst > 0 then
+		pitch += wBurst * burstPitch(state, t)
+		yaw += wBurst * burstYaw(state, t)
+	end
+	if wSky > 0 then
+		pitch += wSky * skyPitch(state, t)
+		yaw += wSky * skyYaw(state, t)
 	end
 	-- AMBIENT, outside every blend, which is the idiom ChainPose's header
 	-- prescribes: folded into one side of a blend it would be annihilated at
@@ -552,10 +847,33 @@ function RimefangPath.rollAt(state, t: number): number
 		total += ARCH_BANK * math.sin(smootherstep(arch) * math.pi)
 	end
 
+	-- The eruption's bank: a swell and an unwind, like the breach's but half
+	-- the angle - the ice breach is a drive up a line, not an arc through the
+	-- air, so there is less turn to bank into. Zero at both ends of the move,
+	-- and killed off entirely as the beached rock takes over.
+	local burst = math.clamp(state.burst or 0, 0, 1)
+	if burst > 0 then
+		total += BURST_BANK * math.sin(smootherstep(burst) * math.pi) * (1 - landFade(burst))
+	end
+
+	-- The sky slam's CORKSCREW, and the one bank in this file that does not
+	-- come back to level: it winds one way the whole climb, reaches SKY_FLANK
+	-- as the body pitches over, and holds there - which is what puts the
+	-- animal on its FLANK for the landing rather than on its belly. Squared,
+	-- so the twist is slow off the surface and fastest near the top, and it
+	-- unwinds only over the last stretch, into the beached rock below.
+	local skyfall = math.clamp(state.skyfall or 0, 0, 1)
+	if skyfall > 0 then
+		total += SKY_FLANK * smootherstep(skyfall / SKY_TURN1) ^ 2 * (1 - landFade(skyfall))
+	end
+
 	-- The stranded rock: part-over on the floe, breathing slowly side to side.
-	local beached = math.clamp(state.beached or 0, 0, 1)
-	if beached > 0 then
-		total += BEACHED_ROLL * beached * (0.72 + 0.28 * math.sin(time * 1.4)) * (1 - 0.3 * t)
+	-- Both arena moves end lying on the floe, so both bring this on with them
+	-- as they land - which is what makes the handoff to `beached` cost nothing
+	-- in roll as well as nothing in position.
+	local landed = math.clamp(state.beached or 0, 0, 1) + landFade(burst) + landFade(skyfall)
+	if landed > 0 then
+		total += BEACHED_ROLL * math.min(landed, 1) * (0.72 + 0.28 * math.sin(time * 1.4)) * (1 - 0.3 * t)
 	end
 
 	return total

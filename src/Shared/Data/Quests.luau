@@ -19,6 +19,14 @@
 -- `prereq` (quest id) + `requiresLevel` gate when a quest is OFFERED;
 -- `repeatable = "daily"` re-offers after a UTC day (A5). Rewards may carry
 -- coins, xp, materials = {[matId]=n}, bait = {[baitId]=n}.
+--
+-- `lines` is the giver's VOICE for this particular job: `accept` is the reply
+-- when the player takes it (it overrides the giver's generic voice.accept),
+-- `progress` is what they say on the About pane while it is unfinished, and
+-- `complete` is what they say on the turn-in pane, before the payout. The
+-- field is optional - a row without it falls back to Npcs.items.<giver>.voice.
+-- Keep the text brace-free: tools/check_content.py walks these rows by brace
+-- depth and a curly brace inside a string literal derails it.
 
 local Quests = {}
 
@@ -38,6 +46,7 @@ export type Quest = {
 	name: string,
 	giver: string, -- Npcs.luau id
 	blurb: string, -- the pitch, shown on the offer pane
+	lines: { accept: string, progress: string, complete: string }?, -- the giver's per-quest voice
 	objectives: { Objective },
 	prereq: string?,
 	requiresLevel: number?,
@@ -47,6 +56,10 @@ export type Quest = {
 		xp: number?,
 		materials: { [string]: number }?,
 		bait: { [string]: number }?,
+		-- Finished gear, granted by id through InventoryService.grantItem
+		-- (rods, weapons, armor, trinkets). Four rows below pay one of these
+		-- and the type never admitted the field existed.
+		items: { string }?,
 	},
 }
 
@@ -58,7 +71,12 @@ Quests.items.marens_wager = {
 	id = "marens_wager",
 	name = "Maren's Wager",
 	giver = "old_maren",
-	blurb = "Five catches, landed and put down. Prove the cove hasn't gotten the better of you, and I'll make it worth the bruises.",
+	blurb = "Catch 5 fish for me. It's the quickest way to learn how fishing here works.",
+	lines = {
+		accept = "Thanks. Come back when you have all five.",
+		progress = "You're still working on this. I need 5 fish.",
+		complete = "Good work. Here's your reward.",
+	},
 	objectives = {
 		{ type = "catch", count = 5 },
 	},
@@ -70,7 +88,12 @@ Quests.items.teeth_of_the_cove = {
 	id = "teeth_of_the_cove",
 	name = "Teeth of the Cove",
 	giver = "old_maren",
-	blurb = "The snapjaws have chewed through two of my racks this week. Thin them out - and while you're wading, land me something with a bit of shine to it.",
+	blurb = "The crabs keep breaking my drying racks. Kill 4 snapjaw crabs and catch 2 rare fish for me.",
+	lines = {
+		accept = "Thanks. Come back when both parts are done.",
+		progress = "You're still working on this. I need 4 snapjaw crabs and 2 rare fish.",
+		complete = "Good work. The racks are safe now. Here's your reward.",
+	},
 	prereq = "marens_wager",
 	objectives = {
 		{ type = "kill", count = 4, species = "snapjaw_crab" },
@@ -86,9 +109,18 @@ Quests.items.the_wider_water = {
 	id = "the_wider_water",
 	name = "The Wider Water",
 	giver = "old_maren",
-	blurb = "You've outgrown my little cove, love. Lash yourself a proper rod, bring me kelp for the racks before you go - and when you stand in the Blackmire mud, think of old Maren.",
+	blurb = "You're ready to leave the cove. Craft a bamboo rod, bring me 6 kelp fiber, and visit Blackmire Fen.",
+	lines = {
+		accept = "Thanks. Do the rod first, then the kelp, then the trip.",
+		progress = "You're still working on this. A bamboo rod, 6 kelp fiber, and a visit to Blackmire Fen.",
+		complete = "Good work. You're ready for bigger water now. Here's your reward.",
+	},
 	prereq = "teeth_of_the_cove",
-	requiresLevel = 5,
+	-- L8, not L5: the third objective is the fen, and Blackmire's
+	-- unlockLevel IS 8 (plus Brinejaw's heart, and Leviathan's Call is a L7
+	-- recipe). Offered at 5 this chain dead-ends on its last step with the
+	-- giver unable to say why.
+	requiresLevel = 8,
 	objectives = {
 		{ type = "craft", itemId = "bamboo_rod" },
 		{ type = "deliver", materials = { kelp_fiber = 6 } },
@@ -103,7 +135,12 @@ Quests.items.leech_tithe = {
 	id = "leech_tithe",
 	name = "Leech Tithe",
 	giver = "morra",
-	blurb = "The murk is fat with leeches and thin with everything else. Redress the balance.",
+	blurb = "There are too many leeches in the swamp pools. Kill 5 mire leeches for me.",
+	lines = {
+		accept = "Thanks. Come back when the five are dead.",
+		progress = "You're still working on this. I need 5 mire leeches killed.",
+		complete = "Good work. That's five fewer in the water. Here's your reward.",
+	},
 	objectives = { { type = "kill", count = 5, species = "mire_leech" } },
 	rewards = { coins = 260, xp = 220 },
 }
@@ -111,18 +148,27 @@ Quests.items.murk_harvest = {
 	id = "murk_harvest",
 	name = "Murk Harvest",
 	giver = "morra",
-	blurb = "Six things pulled living from the fen's own water. The fen will notice. That's rather the point.",
+	blurb = "I need fish from the swamp water, not from the sea. Catch 6 of them in Blackmire Fen.",
+	lines = {
+		accept = "Thanks. Come back when you have all six.",
+		progress = "You're still working on this. I need 6 fish caught in swamp water.",
+		complete = "Good work. Here's your reward.",
+	},
 	prereq = "leech_tithe",
 	objectives = { { type = "catch", count = 6, waters = "swamp" } },
 	rewards = { coins = 380, xp = 300, materials = { fen_venom = 2 } },
 }
 
--- ============================================================ the Reach (Halvard)
 Quests.items.a_skin_for_the_mire = {
 	id = "a_skin_for_the_mire",
 	name = "A Skin for the Mire",
 	giver = "morra",
-	blurb = "Bring me gator leather worth the name and I'll cut you a hood the bog can't tell from itself.",
+	blurb = "I can make you a swamp hood. Catch 6 fish in Blackmire Fen and bring me 3 mire hides.",
+	lines = {
+		accept = "Thanks. Bring the hides and the fish and I'll cut the hood.",
+		progress = "You're still working on this. I need 6 swamp fish and 3 mire hides.",
+		complete = "Good work. The hood is cut. Here's your reward.",
+	},
 	prereq = "murk_harvest",
 	requiresLevel = 9,
 	objectives = {
@@ -132,11 +178,17 @@ Quests.items.a_skin_for_the_mire = {
 	rewards = { coins = 420, xp = 340, items = { "mirewalker_helm" } },
 }
 
+-- ============================================================ the Reach (Halvard)
 Quests.items.pups_and_lines = {
 	id = "pups_and_lines",
 	name = "Pups and Lines",
 	giver = "halvard",
-	blurb = "Frostbite pups. Sweet-looking. They eat my catch lines whole. Three fewer would warm my week.",
+	blurb = "Frostbite pups keep eating my catch lines. Kill 3 of them for me.",
+	lines = {
+		accept = "Thanks. Come back when the three are dead.",
+		progress = "You're still working on this. I need 3 frostbite pups killed.",
+		complete = "Good work. My lines are safe now. Here's your reward.",
+	},
 	objectives = { { type = "kill", count = 3, species = "frostbite_pup" } },
 	rewards = { coins = 520, xp = 420 },
 }
@@ -144,7 +196,12 @@ Quests.items.under_the_sheet = {
 	id = "under_the_sheet",
 	name = "Under the Sheet",
 	giver = "halvard",
-	blurb = "Five from the holes, landed clean. The sheet gives nothing to the timid.",
+	blurb = "I want to see if you can fish the ice. Catch 5 fish here on Frostmaw Reach.",
+	lines = {
+		accept = "Thanks. Come back when you have all five.",
+		progress = "You're still working on this. I need 5 fish caught under the ice.",
+		complete = "Good work. You can fish the ice. Here's your reward.",
+	},
 	prereq = "pups_and_lines",
 	objectives = { { type = "catch", count = 5, waters = "ice" } },
 	rewards = { coins = 700, xp = 560, materials = { everice = 2 } },
@@ -155,7 +212,12 @@ Quests.items.the_sulfur_toll = {
 	id = "the_sulfur_toll",
 	name = "The Sulfur Toll",
 	giver = "brakk",
-	blurb = "The forge eats sulfur and I'm short. Bring four measures and we'll call the smoke between us settled.",
+	blurb = "The forge runs on sulfur and I've run short. Bring me 4 sulfur.",
+	lines = {
+		accept = "Thanks. Come back when you have all four.",
+		progress = "You're still working on this. I need 4 sulfur for the forge.",
+		complete = "Good work. The forge can run again. Here's your reward.",
+	},
 	objectives = { { type = "deliver", materials = { sulfur = 4 } } },
 	rewards = { coins = 900, xp = 640 },
 }
@@ -163,7 +225,12 @@ Quests.items.lake_of_fire = {
 	id = "lake_of_fire",
 	name = "Lake of Fire",
 	giver = "brakk",
-	blurb = "Five out of the melt. If your line survives the ponds, you're worth arming.",
+	blurb = "I need to know your line can take the heat. Catch 5 fish in the caldera ponds.",
+	lines = {
+		accept = "Thanks. Come back when you have all five.",
+		progress = "You're still working on this. I need 5 fish caught in the ponds.",
+		complete = "Good work. Your gear can take the heat. Here's your reward.",
+	},
 	prereq = "the_sulfur_toll",
 	objectives = { { type = "catch", count = 5, waters = "volcano" } },
 	rewards = { coins = 1200, xp = 800, materials = { ember = 3 } },
@@ -174,7 +241,12 @@ Quests.items.what_the_dark_eats = {
 	id = "what_the_dark_eats",
 	name = "What the Dark Eats",
 	giver = "lumen",
-	blurb = "Gulpers circle the lamp at slack tide. Thin them before they learn to swallow light whole.",
+	blurb = "Gulper eels circle my lamp and put the light out. Kill 3 of them for me.",
+	lines = {
+		accept = "Thanks. Come back when the three are dead.",
+		progress = "You're still working on this. I need 3 gulper eels killed.",
+		complete = "Good work. The lamp is clear again. Here's your reward.",
+	},
 	objectives = { { type = "kill", count = 3, species = "gulper_eel" } },
 	rewards = { coins = 1600, xp = 1000 },
 }
@@ -182,7 +254,12 @@ Quests.items.a_veil_against_the_dark = {
 	id = "a_veil_against_the_dark",
 	name = "A Veil Against the Dark",
 	giver = "lumen",
-	blurb = "The trench takes the ones it can see. Bring me duskhide and it will stop seeing you.",
+	blurb = "I can make you a hood the trench can't see. Catch 8 fish in Gloomtrench and bring me 3 duskhide.",
+	lines = {
+		accept = "Thanks. Bring the duskhide and the fish and I'll stitch the hood.",
+		progress = "You're still working on this. I need 8 Gloomtrench fish and 3 duskhide.",
+		complete = "Good work. The hood is stitched. Here's your reward.",
+	},
 	prereq = "what_the_dark_eats",
 	requiresLevel = 30,
 	objectives = {
@@ -196,7 +273,12 @@ Quests.items.gullet_census = {
 	id = "gullet_census",
 	name = "Gullet Census",
 	giver = "lumen",
-	blurb = "Five specimens from the black water, for the log. The log must be FED, you understand. Kept. Kept-fed.",
+	blurb = "I record everything that lives down here. Catch 5 fish in Gloomtrench so I can log them.",
+	lines = {
+		accept = "Thanks. Come back when you have all five.",
+		progress = "You're still working on this. I need 5 fish caught in Gloomtrench.",
+		complete = "Good work. All five are logged. Here's your reward.",
+	},
 	prereq = "what_the_dark_eats",
 	objectives = { { type = "catch", count = 5, waters = "gloom" } },
 	rewards = { coins = 2000, xp = 1300, materials = { lantern_gland = 2 } },
@@ -207,7 +289,12 @@ Quests.items.ledger_of_teeth = {
 	id = "ledger_of_teeth",
 	name = "Ledger of Teeth",
 	giver = "hollow",
-	blurb = "Cannonball crabs, eating the fleet's stores. The book says four must answer for it. The book is never wrong.",
+	blurb = "Cannonball crabs are eating the fleet's stores. Kill 4 of them and I'll close the entry.",
+	lines = {
+		accept = "Thanks. I've entered it in the book. Come back when the four are dead.",
+		progress = "You're still working on this. I need 4 cannonball crabs killed.",
+		complete = "Good work. The entry is closed. Here's your reward.",
+	},
 	objectives = { { type = "kill", count = 4, species = "cannonball_crab" } },
 	rewards = { coins = 2600, xp = 1600, items = { "corsairs_rest_helm" } },
 }
@@ -219,7 +306,12 @@ Quests.items.the_daily_haul = {
 	id = "the_daily_haul",
 	name = "The Daily Haul",
 	giver = "old_maren",
-	blurb = "Same as every day, love: eight in the basket. The cove doesn't feed itself.",
+	blurb = "I sell fish every day and I need 8 more. Catch 8 of anything and bring them to me.",
+	lines = {
+		accept = "Thanks. Come back when you have all eight.",
+		progress = "You're still working on this. I need 8 fish.",
+		complete = "Good work. That's the day covered. Here's your reward.",
+	},
 	repeatable = "daily",
 	objectives = { { type = "catch", count = 8 } },
 	rewards = { coins = 220, xp = 180 },
@@ -228,7 +320,12 @@ Quests.items.salvage_rights = {
 	id = "salvage_rights",
 	name = "Salvage Rights",
 	giver = "hollow",
-	blurb = "Standing contract: six entries struck from the ledger, any name. Renewed daily. The fleet is patient; the book is not.",
+	blurb = "This is a standing contract, renewed every day. Kill 6 creatures of any kind in the bay.",
+	lines = {
+		accept = "Thanks. The contract runs until you fill it.",
+		progress = "You're still working on this. I need 6 kills of any kind.",
+		complete = "Good work. The contract is filled. Here's your reward.",
+	},
 	repeatable = "daily",
 	objectives = { { type = "kill", count = 6 } },
 	rewards = { coins = 800, xp = 520 },
@@ -263,7 +360,12 @@ Quests.items.what_the_bell_brings = {
 	id = "what_the_bell_brings",
 	name = "What the Bell Brings",
 	giver = "nettle",
-	blurb = "The noise carries. Things come up to see what it is, and some of them come ashore. Four of them, and I'll not ask which.",
+	blurb = "Drowned deckhands come ashore for the noise. Kill 4 of them so I can work in peace.",
+	lines = {
+		accept = "Thanks. Come back when the four are dead.",
+		progress = "You're still working on this. I need 4 drowned deckhands killed.",
+		complete = "Good work. The rock is quiet again. Here's your reward.",
+	},
 	requiresLevel = 10,
 	objectives = { { type = "kill", count = 4, species = "drowned_deckhand" } },
 	rewards = { coins = 500, xp = 420 },
@@ -273,7 +375,12 @@ Quests.items.the_parliament = {
 	id = "the_parliament",
 	name = "The Parliament",
 	giver = "pip",
-	blurb = "They've voted on me and it went badly. Thin the loudest five and they'll go back to arguing among themselves.",
+	blurb = "The loudest gulls set off the whole ledge at me. Kill 5 bog gulls and the rest calm down.",
+	lines = {
+		accept = "Thanks. Come back when the five are dead.",
+		progress = "You're still working on this. I need 5 bog gulls killed.",
+		complete = "Good work. The ledge is calmer now. Here's your reward.",
+	},
 	requiresLevel = 16,
 	objectives = { { type = "kill", count = 5, species = "bog_gull" } },
 	rewards = { coins = 900, xp = 700, materials = { fish_scale = 4 } },
@@ -283,7 +390,12 @@ Quests.items.what_bites_in_boiling_water = {
 	id = "what_bites_in_boiling_water",
 	name = "What Bites in Boiling Water",
 	giver = "cinder",
-	blurb = "Anything worth catching out here is already half-cooked and furious about it. Six of the good ones.",
+	blurb = "The good fish here only live in the hot water. Catch 6 uncommon fish off the shoal.",
+	lines = {
+		accept = "Thanks. Fish the hot side and come back.",
+		progress = "You're still working on this. I need 6 uncommon fish from the shoal.",
+		complete = "Good work. Those all came out of the hot water. Here's your reward.",
+	},
 	requiresLevel = 22,
 	objectives = { { type = "catch", count = 6, rarity = "Uncommon", waters = "ocean" } },
 	rewards = { coins = 1300, xp = 1000 },
@@ -293,7 +405,12 @@ Quests.items.the_taut_chain = {
 	id = "the_taut_chain",
 	name = "The Taut Chain",
 	giver = "coil",
-	blurb = "I'm not hauling on it and neither are you. Fish the reef a while - whatever is on the end has been patient this long.",
+	blurb = "I won't pull on that taut chain and neither should you. Fish the reef instead and catch 6.",
+	lines = {
+		accept = "Thanks. Fish the reef and leave the chain alone.",
+		progress = "You're still working on this. I need 6 fish off the reef.",
+		complete = "Good work. The chain is still taut. Here's your reward.",
+	},
 	requiresLevel = 34,
 	objectives = { { type = "catch", count = 6, waters = "ocean" } },
 	rewards = { coins = 2000, xp = 1500 },
@@ -303,7 +420,12 @@ Quests.items.the_long_way_round = {
 	id = "the_long_way_round",
 	name = "The Long Way Round",
 	giver = "ferryman",
-	blurb = "I trade with sailors, not with tourists. Show me you've made the crossings and my counter is open.",
+	blurb = "I trade with sailors who have made the crossings. Visit Blackmire Fen and Frostmaw Reach.",
+	lines = {
+		accept = "Thanks. Make both crossings and my counter stays open.",
+		progress = "You're still working on this. I need you to visit Blackmire Fen and Frostmaw Reach.",
+		complete = "Good work. My counter is open to you now. Here's your reward.",
+	},
 	requiresLevel = 20,
 	objectives = {
 		{ type = "visit", island = "swamp" },
@@ -316,7 +438,12 @@ Quests.items.struck_twice = {
 	id = "struck_twice",
 	name = "Struck Twice",
 	giver = "ansel",
-	blurb = "The rays come in under the strikes and lie in it like a hot bath. Four of them, and don't be holding the rod when it goes.",
+	blurb = "Voltrays lie in the hot water under the lightning strikes. Kill 4 of them, and don't hold your rod.",
+	lines = {
+		accept = "Thanks. Put the rod down when the storm comes in.",
+		progress = "You're still working on this. I need 4 voltrays killed.",
+		complete = "Good work. You didn't get hit either. Here's your reward.",
+	},
 	requiresLevel = 38,
 	objectives = { { type = "kill", count = 4, species = "voltray" } },
 	rewards = { coins = 2600, xp = 1900 },
@@ -327,7 +454,12 @@ Quests.items.odds_toll = {
 	id = "odds_toll",
 	name = "Odd's Toll",
 	giver = "bellkeeper_odd",
-	blurb = "The bell wants ringing on the hour and I've only the two hands. Fish the chapel while I climb, and mind the roof.",
+	blurb = "I ring the bell on the hour and it takes both hands. Catch 6 fish here while I climb.",
+	lines = {
+		accept = "Thanks. You have about an hour while I climb.",
+		progress = "You're still working on this. I need 6 fish caught off the chapel.",
+		complete = "Good work. The hour was rung on time. Here's your reward.",
+	},
 	requiresLevel = 12,
 	objectives = { { type = "catch", count = 6, waters = "ocean" } },
 	rewards = { coins = 600, xp = 500 },
@@ -337,13 +469,29 @@ Quests.items.the_tollmaw_hunt = {
 	id = "the_tollmaw_hunt",
 	name = "The Tollmaw",
 	giver = "bellkeeper_odd",
-	blurb = "It swallowed the clapper. I have been ringing a bell with a stone tied to a rope for two years. Get it back.",
+	blurb = "A fish called the Tollmaw swallowed my bell clapper. Kill it and bring the clapper back.",
+	lines = {
+		accept = "Thanks. Kill it and bring me the clapper.",
+		progress = "You're still working on this. I need the Tollmaw dead and the clapper back.",
+		complete = "Good work. The bell can ring properly again. Here's your reward.",
+	},
 	prereq = "odds_toll",
-	requiresLevel = 14,
+	-- L16, and this time the DATA agrees. The L36 that stood here was the
+	-- audit's stop-gap: the Tollmaw was a wreck-band row, so the hunt had to
+	-- wait on Wreckwater, which left Odd's chapel saga dead for ~30 levels
+	-- after his L12 opener. 2026-09-12 took the geography seriously instead
+	-- and swapped the two hermit elites' BANDS - the Tollmaw is the ice band's
+	-- Epic now (waters "ice", 3,800 HP, bell_clapper still its own), so the
+	-- hunt sits one level into Frostmaw Reach (unlockLevel 15) and the saga
+	-- runs L12 -> L16 -> L20 inside one band.
+	requiresLevel = 16,
 	objectives = {
 		{ type = "kill", count = 1, species = "tollmaw" },
 		{ type = "deliver", materials = { bell_clapper = 1 } },
 	},
+	-- Priced for the ice band it now sits in: ~2.5x its band's ordinary
+	-- errands (under_the_sheet 700/560, the_parliament 900/700), the same
+	-- shape the gloom band's elite hunt has against its own neighbours.
 	rewards = { coins = 1800, xp = 1200 },
 }
 
@@ -351,10 +499,20 @@ Quests.items.the_bellringer = {
 	id = "the_bellringer",
 	name = "The Bellringer",
 	giver = "bellkeeper_odd",
-	blurb = "Hang it at the tip instead of in the tower and they come up senseless. Kinder, I tell myself. Go and have it made.",
+	blurb = "A bell hung at a rod tip stuns fish in the water. Craft the Bellringer rod and I'll pay for it.",
+	lines = {
+		accept = "Thanks. Craft the rod and come back.",
+		progress = "You're still working on this. I need the Bellringer rod crafted.",
+		complete = "Good work. That rod will call fish to you. Here's your reward.",
+	},
 	prereq = "the_tollmaw_hunt",
+	-- The craft objective is only completable at the recipe's own gate, and
+	-- bellringer_rod is requiresLevel 20 in Rods.luau since the band swap
+	-- (was 41). Without this the quest is accepted and then sits
+	-- un-completable with no explanation.
+	requiresLevel = 20,
+	rewards = { coins = 1200, xp = 1200 },
 	objectives = { { type = "craft", itemId = "bellringer_rod" } },
-	rewards = { coins = 900, xp = 900 },
 }
 
 -- ---------------------------------------------------------------- Saltmother Vess
@@ -362,34 +520,65 @@ Quests.items.the_gutting_stone = {
 	id = "the_gutting_stone",
 	name = "The Gutting Stone",
 	giver = "saltmother_vess",
-	blurb = "Something's been at my stone in the night. Bring me work to do while I watch for it - eight will do.",
-	requiresLevel = 26,
+	blurb = "Something works my stone at night and I want to watch for it. Catch 8 fish to keep me busy.",
+	lines = {
+		accept = "Thanks. Come back when you have all eight.",
+		progress = "You're still working on this. I need 8 fish for the stone.",
+		complete = "Good work. That kept my hands busy. Here's your reward.",
+	},
+	-- L36, not 26: Saltmother Vess lives on the Whale Fall, which is not
+	-- sailable until L36 (Wreckwater opens, tier 6 crosses the last 4,147
+	-- studs), so any lower gate here was decoration. Her elite moved to the
+	-- wreck band with the 2026-09-12 swap, so the whole saga is banded L36 ->
+	-- L38 -> L41 where she actually stands.
+	requiresLevel = 36,
 	objectives = { { type = "catch", count = 8, waters = "ocean" } },
-	rewards = { coins = 1400, xp = 1100 },
+	-- Wreck-band opener pricing: the_taut_chain (L34) pays 2000/1500 and
+	-- struck_twice (L38) 2600/1900.
+	rewards = { coins = 2400, xp = 1700 },
 }
 
 Quests.items.the_ribbonjaw_hunt = {
 	id = "the_ribbonjaw_hunt",
 	name = "Old Ribbonjaw",
 	giver = "saltmother_vess",
-	blurb = "It took the whetstone out of the middle of my stone. Not the fish, mind. The whetstone. It knew which part mattered.",
+	blurb = "Old Ribbonjaw stole the whetstone out of my gutting stone. Kill it and bring the whetstone back.",
+	lines = {
+		accept = "Thanks. Kill it and bring me the whetstone.",
+		progress = "You're still working on this. I need Old Ribbonjaw dead and the whetstone back.",
+		complete = "Good work. The whetstone is back where it belongs. Here's your reward.",
+	},
 	prereq = "the_gutting_stone",
-	requiresLevel = 28,
+	-- L38: Old Ribbonjaw is a `waters = "wreck"` row since the band swap
+	-- (14,000 HP now), so the hunt needs Wreckwater's bay open - and that is
+	-- the water outside Vess's own door.
+	requiresLevel = 38,
 	objectives = {
 		{ type = "kill", count = 1, species = "old_ribbonjaw" },
 		{ type = "deliver", materials = { whetstone_heart = 1 } },
 	},
-	rewards = { coins = 2600, xp = 1800 },
+	-- The wreck band's elite-hunt price: ledger_of_teeth (2600/1600) is the
+	-- band's ordinary work and the_moth_hunt (3000/2000) the band below's hunt.
+	rewards = { coins = 3400, xp = 2400 },
 }
 
 Quests.items.the_ribboncutter = {
 	id = "the_ribboncutter",
 	name = "The Ribboncutter",
 	giver = "saltmother_vess",
-	blurb = "Set it in a blade and nothing goes to waste. Nothing wasted is a mercy, of a kind. Have it made and don't argue with me.",
+	blurb = "That whetstone will hold an edge in a blade. Craft the Ribboncutter rod and I'll pay for it.",
+	lines = {
+		accept = "Thanks. Craft the rod and come back.",
+		progress = "You're still working on this. I need the Ribboncutter rod crafted.",
+		complete = "Good work. That rod will cut clean. Here's your reward.",
+	},
 	prereq = "the_ribbonjaw_hunt",
+	-- The craft is only completable at the recipe's own gate: ribboncutter_rod
+	-- is requiresLevel 41 in Rods.luau since the band swap (was 20). This gate
+	-- was absent entirely, so the quest could be taken and then sit.
+	requiresLevel = 41,
 	objectives = { { type = "craft", itemId = "ribboncutter_rod" } },
-	rewards = { coins = 1200, xp = 1200 },
+	rewards = { coins = 1600, xp = 1600 },
 }
 
 -- ---------------------------------------------------------------- the Lampwright
@@ -397,7 +586,12 @@ Quests.items.every_lamp_dark = {
 	id = "every_lamp_dark",
 	name = "Every Lamp Dark",
 	giver = "lampwright",
-	blurb = "I don't light them any more and I won't be talked round. Fish the trench if you want to see what I'm not lighting them for.",
+	blurb = "I want you to see why I keep the lamps dark. Catch 8 fish in Gloomtrench and come back.",
+	lines = {
+		accept = "Thanks. Fish the trench and then we'll talk.",
+		progress = "You're still working on this. I need 8 fish caught in Gloomtrench.",
+		complete = "Good work. Now you have seen what the light draws. Here's your reward.",
+	},
 	requiresLevel = 30,
 	objectives = { { type = "catch", count = 8, waters = "gloom" } },
 	rewards = { coins = 1600, xp = 1300 },
@@ -407,7 +601,12 @@ Quests.items.the_moth_hunt = {
 	id = "the_moth_hunt",
 	name = "The Moth of the Deep",
 	giver = "lampwright",
-	blurb = "It came for the lamp I gave away, found the man who made it instead, and it has been circling ever since. Put it out.",
+	blurb = "The Moth of the Deep came up for the lamp I built. Kill it and bring me its unburnt wick.",
+	lines = {
+		accept = "Thanks. Kill it and bring me the wick.",
+		progress = "You're still working on this. I need the Moth dead and the unburnt wick back.",
+		complete = "Good work. It won't circle the shelf again. Here's your reward.",
+	},
 	prereq = "every_lamp_dark",
 	requiresLevel = 32,
 	objectives = {
@@ -421,8 +620,17 @@ Quests.items.the_lampwrights_line = {
 	id = "the_lampwrights_line",
 	name = "The Lampwright's Line",
 	giver = "lampwright",
-	blurb = "It never burned. Forty years of wicks and that one never burned. Hang it at the tip and the deep will show you what it keeps.",
+	blurb = "That wick never burned, so let's put it in the water. Craft the Lampwright's Line rod.",
+	lines = {
+		accept = "Thanks. Craft the rod and come back.",
+		progress = "You're still working on this. I need the Lampwright's Line rod crafted.",
+		complete = "Good work. That rod lights the deep water. Here's your reward.",
+	},
 	prereq = "the_moth_hunt",
+	-- lampwrights_line_rod is a L34 recipe and the_moth_hunt gates at 32, so
+	-- without this the last two levels of the saga are an un-completable
+	-- quest in the log.
+	requiresLevel = 34,
 	objectives = { { type = "craft", itemId = "lampwrights_line_rod" } },
 	rewards = { coins = 1400, xp = 1400 },
 }

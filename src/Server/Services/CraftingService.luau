@@ -7,6 +7,19 @@
 -- craftable category (trinkets, furniture, cosmetics...) is ONE descriptor
 -- entry plus a client tab - the validation/spend path never changes.
 --
+-- CRAFTING IS NPC-ONLY NOW (2026-09-12, user: "move crafting entirely to the
+-- npcs"). The `C` window is gone, and with it the RequestCraft remote as a way
+-- in: the entry point is CraftingService.craft(player, itemId) -> (ok, reason),
+-- called by NpcService when a villager's Craft tab is pressed. The remote is
+-- still declared and still answered, but only to REFUSE - an old client (or a
+-- forged fire) gets a CraftResult saying where crafting happens now.
+--
+-- check() is the same validation with nothing spent, split out so the villager's
+-- menu can say "Craft" only where the server would actually say yes: the panel
+-- and the transaction read the same gate in the same order, and a refusal the
+-- menu did not predict (a race on a material, a level read a frame stale) still
+-- comes back as a reason rather than a silent no-op.
+--
 -- Validation order matters for atomicity. Coins are checked (peeked) before
 -- anything is spent, then the materials are spent (all-or-nothing), then the
 -- coins. Nothing yields between those steps - RemoteEvent fires don't yield -
@@ -126,40 +139,48 @@ local function fail(player: Player, itemId: string, reason: string)
 	Remotes.CraftResult:FireClient(player, { ok = false, itemId = itemId, reason = reason })
 end
 
-local function onRequestCraft(player: Player, itemId)
+-- THE GATE, with nothing spent. Returns (true) when this player could craft
+-- this id right now, else (false, reason) with the SAME reason string the
+-- transaction would have refused with - the villager's menu prints it on a
+-- greyed Craft button, so the two must never disagree.
+--
+-- (false, nil) is the one silent refusal: no ProgressionService state at all
+-- (the profile is mid-load in a way DataService.isLoaded did not catch). The old
+-- handler answered that with no CraftResult either, and a menu with no reason to
+-- give simply offers no button.
+--
+-- Materials are PEEKED here (getCount), never spent: this runs on every menu
+-- push, for every row.
+function CraftingService.check(player: Player, itemId: string): (boolean, string?)
 	if type(itemId) ~= "string" then
-		return
+		return false, "That can't be crafted."
 	end
 
 	-- Same gate as casting (FishingService): spending or earning against the
 	-- session defaults during the async profile load would be overwritten
 	-- when the real data lands.
 	if not DataService.isLoaded(player) then
-		fail(player, itemId, "Hauling in your things... one moment.")
-		return
+		return false, "Hauling in your things... one moment."
 	end
 
 	local category, item = categoryOf(itemId)
 	local recipe = item and item.recipe
 	if not (category and recipe) then
-		fail(player, itemId, "That can't be crafted.")
-		return
+		return false, "That can't be crafted."
 	end
 
 	local blocked, reason = category.owns(player, item)
 	if blocked then
-		fail(player, itemId, reason or "You already own that.")
-		return
+		return false, reason or "You already own that."
 	end
 
 	local state = ProgressionService.getState(player)
 	if not state then
-		return
+		return false, nil
 	end
 
 	if state.level < recipe.requiresLevel then
-		fail(player, itemId, string.format("Requires level %d.", recipe.requiresLevel))
-		return
+		return false, string.format("Requires level %d.", recipe.requiresLevel)
 	end
 
 	-- A heart-gated recipe needs the boss beaten, not a material spent: the
@@ -169,21 +190,43 @@ local function onRequestCraft(player: Player, itemId)
 		for _, bossId in recipe.requiresHearts do
 			if player:GetAttribute("Heart_" .. bossId) ~= true then
 				local boss = Bosses.items[bossId]
-				fail(player, itemId, string.format("Requires the heart of %s.", boss and boss.shortName or bossId))
-				return
+				return false, string.format("Requires the heart of %s.", boss and boss.shortName or bossId)
 			end
 		end
 	end
 	if state.coins < recipe.coins then
-		fail(player, itemId, "Not enough coins.")
-		return
+		return false, "Not enough coins."
+	end
+	for matId, need in recipe.materials do
+		if MaterialService.getCount(player, matId) < need then
+			return false, "Not enough materials."
+		end
+	end
+	return true
+end
+
+-- ONE CRAFT. The only way anything is ever crafted: NpcService calls this when a
+-- villager's Craft button comes back over NpcChoice, and answers with a fresh
+-- menu carrying `reason` as the remark. CraftResult still goes out on both paths
+-- - it is the wire's record of the verdict, unchanged from the old window.
+function CraftingService.craft(player: Player, itemId: string): (boolean, string?)
+	local ok, reason = CraftingService.check(player, itemId)
+	if not ok then
+		if reason then
+			fail(player, itemId, reason)
+		end
+		return false, reason
 	end
 
-	-- Coins are affordable (checked above, no yield since); spend the mats
-	-- first - if the player is short, nothing else was touched.
+	-- check() said yes and nothing has yielded since (RemoteEvent fires and
+	-- attribute reads don't), so the balances it peeked are still the balances
+	-- here. Spend the mats first anyway - the all-or-nothing spend is the real
+	-- authority, and if it somehow fails, coins were never touched.
+	local category, item = categoryOf(itemId)
+	local recipe = item.recipe
 	if not MaterialService.spend(player, recipe.materials) then
 		fail(player, itemId, "Not enough materials.")
-		return
+		return false, "Not enough materials."
 	end
 	ProgressionService.spendCoins(player, recipe.coins)
 
@@ -191,6 +234,15 @@ local function onRequestCraft(player: Player, itemId)
 	-- The quest funnel: one line, the whole hook (Beyond the Cast A4).
 	QuestService.notify("craft", { player = player, itemId = itemId })
 	Remotes.CraftResult:FireClient(player, { ok = true, itemId = itemId })
+	return true
+end
+
+-- The retired way in. RequestCraft is kept connected rather than dropped so the
+-- refusal is a sentence in the game's own voice instead of a request that
+-- vanishes: a client built before the move (or one poking the remote by hand)
+-- is TOLD where the bench is.
+local function onRequestCraft(player: Player, itemId)
+	fail(player, if type(itemId) == "string" then itemId else "", "Craft at a villager")
 end
 
 function CraftingService.init()

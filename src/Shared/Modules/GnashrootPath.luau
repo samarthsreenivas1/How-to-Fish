@@ -7,7 +7,8 @@
 -- siblings. This one is only the mire colossus's geometry, and it carries two
 -- kinds of shape because the creature is two things:
 --
---   THE BODY - Mass, Legs, Head, Jaw, Maw, Fangs, Eyes, Core, Stones, Drips,
+--   THE BODY - Mass, Roots, Head, Jaw, Maw, Fangs, Eye (x10), Core, Stones,
+--   Drips,
 --   all authored in ONE shared space (assets/boss_gen.py) and placed with a
 --   SINGLE CFrame, the Kraken's convention. `bodyCFrame` IS that CFrame.
 --   Nothing inside it moves except the jaw, about its printed hinge.
@@ -77,14 +78,16 @@
 -- the windup starts, and does not call it again until the attack is over.
 -- This is a rule of the module, not a note at one call site:
 --
---   * a fist stands 26.5 world studs out from the body's own axis at the
---     row's 1.5 scale, measured across all nine poses (`heavePlant`, the
---     furthest; 28.8 with the grip shift at full stretch). The ~34 this used
---     to claim is the rest curve's ARC - 23.1 authored, 34.65 world - which is
---     a length of arm and not a reach. Re-picking "nearest player" between
---     frames swings the fist through up to twice 26.5 in one frame, so the
---     hand teleports - and `heave`'s marching hump starts from that hand, so
---     the hazard teleports with it;
+--   * a fist stands 42.5 world studs out from the body's own axis at the
+--     row's 1.5 scale, measured across all nine poses at the 2026-09-12
+--     SECOND re-author (`disgorge`, the furthest; `heavePlant` is the
+--     furthest that touches the ground, 39.3, and its fingertips reach 44.2).
+--     That is a REACH and not a length of arm - the rest curve's arc is
+--     25.608 authored, 38.4 world, and quoting the arc is the mistake this
+--     line used to make. Re-picking "nearest player" between frames swings
+--     the fist through up to twice 42.5 in one frame, so the hand teleports -
+--     `heave`'s marching hump starts from that hand, so the hazard teleports
+--     with it;
 --   * in a party the nearest player changes constantly (two people trading
 --     places is enough), so a boss that re-aims per frame swings at the
 --     moving average of a crowd and connects with nobody. That does not read
@@ -113,8 +116,21 @@
 --   Strike 0..1      - 0 wound up, 1 the blow has landed
 --   Exposed          - the punish window (the stock stagger attribute)
 --
--- Gape is NOT published: it falls out of Attack/AttackBlend/Strike, so there
--- is no way for the mouth and the bite to disagree (see `gape`).
+-- ...and ONE CLIENT-ONLY CHANNEL, which the server must never write:
+--
+--   Eyes 0..1        - the fraction of the eye row that is LIT, applied in
+--                      EYE_SEATS order. nil means 1, so a fight that never
+--                      mentions it gets every eye open and nothing changes.
+--
+-- IT IS CLIENT-ONLY ON PURPOSE. The eye row is a LOOK - GnashrootIntro opens
+-- them one at a time as its own beat - and nothing in the fight reads it: no
+-- hitbox, no target pick, no HUD. Published from the server it would be a
+-- replicated write per eye per frame for a decoration, and worse, it would
+-- become a number two systems could disagree about. `Fn.gnashrootPublish`
+-- does not write it and must not start.
+--
+-- Gape is NOT published either: it falls out of Attack/AttackBlend/Strike, so
+-- there is no way for the mouth and the bite to disagree (see `gape`).
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -156,16 +172,38 @@ end
 -- of its mud pool, so the model drops onto the mere's surface with no fudging.
 -- Change the mesh, change these.
 GnashrootPath.SCALE = 1.5 -- the creature row's body.scale (Creatures.old_gnashroot)
-GnashrootPath.CROWN = 27.0 -- the top of the head, for anything drawn over it
-GnashrootPath.JAW_HINGE = authored(9.0, 0.0, 9.6) -- Jaw + Fangs + Maw swing about this
-GnashrootPath.CORE = authored(5.0, 0.0, 22.0) -- the gnashroot burning in its chest
--- (moved 2026-09-01 from (3.4, 0, 18.6), which sat 0.1 studs INSIDE the mass's
--- skin - 0 of 48 front faces visible from the bank. Measured after the move:
--- 67 of 104 triangles reach open air, visible from all 57 tested stances.)
-GnashrootPath.ARM_SEGMENTS = 5 -- vertebrae, plus the fist at the tip
-GnashrootPath.ARM_PITCH = 4.6 -- studs between vertebra centres at rest
-GnashrootPath.ARM_HALF_WIDTH = 3.5 -- at the shoulder; the client tapers toward the fist
-GnashrootPath.KNOT_EVERY = 3 -- every third vertebra is a knuckle (Gnashroot_ArmKnot)
+-- THE HEAD IS THE CROWN NOW. The 2026-09-12 SECOND pass stood this animal
+-- up: the body is a vertical loft with a real neck, and the skull sits ON
+-- TOP of it (z 24.6..32.3) with the jaw hinged under the back of it and
+-- opening DOWNWARD, so the mouth is the top-front of the silhouette. The
+-- user's words were "the jaw should maybe be at the top of the body not in
+-- the middle... redesign it to make it easier to understand what it actually
+-- is", and every constant in this block moved for that.
+GnashrootPath.CROWN = 32.3 -- the top of the SKULL, for anything drawn over it
+GnashrootPath.JAW_HINGE = authored(0.6, 0.0, 24.9) -- Jaw + Fangs + Maw swing about this
+-- THE CORE IS IN THE CHEST HOLLOW, recessed between the collarbones and
+-- under the chin, so the one bright thing on the animal is in the one place
+-- a player reads as its heart. Measured at build (boss_gen's
+-- `build_gnashroot` HANDOFF): the torso's front face at z 16.2 is x 9.20 and
+-- the knot's front is 10.50, so 1.30 studs of it stand proud of a 2.3 radius
+-- and the rest is in the chest; the jaw's underside at that x is z 18.93,
+-- which clears the knot's crown by 0.43 at a shut mouth and swings away from
+-- it at any gape.
+GnashrootPath.CORE = authored(8.2, 0.0, 16.2)
+-- EIGHT vertebrae, not five. Five 5.2-stud bones on a 5.21 pitch put a hinge
+-- you can see at every joint, and the user's word for the result was
+-- "choppy": the limb read as a string of beads. Eight shorter ones on the
+-- same arc carry 16% overlap and sample the curve half again as often, so a
+-- pose blend never turns one bone more than a few degrees.
+GnashrootPath.ARM_SEGMENTS = 8 -- vertebrae, plus the fist at the tip
+-- MEASURED, not chosen: the rest curve `through` walks below is 25.608
+-- authored studs of arc and 25.608 / 8 is this. boss_gen's HANDOFF prints the
+-- same number off the same three points, and every other pose in POSE is
+-- authored to 0.97..1.07 of that arc so the client's STRETCH clamp is never
+-- reached. Move a joint and this has to be re-measured, not re-guessed.
+GnashrootPath.ARM_PITCH = 3.201
+GnashrootPath.ARM_HALF_WIDTH = 3.38 -- at the shoulder; the client tapers toward the fist
+GnashrootPath.KNOT_EVERY = 4 -- every fourth vertebra is a knuckle (Gnashroot_ArmKnot)
 
 -- How deep it waits before it rises, in AUTHORED studs like everything else
 -- here - `bodyCFrame` is the one place it becomes world (x1.5 = 42.0).
@@ -178,12 +216,21 @@ GnashrootPath.KNOT_EVERY = 3 -- every third vertebra is a knuckle (Gnashroot_Arm
 -- 18 applied in world units left the crown (27 authored, 40.5 world) standing
 -- 22.5 studs out of the mud at rise = 0. Taken off CROWN, so a re-measured
 -- head cannot leave a buried boss with its face showing.
-GnashrootPath.RISE_DEPTH = GnashrootPath.CROWN + 1.0 -- 28.0 authored, 42.0 world
+GnashrootPath.RISE_DEPTH = GnashrootPath.CROWN + 1.0 -- 33.3 authored, 49.95 world
 
--- Full gape. Wide, because the jaw hinges down at the chest (the hinge is 9.6
--- up, the crown 27): this animal's mouth is most of its front, and a modest
--- swing on a head that size does not read at all from the bank.
-GnashrootPath.JAW_MAX = math.rad(38)
+-- Full gape. Wide, because the jaw hinges at the BACK OF THE SKULL (the
+-- hinge is 24.9 up, the crown 32.3) and swings a 14-stud jaw off it: at 34
+-- degrees the chin tip falls from authored z 22.4 to 14.8 and swings in to
+-- x 11.1, which still clears the chest (the torso's front face at that height
+-- is x 9.4). The mouth therefore opens as a gape at the TOP of the animal,
+-- which is the whole point of the second pass, and it cannot reach the mud.
+--
+-- THE SIGN IS THE CONTROLLER'S AND IT IS NEGATIVE: it applies
+-- `CFrame.Angles(0, 0, -jawAngle)` about JAW_HINGE, which takes the +X end of
+-- the jaw (the chin, at authored x 17.6) DOWN and back along its own arc. The
+-- skull never moves. Rendered and checked, not reasoned:
+-- assets/boss_gnashroot_pose_gape.png is this exact rotation at full gape.
+GnashrootPath.JAW_MAX = math.rad(34)
 
 -- Body pitch per attack, radians, POSITIVE = nose down over its legs. The
 -- pitch hinges at the authored origin (the mud line), so a lean is a colossus
@@ -233,13 +280,32 @@ local LEAN = {
 -- to move with it - and `groundLean` reads the wrist back out to cap the
 -- punish window's extra pitch, so the two cannot be re-tuned apart.
 --
--- THE RULE IS SIGNED. `wallow`'s fist rakes BEHIND the hinge (x = -7.0), so a
--- nose-down lean LIFTS it and x * tan(lean) is NEGATIVE: its wrist z has to go
--- below the authored mud line to reach the mud, which is why it is the one
--- entry here with a negative z. Read as "z must be positive, it is a height"
--- it floated 6.18 world studs - the pose whose whole job is that the arms rake
--- the ground was the only one that never touched it.
-local SHOULDER = { -1.0, 8.8, 18.2 }
+-- THE RULE IS SIGNED, and `wristLean` below still reads it that way even
+-- though no pose currently rakes behind the hinge: a nose-down lean LIFTS a
+-- fist that is behind x = 0, so x * tan(lean) is negative there and the
+-- ground has no opinion at all. (The old `wallow` did rake back, and read as
+-- "z must be positive, it is a height" it floated 6.18 world studs. The move
+-- is a forward sweep now - a rooted colossus cannot plough anywhere - but the
+-- signed form is kept because the next pose that reaches back will need it.)
+--
+-- THE SHOULDER IS ON A REAL SHOULDER NOW. The morning build hung it at
+-- { 6.0, 9.2, 20.5 } on a horizontal mound, which put the sockets on the
+-- front of a hump; the second pass lofts the body VERTICALLY, so this is a
+-- point on the widest ring of the torso (z 21.4, the shoulders) at bearing
+-- 1.15 radians round it - high, forward of the spine, and wide. It is
+-- DERIVED, not guessed: boss_gen's `_gn_shoulder_seat` computes it off the
+-- torso profile and raises at build time if this literal and that profile
+-- ever disagree by more than 0.02 studs.
+--
+-- THE ARCS ARE THE TUNING. The client draws a FIXED eight vertebrae and
+-- stretches them to cover whatever arc a pose comes to, clamped to
+-- STRETCH_MIN/MAX 0.85/1.30; past the top of that a gap opens at the wrist -
+-- a hand detached from its arm. Measured over this table against a rest of
+-- 25.608: gnash 0.979, disgorge 0.993, heaveBrace 0.996, hammerRaised 1.038,
+-- hammerLanded 1.040, wallow 1.040, mire 1.048, heavePlant 1.068. Nothing is
+-- near the clamp, so no pose in the book can pull a hand off. Re-author a
+-- joint and re-run the build: boss_gen prints the whole table every time.
+local SHOULDER = { 2.87, 8.73, 21.40 }
 
 local POSE = {
 	-- REST: hung forward off the shoulders, elbows kicked out, fists in the
@@ -261,45 +327,56 @@ local POSE = {
 	-- match and nothing here should be tuned as if it did: move a
 	-- joint and the two numbers move independently, and the client's FIXED five
 	-- pieces stretch to cover whatever arc comes out (STRETCH_MIN/MAX).
-	rest = { elbow = { 1.5, 13.2, 10.5 }, wrist = { 10.5, 9.0, 1.8 } },
+	rest = { elbow = { 9.5, 13.0, 13.5 }, wrist = { 17.5, 11.0, 2.00 } },
 
 	-- GNASH: the head comes down, so the arms have to take the weight - fists
 	-- planted wide and BACK, elbows high. A bite with the arms still hanging
 	-- forward reads as the head falling off rather than as a bite.
-	gnash = { elbow = { 0.0, 15.2, 12.5 }, wrist = { 6.0, 12.5, 1.9 } },
+	gnash = { elbow = { 6.5, 17.0, 15.5 }, wrist = { 13.0, 14.5, 3.97 } },
 
-	-- WALLOW: the mass ploughs forward and the arms rake behind it. The
-	-- forward travel is NOT here - the server walks the creature and the
-	-- drawn body follows its pivot, so a surge in the pose too would move it
-	-- twice. What this pose owns is the drag.
-	--
-	-- The wrist z is NEGATIVE and has to be: the fist is 7 studs BEHIND the
-	-- hinge, so the 14-degree nose-down lean swings it UP, and the rule reads
-	-- z = x * tan(lean) = -1.75. At the +2.5 it used to carry, the raking fist
-	-- floated 6.18 world studs over the mud; at -1.75 it sits on it (-0.01).
-	wallow = { elbow = { -2.5, 14.5, 11.0 }, wrist = { -7.0, 12.0, -1.75 } },
+	-- WALLOW: it shovels the mere forward. The mass used to PLOUGH here - the
+	-- server walked the creature and the arms raked behind it - and a rooted
+	-- boss cannot: `speed = 0` now, and an attack whose read is forward travel
+	-- on an animal that never travels is a move with no tell at all. The
+	-- handler was already a marching `barrage` wall rather than a charge
+	-- (nothing about the damage changes); this is the pose finally agreeing
+	-- with it. Both arms sweep low and wide across the FRONT, and the wall of
+	-- peat goes out from there.
+	wallow = { elbow = { 11.5, 15.0, 11.5 }, wrist = { 21.5, 14.5, 5.36 } },
 
 	-- DISGORGE: it rears and the throat swells, and the arms open out of the
 	-- way of what is about to come up. Palms out, chest height.
-	disgorge = { elbow = { 2.5, 14.5, 17.5 }, wrist = { 13.0, 10.5, 13.0 } },
+	disgorge = { elbow = { 9.5, 18.0, 19.5 }, wrist = { 21.0, 19.0, 13.00 } },
 
 	-- HEAVE: the latched arm drives a fist into the peat out front - that
 	-- hand is where the marching hump starts, so it reaches further than any
 	-- other pose and finishes low.
-	heavePlant = { elbow = { 3.5, 13.0, 11.5 }, wrist = { 15.5, 8.5, 2.8 } },
+	-- ...and it is also THE CRAWL. GnashrootIntro drives `Attack = "heave"`
+	-- with AimSide flipping while the emergence walks the stand-in's pivot in,
+	-- so this pair has to read as HAULING at a partial Rise and not only as a
+	-- plant on a fully risen body: both fists forward on the jaw side, low,
+	-- and pulling. Rendered at the intro's own rise
+	-- (assets/boss_gnashroot_pose_emerge.png, Rise 0.62). It will not read at
+	-- Rise 0.3 only because the second pass stood the animal up: the head is
+	-- the CROWN now, so it breaks the surface at rise 0.03, the two big eyes
+	-- at 0.15 and the shoulders at 0.36. The thing looks at you long before
+	-- its chest is out of the water, which is exactly the beat the doc asks
+	-- for and exactly what the morning build (face at z 14.6, clear only at
+	-- rise 0.48) could not give it.
+	heavePlant = { elbow = { 14.8, 10.4, 12.0 }, wrist = { 24.0, 10.5, 4.23 } },
 	-- ...and the other arm braces, because a colossus putting its weight on
 	-- one fist has to put it somewhere.
-	heaveBrace = { elbow = { 0.5, 15.5, 12.0 }, wrist = { 5.0, 13.5, 1.1 } },
+	heaveBrace = { elbow = { 8.5, 16.0, 14.5 }, wrist = { 14.0, 14.0, 2.46 } },
 
 	-- MIRE: both palms flat on the ground, elbows high. The ground softening
 	-- under the whole party has to have a visible cause, and this is it.
-	mire = { elbow = { 2.5, 15.5, 12.5 }, wrist = { 12.5, 11.5, 4.4 } },
+	mire = { elbow = { 10.0, 16.5, 16.0 }, wrist = { 20.5, 13.0, 7.05 } },
 
 	-- HAMMERFALL, the earned opening: both fists over the crown (~27) and
 	-- brought together, then driven into the mud out front. Two poses, one
 	-- attack - `strike` carries the arms between them.
-	hammerRaised = { elbow = { -2.0, 12.5, 25.0 }, wrist = { 5.0, 7.5, 33.0 } },
-	hammerLanded = { elbow = { 3.0, 14.0, 13.5 }, wrist = { 15.0, 7.5, 6.5 } },
+	hammerRaised = { elbow = { 1.0, 16.6, 29.2 }, wrist = { 9.0, 8.0, 37.00 } },
+	hammerLanded = { elbow = { 12.0, 15.0, 17.5 }, wrist = { 23.0, 10.5, 9.75 } },
 }
 
 -- A quadratic through THREE points - and THROUGH the middle one, at t = 0.5,
@@ -365,6 +442,10 @@ function GnashrootPath.newState(center: Vector3)
 		blend = 0, -- 0 = the rest silhouette, 1 = fully into that attack's pose
 		strike = 0, -- 0 = wound up, 1 = the blow has landed
 		exposed = 0, -- the punish window: chest forward, core open
+		-- CLIENT-ONLY (see THE STATE): the fraction of the eye row that is
+		-- lit, in EYE_SEATS order. 1 is every eye open, which is what the
+		-- fight runs at - only the intro ever moves it.
+		eyes = 1,
 	}
 end
 
@@ -383,6 +464,74 @@ end
 function GnashrootPath.latch(state, angle: number, side: number?)
 	state.aimAngle = angle
 	state.aimSide = if side then (if side < 0 then -1 else 1) else GnashrootPath.plantSide(state, angle)
+end
+
+-- ---------------------------------------------------------------- the eyes
+--
+-- THE EYE ROW IS RIG GEOMETRY, and it is TEN INSTANCES of one authored lump
+-- (`Gnashroot_Eye`) rather than one baked scatter. A single mesh has one
+-- Material and one Transparency, so "the eyes open one at a time" - the beat
+-- the intro is built on - cannot be expressed on it at all.
+--
+-- TWO BIG ONES AND EIGHT SMALL, which is the second pass's answer to "it's
+-- just too confusing to look at right now". The morning build scattered
+-- fourteen seats of much the same size over the head AND the whole body, and
+-- the result had no face in it: nothing on the animal read as ITS EYES. Rows
+-- 1 and 2 are now a forward-facing pair under the brow ridge at radius 1.70 -
+-- more than five times the area of any other seat - and the remaining eight
+-- are r 0.62..0.72 on the temples and cheeks. All ten are on the SKULL;
+-- nothing on the body competes with the head any more.
+--
+-- Each entry is (x, y, z, radius) in AUTHORED studs, copied from
+-- assets/boss_gen.py's GN_EYE_SEATS - which prints this exact table as a Luau
+-- literal on every build, so the two are diffable rather than merely believed.
+-- Every seat is on the skull, and the skull is a 32-sided loft, so the
+-- inscribed-polygon sag that left a morning-build eye 0.34 studs adrift is
+-- half a percent of a radius here and no sink guard is needed.
+--
+-- THE ORDER IS LOAD-BEARING. `eyeLit` walks this table in order, so the row
+-- opens with the two BIG eyes and then works back over the temples and down
+-- the cheeks - the thing looks at you before you can see the rest of it.
+-- Re-ordering this table re-choreographs the intro.
+local EYE_SEATS = {
+	{ 10.60, 3.00, 28.30, 1.70 },
+	{ 10.60, -3.00, 28.30, 1.70 },
+	{ 7.60, 4.60, 28.80, 0.72 },
+	{ 7.60, -4.60, 28.80, 0.72 },
+	{ 4.40, 5.20, 29.60, 0.68 },
+	{ 4.40, -5.20, 29.60, 0.68 },
+	{ 12.60, 3.10, 26.60, 0.62 },
+	{ 12.60, -3.10, 26.60, 0.62 },
+	{ 9.20, 4.70, 26.20, 0.66 },
+	{ 9.20, -4.70, 26.20, 0.66 },
+}
+
+GnashrootPath.EYE_COUNT = #EYE_SEATS
+
+-- One eye's body-local seat (AUTHORED, unscaled) and its radius. The client
+-- folds in `bodyCFrame` and SCALE, exactly as it does for every other piece,
+-- so an eye cannot be left behind by a lean or a rise.
+function GnashrootPath.eyeSeat(index: number): (Vector3, number)
+	local seat = EYE_SEATS[index]
+	if not seat then
+		return Vector3.zero, 0
+	end
+	return authored(seat[1], seat[2], seat[3]), seat[4]
+end
+
+-- How lit eye `index` is, 0..1, off the client-only `Eyes` fraction.
+--
+-- A FRACTION OF THE ROW, NOT A COUNT, and the one crossing the boundary gets
+-- the remainder rather than snapping: ten eyes on a 0..1 track would
+-- otherwise pop in ten discrete steps, which reads as a bug in the
+-- tween. nil is 1 - a fight that never writes the channel has every eye open,
+-- which is exactly today's behaviour.
+function GnashrootPath.eyeLit(state, index: number): number
+	local fraction = state.eyes
+	if fraction == nil then
+		fraction = 1
+	end
+	return clamp01(clamp01(fraction) * #EYE_SEATS - (index - 1))
 end
 
 -- ---------------------------------------------------------------- the body
@@ -454,13 +603,21 @@ end
 -- the body leans past atan(z / x) - the pose table's rule, read backwards.
 --
 -- Every ground-contact pose is authored right at its own lean, so none of them
--- has headroom: gnash's limit is 17.6 degrees and it leans 17, mire 19.4 and
--- 19, heavePlant 10.2 and 10, hammerLanded 23.4 and 23. REST - which never
--- leans, and which is where the punish window is actually spent, the blend
--- easing home at 14/s against `exposed`'s 6/s - is 9.7 at the pose, 8.4 once
--- the grip shift's extra reach is allowed for. That is why `exposed` cannot
--- simply be ADDED to the lean: +21 on top of any of them put both fists 3.1 to
--- 8.6 studs underground for the whole window.
+-- has headroom. Re-measured for the 2026-09-12 arms (limit at the fist's
+-- furthest reach, against the pose's own lean): gnash 15.3 / 17, wallow 13.1 /
+-- 14, heavePlant 9.4 / 10, heaveBrace 9.0 / 10, mire 17.7 / 19, hammerLanded
+-- 21.7 / 23 - every one of them already at or past its ground, which is what
+-- `math.max(pitch, ...)` below exists to protect. REST - which never leans,
+-- and which is where the punish window is actually spent, the blend easing
+-- home at 14/s against `exposed`'s 6/s - is 4.2 degrees once the grip shift's
+-- extra reach is allowed for. That is LESS headroom than the old 8.4, and for
+-- a reason worth stating rather than tuning away: the rest fists now stand 20
+-- authored studs out instead of 10.5 (they have to reach the bank from a body
+-- that cannot walk to it), and a long arm at a low wrist is a shallow angle.
+-- The window's tell was never this pitch anyway - see `exposed` in LEAN.
+--
+-- That is also why `exposed` cannot simply be ADDED to the lean: +21 on top of
+-- any of them puts both fists metres underground for the whole window.
 --
 -- Taken off the wrist the pose is ACTUALLY at, not off a table of limits, so
 -- re-tuning a wrist z moves the cap with it and the two cannot drift.
@@ -561,8 +718,8 @@ local memo = {
 	frame = CFrame.identity,
 }
 
--- The ONE CFrame the whole body cluster is placed with (Mass, Legs, Head,
--- Eyes, Core, Stones, Drips - and the jaw group, off its hinge). Scale is
+-- The ONE CFrame the whole body cluster is placed with (Mass, Roots, Head,
+-- the eye row, Core, Stones, Drips - and the jaw group, off its hinge). Scale is
 -- applied at this boundary and nowhere else, so every constant in this file
 -- stays the authored number - `lift` included, which is why it is multiplied
 -- here rather than carried in world units.
@@ -740,15 +897,27 @@ function GnashrootPath.handPosition(state, side: number): Vector3
 	return GnashrootPath.armShape(side)(state, 1)
 end
 
--- NOTE ON GROUND HEIGHT: the poses that plant carry wrists at z = -1.75 to 6.5
--- authored, which is NOT "just proud of the mud line" - it is whatever
+-- NOTE ON GROUND HEIGHT: the poses that plant carry wrists at z = 2.46 to
+-- 9.75 authored, which is NOT "just proud of the mud line" - it is whatever
 -- x * tan(that pose's lean) comes to, so the fist lands ON the surface once
--- the pose is fully reached. Measured world heights at full blend, breath at
--- its low, ground at 0: rest +2.70 (the one pose that really does sit proud -
--- it never leans, so its 1.8 authored is 2.70 world of clearance), gnash
--- +0.09, wallow -0.01, heaveBrace +0.32, heavePlant +0.10, mire +0.14,
--- hammerLanded +0.18. The breath adds 0 to +0.60 on top of every one of them
--- and never subtracts.
+-- the pose is fully reached. Every planted row in POSE above is authored to
+-- that identity exactly (gnash 13.0 x tan 17, wallow 21.5 x tan 14,
+-- heavePlant 24.0 and heaveBrace 14.0 x tan 10, mire 20.5 x tan 19,
+-- hammerLanded 23.0 x tan 23), so all of them land within a centimetre of
+-- zero; `rest` is the one pose that really does sit proud, because it never
+-- leans, and its 2.00 authored is 3.00 world of clearance. The breath adds 0
+-- to +0.60 on top of every one of them and never subtracts, so nothing is
+-- ever more than a centimetre under.
+-- `disgorge` (+26.40) and `hammerRaised` (+51.47) are airborne by design.
+--
+-- AND THE FISTS NOW LAND ON THE BANK, which is the whole point of a boss that
+-- cannot walk. Radial reach at full blend, world studs from the body's axis:
+-- rest 31.0, gnash 29.2, heaveBrace 29.7, mire 36.4, hammerLanded 37.9,
+-- wallow 38.9, heavePlant 39.3, disgorge 42.5 - and fingertips run ~4.9
+-- further. The Rootmere is r 27 and its walkable bank r 29-70
+-- (assets/arena_gen.py's HANDOFF), so every planted pose reaches peat a
+-- player can stand on. `old_gnashroot.attacks.hammerfall.radius` is sized off
+-- that 44 and not off the body.
 --
 -- The whole body is placed off the server's pivot, so those clearances are the
 -- mere's surface wherever the boss is standing, and there is no terrain

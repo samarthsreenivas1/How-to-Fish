@@ -373,6 +373,62 @@ for sid, block in shops.items():
         elif iid not in domain[0]:
             problem(f"shop {sid}: {kind} slot '{iid}' not in {domain[1]}")
 
+# 9. Creature families: every creature id is sorted into exactly one of the
+# fifteen body families, and no row names a family that doesn't exist. The
+# families are the audio pass's grouping - four cues each (`<F>Idle`,
+# `<F>Attack`, `<F>Hurt`, `<F>Die`, assets/audio_gen/CONTRACT.md §3) instead of
+# four per creature - so a creature added without a family here is not a crash,
+# it is a creature that is SILENT, which is exactly the kind of miss that ships.
+families_text = read("Data/CreatureFamilies.luau")
+family_allowed = set(order_list(families_text, "CreatureFamilies.families"))
+family_of = dict(
+    re.findall(r"^\t([A-Za-z_][A-Za-z0-9_]*) = \"([A-Za-z]+)\",", families_text, re.M)
+)
+if len(family_allowed) != 15:
+    problem(
+        f"CreatureFamilies.families lists {len(family_allowed)} families, want the 15 in the contract"
+    )
+for cid in creatures:
+    fam = family_of.get(cid)
+    if not fam:
+        problem(f"creature '{cid}' has no family in CreatureFamilies.byId (it would be silent)")
+    elif fam not in family_allowed:
+        problem(f"creature '{cid}': family '{fam}' is not one of {sorted(family_allowed)}")
+for cid in family_of:
+    if cid not in creatures:
+        problem(f"CreatureFamilies.byId names '{cid}', which is not a creature in Creatures.luau")
+
+# 10. Rimefang piece offsets: RimefangBodyController.MESH_OFFSET restores the
+# authored offset Roblox drops when it re-centres an imported MeshPart, so it
+# has to equal each object's bounding-box centre in boss_rimefang.glb. A
+# re-export that moves a piece and forgets this table puts the piece back on
+# its joint - the jumbled-whale bug, silently.
+import json as _json, os, struct as _struct
+_glb = os.path.join(ROOT, "assets", "boss_rimefang.glb")
+_ctrl = open(os.path.join(ROOT, "src", "Client", "Controllers", "RimefangBodyController.luau")).read()
+if os.path.exists(_glb):
+    _b = open(_glb, "rb").read()
+    _L = _struct.unpack("<I", _b[12:16])[0]
+    _j = _json.loads(_b[20:20 + _L])
+    _centres = {}
+    for _n in _j["nodes"]:
+        if "mesh" in _n:
+            _acc = _j["accessors"][_j["meshes"][_n["mesh"]]["primitives"][0]["attributes"]["POSITION"]]
+            _centres[_n["name"]] = [(a + b) / 2 for a, b in zip(_acc["min"], _acc["max"])]
+    _table = re.search(r"local MESH_OFFSET = \{(.*?)\n\}", _ctrl, re.S)
+    _rows = dict(re.findall(r"^\t(\w+) = Vector3\.new\(([^)]*)\)", _table.group(1), re.M)) if _table else {}
+    for _piece, _c in sorted(_centres.items()):
+        _key = _piece.replace("Rimefang_", "")
+        if _key == "Body":
+            continue  # authored centred on its joint; no row by design
+        if _key not in _rows:
+            problem(f"RimefangBodyController.MESH_OFFSET has no row for {_piece}")
+            continue
+        _want = [float(v) for v in _rows[_key].split(",")]
+        if any(abs(a - b) > 0.06 for a, b in zip(_want, _c)):
+            problem(f"RimefangBodyController.MESH_OFFSET.{_key} is {_want}, glb centre is "
+                    f"{[round(v, 2) for v in _c]} - re-export moved the piece; update the table")
+
 # ---------------------------------------------------------------- the mesh mirror
 #
 # ONE NUMBER, TWO FILES, TWO LANGUAGES. `wrack_battery.shotRadius` is the
@@ -411,6 +467,118 @@ if m_mesh and m_row and float(m_mesh.group(1)) != float(m_row.group(1)):
         f"WR_BATTERY_SHOT_RADIUS is {m_mesh.group(1)} in assets/boss_gen.py - "
         "the casemates are solved against that number; a mismatch leaves the boss shootable through"
     )
+
+# ---------------------------------------------------------------- the chip ledger
+#
+# THE PYRELISK'S HEALTH BAR IS NOT A BAR, IT IS A PROGRESS DIAL. Nothing
+# damages that colossus directly: each milestone takes an exact fraction off it
+# (`Fn.pyreliskChip`), and the shipped stance machinery - `bossPhaseIndex` ->
+# `ATTR.STANCE` - reads the dial to decide which act the fight is in. So the
+# chips and the phase threshold are ONE decision, spread across two files in
+# two languages, and neither file can see the other.
+#
+# WHAT BREAKS IF THEY DRIFT, and this is why it is a FAIL and not a warning:
+# nothing visible. A chip that lands a hundredth off a boundary fires a stance
+# change - a banner, a sting and a whole new attack pool - in the middle of an
+# act; a ledger that no longer sums to 1.0 is a colossus that will not die when
+# its second arm does. Both present as something else entirely, and both pass
+# every other gate in the project, because each file is internally consistent.
+# This repo's signature failure: a value that exists in one place and is needed
+# in another, where the second place REMEMBERS it instead of reading it.
+#
+# TWO EQUALITIES, NOT FOUR, SINCE THE ARM CLIMB WAS CUT (2026-09-12). The
+# ledger used to be four chips over three acts - flanks, arms, six rocks and the
+# neck core - and act 3 went with the climb: `K.PY_ROCK_FRACTION` and
+# `K.PY_CORE_FRACTION` no longer exist and `Bosses.items.pyrelisk.phases` is two
+# rows. What is left is the pair below, and the pair still catches everything
+# the four did:
+#
+#   1. the threshold equality   phases[2].below == 1 - 2 * flank   (0.70)
+#   2. the ledger CLOSES        2 * flank + 2 * arm == 1.00
+#
+# THE SECOND ONE IS THE ONE THAT MATTERS. The first only asserts that the flank
+# chips line up with the stance boundary; the second asserts that the fight can
+# END - the second arm's chip is the lethal one, and a ledger that sums to 0.95
+# is a colossus that reaches the chip floor with an arm still owed and never
+# collapses, which is the whole act-4 entry silently gone. (It is also why the
+# row count is asserted: a third phase row nothing can reach would be a book
+# that cannot be cast, and the sum would still close.)
+#
+# THE LEDGER IS THE COLOSSUS'S BAR, AND ONLY THE COLOSSUS'S. `pyrelisk_heart`
+# is a second boss row with a health bar of its own (14,000), and that bar is
+# DAMAGED - directly, with weapons - which nothing on the summit ever is. It is
+# not a dial, no chip ever touches it, and it has no phase thresholds that any
+# fraction has to land on: its `phases` split at 0.45 purely to add a move.
+#
+# So the heart's act adds NOTHING to the equalities below and must not. If a
+# future change makes the heart's bar a chipped dial too, it needs its OWN
+# ledger and its own gate - folding a second boss's fractions into this sum
+# would make both of them unfalsifiable, because any error in one could be
+# cancelled by the other and the total would still close.
+#
+# Read from BOTH SIDES, like the Wrack battery's shot radius above. The
+# fractions are authored as exact two-decimal values so the sum is
+# representable; compared to 1e-9 regardless.
+creature_service = (ROOT / "src" / "Server" / "Services" / "CreatureService.luau").read_text()
+
+
+def _py_fraction(name):
+    m = re.search(rf"^K\.{name}\s*=\s*([0-9.]+)\s*$", creature_service, re.M)
+    if not m:
+        problem(
+            f"CreatureService.luau has no K.{name} - the Pyrelisk chip ledger cannot be checked, "
+            "which is worse than a wrong number: the fight's act boundaries become unguarded"
+        )
+        return None
+    return float(m.group(1))
+
+
+def _py_below():
+    block = braced(bosses.get("pyrelisk", ""), "phases")
+    if block is None:
+        problem("Bosses.items.pyrelisk has no phases block - the act thresholds are gone")
+        return []
+    return [float(v) for v in re.findall(r"below\s*=\s*([0-9.]+)", block)]
+
+
+_flank = _py_fraction("PY_FLANK_FRACTION")
+_arm = _py_fraction("PY_ARM_FRACTION")
+_below = _py_below()
+if None not in (_flank, _arm):
+    if len(_below) != 2:
+        problem(
+            f"Bosses.items.pyrelisk.phases has {len(_below)} rows, not 2 - the Pyrelisk's two acts "
+            "are its two phases, and the chip ledger is written against exactly that"
+        )
+    else:
+        _act1, _act2 = 1.0 - _below[1], _below[1]
+        for _label, _lhs, _rhs, _why in (
+            (
+                "act 1 (two flank scars)",
+                _flank * 2,
+                _act1,
+                f"K.PY_FLANK_FRACTION * 2 = {_flank * 2:.4f} but 1.0 - phases[2].below = {_act1:.4f}",
+            ),
+            (
+                "act 2 (two arms)",
+                _arm * 2,
+                _act2,
+                f"K.PY_ARM_FRACTION * 2 = {_arm * 2:.4f} but phases[2].below = {_act2:.4f}",
+            ),
+            (
+                "the ledger closes",
+                _flank * 2 + _arm * 2,
+                1.0,
+                f"the two chips sum to {_flank * 2 + _arm * 2:.4f}, not 1.0 - the second arm's "
+                "death is the lethal chip and it can only be lethal if the ledger closes",
+            ),
+        ):
+            if abs(_lhs - _rhs) > 1e-9:
+                problem(
+                    f"Pyrelisk chip ledger, {_label}: {_why}. The chips (CreatureService.luau) and the "
+                    "phase threshold (Bosses.luau) are ONE decision - a mismatch fires a stance change "
+                    "inside an act, or leaves the colossus unable to die. Re-derive both, do not widen this."
+                )
 
 # ---------------------------------------------------------------- report
 if problems:

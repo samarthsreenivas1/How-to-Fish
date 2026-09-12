@@ -29,6 +29,7 @@ local Theme = require(script.Parent.Parent.UI.Theme)
 local Kit = require(script.Parent.Parent.UI.Kit)
 local CameraController = require(script.Parent.CameraController)
 local ProgressionController = require(script.Parent.ProgressionController)
+local Sfx = require(script.Parent.Parent.Modules.Sfx)
 
 local player = Players.LocalPlayer
 
@@ -40,6 +41,16 @@ local F = Theme.Font
 local TOGGLE_ACTION = "QuestLogToggle"
 
 local snapshot = { active = {}, completed = {} }
+
+-- Anything that draws off quest state without owning it (the "!" over an
+-- NPC's head) reads the snapshot through these two: a getter for the current
+-- copy and a signal for "it moved". Both are additive - this controller's own
+-- log and tracker still call renderLog/renderTracker directly.
+QuestController.Changed = Instance.new("BindableEvent")
+
+function QuestController.getSnapshot()
+	return snapshot
+end
 
 local modal
 local list: ScrollingFrame
@@ -276,6 +287,11 @@ function QuestController.setOpen(open: boolean)
 	if not modal then
 		return
 	end
+	-- Only on a real state change: J pressed while the log is already open,
+	-- or a close arriving twice, must not click the panel twice.
+	if modal.backdrop.Visible ~= open then
+		Sfx.play(if open then "uiOpen" else "uiClose")
+	end
 	modal.backdrop.Visible = open
 	CameraController.setCursorFree(open)
 	if open then
@@ -289,18 +305,64 @@ end
 
 -- ============================================================ lifecycle
 
+-- The first snapshot is the join state, not news: a returning player with
+-- four quests in the log must not hear four accept chimes at the character
+-- spawning in. Every snapshot after it is a real change, so it gets sounded.
+--
+-- WHICH snapshot is the first one is the subtle part. The join sequence pushes
+-- TWICE - an empty one from QuestService.onPlayerAdded, then the real one when
+-- the DataStore profile lands - and whichever of those the GetQuests pull races
+-- is a coin toss. Taking the empty one as the baseline made every restored
+-- quest look newly accepted and chimed on spawn: exactly the bug this flag
+-- exists to prevent, hidden inside it. So the baseline is the first snapshot
+-- that says the PROFILE IS IN (`loaded`, set by QuestService.snapshot); an
+-- older server that doesn't send the field leaves it nil, which still counts.
+local snapshotSeen = false
+
+-- Pushes that have landed, counted so the GetQuests reply can tell whether it
+-- is still the freshest thing we have: the pull is fired once at start() and
+-- answers a round-trip later, by which time an accept push may have overtaken
+-- it. Applying a stale pull on top would roll the log backwards.
+local pushesSeen = 0
+
 local function applySnapshot(data)
 	if type(data) ~= "table" then
 		return
 	end
+	local previous = snapshot
 	snapshot = {
 		active = if type(data.active) == "table" then data.active else {},
 		completed = if type(data.completed) == "table" then data.completed else {},
 	}
+
+	-- The snapshot arrives wholesale with no "what changed" field, so the
+	-- diff against the copy we were holding is the only place accept and
+	-- turn-in are visible. Completed is keyed questId -> completedAt, and a
+	-- repeatable quest turned in a second time keeps its key but gets a new
+	-- timestamp - hence the value compare, not just a presence test.
+	if snapshotSeen then
+		for questId in snapshot.active do
+			if previous.active[questId] == nil then
+				Sfx.play("questAccept")
+				break
+			end
+		end
+		for questId, completedAt in snapshot.completed do
+			if previous.completed[questId] ~= completedAt then
+				Sfx.play("questComplete")
+				break
+			end
+		end
+	end
+	if data.loaded ~= false then
+		snapshotSeen = true
+	end
+
 	renderTracker()
 	if QuestController.isOpen() then
 		renderLog()
 	end
+	QuestController.Changed:Fire()
 end
 
 function QuestController.init()
@@ -309,9 +371,15 @@ function QuestController.init()
 end
 
 function QuestController.start()
-	Remotes.QuestsUpdated.OnClientEvent:Connect(applySnapshot)
+	Remotes.QuestsUpdated.OnClientEvent:Connect(function(data)
+		pushesSeen += 1
+		applySnapshot(data)
+	end)
 	task.spawn(function()
-		applySnapshot(Remotes.GetQuests:InvokeServer())
+		local pulled = Remotes.GetQuests:InvokeServer()
+		if pushesSeen == 0 then
+			applySnapshot(pulled)
+		end
 	end)
 
 	-- The progress delta: bump the local copy for the tracker, and pop.
@@ -324,9 +392,14 @@ function QuestController.start()
 			entry.progress[delta.objectiveIndex] = delta.count
 		end
 		renderTracker()
+		-- A delta is the only place readiness becomes visible (no snapshot
+		-- follows it), so the marker over the giver's head hears it here.
+		QuestController.Changed:Fire()
 		if delta.ready then
-			ProgressionController.pop(string.format("%s - ready to turn in!", tostring(delta.name)), C.accent)
+			Sfx.play("questReady")
+			ProgressionController.pop(string.format("%s - ready to turn in!", tostring(delta.name)), C.accent, false)
 		else
+			Sfx.play("questTick")
 			ProgressionController.pop(
 				string.format(
 					"%s  %d/%d",
@@ -334,7 +407,8 @@ function QuestController.start()
 					tonumber(delta.count) or 0,
 					tonumber(delta.needed) or 0
 				),
-				C.accent
+				C.accent,
+				false
 			)
 		end
 	end)

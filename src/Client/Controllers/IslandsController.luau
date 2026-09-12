@@ -29,6 +29,7 @@ local Remotes = require(Shared.Net.Remotes)
 local Theme = require(script.Parent.Parent.UI.Theme)
 local Kit = require(script.Parent.Parent.UI.Kit)
 local CameraController = require(script.Parent.CameraController)
+local Sfx = require(script.Parent.Parent.Modules.Sfx)
 
 local player = Players.LocalPlayer
 
@@ -39,6 +40,11 @@ local F = Theme.Font
 
 local CARD_HEIGHT = 118
 local TOGGLE_ACTION = "IslandsMenuToggle"
+
+-- How long after init the replicated Heart_ attributes are treated as the
+-- join state rather than as news worth a sound. See the AttributeChanged
+-- handler in init().
+local JOIN_SETTLE = 3
 
 -- Each island's art: a two-colour gradient tile and a short token. Keyed by
 -- island id; anything unlisted gets the sea.
@@ -278,6 +284,7 @@ local function buildCard(id: string, index: number): Frame
 		position = UDim2.new(1, -14, 0.5, 0),
 	})
 	travel.Activated:Connect(function()
+		Sfx.play("travelGo")
 		status.Text = string.format("Setting sail for %s...", entry.name)
 		status.TextColor3 = C.textDim
 		Remotes.RequestTeleport:FireServer(id)
@@ -396,6 +403,11 @@ function IslandsController.setOpen(open: boolean)
 	if not modal then
 		return
 	end
+	-- Change-guarded: T pressed on an open menu, and the setOpen(false) a
+	-- successful teleport fires on an already-closed menu, must stay silent.
+	if modal.backdrop.Visible ~= open then
+		Sfx.play(if open then "uiOpen" else "uiClose")
+	end
 	modal.backdrop.Visible = open
 	CameraController.setCursorFree(open)
 	if open then
@@ -418,10 +430,14 @@ function IslandsController.init()
 			return
 		end
 		if result.ok then
+			Sfx.play("travelArrive")
 			IslandsController.setOpen(false)
-		elseif modal.backdrop.Visible then
-			status.Text = tostring(result.reason or "Can't travel there")
-			status.TextColor3 = C.red
+		else
+			Sfx.play("travelRefused")
+			if modal.backdrop.Visible then
+				status.Text = tostring(result.reason or "Can't travel there")
+				status.TextColor3 = C.red
+			end
 		end
 	end)
 	player:GetAttributeChangedSignal(Progression.ATTR.level):Connect(function()
@@ -430,8 +446,51 @@ function IslandsController.init()
 		end
 	end)
 	-- The site veil lifts the moment the last heart lands.
+	--
+	-- The sound has to happen here rather than in render(): a heart landing
+	-- is what opens the next island, and the menu is almost never open at
+	-- that moment (you just killed the boss), so gating the cue on
+	-- backdrop.Visible would silence it exactly when it matters. heartsAll
+	-- is a one-shot on the false -> true edge only, so a heart lost, or a
+	-- second Heart_ write for one already held, can't re-fire the fanfare.
+	--
+	-- `settled` is the join guard. A returning player's Heart_ attributes
+	-- replicate one at a time a moment AFTER this runs, which without it
+	-- would be six unlock chimes and a full-set fanfare for progress made
+	-- days ago. Until it flips we track the state silently; every change
+	-- after it is genuinely news.
+	local lastHeartsAll = hasAllHearts()
+	-- Per-attribute truthiness memory, the same shape as lastHeartsAll and for
+	-- the same reason. AttributeChanged fires on EVERY write to a Heart_ key -
+	-- a re-write of a heart already held, a clear, a server-side correction -
+	-- and the unlock fanfare belongs to exactly one of those: the false -> true
+	-- edge. Without this, any repeat write chimed as a fresh island.
+	local heartHeld: { [string]: boolean } = {}
+	local settled = false
+	task.delay(JOIN_SETTLE, function()
+		lastHeartsAll = hasAllHearts()
+		settled = true
+	end)
+
 	player.AttributeChanged:Connect(function(attribute: string)
-		if string.sub(attribute, 1, 6) == "Heart_" and modal.backdrop.Visible then
+		if string.sub(attribute, 1, 6) ~= "Heart_" then
+			return
+		end
+
+		local held = player:GetAttribute(attribute) == true
+		local was = heartHeld[attribute] == true
+		heartHeld[attribute] = held
+
+		local all = hasAllHearts()
+		if settled and held and not was then
+			Sfx.play("islandUnlock")
+			if all and not lastHeartsAll then
+				Sfx.play("heartsAll")
+			end
+		end
+		lastHeartsAll = all
+
+		if modal.backdrop.Visible then
 			render()
 		end
 	end)

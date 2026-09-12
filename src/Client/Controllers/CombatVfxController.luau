@@ -25,6 +25,7 @@ local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Remotes = require(Shared.Net.Remotes)
+local CreatureFamilies = require(Shared.Data.CreatureFamilies)
 
 local Sfx = require(script.Parent.Parent.Modules.Sfx)
 
@@ -281,6 +282,41 @@ local function step(dt: number)
 	end
 end
 
+-- ---------------------------------------------------------------- voice
+
+-- WHICH creature was hit. The CreatureHit remote carries only the contact
+-- point (hitPoint, direction, killed, attackerUserId - see Remotes.luau), so
+-- the animal has to be recovered from the world: the nearest model under
+-- Workspace.Creatures to the point the punch landed.
+--
+-- That is sound because the point IS on a creature's body - the server only
+-- fires this from a hit it resolved - so the nearest model is the one that was
+-- struck, and VOICE_SEARCH is a sanity radius rather than a real search: it
+-- only has to be wider than half the biggest body (a boss) and narrower than
+-- the gap to some unrelated fish. Nothing found means no family voice and the
+-- existing crack/thump layers play alone, which is the pre-audio behaviour.
+local VOICE_SEARCH = 30 -- studs from the contact point to the model's pivot
+
+local function creatureAt(hitPoint: Vector3): string?
+	local folder = Workspace:FindFirstChild("Creatures")
+	if not folder then
+		return nil
+	end
+	local bestId, bestD = nil, VOICE_SEARCH
+	for _, model in folder:GetChildren() do
+		if model:IsA("Model") then
+			local id = model:GetAttribute("CreatureId") -- CreatureService's ATTR.ID
+			if id then
+				local d = (model:GetPivot().Position - hitPoint).Magnitude
+				if d < bestD then
+					bestId, bestD = id, d
+				end
+			end
+		end
+	end
+	return bestId
+end
+
 -- ---------------------------------------------------------------- lifecycle
 
 local function onCreatureHit(hitPoint: Vector3, direction: Vector3, killed: boolean, attackerUserId: number)
@@ -288,6 +324,17 @@ local function onCreatureHit(hitPoint: Vector3, direction: Vector3, killed: bool
 		return
 	end
 	burst(hitPoint, direction, killed == true)
+
+	-- The animal's own voice, LAYERED OVER the crack/thump below rather than
+	-- replacing it: those two are the punch (dry, impact, the same every time)
+	-- and this is what was punched. One cue set per body family, pitched by
+	-- size - see assets/audio_gen/CONTRACT.md §3 sfx_families.
+	local creatureId = creatureAt(hitPoint)
+	local family = CreatureFamilies.get(creatureId)
+	if family then
+		local pitch = CreatureFamilies.voicePitch(creatureId)
+		Sfx.play(family .. (if killed then "Die" else "Hurt"), hitPoint, { pitch = pitch })
+	end
 
 	-- Two dry layers - crack + body thump - at the fish, so the punch lands
 	-- with weight. Heard by everyone, so a hit across the dock sounds like it
